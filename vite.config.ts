@@ -1,19 +1,22 @@
-export default {
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  base: "./",
   server: {
     port: 8000,
     open: true,
-    host: '0.0.0.0',
+    host: "0.0.0.0",
   },
   preview: {
     port: 8000,
     open: true,
-    host: '0.0.0.0',
+    host: "0.0.0.0",
   },
   worker: {
-    format: 'es',
+    format: "es",
   },
   build: {
-    target: 'esnext',
+    target: "esnext",
     sourcemap: true,
   },
-};
+});
