@@ -1,0 +1,2312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>X-Band Digital Twin | Operations &amp; Research Console</title>
+<style>
+:root{--ink:#12171d;--surface:#1a2129;--raised:#222c36;--line:#2c3844;--line2:#3d4d5c;--text:#e8ecef;--muted:#9aa8b3;--faint:#6b7b88;--accent:#9db4ff;--ok:#4fd1a1;--warn:#f3b54a;--bad:#ff7070;
+--sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Consolas,Menlo,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--ink);color:var(--text);font:13px/1.5 var(--sans);display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--raised);border:1px solid var(--line);border-radius:5px;padding:6px 11px;font-size:12px;font-weight:500;cursor:pointer;transition:background .12s,border-color .12s}
+button:hover{background:#2b3745;border-color:var(--line2)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.active{background:rgba(157,180,255,.16);border-color:var(--accent);color:#dbe4ff}
+.primary{background:var(--accent);border-color:var(--accent);color:#0f1626;font-weight:600}
+.primary:hover{background:#b6c7ff;border-color:#b6c7ff}
+.btn-danger{color:#ffb3b3;border-color:rgba(255,112,112,.4);background:rgba(255,112,112,.1)}
+.btn-danger:hover{background:var(--bad);border-color:var(--bad);color:#2a0b0b}
+.link-btn{background:none;border:0;color:var(--accent);padding:4px 0;font-size:12px}
+.link-btn:hover{background:none;text-decoration:underline}
+.muted{color:var(--muted)}.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+select,input[type=text],input[type=search]{background:var(--ink);border:1px solid var(--line);border-radius:5px;padding:7px 9px;width:100%}
+input[type=range]{width:100%;height:4px;background:var(--line2);border-radius:2px;-webkit-appearance:none;appearance:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:var(--accent)}
+
+/* top bar */
+.topbar{flex:none;min-height:52px;display:flex;align-items:center;gap:14px;padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0}
+.brand-mark{width:18px;height:18px;border:2px solid var(--accent);border-radius:50%;position:relative;flex:none}
+.brand-mark::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--accent)}
+.brand b{font-size:14px;font-weight:600;display:block;line-height:1.2}.brand small{font-size:11px;color:var(--muted);display:block;line-height:1.2}
+.seg{display:inline-flex;align-items:center;background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:2px;gap:2px}
+.seg button{background:transparent;border:0;padding:4px 9px;font-size:11.5px;color:var(--muted)}
+.seg button:hover{background:var(--raised);color:var(--text)}
+.seg button.active{background:var(--raised);color:var(--accent);box-shadow:inset 0 0 0 1px var(--line2)}
+.seg .btn-danger{color:#ffb3b3}
+.sep{width:1px;height:14px;background:var(--line2);margin:0 2px}
+.clock{display:flex;align-items:baseline;gap:8px;font:600 13px var(--mono);color:var(--accent)}
+.conn-status{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad)}.dot.online{background:var(--ok)}
+
+/* shell + navigation rail */
+.shell{flex:1;min-height:0;display:flex}
+.rail{width:78px;flex:none;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:8px 6px;gap:4px}
+.nav-tab{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 2px;background:transparent;border:1px solid transparent;color:var(--muted);font-size:11px;border-radius:6px;white-space:normal;text-align:center;line-height:1.2}
+.nav-tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.nav-tab:hover{background:var(--raised);color:var(--text)}
+.nav-tab.active{background:var(--raised);color:var(--accent);border-color:var(--line2);font-weight:600}
+
+/* persistent map + detail workspace */
+.main-viewport{flex:1;min-width:0;min-height:0;display:grid;grid-template-columns:var(--map-width,44%) 8px minmax(0,1fr);overflow:hidden}
+.persistent-map-panel{min-width:260px;min-height:0;display:flex;flex-direction:column;background:#0b1015;overflow:hidden}
+.persistent-map-mount{flex:1;min-height:0;min-width:0;display:flex}
+.persistent-map-mount .radar-stage{flex:1;min-width:0;min-height:0}
+.map-resize-handle{position:relative;cursor:col-resize;background:var(--surface);border-left:1px solid var(--line);border-right:1px solid var(--line);touch-action:none}
+.map-resize-handle::after{content:"";position:absolute;left:50%;top:50%;width:2px;height:36px;margin:-18px 0 0 -1px;background:var(--faint);border-radius:1px}
+.map-resize-handle:hover,.map-resize-handle:focus-visible{background:rgba(157,180,255,.18);outline:0}
+body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none!important}
+.detail-viewport{position:relative;min-width:0;min-height:0;overflow:hidden;background:var(--ink)}
+.tab-content{position:absolute;inset:0;display:none;min-width:0;min-height:0}
+.tab-content.active{display:flex;flex-direction:column}
+
+.radar-stage{display:flex;flex-direction:column;background:#0b1015;position:relative}
+.stage-toolbar{flex:none;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface);border-bottom:1px solid var(--line)}
+.stage-title{font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:8px}
+.tool-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.tool-label{font-size:11px;color:var(--faint)}
+.radar-canvas-container,.waterfall-canvas-container,.fresnel-canvas-box{position:relative;width:100%;overflow:hidden;background:#0b1015}
+.radar-canvas-container{flex:1 1 0;min-height:0}
+.radar-canvas-container canvas,.waterfall-canvas-container canvas,.fresnel-canvas-box canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
+
+/* RELOCATED TOP-RIGHT: Completely avoids collision with bottom-left MGRS HUD tape */
+.map-legend {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: auto;
+  left: auto;
+  z-index: 3;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px 10px;
+  max-width: calc(100% - 20px);
+  width: max-content;
+  padding: 5px 9px;
+  background: rgba(18, 23, 29, .92);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow-x: auto;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+.map-legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.legend-dot{width:7px;height:7px;border-radius:50%;display:inline-block}.legend-dot.los{background:var(--ok)}.legend-dot.warning{background:var(--warn)}.legend-dot.shadow{background:var(--bad)}.legend-square{width:7px;height:7px;background:#38bdf8;display:inline-block}
+.radar-canvas-container::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 62%,rgba(8,12,16,.5))}
+.situation-strip{flex:none;display:flex;gap:10px;align-items:flex-start;padding:9px 12px;background:var(--surface);border-top:1px solid var(--line);font-size:12px;min-height:46px}
+.situation-strip strong{color:var(--accent);font-weight:600;flex:none}
+
+/* panes and sections */
+.overview-layout{flex:1;min-height:0;display:flex;flex-direction:column}
+.pane{flex:1;min-height:0;overflow-y:auto;padding:18px 22px 32px}
+.pane>*{max-width:920px}
+.pane-head h2{font-size:18px;font-weight:600;letter-spacing:-.01em}
+.lede{color:var(--muted);max-width:64ch;margin:3px 0 14px}
+.sec{padding:16px 0;border-top:1px solid var(--line)}
+.sec-title{font-size:13px;font-weight:600}.sec-sub{color:var(--muted);font-size:12px;margin:2px 0 10px;max-width:64ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:14px;margin-bottom:14px}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.welcome{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;padding:14px 16px;margin-bottom:6px;background:rgba(157,180,255,.08);border:1px solid rgba(157,180,255,.3);border-radius:7px}
+.welcome[hidden]{display:none}
+.welcome ol{margin:6px 0 6px 18px}.welcome li{margin-bottom:2px}.welcome p{max-width:66ch}.welcome small{color:var(--muted)}
+.run-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.run-row .primary{padding:9px 16px;font-size:13px}
+
+.metric{padding:12px 0;border-top:1px solid var(--line)}.metric:first-of-type{border-top:0;padding-top:0}
+.metric-top,.metric-main,.metric-foot{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.metric-name{font-weight:600}.metric-val{font:600 22px var(--mono)}.metric-base{font:12px var(--mono);color:var(--muted)}.metric-foot{font-size:11.5px;color:var(--faint)}
+.kpi-badge{font:600 10.5px var(--mono);padding:2px 8px;border-radius:99px;border:1px solid var(--line2);background:var(--raised);color:var(--muted)}
+.badge-emerald{background:rgba(79,209,161,.13);color:var(--ok);border-color:rgba(79,209,161,.4)}
+.badge-amber{background:rgba(243,181,74,.13);color:var(--warn);border-color:rgba(243,181,74,.4)}
+.badge-crimson{background:rgba(255,112,112,.13);color:var(--bad);border-color:rgba(255,112,112,.4)}
+.badge-cyan{background:rgba(157,180,255,.13);color:var(--accent);border-color:rgba(157,180,255,.4)}
+.badge-sub{font:11px var(--mono);color:var(--faint)}
+
+details.more{border-top:1px solid var(--line)}
+details.more>summary{cursor:pointer;list-style:none;padding:13px 0;display:flex;justify-content:space-between;align-items:center;font-weight:600}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::after{content:"";width:7px;height:7px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);transition:transform .15s}
+details.more[open]>summary::after{transform:rotate(225deg)}
+details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;margin-right:auto}
+.more-body{padding-bottom:16px}
+.overview-trend-chart-wrap{height:120px;position:relative}#overview-goodput-canvas{display:block;width:100%;height:100%}
+.overview-trend-footer{display:flex;justify-content:space-between;font-size:11px;margin-top:5px}
+.overview-event-list{list-style:none;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow:auto;margin-top:12px}
+.overview-event-list li{font-size:11.5px;border-left:2px solid var(--accent);padding:2px 8px;background:rgba(157,180,255,.05)}
+.overview-event-list .event-time{color:var(--muted);font:11px var(--mono);margin-right:6px}
+.overview-event-list .overview-event-empty{border-left-color:var(--line2);color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.stat{background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 10px}.stat span{display:block;font-size:11px;color:var(--muted)}.stat b{font:600 14px var(--mono)}
+.actions{display:flex;flex-wrap:wrap;gap:6px 18px}
+
+/* analysis tabs */
+.analysis-context{flex:none;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;padding:8px 22px;background:var(--surface);border-bottom:1px solid var(--line);font-size:11.5px}
+.context-kicker{color:var(--ok);font-weight:600;display:flex;align-items:center;gap:6px}.context-kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.context-meta{display:flex;flex-wrap:wrap;gap:4px 16px;margin-left:auto}.context-meta span{color:var(--muted)}.context-meta b{color:var(--text);font:600 11.5px var(--mono);margin-left:4px}
+.waterfall-canvas-container{height:clamp(210px,30vh,280px);border:1px solid var(--line);border-radius:6px}
+.fresnel-canvas-box{height:clamp(240px,36vh,340px);border:1px solid var(--line);border-radius:6px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--muted);margin-bottom:10px}.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.table-scroll{overflow-x:auto}
+.data-table{width:100%;border-collapse:collapse;font-size:12px;min-width:480px}
+.data-table th{font-weight:600;font-size:11.5px;color:var(--muted);text-align:right;padding:8px 10px;border-bottom:1px solid var(--line2)}
+.data-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;font:12px var(--mono)}
+.data-table th:first-child,.data-table td:first-child{text-align:left}.data-table td:first-child{font:12.5px var(--sans)}
+.c-bad{color:var(--bad)}.c-ok{color:var(--ok)}.c-acc{color:var(--accent)}
+.inspector-footnote{margin-top:8px;color:var(--muted);font-size:11.5px;max-width:78ch}
+.inspector-metric{background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 10px}.inspector-metric span{display:block;font-size:11px;color:var(--muted)}.inspector-metric strong{font:600 12.5px var(--mono);overflow-wrap:anywhere}
+.inspector-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.group-title{font-size:11.5px;color:var(--faint);font-weight:600;margin:12px 0 2px}.group-title:first-of-type{margin-top:0}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 22px}
+.form-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}.form-row span{color:var(--muted)}.form-row b{font:600 12px var(--mono)}
+.slider{margin-bottom:16px}.slider .form-row{border:0;padding:0 0 7px}
+.q-track-wrap{display:grid;grid-template-columns:120px 1fr 92px;gap:10px;align-items:center;margin-bottom:9px;font-size:12px}
+.q-track-wrap output{text-align:right;font:11.5px var(--mono)}
+.track-bg{height:6px;background:var(--ink);border-radius:3px;overflow:hidden;border:1px solid var(--line)}.track-fill{height:100%;transition:width .15s}
+.terminal-search{margin-bottom:8px}
+.traffic-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.traffic-actions button{white-space:normal;padding:8px}
+.transfer-monitor{background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.transfer-header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+
+/* experiment capture */
+.experiment-capture-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:12px 0}
+.experiment-capture-grid label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:11.5px}
+.experiment-capture-actions{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.experiment-capture-status{display:flex;flex-wrap:wrap;gap:6px 16px;padding:9px 11px;background:var(--ink);border:1px solid var(--line);border-radius:6px;font:11.5px var(--mono)}.experiment-capture-status strong{color:var(--accent)}
+.experiment-capture-caveat{font-size:11.5px;color:var(--muted);margin-top:10px}
+
+/* research document reader */
+.doc-layout{flex:1;min-height:0;overflow-y:auto;padding:24px clamp(16px,3vw,40px) 40px;user-select:text;line-height:1.75;color:#cfd8de}
+.doc-layout>*{max-width:880px}
+.doc-layout h2{font-size:24px;font-weight:600;line-height:1.25;color:var(--text);margin-bottom:10px;letter-spacing:-.01em}
+.doc-layout h3{font-size:17px;font-weight:600;color:var(--text);margin:8px 0 10px}
+.doc-layout h4{font-size:13px;font-weight:600;margin:16px 0 6px}
+.doc-layout p,.doc-layout li{margin-bottom:10px;font-size:13px;max-width:78ch}
+.doc-layout ul,.doc-layout ol{padding-left:22px;margin:8px 0 16px}
+.doc-layout code,.formula-card{font-family:var(--mono)}.doc-layout code{font-size:.92em}
+.formula-card{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:4px;padding:12px 14px;margin:9px 0 14px;font-size:12.5px;line-height:1.9;overflow-x:auto}
+.doc-table-clean{width:100%;border-collapse:collapse;margin:12px 0 20px;font-size:12px;line-height:1.6}
+.doc-table-clean th{background:var(--surface);padding:9px 10px;text-align:left;border:1px solid var(--line);color:var(--muted)}.doc-table-clean td{padding:8px 10px;border:1px solid var(--line);vertical-align:top}
+.research-header{padding:8px 0 18px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.research-kicker{font:600 11px var(--mono);color:var(--accent);margin-bottom:10px}.research-subtitle{font-size:14px;color:var(--muted)}
+.research-meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;color:var(--faint);font:11px var(--mono)}
+.research-notice,.report-callout{padding:12px 14px;margin:16px 0;background:var(--surface);border:1px solid var(--line);border-radius:5px;font-size:12.5px}
+.research-notice,.report-callout-warning{border-left:3px solid var(--warn)}
+.research-toc{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 26px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.research-toc a{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:5px 9px;border-radius:99px;font-size:11.5px}.research-toc a:hover{color:var(--text);border-color:var(--accent)}
+.report-section{scroll-margin-top:12px;margin-bottom:28px}
+.report-status{display:inline-block;color:#b8e3d1;background:rgba(79,209,161,.1);border:1px solid rgba(79,209,161,.3);padding:2px 7px;border-radius:99px;font-size:11px}
+.report-status-pending{color:#f0d49c;background:rgba(243,181,74,.1);border-color:rgba(243,181,74,.3)}
+.research-footer{margin-top:30px;padding:15px 0;border-top:1px solid var(--line);color:var(--faint);font-size:11.5px}
+
+/* upload dialog */
+.modal-backdrop{position:fixed;inset:0;background:rgba(8,11,15,.82);backdrop-filter:blur(5px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-backdrop[hidden]{display:none!important}
+.modal-card{width:540px;max-width:94vw;background:var(--surface);border:1px solid var(--line2);border-radius:9px;box-shadow:0 20px 50px rgba(0,0,0,.6);overflow:hidden}
+.modal-header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.modal-header h3{font-size:14px;font-weight:600}
+.modal-close-btn{background:transparent;border:0;font-size:18px;color:var(--muted);padding:2px 8px}
+.modal-body{padding:18px 20px}
+.dropzone{border:2px dashed var(--line2);border-radius:8px;background:var(--ink);padding:28px 16px;text-align:center;transition:border-color .15s,background .15s}.dropzone.dragover{border-color:var(--accent);background:#171f2b}
+.drop-text{font-weight:600;margin-bottom:2px}.drop-sub{color:var(--muted);font-size:12px}
+.upload-status-box{margin-top:12px;padding:8px 12px;border-radius:5px;font:12px var(--mono)}
+.status-loading{background:rgba(157,180,255,.1);color:var(--accent)}.status-success{background:rgba(79,209,161,.1);color:var(--ok)}.status-error{background:rgba(255,112,112,.1);color:var(--bad)}
+
+@media(max-width:1100px){.brand small,.conn-status span:last-child{display:none}}
+@media(max-width:860px){
+  .shell{flex-direction:column-reverse}
+  .rail{width:auto;flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:4px}.nav-tab{flex:1;padding:6px 2px;font-size:10px}
+  .main-viewport{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(230px,40%) 0 minmax(0,1fr)}
+  .map-resize-handle{height:0;overflow:hidden;border:0}.persistent-map-panel{min-width:0}
+  .stats{grid-template-columns:1fr}.q-track-wrap{grid-template-columns:90px 1fr 80px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"></span><div><b>X-Band Digital Twin</b><small>Air-to-ground network simulator</small></div></div>
+  <div class="seg" role="group" aria-label="Simulation transport">
+    <button id="btn-pause" onclick="togglePause()" title="Pause or resume (Space)">PAUSE</button>
+    <button id="btn-step" onclick="stepSim()" title="Advance one 20 ms frame (.)">STEP ⏭</button>
+    <span class="sep"></span>
+    <button id="spd-01" onclick="setSpeed(0.1)">0.1×</button>
+    <button id="spd-05" onclick="setSpeed(0.5)">0.5×</button>
+    <button id="spd-10" class="active" onclick="setSpeed(1.0)">1×</button>
+    <span class="sep"></span>
+    <button class="btn-danger" onclick="resetSim()" title="Restart the simulation">RESET</button>
+  </div>
+  <div class="clock"><span id="clock-display">T+00:00.0s</span><span id="frame-display" class="muted">#0</span></div>
+  <div class="conn-status"><span id="worker-indicator" class="dot online"></span><span id="worker-label">Worker 50 Hz</span></div>
+  <div class="seg" role="group" aria-label="Interface help">
+    <button id="btn-expert" type="button" aria-pressed="false" title="Open every collapsed section">Expert view</button>
+    <button id="btn-help" type="button" title="Show the quick tour">Help</button>
+  </div>
+</header>
+
+<div class="shell">
+<nav class="rail" role="tablist" aria-label="Workspaces">
+  <button class="nav-tab active" id="tab-btn-overview" onclick="switchMainTab('tab-overview')" title="Overview (1)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Overview</button>
+  <button class="nav-tab" id="tab-btn-scheduler" onclick="switchMainTab('tab-scheduler')" title="Scheduler (2)"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h13"/></svg>Scheduler</button>
+  <button class="nav-tab" id="tab-btn-terrain" onclick="switchMainTab('tab-terrain')" title="Terrain &amp; RF (3)"><svg viewBox="0 0 24 24"><path d="M3 19l6-10 4 6 3-4 5 8z"/></svg>Terrain &amp; RF</button>
+  <button class="nav-tab" id="tab-btn-terminal" onclick="switchMainTab('tab-terminal')" title="Terminals (4)"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Terminals</button>
+  <button class="nav-tab" id="tab-btn-doc" onclick="switchMainTab('tab-doc')" title="Research &amp; Docs (5)"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7"/></svg>Research &amp; Docs</button>
+</nav>
+
+<main class="main-viewport" id="main-workspace" style="--map-width:44%">
+  <aside class="persistent-map-panel" id="persistent-map-panel" aria-label="Persistent terrain and network map">
+    <div class="persistent-map-mount" id="persistent-map-mount"></div>
+  </aside>
+  <div class="map-resize-handle" id="map-resize-handle" role="separator" aria-label="Resize map and workspace" aria-orientation="vertical" tabindex="0" title="Drag to resize"></div>
+  <section class="detail-viewport" id="detail-viewport" aria-label="Selected workspace">
+
+  <!-- ===== OVERVIEW ===== -->
+  <section class="tab-content active" id="tab-overview">
+    <div class="overview-layout">
+      <div class="radar-stage">
+        <div class="stage-toolbar">
+          <div class="stage-title">Live map <span class="badge-sub">stays visible in every view</span></div>
+          <div class="tool-group">
+            <span class="tool-label">Terrain</span>
+            <div class="seg">
+              <button id="btnRealTerrain" class="active" onclick="setTerrainMode('real')" title="Real satellite elevation data">Satellite</button>
+              <button id="btnSynthTerrain" onclick="setTerrainMode('synthetic')" title="Generated fractal terrain">Synthetic</button>
+              <button id="btnUploadTerrain" onclick="openUploadModal()" title="Upload a heightmap (.png, .jpg)">Upload…</button>
+            </div>
+            <span class="tool-label">Range</span>
+            <div class="seg">
+              <button id="zoom-30" onclick="setRadarRange(30000)">30 km</button>
+              <button id="zoom-60" class="active" onclick="setRadarRange(60000)">60 km</button>
+              <button id="zoom-100" onclick="setRadarRange(100000)">100 km</button>
+              <button id="zoom-200" onclick="setRadarRange(200000)">200 km</button>
+              <button onclick="centerMapOnACN()" title="Re-center on the airborne relay">Center</button>
+            </div>
+          </div>
+        </div>
+        <div class="radar-canvas-container" id="radar-container" style="cursor:grab">
+          <canvas id="radar-canvas" aria-label="Live terrain and ground terminal network map"></canvas>
+          <div class="map-legend" aria-label="Map legend">
+            <span><i class="legend-dot los"></i>Clear line of sight</span>
+            <span><i class="legend-dot warning"></i>About to be blocked</span>
+            <span><i class="legend-dot shadow"></i>Blocked by terrain</span>
+            <span><i class="legend-square"></i>Airborne relay</span>
+            <span>◎ Selected terminal</span>
+          </div>
+        </div>
+        <div class="situation-strip"><strong>What's happening</strong><span id="overview-narrative">Simulation active on dedicated WebWorker thread. Evaluating 50 Hz multi-class telemetry...</span></div>
+      </div>
+
+      <aside class="pane overview-sidebar">
+        <div class="pane-head"><h2>Mission overview</h2></div>
+        <p class="lede">Start a scenario, watch the map, then check whether dynamic scheduling beats the static baseline.</p>
+
+        <div class="welcome" id="welcome">
+          <div>
+            <strong>New here? A 30-second tour</strong>
+            <p class="muted">The map on the left shows the relay aircraft and 16 ground terminals. Link colors show which terminals the aircraft can currently hear.</p>
+            <ol>
+              <li>Press <b>Run Kargil corridor transit</b> below.</li>
+              <li>Watch terminal S4 turn amber, then red, as a ridge blocks its link.</li>
+              <li>Compare Tac-TAD with the static baseline under <b>How is it performing?</b></li>
+            </ol>
+            <small>Shortcuts: 1–5 switch views, Space pauses, . steps one frame.</small>
+          </div>
+          <button type="button" id="welcome-dismiss">Got it</button>
+        </div>
+
+        <div class="sec">
+          <div class="sec-title">Scenario</div>
+          <div class="sec-sub">Pick a situation to simulate. The mode switch changes which scheduler drives the map.</div>
+          <div class="run-row">
+            <button class="primary" onclick="runKargilScenario()">Run Kargil corridor transit</button>
+            <button onclick="loadPreset('PRESET_AMBUSH')">Platoon ambush</button>
+            <button onclick="loadPreset('PRESET_MONSOON')">Monsoon, 35 mm/h</button>
+            <button onclick="loadPreset('PRESET_RESET')">Reset theater</button>
+            <button id="scheduler-quick-toggle" onclick="toggleActiveScheduler()" title="Switch between Tac-TAD (dynamic) and Static scheduling">Mode: Tac-TAD</button>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-title">How is it performing?</div>
+          <div class="sec-sub">Tac-TAD (dynamic) shown large, static baseline beside it.</div>
+          <div class="metric">
+            <div class="metric-top"><span class="metric-name">Data delivered</span><span id="kpi-gain-badge" class="kpi-badge badge-cyan">+1.00× GAIN</span></div>
+            <div class="metric-main"><span class="metric-val" id="kpi-tac-tx">0.00 Mb</span><span class="metric-base" id="kpi-stat-tx">Base: 0.00 Mb</span></div>
+            <div class="metric-foot"><span>Total received, exact-fit delivery</span><span id="kpi-tac-rate">0.00 Mbps</span></div>
+          </div>
+          <div class="metric">
+            <div class="metric-top"><span class="metric-name">Airtime wasted on blocked links</span><span id="kpi-waste-saved-badge" class="kpi-badge badge-emerald">0.0% SAVED</span></div>
+            <div class="metric-main"><span class="metric-val c-ok" id="kpi-tac-waste">0.0%</span><span class="metric-base" id="kpi-stat-waste">Static: 0.0%</span></div>
+            <div class="metric-foot"><span>Slots spent transmitting into rock</span><span id="kpi-waste-mb">0.00 Mb reclaimed</span></div>
+          </div>
+          <div class="metric">
+            <div class="metric-top"><span class="metric-name">Packets lost</span><span id="kpi-drop-reduc-badge" class="kpi-badge badge-emerald">0% FEWER</span></div>
+            <div class="metric-main"><span class="metric-val" id="kpi-tac-drop">0 (0.0%)</span><span class="metric-base" id="kpi-stat-drop">Static: 0 (0.0%)</span></div>
+            <div class="metric-foot"><span>Packets that expired in queues</span><span id="kpi-util-stat">Uplink Util: 0.0%</span></div>
+          </div>
+        </div>
+
+        <details class="more" open data-adv>
+          <summary>Inspect a terminal<small>Pick any of the 16 ground terminals</small><span id="overview-state-badge" class="kpi-badge badge-emerald">PRISTINE LOS</span></summary>
+          <div class="more-body">
+            <select id="quickNodeSelect" onchange="onTargetNodeChange(this.value)" aria-label="Target terminal">
+              <option value="4" selected>Node 4: S4 - Recon Patrol (Occlusion Target)</option>
+            </select>
+            <div class="stats">
+              <div class="stat"><span>Range</span><b id="glance-slant">--</b></div>
+              <div class="stat"><span>Signal-to-noise</span><b id="glance-snr">--</b></div>
+              <div class="stat"><span>Data rate</span><b id="glance-rate">--</b></div>
+            </div>
+            <div class="actions">
+              <button type="button" class="link-btn" onclick="switchMainTab('tab-terminal')">Inspect queues and traffic →</button>
+              <button type="button" class="link-btn" onclick="switchMainTab('tab-terrain')">Inspect radio link →</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="more" data-adv>
+          <summary>Trend and change log<small>Recent delivered data and what changed</small></summary>
+          <div class="more-body">
+            <div class="overview-trend-chart-wrap"><canvas id="overview-goodput-canvas" aria-label="Rolling delivered goodput trend"></canvas></div>
+            <div class="overview-trend-footer"><span class="muted">Sampled while this page is open.</span><span id="overview-trend-sample-count" class="mono muted">0 samples</span></div>
+            <ol id="overview-event-list" class="overview-event-list" aria-live="polite"><li class="overview-event-empty">Waiting for observable simulation changes…</li></ol>
+          </div>
+        </details>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ===== SCHEDULER ===== -->
+  <section class="tab-content" id="tab-scheduler">
+    <div class="analysis-context" data-context-view="scheduler"><div><span class="context-kicker">Live</span></div><div class="context-meta"><span>Target <b data-context-node>Syncing…</b></span><span>Simulation <b data-context-time>--</b></span><span>Frame <b data-context-frame>--</b></span><span>Mode <b data-context-mode>--</b></span></div></div>
+    <div class="pane scheduler-layout">
+      <div class="pane-head"><h2>Scheduler</h2></div>
+      <p class="lede">Every 20 ms the aircraft divides airtime among terminals. Static TDMA gives each a fixed slice; Tac-TAD resizes slices to demand and skips blocked links.</p>
+      <div class="panel waterfall-card">
+        <div class="panel-head"><span class="sec-title">Superframe timeline (20 ms, 50 Hz)</span></div>
+        <div class="legend">
+          <span><i style="background:#38bdf8"></i>C2 signaling</span><span><i style="background:#10b981"></i>Voice (PTT)</span><span><i style="background:#f59e0b"></i>Video</span><span><i style="background:#fb923c"></i>Photo/data</span><span><i style="background:#ef4444"></i>Wasted on severed link</span><span><i style="background:#1f2937;outline:1px solid var(--line2)"></i>Headroom</span>
+        </div>
+        <div class="waterfall-canvas-container"><canvas id="waterfall-canvas"></canvas></div>
+      </div>
+      <div class="panel" id="allocation-inspector">
+        <div class="panel-head"><span class="sec-title">Allocation for the selected terminal</span><span class="badge-sub">current frame</span></div>
+        <div class="inspector-grid">
+          <div class="inspector-metric"><span>Terminal</span><strong id="alloc-node-label">Node 4</strong></div>
+          <div class="inspector-metric"><span>Airtime</span><strong id="alloc-airtime">--</strong></div>
+          <div class="inspector-metric"><span>Segments</span><strong id="alloc-segments">--</strong></div>
+        </div>
+        <p class="inspector-footnote" id="alloc-inspector-note">Waiting for current-frame scheduler allocations. This panel reports only allocation fields supplied by worker telemetry.</p>
+      </div>
+      <div class="panel table-card">
+        <div class="panel-head"><span class="sec-title">Cumulative benchmark: static vs Tac-TAD</span><span class="badge-sub">this session</span></div>
+        <div class="table-scroll"><table class="data-table">
+          <thead><tr><th style="width:34%">Metric</th><th>Static TDMA</th><th class="c-acc">Tac-TAD (ours)</th><th class="c-ok">Advantage</th></tr></thead>
+          <tbody>
+            <tr><td>Total delivered goodput</td><td id="tbl-stat-tx">0.00 Mb</td><td id="tbl-tac-tx" class="c-acc">0.00 Mb</td><td id="tbl-tx-gain" class="c-ok">+1.00×</td></tr>
+            <tr><td>Hard-shadow slot allocation waste</td><td id="tbl-stat-waste" class="c-bad">0.0%</td><td id="tbl-tac-waste" class="c-ok">0.0%</td><td id="tbl-waste-saved" class="c-ok">0.0% saved</td></tr>
+            <tr><td>Concluded packets dropped</td><td id="tbl-stat-drops">0 (0.0%)</td><td id="tbl-tac-drops" class="c-ok">0 (0.0%)</td><td id="tbl-drop-reduc" class="c-ok">0% fewer</td></tr>
+            <tr><td>Active uplink frame utilization</td><td id="tbl-stat-util">100.0%</td><td id="tbl-tac-util">0.0%</td><td class="muted">Adaptive sizing</td></tr>
+            <tr><td>Recon Node 4 pre-cutoff backlog</td><td id="tbl-n4-stat">--</td><td id="tbl-n4-tac">--</td><td id="tbl-n4-status">Pre-flush</td></tr>
+            <tr><td>Per-frame goodput increment (P50)</td><td id="tbl-p50-stat">--</td><td id="tbl-p50-tac">--</td><td id="tbl-p50-gain">--</td></tr>
+            <tr><td>Per-frame goodput increment (P95)</td><td id="tbl-p95-stat">--</td><td id="tbl-p95-tac">--</td><td id="tbl-p95-gain">--</td></tr>
+          </tbody>
+        </table></div>
+        <p class="inspector-footnote">Statistical guardrail: P50/P95 are intentionally marked unavailable until the worker emits a validated per-superframe goodput sample series. Exploratory UI telemetry: values are differences between successive cumulative-goodput readings, not guaranteed one-per-frame samples. At least 20 non-negative increments are required. This session window resets on page reload and is not a controlled benchmark.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TERRAIN & RF ===== -->
+  <section class="tab-content" id="tab-terrain">
+    <div class="analysis-context" data-context-view="rf"><div><span class="context-kicker">Live</span></div><div class="context-meta"><span>Target <b data-context-node>Syncing…</b></span><span>Simulation <b data-context-time>--</b></span><span>Frame <b data-context-frame>--</b></span><span>Link <b data-context-link>--</b></span></div></div>
+    <div class="pane terrain-layout">
+      <div class="pane-head"><h2>Terrain &amp; RF</h2></div>
+      <p class="lede">See what stands between the aircraft and the selected terminal, then follow the signal through the link budget. Sliders change the simulation live.</p>
+      <div class="panel">
+        <div class="panel-head"><div><span class="sec-title">Line-of-sight profile (ITU-R P.526-15)</span> <span id="fresnel-node-label" class="badge-sub">Node 4</span></div><span id="fresnel-status-badge" class="kpi-badge badge-emerald">PRISTINE LINE-OF-SIGHT</span></div>
+        <div class="fresnel-canvas-box"><canvas id="fresnel-canvas"></canvas></div>
+      </div>
+      <div class="cols">
+        <div class="panel">
+          <div class="panel-head"><span class="sec-title">Link budget (DVB-S2X)</span><span id="link-modcod-tag" class="kpi-badge badge-cyan">QPSK 3/4</span></div>
+          <div class="group-title">Result</div>
+          <div class="facts">
+            <div class="form-row"><span>Net channel SNR</span><b id="lb-snr">--</b></div>
+            <div class="form-row"><span>Spectral efficiency</span><b id="lb-se">--</b></div>
+            <div class="form-row"><span>Received power (P<sub>rx</sub>)</span><b id="lb-prx">--</b></div>
+            <div class="form-row"><span>Noise floor (P<sub>noise</sub>)</span><b id="lb-pnoise">-108.97 dBm</b></div>
+          </div>
+          <div class="group-title">Geometry</div>
+          <div class="facts">
+            <div class="form-row"><span>Slant range (d<sub>3D</sub>)</span><b id="lb-slant">--</b></div>
+            <div class="form-row"><span>4/3 Earth bulge (&Delta;h)</span><b id="lb-bulge">--</b></div>
+          </div>
+          <div class="group-title">Losses</div>
+          <div class="facts">
+            <div class="form-row"><span>Free-space loss (FSPL)</span><b id="lb-fspl">--</b></div>
+            <div class="form-row"><span>Diffraction loss</span><b id="lb-diff">0.0 dB</b></div>
+            <div class="form-row"><span>Gaseous loss (P.676)</span><b id="lb-gas">--</b></div>
+            <div class="form-row"><span>Rain loss (P.838)</span><b id="lb-rain">0.0 dB</b></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="sec-title">Radio and weather settings</span><span class="badge-sub">applies live</span></div>
+          <div class="slider"><div class="form-row"><span>Carrier frequency</span><b id="lbl-freq">8.0 GHz</b></div><input type="range" id="param-freq" min="7.0" max="12.0" step="0.1" value="8.0" oninput="onParamChange()" aria-label="Carrier frequency"></div>
+          <div class="slider"><div class="form-row"><span>Rain rate</span><b id="lbl-rain">0.0 mm/h</b></div><input type="range" id="param-rain" min="0" max="50" step="1" value="0" oninput="onParamChange()" aria-label="Rain rate"></div>
+          <div class="slider"><div class="form-row"><span>Aircraft altitude (MSL)</span><b id="lbl-alt">5000 m</b></div><input type="range" id="param-alt" min="3000" max="8000" step="100" value="5000" oninput="onParamChange()" aria-label="Aircraft altitude"></div>
+          <div class="slider"><div class="form-row"><span>Coverage radius</span><b id="lbl-cov">35 km</b></div><input type="range" id="param-cov" min="10" max="150" step="1" value="35" oninput="onCoverageParamChange()" aria-label="Coverage radius"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TERMINALS ===== -->
+  <section class="tab-content" id="tab-terminal">
+    <div class="analysis-context" data-context-view="terminal"><div><span class="context-kicker">Live</span></div><div class="context-meta"><span>Target <b data-context-node>Syncing…</b></span><span>Simulation <b data-context-time>--</b></span><span>Frame <b data-context-frame>--</b></span><span>Link <b data-context-link>--</b></span></div></div>
+    <div class="pane terminal-layout">
+      <div class="pane-head"><h2>Terminals</h2></div>
+      <p class="lede">Choose a terminal, see what is waiting in its queues, and inject traffic to watch it travel, get blocked, or arrive.</p>
+      <div class="cols">
+        <div class="panel">
+          <div class="panel-head"><span class="sec-title">Queues and traffic</span><span id="term-state-pill" class="kpi-badge badge-emerald">NORMAL LOS</span></div>
+          <input id="terminal-search" class="terminal-search" type="search" placeholder="Search by node ID, callsign or role…" aria-label="Search terminals" oninput="filterTerminalOptions(this.value)">
+          <select id="termNodeSelect" onchange="onTargetNodeChange(this.value)" aria-label="Terminal">
+            <option value="4" selected>Node 4: S4 - Recon Patrol (Occlusion Target)</option>
+          </select>
+          <div id="terminal-search-status" class="muted" aria-live="polite" style="font-size:11px;margin:6px 0 14px">Search all available terminals</div>
+          <div class="q-track-wrap"><label>5QI 69 <span class="muted">C2</span></label><div class="track-bg"><div id="qbar-69" class="track-fill" style="background:#38bdf8;width:0%"></div></div><output id="qval-69">0.0 KB</output></div>
+          <div class="q-track-wrap"><label>5QI 65 <span class="muted">Voice</span></label><div class="track-bg"><div id="qbar-65" class="track-fill" style="background:var(--ok);width:0%"></div></div><output id="qval-65">0.0 KB</output></div>
+          <div class="q-track-wrap"><label>5QI 67 <span class="muted">Video</span></label><div class="track-bg"><div id="qbar-67" class="track-fill" style="background:var(--warn);width:0%"></div></div><output id="qval-67">0.0 KB</output></div>
+          <div class="q-track-wrap"><label>5QI 70 <span class="muted">Photo</span></label><div class="track-bg"><div id="qbar-70" class="track-fill" style="background:#fb923c;width:0%"></div></div><output id="qval-70">0 / 2000 KB</output></div>
+          <div class="group-title" style="margin-top:16px">Inject traffic at the selected terminal</div>
+          <div class="traffic-actions">
+            <button class="btn-danger" onclick="injectTraffic('sos')">SOS alert (C2)</button>
+            <button onclick="injectTraffic('voice')">Voice PTT (5QI 65)</button>
+            <button onclick="injectTraffic('video')">Video burst (5QI 67)</button>
+            <button onclick="injectTraffic('photo')">2 MB photo (5QI 70)</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="sec-title">Upload and acknowledgement monitor</span><button onclick="clearTransfer()" style="padding:2px 8px;font-size:11px">Dismiss</button></div>
+          <div id="transfer-card-container">
+            <div class="transfer-monitor">
+              <div class="transfer-header"><strong id="tx-type-lbl" class="c-acc">IDLE - Standby</strong><span id="tx-status-badge" class="kpi-badge badge-cyan">STANDBY</span></div>
+              <div class="track-bg"><div id="tx-progress-bar" class="track-fill" style="background:var(--accent);width:0%"></div></div>
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)"><span id="tx-bytes-lbl">0.00 / 0.00 MB</span><span id="tx-eta-lbl">ETA: --</span></div>
+              <p id="tx-msg-lbl" style="font-size:12px">Select a ground terminal and inject traffic to verify transmission state transitions.</p>
+            </div>
+          </div>
+          <div class="group-title" style="margin-top:16px">How blocked links are handled</div>
+          <p class="muted" style="font-size:12px">When terrain cuts line of sight, the terminal stops radiating and its buffers stay queued. Tac-TAD detects the blockage 3.0 s ahead and raises priority (&Phi;<sub>evac</sub>) to flush queues to 0 KB before cutoff.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== RESEARCH & DOCS ===== -->
+  <section class="tab-content" id="tab-doc">
+    <div class="doc-layout research-document">
+      <section class="report-section panel experiment-capture" id="experiment-capture">
+        <h3>Experiment capture</h3>
+        <p>Record the telemetry frames this browser session receives and export the raw observations with run metadata. This is a data-capture utility, not an automated multi-seed benchmark runner; use identical scenario settings and independently controlled runs for comparative claims.</p>
+        <div class="experiment-capture-grid">
+          <label>Run label <input id="experiment-run-label" type="text" maxlength="80" value="manual-run-01" placeholder="e.g. kargil-static-seed42"></label>
+          <label>Scenario notes <input id="experiment-run-notes" type="text" maxlength="240" placeholder="terrain, weather, scheduler settings…"></label>
+        </div>
+        <div class="experiment-capture-actions">
+          <button id="experiment-start" class="primary" type="button">Start capture</button>
+          <button id="experiment-stop" type="button" disabled>Stop capture</button>
+          <button id="experiment-export-csv" type="button" disabled>Export observations CSV</button>
+          <button id="experiment-export-json" type="button" disabled>Export run JSON</button>
+          <button id="experiment-clear" class="btn-danger" type="button">Clear capture</button>
+        </div>
+        <div class="experiment-capture-status" role="status" aria-live="polite"><strong id="experiment-status">Capture stopped</strong><span id="experiment-sample-count">0 telemetry observations</span><span id="experiment-run-span">No run recorded</span></div>
+        <p class="experiment-capture-caveat">Provenance limits: the current telemetry does not expose a verified random seed, all scenario parameters, or every internal per-frame event. Missing fields are explicitly recorded as unavailable; browser telemetry arrival is not assumed to equal every simulation frame. Do not treat exported observations as a controlled benchmark until run conditions and engine parity are verified.</p>
+      </section>
+      <header class="research-header">
+        <p class="research-kicker">TECHNICAL REPORT · DIGITAL TWIN · VERSION 1.0</p>
+        <h2>Terrain-Aware Dynamic TDMA Scheduling for an X-Band Air-to-Ground Network</h2>
+        <p class="research-subtitle">System architecture, propagation assumptions, scheduling design, verification plan, and benchmark provenance</p>
+        <div class="research-meta">
+          <span>Artifact: Tactical X-Band Network Digital Twin</span>
+          <span>Engine: TypeScript + WebWorker</span>
+          <span>Evidence status: mixed legacy / current-engine</span>
+        </div>
+      </header>
+
+      <aside class="research-notice">
+        <strong>Evidence and scope statement.</strong> This is a research-prototype report, not a claim of operational qualification or formal standards compliance. Historical benchmark values below originate from the archived Python evaluation and must be reproduced against the current TypeScript engine before being described as current-engine results. Proposed tests are explicitly identified as planned work.
+      </aside>
+
+      <nav class="research-toc" aria-label="Report contents">
+        <a href="#report-abstract">Abstract</a><a href="#report-system">System model</a><a href="#report-physics">Propagation models</a><a href="#report-scheduler">Scheduling design</a><a href="#report-verification">Verification plan</a><a href="#report-results">Historical results</a><a href="#report-reproducibility">Reproducibility</a><a href="#report-limitations">Limitations</a>
+      </nav>
+
+      <section class="report-section" id="report-abstract">
+        <h3>1. Abstract and research objectives</h3>
+        <p>This project implements a browser-based digital twin for studying time-division multiple access (TDMA) scheduling between an aerial communication node (ACN) and geographically distributed ground terminals. Its primary research question is whether a terrain-aware dynamic scheduler can use predicted link state, traffic queues, and service priority to reduce airtime assigned to unavailable links while improving delivery relative to a static allocation baseline.</p>
+        <p>The current client-side architecture uses TypeScript modules and a dedicated WebWorker for simulation updates, while the user interface presents terrain, radio-link diagnostics, queue state, scheduler allocations, and comparative metrics. The model is a controlled simulation; results depend on its terrain representation, channel approximations, traffic assumptions, and scheduler implementation.</p>
+        <div class="report-callout"><strong>Primary comparison:</strong> Legacy Static TDMA baseline versus the project’s Terrain-Aware Dynamic Scheduler (Tac-TAD). Comparative claims require identical scenarios, seeds, traffic inputs, stopping rules, and metric definitions.</div>
+      </section>
+
+      <section class="report-section" id="report-system">
+        <h3>2. System architecture and execution model</h3>
+        <table class="doc-table-clean"><thead><tr><th>Layer</th><th>Responsibility</th><th>Implementation evidence</th></tr></thead><tbody>
+          <tr><td>Simulation core</td><td>Configuration, terrain geometry, trajectory, propagation, queues, and slot scheduling.</td><td><code>src/core/*.ts</code></td></tr>
+          <tr><td>Worker runtime</td><td>Advances simulation state and publishes telemetry and terrain hillshade messages.</td><td><code>src/worker/simWorker.ts</code></td></tr>
+          <tr><td>Presentation layer</td><td>Renders map, scheduler waterfall, Fresnel profile, controls, and telemetry summaries.</td><td><code>index.html</code> and Canvas renderers</td></tr>
+          <tr><td>Verification artifacts</td><td>Targeted TypeScript checks, legacy Python tests, benchmark outputs, and scenario configuration.</td><td><code>src/tests/</code>, <code>tests/</code>, <code>benchmark_results/</code></td></tr>
+        </tbody></table>
+        <p>The worker is the intended authority for simulation state. UI components should consume the latest published frame and send explicit commands; they should not independently reimplement scheduling or physics. The frontend redesign preserves the worker and renderer while introducing a persistent map workspace and shared navigation.</p>
+      </section>
+
+      <section class="report-section" id="report-physics">
+        <h3>3. Propagation and geometry models</h3>
+        <h4>3.1 Three-dimensional slant range and propagation delay</h4>
+        <div class="formula-card">d₃D = √((xA − xT)² + (yA − yT)² + (zA − zT)²)<br>τprop = d₃D / c &nbsp;&nbsp; · &nbsp;&nbsp; TA ≈ 2 d₃D / c</div>
+        <p>Coordinates must use consistent units. Timing advance is a simplified round-trip propagation alignment relation; its implementation assumptions and compatibility with the chosen radio framing must be validated separately.</p>
+        <h4>3.2 Effective Earth curvature</h4>
+        <div class="formula-card">Re′ = k Re &nbsp;&nbsp; ; &nbsp;&nbsp; Δh ≈ d₁ d₂ / (2 Re′) &nbsp;&nbsp; ; &nbsp;&nbsp; k = 4/3 (assumed)</div>
+        <p>The effective-radius approximation models nominal tropospheric refraction. It is not a substitute for location- and time-dependent refractivity profiles. The implementation should document the geometry used for d₁ and d₂ and verify units at all boundaries.</p>
+        <h4>3.3 Fresnel clearance and knife-edge diffraction</h4>
+        <div class="formula-card">r₁ = √(λ d₁ d₂ / D) &nbsp;&nbsp; ; &nbsp;&nbsp; λ = c / fc<br>ν = h · √[(2/λ)(1/d₁ + 1/d₂)]<br>J(ν) = 6.9 + 20 log₁₀(√((ν − 0.1)² + 1) + ν − 0.1)</div>
+        <p>The sign convention for obstacle height h must be explicit in code and tests; a single dominant-obstacle model is an approximation for complex terrain. The project’s additional rounded-crest penalty is empirical and should be reported as a project assumption, not as a universal prescribed constant.</p>
+        <h4>3.4 Link budget</h4>
+        <p>Documented components include free-space path loss, diffraction, gaseous attenuation, rain attenuation, antenna gains, transmit power, receiver noise, SNR, and the selected modulation/coding abstraction. A validation suite should test each term independently and compare selected cases against independently computed reference values.</p>
+      </section>
+
+      <section class="report-section" id="report-scheduler">
+        <h3>4. Scheduling, traffic, and service model</h3>
+        <p>The system models a nominal 20 ms superframe and 16 ground terminals. The documented traffic classes are 5QI 69 (C2/SOS), 65 (voice), 67 (video), and 70 (photo/data). Queue admission, class priority, packet expiry, and the scheduling policy jointly affect delivery metrics.</p>
+        <table class="doc-table-clean"><thead><tr><th>Policy/state</th><th>Intended behavior</th><th>Required verification</th></tr></thead><tbody>
+          <tr><td>Static TDMA</td><td>Baseline slot allocation with fixed sizing assumptions.</td><td>Slot arithmetic, guard-time accounting, total-frame conservation.</td></tr>
+          <tr><td>Normal LOS</td><td>Allocate based on eligible queued traffic and current link estimate.</td><td>Queue accounting, bitrate-to-duration consistency, priority ordering.</td></tr>
+          <tr><td>Pre-occlusion</td><td>Use predicted link transition to prioritize eligible traffic before obstruction.</td><td>Look-ahead timing, deadlines, no allocation beyond frame limits.</td></tr>
+          <tr><td>Hard shadow</td><td>Avoid allocating payload airtime to a modeled severed link.</td><td>Zero/near-zero outage allocation and correct reclamation accounting.</td></tr>
+          <tr><td>Re-emergence</td><td>Resume eligible queued traffic after link recovery.</td><td>Recovery transitions, queue integrity, starvation and fairness checks.</td></tr>
+        </tbody></table>
+        <p>Any use of terms such as “optimal,” “real-time,” “guaranteed,” or “standards-compliant” requires a formal definition and supporting evidence. The UI should expose decision rationale and the exact metric window behind each comparative KPI.</p>
+      </section>
+
+      <section class="report-section" id="report-verification">
+        <h3>5. Verification and validation plan</h3>
+        <p>The following matrix defines the minimum evidence expected before a research claim is promoted to a validated result. “Planned” means the test must be implemented or re-run; it does not indicate a passing result.</p>
+        <table class="doc-table-clean"><thead><tr><th>Test group</th><th>Acceptance evidence</th><th>Status in this report</th></tr></thead><tbody>
+          <tr><td>Physics unit tests</td><td>Known-value fixtures, dimensional checks, boundary and monotonicity tests.</td><td><span class="report-status">Existing targeted checks; full audit pending</span></td></tr>
+          <tr><td>Scheduler invariants</td><td>Slot-duration bounds, guard accounting, queue conservation, outage behavior.</td><td><span class="report-status">Existing targeted checks; full audit pending</span></td></tr>
+          <tr><td>Python ↔ TypeScript parity</td><td>Shared deterministic fixtures and documented numerical tolerances.</td><td><span class="report-status report-status-pending">Planned / not established</span></td></tr>
+          <tr><td>Monte Carlo evaluation</td><td>Multiple seeds, scenario distributions, confidence intervals, paired comparisons.</td><td><span class="report-status report-status-pending">Planned / re-run required</span></td></tr>
+          <tr><td>Frontend integration</td><td>Navigation, persistent map, panel resizing, command handling, telemetry consistency.</td><td><span class="report-status report-status-pending">Current UI change requires verification</span></td></tr>
+          <tr><td>Performance profiling</td><td>Worker step-time percentiles, main-thread frame timing, memory and long-run stability.</td><td><span class="report-status report-status-pending">Planned / measurement required</span></td></tr>
+        </tbody></table>
+      </section>
+
+      <section class="report-section" id="report-results">
+        <h3>6. Historical benchmark results (legacy Python engine)</h3>
+        <p>The values below are transcribed from <code>benchmark_results/BENCHMARK_DOSSIER.md</code> and <code>summary_metrics.csv</code>. They are historical archived results, not a verified statement about the current TypeScript engine. The source report records seed 42, 5,000 superframes, and 100 seconds of simulated time.</p>
+        <table class="doc-table-clean"><thead><tr><th>Metric</th><th>Static TDMA</th><th>Tac-TAD</th><th>Interpretation</th></tr></thead><tbody>
+          <tr><td>Delivered goodput</td><td>27.72 Mb</td><td>215.78 Mb</td><td>Reported 7.78× ratio; reproduce on current engine.</td></tr>
+          <tr><td>Goodput P50</td><td>0.13 Mbps</td><td>2.11 Mbps</td><td>Historical distribution statistic.</td></tr>
+          <tr><td>Goodput P95</td><td>0.96 Mbps</td><td>3.49 Mbps</td><td>Historical distribution statistic.</td></tr>
+          <tr><td>Concluded packet drop rate</td><td>52.68%</td><td>13.93%</td><td>Metric definition and denominator require parity check.</td></tr>
+          <tr><td>Hard-shadow allocation waste</td><td>6.31%</td><td>0.00%</td><td>Source defines this as payload slot allocation to severed links, not total protocol overhead.</td></tr>
+          <tr><td>Wall-clock duration</td><td colspan="2">289.76 s reported for 5,000 frames</td><td>17.3 frames/s is below the configured 50 Hz cadence; execution-time and throughput semantics need reconciliation.</td></tr>
+        </tbody></table>
+        <div class="report-callout report-callout-warning"><strong>Data-quality flag:</strong> the archived QoS table contains latency rows where a positive mean accompanies a zero P95 value. Those distributions must be audited before latency claims are used. Figures and tables should be regenerated from raw run outputs using one documented metric implementation.</div>
+      </section>
+
+      <section class="report-section" id="report-reproducibility">
+        <h3>7. Reproducibility protocol</h3>
+        <ol>
+          <li>Record the Git commit, dependency lockfile, runtime versions, host CPU/OS, and relevant hardware configuration.</li>
+          <li>Store a complete scenario configuration, terrain asset checksum, random seed, simulation duration, scheduler policy, and traffic profile.</li>
+          <li>Run Static TDMA and Tac-TAD on paired inputs; do not change scenario parameters between arms.</li>
+          <li>Save raw per-run metrics and event traces before aggregation. Retain failed runs and document exclusion rules.</li>
+          <li>Compute confidence intervals and distributions across seeds; report sample counts and uncertainty, not only a single favorable run.</li>
+          <li>Generate tables and figures programmatically from the saved outputs, then link each displayed result to its run manifest.</li>
+        </ol>
+        <p>Recommended deliverables are a machine-readable run manifest, raw metrics CSV/JSON, test log, benchmark report, figures, and a concise limitations statement.</p>
+      </section>
+
+      <section class="report-section" id="report-limitations">
+        <h3>8. Limitations and future work</h3>
+        <ul>
+          <li>Terrain, weather, propagation, antenna, interference, and mobility models are abstractions; the simulation is not a substitute for field measurements.</li>
+          <li>A dominant-obstacle approximation may not capture multiple-edge diffraction, scattering, multipath, antenna pattern details, or time-varying channel effects.</li>
+          <li>Reported legacy Python benchmarks have not yet been established as equivalent TypeScript results.</li>
+          <li>Real-time suitability must be established through repeatable latency and stability measurements on a named target machine.</li>
+          <li>Formal claims about standards alignment require a clause-by-clause model mapping, not a reference to a standard name alone.</li>
+        </ul>
+        <h4>Next experimental milestones</h4>
+        <ol><li>Establish a clean TypeScript build and executable test command.</li><li>Create cross-engine golden fixtures for physics, queues, and scheduling.</li><li>Run paired Monte Carlo scenarios with documented confidence intervals.</li><li>Profile the worker and UI under long-duration and terrain-stress workloads.</li><li>Replace historical figures with generated, versioned results after review.</li></ol>
+      </section>
+
+      <footer class="research-footer">Document status: evolving research artifact. All numerical results must retain provenance and be updated only from reproducible runs.</footer>
+    </div>
+  </section>
+
+  </section>
+</main>
+</div>
+
+<div id="upload-modal" class="modal-backdrop" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Upload custom terrain">
+    <div class="modal-header"><h3>Upload custom terrain (DEM)</h3><button class="modal-close-btn" onclick="closeUploadModal()" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <div id="dropzone" class="dropzone" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDropFile(event)">
+        <input type="file" id="terrainFileInput" accept=".png,.jpg,.jpeg,.csv" style="display:none" onchange="onFileSelected(this.files[0])">
+        <div class="drop-text">Drop a terrain heightmap here (.png or .jpg)</div>
+        <div class="drop-sub">Image heightmaps scale automatically to 2500–6000 m MSL</div>
+        <button type="button" onclick="document.getElementById('terrainFileInput').click()" style="margin-top:12px">Browse files</button>
+      </div>
+      <div id="upload-status" class="upload-status-box" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Render-quality layer */
+(function(){
+  const gc=HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext=function(t,...a){const c=gc.call(this,t,...a);if(c&&t==='2d'){c.imageSmoothingQuality='high';c.lineJoin='round'}return c};
+  const cr=t=>{const t2=t*t,t3=t2*t;return[-.5*t3+t2-.5*t,1.5*t3-2.5*t2+1,-1.5*t3+2*t2+.5*t,.5*t3-.5*t2]};
+  function upsample(data,n,f){
+    const m=n*f,W=Array.from({length:f},(_,i)=>cr(i/f)),cl=i=>i<0?0:i>=n?n-1:i;
+    const src=new Float32Array(n*n*3);
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++){const v=data[r][c],k=(r*n+c)*3,ok=typeof v==='number'&&v>255;
+      src[k]=ok?(v>>16)&255:20;src[k+1]=ok?(v>>8)&255:26;src[k+2]=ok?v&255:38}
+    const tmp=new Float32Array(n*m*3);
+    for(let r=0;r<n;r++)for(let x=0;x<m;x++){const c0=(x/f)|0,w=W[x%f];
+      for(let ch=0;ch<3;ch++){let s=0;for(let t=0;t<4;t++)s+=w[t]*src[(r*n+cl(c0-1+t))*3+ch];tmp[(r*m+x)*3+ch]=s}}
+    const out=new Array(m);
+    for(let y=0;y<m;y++){const r0=(y/f)|0,w=W[y%f],row=new Array(m);
+      for(let x=0;x<m;x++){let p=0;
+        for(let ch=0;ch<3;ch++){let s=0;for(let t=0;t<4;t++)s+=w[t]*tmp[(cl(r0-1+t)*m+x)*3+ch];s=s<0?0:s>255?255:s;p=(p<<8)|((s+.5)|0)}
+        row[x]=p>255?p:(p|0x010000)}
+      out[y]=row}
+    return out}
+  const TILE_N=768;let tile=null,boundsM=600000,rid=0,pending=null;
+  function onTile(d){
+    if(pending&&d.request_id<pending.id)return;
+    pending=null;
+    const n=d.grid_size,v=d.data,px=new Uint8ClampedArray(n*n*4);
+    for(let i=0,p=0;i<v.length;i++){const q=v[i];px[p++]=(q>>16)&255;px[p++]=(q>>8)&255;px[p++]=q&255;px[p++]=255}
+    const cv=document.createElement('canvas');cv.width=cv.height=n;
+    cv.getContext('2d').putImageData(new ImageData(px,n,n),0,0);
+    tile={canvas:cv,cx:d.center_x_m,cy:d.center_y_m,half:d.half_extent_m}}
+  window.__xbandDrawTile=(ctx,w2s,w,h)=>{
+    if(!tile)return;
+    const a=w2s(tile.cx-tile.half,tile.cy+tile.half,w,h),b=w2s(tile.cx+tile.half,tile.cy-tile.half,w,h);
+    ctx.save();ctx.imageSmoothingEnabled=true;ctx.drawImage(tile.canvas,a.x,a.y,b.x-a.x,b.y-a.y);ctx.restore()};
+  setInterval(()=>{
+    const v=window.__xbandView,wk=window.__xbandWorker;
+    if(!v||!wk||!v.scale)return;
+    const hx=v.w/2/v.scale,hy=v.h/2/v.scale,need=Math.max(hx,hy);
+    if(need>200000){tile=null;return}
+    if(pending&&performance.now()-pending.t<4000)return;
+    const covers=tile&&Math.abs(v.cx-tile.cx)+hx<=tile.half&&Math.abs(v.cy-tile.cy)+hy<=tile.half;
+    if(covers&&tile.half<=need*2.6)return;
+    pending={id:++rid,t:performance.now()};
+    wk.postMessage({type:'GET_HILLSHADE_TILE',request_id:rid,center_x_m:v.cx,center_y_m:v.cy,
+      half_extent_m:Math.min(boundsM,Math.max(8000,need*1.6)),grid_size:TILE_N})},250);
+  function enhance(ev){
+    try{const d=ev.data;
+      if(d&&d.type==='HILLSHADE_TILE_READY'){onTile(d);return ev}
+      if(d&&d.type==='HILLSHADE_READY'&&Array.isArray(d.data)&&d.data.length){
+        tile=null;pending=null;boundsM=(d.bounds_km||600)*1000;
+        const n=d.data.length,f=n<=512?2:1;
+        if(f>1)return new MessageEvent('message',{data:{...d,data:upsample(d.data,n,f),grid_size:n*f}})}
+    }catch(_){}
+    return ev}
+  const NW=window.Worker,setter=Object.getOwnPropertyDescriptor(NW.prototype,'onmessage').set;
+  window.Worker=class extends NW{
+    constructor(...a){super(...a);window.__xbandWorker=this;let h=null;const self=this;
+      Object.defineProperty(this,'onmessage',{configurable:true,get:()=>h,set(fn){h=fn;setter.call(self,fn?ev=>fn.call(self,enhance(ev)):null)}})}};
+})();
+
+/* UX layer: quick tour, expert view, keyboard shortcuts. */
+(function(){
+  const $=id=>document.getElementById(id), KEY='xband-tour-dismissed';
+  const welcome=$('welcome'); let seen=false;
+  try{seen=localStorage.getItem(KEY)==='1'}catch(_){}
+  if(welcome) welcome.hidden=seen;
+  $('welcome-dismiss')?.addEventListener('click',()=>{welcome.hidden=true;try{localStorage.setItem(KEY,'1')}catch(_){}});
+  $('btn-help')?.addEventListener('click',()=>{window.switchMainTab('tab-overview');welcome.hidden=false;welcome.scrollIntoView({block:'nearest'})});
+  const ex=$('btn-expert');
+  ex?.addEventListener('click',()=>{const on=ex.classList.toggle('active');ex.setAttribute('aria-pressed',String(on));document.querySelectorAll('details[data-adv]').forEach(d=>d.open=on)});
+  const tabs=['overview','scheduler','terrain','terminal','doc'];
+  document.addEventListener('keydown',e=>{
+    if(e.ctrlKey||e.metaKey||e.altKey) return;
+    if(e.key==='Escape') return window.closeUploadModal&&window.closeUploadModal();
+    if(e.target.closest&&e.target.closest('input,select,textarea,button,[contenteditable]')) return;
+    if(/^[1-5]$/.test(e.key)) window.switchMainTab('tab-'+tabs[e.key-1]);
+    else if(e.key===' '){e.preventDefault();window.togglePause()}
+    else if(e.key==='.') window.stepSim();
+  });
+})();
+</script>
+
+<script type="module">
+/* ====================================================================
+   CLIENT-SIDE WEBWORKER & RENDERING CONTROLLER
+   ==================================================================== */
+const $ = id => document.getElementById(id);
+
+// Keep the original radar stage mounted for the lifetime of the application.
+const persistentMapMount = $('persistent-map-mount');
+const radarStage = document.querySelector('#tab-overview .radar-stage');
+if (persistentMapMount && radarStage) persistentMapMount.appendChild(radarStage);
+
+// User-adjustable map/detail split, persisted independently.
+(function setupWorkspaceResizing() {
+  const workspace = $('main-workspace');
+  const handle = $('map-resize-handle');
+  if (!workspace || !handle) return;
+  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+  let saved = 44;
+  try { saved = Number(localStorage.getItem('xband-map-width-pct')) || 44; } catch (_) {}
+  workspace.style.setProperty('--map-width', `${clamp(saved, 28, 72)}%`);
+  let dragStartX = 0, dragStartPct = 44, dragging = false;
+  const setWidth = pct => {
+    const bounds = workspace.getBoundingClientRect();
+    const minPct = Math.max(260 / Math.max(bounds.width, 1) * 100, 24);
+    const maxPct = Math.min(76, 100 - 340 / Math.max(bounds.width, 1) * 100);
+    const next = clamp(pct, minPct, maxPct);
+    workspace.style.setProperty('--map-width', `${next}%`);
+    handle.setAttribute('aria-valuenow', String(Math.round(next)));
+    try { localStorage.setItem('xband-map-width-pct', String(next)); } catch (_) {}
+    requestAnimationFrame(resizeCanvases);
+  };
+  handle.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    dragging = true; dragStartX = event.clientX;
+    const mapWidth = $('persistent-map-panel').getBoundingClientRect().width;
+    dragStartPct = mapWidth / workspace.getBoundingClientRect().width * 100;
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add('is-resizing');
+    event.preventDefault();
+  });
+  handle.addEventListener('pointermove', event => {
+    if (!dragging) return;
+    const width = workspace.getBoundingClientRect().width;
+    setWidth(dragStartPct + (event.clientX - dragStartX) / width * 100);
+  });
+  const stop = () => { dragging = false; document.body.classList.remove('is-resizing'); };
+  handle.addEventListener('pointerup', stop);
+  handle.addEventListener('pointercancel', stop);
+  handle.addEventListener('keydown', event => {
+    const current = $('persistent-map-panel').getBoundingClientRect().width / workspace.getBoundingClientRect().width * 100;
+    if (event.key === 'ArrowLeft') { setWidth(current - 2); event.preventDefault(); }
+    if (event.key === 'ArrowRight') { setWidth(current + 2); event.preventDefault(); }
+    if (event.key === 'Home') { setWidth(30); event.preventDefault(); }
+    if (event.key === 'End') { setWidth(70); event.preventDefault(); }
+  });
+  window.addEventListener('resize', () => requestAnimationFrame(resizeCanvases));
+  document.querySelectorAll('.scheduler-layout > *, .terrain-layout > *, .terrain-grid > *, .terminal-layout > *, .doc-layout > .report-section').forEach(panel => {
+    panel.classList.add('resizable-panel', 'is-vert-resizable');
+  });
+})();
+
+const setText = (id, t) => { const e = $(id); if (e) e.textContent = t; };
+const MONO = '"IBM Plex Mono", ui-monospace, Consolas, monospace';
+const TAU = Math.PI * 2;
+let THEATER_RADIUS_M = 300000;
+
+let isPaused = false;
+let selectedNodeId = 4;
+let hoveredNodeId = null;
+let draggedEntity = null;
+let lastMoveSendTime = 0;
+let hillshadeCanvas = null;
+let currentRadarRangeM = 60000;
+let panOffsetX_m = 0;
+let panOffsetY_m = 0;
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+let activeSchedulerMode = 'tac_tad';
+let activeTerrainMode = 'real';
+
+// Radar Cursor & Reticle Tracking
+let mouseScreenX = -1, mouseScreenY = -1;
+let mouseWorldX = 0, mouseWorldY = 0;
+let isMouseInsideRadar = false;
+
+/* Tactical elevation query (Himalayan geomorphology matching Kargil barrier ridge) */
+function queryElevation(x, y) {
+  const xArg = Math.max(-100.0, -Math.pow((x - 5000.0) / 450.0, 2));
+  const yArg = Math.max(-50.0, Math.min(50.0, (Math.abs(y - 270.0) - 90.0) / 12.0));
+  const ridgeKargil = 1150.0 * Math.exp(xArg) * (1.0 / (1.0 + Math.exp(yArg)));
+  const base = 3100.0 + 380.0 * Math.sin(x * 0.00004) * Math.cos(y * 0.00004);
+  return Math.max(2800, Math.min(5900, Math.round(base + ridgeKargil)));
+}
+
+let latestTelemetry = {
+  frame_index: 0, sim_time_s: 0, active_scheduler_mode: 'tac_tad',
+  acn_telemetry: { pos_x: 16383, pos_y: 11471.5, pos_z: 5000, velocity: [-34.4, 24.1, 0], altitude_msl_m: 5000, coverage_radius_km: 35 },
+  flight_path: [], nodes_telemetry: [], active_gantt_allocations: [], comparative_kpi_dashboard: {},
+  selected_node_fresnel: null, transfer_telemetry: null
+};
+
+// Dedicated 50 Hz WebWorker
+const worker = new Worker(new URL("./src/worker/simWorker.ts", import.meta.url), { type: "module" });
+
+function sendCommand(msg) {
+  if (worker) {
+    worker.postMessage(msg);
+  }
+}
+
+worker.onmessage = (event) => {
+  const msg = event.data;
+  if (!msg) return;
+
+  if (msg.type === 'TELEMETRY_FRAME') {
+    latestTelemetry = msg.frame;
+    updateDashboardDOM(msg.frame);
+  } else if (msg.type === 'HILLSHADE_READY') {
+    renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode);
+  }
+};
+
+function renderHillshadeFromWorker(data, size, boundsKm, terrainMode) {
+  if (!data || !data.length) return;
+  const hCanvas = document.createElement('canvas');
+  hCanvas.width = hCanvas.height = size;
+  const hCtx = hCanvas.getContext('2d');
+  const img = hCtx.createImageData(size, size);
+  let p = 0;
+
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const v = data[r][c];
+      let red = 20, green = 26, blue = 38;
+      if (typeof v === 'number' && v > 255) {
+        red = (v >> 16) & 255;
+        green = (v >> 8) & 255;
+        blue = v & 255;
+      }
+      img.data[p++] = Math.min(255, red);
+      img.data[p++] = Math.min(255, green);
+      img.data[p++] = Math.min(255, blue);
+      img.data[p++] = 255;
+    }
+  }
+
+  hCtx.putImageData(img, 0, 0);
+  hillshadeCanvas = hCanvas;
+
+  if (boundsKm) {
+    THEATER_RADIUS_M = boundsKm * 1000;
+  }
+  if (terrainMode) {
+    activeTerrainMode = terrainMode;
+    const btnReal = $('btnRealTerrain');
+    const btnSynth = $('btnSynthTerrain');
+    if (btnReal) btnReal.classList.toggle('active', activeTerrainMode === 'real');
+    if (btnSynth) btnSynth.classList.toggle('active', activeTerrainMode === 'synthetic');
+  }
+}
+
+const radarCanvas = $('radar-canvas'), radarCtx = radarCanvas.getContext('2d');
+const waterfallCanvas = $('waterfall-canvas'), waterfallCtx = waterfallCanvas.getContext('2d');
+const fresnelCanvas = $('fresnel-canvas'), fresnelCtx = fresnelCanvas.getContext('2d');
+
+/* ---------- UI Controls ---------- */
+window.togglePause = function() {
+  isPaused = !isPaused;
+  sendCommand({ type: 'SIM_CONTROL', action: isPaused ? 'pause' : 'resume' });
+  $('btn-pause').textContent = isPaused ? 'RESUME' : 'PAUSE';
+  $('btn-pause').classList.toggle('active', isPaused);
+};
+
+window.stepSim = function() {
+  isPaused = true;
+  $('btn-pause').textContent = 'RESUME';
+  $('btn-pause').classList.add('active');
+  sendCommand({ type: 'SIM_CONTROL', action: 'step' });
+};
+
+window.setSpeed = function(spd) {
+  isPaused = false;
+  $('btn-pause').textContent = 'PAUSE';
+  $('btn-pause').classList.remove('active');
+  ['spd-01', 'spd-05', 'spd-10'].forEach(id => $(id).classList.remove('active'));
+  $(spd === 0.1 ? 'spd-01' : spd === 0.5 ? 'spd-05' : 'spd-10').classList.add('active');
+  sendCommand({ type: 'SET_SPEED', speed: spd });
+};
+
+window.resetSim = function() {
+  sendCommand({ type: 'SIM_CONTROL', action: 'reset' });
+};
+
+window.loadPreset = function(id) {
+  sendCommand({ type: 'LOAD_PRESET', preset_id: id });
+};
+
+window.runKargilScenario = function() {
+  selectedNodeId = 4;
+  syncNodeDropdowns(4);
+  setSpeed(0.5);
+  loadPreset('PRESET_OCCLUSION');
+};
+
+window.toggleActiveScheduler = function() {
+  const next = activeSchedulerMode === 'tac_tad' ? 'static' : 'tac_tad';
+  activeSchedulerMode = next;
+  setText('scheduler-quick-toggle', `Mode: ${next === 'tac_tad' ? 'Tac-TAD' : 'Static'}`);
+  sendCommand({ type: 'SET_SCHEDULER', mode: next });
+};
+
+window.setRadarRange = function(rangeM) {
+  currentRadarRangeM = rangeM;
+  ['zoom-30', 'zoom-60', 'zoom-100', 'zoom-200'].forEach(id => $(id).classList.remove('active'));
+  const id = { 30000: 'zoom-30', 60000: 'zoom-60', 100000: 'zoom-100', 200000: 'zoom-200' }[rangeM];
+  if (id) $(id).classList.add('active');
+};
+
+window.centerMapOnACN = function() {
+  panOffsetX_m = 0;
+  panOffsetY_m = 0;
+};
+
+window.onParamChange = function() {
+  const freq = parseFloat($('param-freq').value);
+  const rain = parseFloat($('param-rain').value);
+  const alt = parseFloat($('param-alt').value);
+  setText('lbl-freq', `${freq.toFixed(1)} GHz`);
+  setText('lbl-rain', `${rain.toFixed(1)} mm/h`);
+  setText('lbl-alt', `${alt.toFixed(0)} m`);
+  sendCommand({ type: 'CONFIG_UPDATE', params: { carrier_freq_ghz: freq, rain_rate_mmh: rain, acn_altitude_m: alt } });
+};
+
+window.onCoverageParamChange = function() {
+  const km = parseFloat($('param-cov').value);
+  setText('lbl-cov', `${km.toFixed(0)} km`);
+  sendCommand({ type: 'CONFIG_UPDATE', params: { coverage_radius_km: km } });
+};
+
+window.onTargetNodeChange = function(val) {
+  selectedNodeId = parseInt(val, 10);
+  syncNodeDropdowns(selectedNodeId);
+  sendCommand({ type: 'SELECT_NODE', node_id: selectedNodeId });
+};
+
+function syncNodeDropdowns(nid) {
+  ['quickNodeSelect', 'termNodeSelect'].forEach(id => {
+    const sel = $(id);
+    if (sel) sel.value = String(nid);
+  });
+}
+
+window.filterTerminalOptions = function(query) {
+  const sel = $('termNodeSelect');
+  if (!sel) return;
+  const q = String(query || '').trim().toLowerCase();
+  let visible = 0;
+  Array.from(sel.options).forEach(option => {
+    const match = !q || option.textContent.toLowerCase().includes(q);
+    option.hidden = !match;
+    if (match) visible++;
+  });
+  const selected = sel.selectedOptions[0];
+  setText('terminal-search-status', `${visible} matching terminal${visible === 1 ? '' : 's'}${selected && selected.hidden ? ' · current selection is outside this filter' : ''}`);
+};
+
+window.injectTraffic = function(type) {
+  sendCommand({ type: 'INJECT_TRAFFIC', node_id: selectedNodeId, traffic_type: type });
+};
+
+window.clearTransfer = function() {
+  sendCommand({ type: 'CLEAR_TRANSFER', node_id: selectedNodeId });
+};
+
+window.setTerrainMode = function(mode) {
+  activeTerrainMode = mode;
+  $('btnRealTerrain').classList.toggle('active', mode === 'real');
+  $('btnSynthTerrain').classList.toggle('active', mode === 'synthetic');
+  sendCommand({ type: 'SET_TERRAIN_MODE', mode: mode });
+  sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: mode } });
+};
+
+/* ---------- Upload Modal & File Parser ---------- */
+window.openUploadModal = function() {
+  $('upload-modal').removeAttribute('hidden');
+  const statusBox = $('upload-status');
+  statusBox.style.display = 'none';
+};
+window.closeUploadModal = function() {
+  $('upload-modal').setAttribute('hidden', '');
+};
+window.onDragOver = function(e) { e.preventDefault(); $('dropzone').classList.add('dragover'); };
+window.onDragLeave = function(e) { e.preventDefault(); $('dropzone').classList.remove('dragover'); };
+window.onDropFile = function(e) {
+  e.preventDefault();
+  $('dropzone').classList.remove('dragover');
+  if (e.dataTransfer && e.dataTransfer.files.length) {
+    onFileSelected(e.dataTransfer.files[0]);
+  }
+};
+
+window.onFileSelected = function(file) {
+  if (!file) return;
+  const statusBox = $('upload-status');
+  statusBox.style.display = 'block';
+  statusBox.className = 'upload-status-box status-loading';
+  statusBox.textContent = `Parsing ${file.name} directly in browser...`;
+
+  if (file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg')) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const img = new Image();
+      img.onload = () => {
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = 512;
+        offCanvas.height = 512;
+        const offCtx = offCanvas.getContext('2d');
+        offCtx.drawImage(img, 0, 0, 512, 512);
+        const pData = offCtx.getImageData(0, 0, 512, 512).data;
+        const packedGrid = [];
+        for (let r = 0; r < 512; r++) {
+          const row = [];
+          for (let c = 0; c < 512; c++) {
+            const idx = (r * 512 + c) * 4;
+            const gray = pData[idx];
+            const packed = (gray << 16) | (gray << 8) | gray;
+            row.push(packed);
+          }
+          packedGrid.push(row);
+        }
+        renderHillshadeFromWorker(packedGrid, 512, 300, 'real');
+        statusBox.className = 'upload-status-box status-success';
+        statusBox.textContent = `[✓] Custom Heightmap Processed (${file.name})`;
+        setTimeout(closeUploadModal, 1200);
+      };
+      img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    statusBox.className = 'upload-status-box status-error';
+    statusBox.textContent = 'Please provide an image heightmap (.png, .jpg) for direct client processing.';
+  }
+};
+
+/* ---------- Tab Navigation ---------- */
+const TABS = ['tab-overview', 'tab-scheduler', 'tab-terrain', 'tab-terminal', 'tab-doc'];
+window.switchMainTab = function(targetTabId) {
+  TABS.forEach(tid => {
+    const pane = $(tid);
+    const btn = $(`tab-btn-${tid.replace('tab-', '')}`);
+    if (pane) pane.classList.toggle('active', tid === targetTabId);
+    if (btn) btn.classList.toggle('active', tid === targetTabId);
+  });
+  setTimeout(resizeCanvases, 20);
+};
+
+function syncTabWithLocationHash() {
+  if (/^#report-/.test(window.location.hash)) window.switchMainTab('tab-doc');
+}
+window.addEventListener('hashchange', syncTabWithLocationHash);
+syncTabWithLocationHash();
+
+/* ---------- Canvas Resize Engine ---------- */
+function resizeCanvases() {
+  [radarCanvas, waterfallCanvas, fresnelCanvas].forEach(cvs => {
+    if (!cvs) return;
+    const container = cvs.parentElement;
+    if (!container) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = container.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const targetW = Math.floor(rect.width * dpr);
+    const targetH = Math.floor(rect.height * dpr);
+
+    if (cvs.width !== targetW || cvs.height !== targetH) {
+      cvs.width = targetW;
+      cvs.height = targetH;
+    }
+    const ctx = cvs.getContext('2d');
+    ctx.resetTransform();
+    ctx.scale(dpr, dpr);
+  });
+}
+window.addEventListener('resize', resizeCanvases);
+setTimeout(resizeCanvases, 30);
+
+if ('ResizeObserver' in window) {
+  const ro = new ResizeObserver(() => resizeCanvases());
+  [radarCanvas, waterfallCanvas, fresnelCanvas].forEach(c => {
+    if (c && c.parentElement) ro.observe(c.parentElement);
+  });
+}
+
+/* ---------- Dashboard DOM Updates ---------- */
+function populateDropdownsOnce(nodes) {
+  ['quickNodeSelect', 'termNodeSelect'].forEach(id => {
+    const sel = $(id);
+    if (!sel || sel.dataset.populated === 'true' || !nodes || !nodes.length) return;
+    sel.innerHTML = '';
+    nodes.forEach(n => {
+      let role = 'Soldier Terminal';
+      if (n.node_id === 15) role = 'Main Command Post (20W Dish)';
+      else if (n.node_id === 4) role = 'Recon Patrol (Occlusion Target)';
+      else if (n.node_id === 1) role = 'Squad Leader (Voice Lead)';
+      else if (n.node_id === 2) role = 'Medic (Voice MC-PTT)';
+      else if (n.node_id === 3 || n.node_id === 6 || n.node_id === 9) role = 'Scout (Tactical Video)';
+      const opt = document.createElement('option');
+      opt.value = n.node_id;
+      opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id} - ${role}`;
+      sel.appendChild(opt);
+    });
+    sel.value = selectedNodeId;
+    sel.dataset.populated = 'true';
+  });
+}
+
+// Experiment capture utility
+const experimentCapture = { active: false, observations: [], startedAt: null, stoppedAt: null, runId: null };
+function experimentElement(id) { return document.getElementById(id); }
+function experimentSetText(id, value) { const el = experimentElement(id); if (el) el.textContent = value; }
+function experimentMode() {
+  const active = document.querySelector('.nav-tab.active');
+  return active ? active.textContent.trim() : 'unavailable';
+}
+function experimentScenario() {
+  const activeButtons = [...document.querySelectorAll('button.active')].map(b => b.textContent.trim()).filter(Boolean);
+  return {
+    active_view: experimentMode(),
+    selected_node_id: typeof selectedNodeId === 'number' ? selectedNodeId : null,
+    selected_terrain_and_controls: activeButtons,
+    scheduler_mode: (latestTelemetry && latestTelemetry.scheduler_mode) || 'not exposed by telemetry',
+  };
+}
+function experimentUpdateControls() {
+  const count = experimentCapture.observations.length;
+  const start = experimentElement('experiment-start'), stop = experimentElement('experiment-stop');
+  const csv = experimentElement('experiment-export-csv'), json = experimentElement('experiment-export-json');
+  if (start) start.disabled = experimentCapture.active;
+  if (stop) stop.disabled = !experimentCapture.active;
+  if (csv) csv.disabled = count === 0;
+  if (json) json.disabled = count === 0;
+  experimentSetText('experiment-status', experimentCapture.active ? 'CAPTURING' : 'Capture stopped');
+  experimentSetText('experiment-sample-count', `${count} telemetry observations`);
+  const first = experimentCapture.observations[0], last = experimentCapture.observations[count - 1];
+  experimentSetText('experiment-run-span', first && last ? `T+${first.sim_time_s.toFixed(2)}s → T+${last.sim_time_s.toFixed(2)}s` : 'No run recorded');
+}
+function experimentObserve(frame) {
+  if (!experimentCapture.active || !frame) return;
+  const frameIndex = Number(frame.frame_index), simTime = Number(frame.sim_time_s);
+  if (!Number.isFinite(frameIndex) || !Number.isFinite(simTime)) return;
+  const prior = experimentCapture.observations[experimentCapture.observations.length - 1];
+  if (prior && frameIndex <= prior.frame_index) return;
+  const k = frame.comparative_kpi_dashboard || {};
+  const row = {
+    observation_index: experimentCapture.observations.length,
+    frame_index: frameIndex,
+    sim_time_s: simTime,
+    scheduler_mode: frame.scheduler_mode ?? 'not exposed by telemetry',
+    selected_node_id: typeof selectedNodeId === 'number' ? selectedNodeId : null,
+    static_goodput_mb_cumulative: Number.isFinite(Number(k.static_goodput_mb)) ? Number(k.static_goodput_mb) : null,
+    tac_tad_goodput_mb_cumulative: Number.isFinite(Number(k.tac_goodput_mb)) ? Number(k.tac_goodput_mb) : null,
+    static_drop_count_cumulative: Number.isFinite(Number(k.static_drops)) ? Number(k.static_drops) : null,
+    tac_tad_drop_count_cumulative: Number.isFinite(Number(k.tac_drops)) ? Number(k.tac_drops) : null,
+    static_waste_pct: Number.isFinite(Number(k.static_waste_pct)) ? Number(k.static_waste_pct) : null,
+    tac_tad_waste_pct: Number.isFinite(Number(k.tac_waste_pct)) ? Number(k.tac_waste_pct) : null,
+    uplink_utilization_pct: Number.isFinite(Number(k.ul_utilization_pct)) ? Number(k.ul_utilization_pct) : null,
+    scenario_snapshot: experimentScenario()
+  };
+  experimentCapture.observations.push(row);
+  if (experimentCapture.observations.length > 50000) experimentCapture.observations.shift();
+  experimentUpdateControls();
+}
+function experimentDownload(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename; link.style.display = 'none';
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function experimentSafeName(value) {
+  return (value || 'experiment').trim().replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'experiment';
+}
+function experimentMetadata() {
+  return {
+    schema_version: '1.0',
+    artifact: 'Tactical X-Band Network Digital Twin',
+    frontend_package_version: '1.0.0',
+    engine: 'TypeScript WebWorker',
+    run_id: experimentCapture.runId,
+    label: experimentElement('experiment-run-label')?.value || 'unnamed-run',
+    notes: experimentElement('experiment-run-notes')?.value || '',
+    started_at_utc: experimentCapture.startedAt,
+    stopped_at_utc: experimentCapture.stoppedAt,
+    capture_kind: 'browser-observed worker telemetry; not guaranteed complete per-frame instrumentation',
+    seed: 'unavailable in current telemetry',
+    scenario_configuration: experimentCapture.observations[0]?.scenario_snapshot || experimentScenario(),
+    observation_count: experimentCapture.observations.length,
+    frame_start: experimentCapture.observations[0]?.frame_index ?? null,
+    frame_end: experimentCapture.observations.at(-1)?.frame_index ?? null,
+    observations: experimentCapture.observations
+  };
+}
+function experimentStart() {
+  if (experimentCapture.active) return;
+  experimentCapture.active = true;
+  experimentCapture.startedAt = new Date().toISOString();
+  experimentCapture.stoppedAt = null;
+  experimentCapture.runId = `xband-${Date.now()}`;
+  experimentCapture.observations = [];
+  experimentUpdateControls();
+}
+function experimentStop() {
+  if (!experimentCapture.active) return;
+  experimentCapture.active = false;
+  experimentCapture.stoppedAt = new Date().toISOString();
+  experimentUpdateControls();
+}
+function experimentExportCsv() {
+  if (!experimentCapture.observations.length) return;
+  const columns = ['observation_index','frame_index','sim_time_s','scheduler_mode','selected_node_id','static_goodput_mb_cumulative','tac_tad_goodput_mb_cumulative','static_drop_count_cumulative','tac_tad_drop_count_cumulative','static_waste_pct','tac_tad_waste_pct','uplink_utilization_pct'];
+  const quote = value => { const s = value == null ? '' : String(value); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
+  const rows = [columns.join(','), ...experimentCapture.observations.map(row => columns.map(c => quote(row[c])).join(','))];
+  experimentDownload(`${experimentSafeName(experimentElement('experiment-run-label')?.value)}_observations.csv`, rows.join('\r\n'), 'text/csv;charset=utf-8');
+}
+function experimentExportJson() {
+  if (!experimentCapture.observations.length) return;
+  experimentDownload(`${experimentSafeName(experimentElement('experiment-run-label')?.value)}_run.json`, JSON.stringify(experimentMetadata(), null, 2), 'application/json;charset=utf-8');
+}
+function initializeExperimentCapture() {
+  experimentElement('experiment-start')?.addEventListener('click', experimentStart);
+  experimentElement('experiment-stop')?.addEventListener('click', experimentStop);
+  experimentElement('experiment-export-csv')?.addEventListener('click', experimentExportCsv);
+  experimentElement('experiment-export-json')?.addEventListener('click', experimentExportJson);
+  experimentElement('experiment-clear')?.addEventListener('click', () => {
+    experimentCapture.active = false; experimentCapture.observations = [];
+    experimentCapture.startedAt = null; experimentCapture.stoppedAt = null; experimentCapture.runId = null;
+    experimentUpdateControls();
+  });
+  experimentUpdateControls();
+}
+document.addEventListener('DOMContentLoaded', initializeExperimentCapture);
+
+function updateDashboardDOM(frame) {
+  if (!frame) return;
+  experimentObserve(frame);
+  setText('clock-display', `T+${(frame.sim_time_s ?? 0).toFixed(1)}s`);
+  setText('frame-display', `#${frame.frame_index ?? 0}`);
+  if (frame.plain_english_narrative) setText('overview-narrative', frame.plain_english_narrative);
+  if (frame.nodes_telemetry) { populateDropdownsOnce(frame.nodes_telemetry); const search = $('terminal-search'); if (search) window.filterTerminalOptions(search.value); }
+
+  const kpi = frame.comparative_kpi_dashboard || {};
+  const sG = kpi.static_goodput_mb ?? 0, tG = kpi.tac_goodput_mb ?? 0;
+
+  if (Number.isFinite(Number(frame.frame_index)) && Number.isFinite(Number(frame.sim_time_s))) {
+    const sample = { frame: Number(frame.frame_index), time_s: Number(frame.sim_time_s), static_total_mb: Number(kpi.static_goodput_mb ?? 0), tac_total_mb: Number(kpi.tac_goodput_mb ?? 0) };
+    if (!window.__xbandGoodputSamples) window.__xbandGoodputSamples = [];
+    const history = window.__xbandGoodputSamples;
+    const prev = history.length ? history[history.length - 1] : null;
+    if (!prev || sample.frame > prev.frame) {
+      sample.static_delta_mb = prev && sample.static_total_mb >= prev.static_total_mb ? sample.static_total_mb - prev.static_total_mb : null;
+      sample.tac_delta_mb = prev && sample.tac_total_mb >= prev.tac_total_mb ? sample.tac_total_mb - prev.tac_total_mb : null;
+      history.push(sample);
+      if (history.length > 6000) history.splice(0, history.length - 6000);
+    }
+  }
+  const goodputSamples = window.__xbandGoodputSamples || [];
+  const validTacDeltas = goodputSamples.map(s => s.tac_delta_mb).filter(v => Number.isFinite(v) && v >= 0);
+  const validStaticDeltas = goodputSamples.map(s => s.static_delta_mb).filter(v => Number.isFinite(v) && v >= 0);
+  const percentile = (values, p) => {
+    if (!values.length) return null;
+    const sorted = values.slice().sort((a, b) => a - b);
+    const pos = (sorted.length - 1) * p;
+    const lo = Math.floor(pos), hi = Math.ceil(pos);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+  };
+  const formatPercentile = v => v == null ? 'Collecting samples' : `${(v * 8).toFixed(3)} Mbit/frame`;
+  setText('tbl-p50-stat', validStaticDeltas.length >= 20 ? formatPercentile(percentile(validStaticDeltas, 0.50)) : `Collecting (${validStaticDeltas.length}/20)`);
+  setText('tbl-p50-tac', validTacDeltas.length >= 20 ? formatPercentile(percentile(validTacDeltas, 0.50)) : `Collecting (${validTacDeltas.length}/20)`);
+  setText('tbl-p50-gain', validStaticDeltas.length >= 20 && validTacDeltas.length >= 20 && percentile(validStaticDeltas, 0.50) > 0 ? `${(percentile(validTacDeltas, 0.50) / percentile(validStaticDeltas, 0.50)).toFixed(2)}×` : 'Insufficient samples');
+  setText('tbl-p95-stat', validStaticDeltas.length >= 20 ? formatPercentile(percentile(validStaticDeltas, 0.95)) : `Collecting (${validStaticDeltas.length}/20)`);
+  setText('tbl-p95-tac', validTacDeltas.length >= 20 ? formatPercentile(percentile(validTacDeltas, 0.95)) : `Collecting (${validTacDeltas.length}/20)`);
+  setText('tbl-p95-gain', validStaticDeltas.length >= 20 && validTacDeltas.length >= 20 && percentile(validStaticDeltas, 0.95) > 0 ? `${(percentile(validTacDeltas, 0.95) / percentile(validStaticDeltas, 0.95)).toFixed(2)}×` : 'Insufficient samples');
+  const mult = kpi.gain_multiplier ?? 1;
+  setText('kpi-tac-tx', `${tG.toFixed(2)} Mb`);
+  setText('kpi-stat-tx', `Base: ${sG.toFixed(2)} Mb`);
+  setText('kpi-gain-badge', `+${mult.toFixed(2)}× GAIN`);
+  setText('kpi-tac-rate', `${((tG * 1e6) / Math.max(1, (frame.sim_time_s || 1) * 1e6)).toFixed(2)} Mbps`);
+
+  const sW = kpi.static_waste_pct ?? 0, tW = kpi.tac_waste_pct ?? 0;
+  setText('kpi-tac-waste', `${tW.toFixed(1)}%`);
+  setText('kpi-stat-waste', `Static: ${sW.toFixed(1)}%`);
+  setText('kpi-waste-saved-badge', `${Math.max(0, sW - tW).toFixed(1)}% SAVED`);
+  setText('kpi-waste-mb', `${((sW / 100) * (sG + 0.1)).toFixed(2)} Mb reclaimed`);
+
+  const sD = kpi.static_drops ?? 0, tD = kpi.tac_drops ?? 0;
+  const sDp = kpi.static_drop_pct ?? 0, tDp = kpi.tac_drop_pct ?? 0;
+  const dropReduc = sD > 0 ? ((sD - tD) / sD) * 100 : 0;
+  setText('kpi-tac-drop', `${tD} (${tDp.toFixed(1)}%)`);
+  setText('kpi-stat-drop', `${sD} (${sDp.toFixed(1)}%)`);
+  setText('kpi-drop-reduc-badge', `${Math.max(0, dropReduc).toFixed(0)}% FEWER`);
+  setText('kpi-util-stat', `Uplink Util: ${(kpi.ul_utilization_pct ?? 0).toFixed(1)}%`);
+
+  // Table (Tab 2)
+  setText('tbl-stat-tx', `${sG.toFixed(2)} Mb`);
+  setText('tbl-tac-tx', `${tG.toFixed(2)} Mb`);
+  setText('tbl-tx-gain', `+${mult.toFixed(2)}×`);
+  setText('tbl-stat-waste', `${sW.toFixed(1)}%`);
+  setText('tbl-tac-waste', `${tW.toFixed(1)}%`);
+  setText('tbl-waste-saved', `${Math.max(0, sW - tW).toFixed(1)}% saved`);
+  setText('tbl-stat-drops', `${sD} (${sDp.toFixed(1)}%)`);
+  setText('tbl-tac-drops', `${tD} (${tDp.toFixed(1)}%)`);
+  setText('tbl-drop-reduc', `${Math.max(0, dropReduc).toFixed(0)}% fewer`);
+  setText('tbl-tac-util', `${(kpi.ul_utilization_pct ?? 0).toFixed(1)}%`);
+  setText('tbl-n4-stat', `${(kpi.static_node4_pre_shadow_backlog_kb ?? 0).toFixed(1)} KB`);
+  setText('tbl-n4-tac', `${(kpi.node4_pre_shadow_backlog_kb ?? 0).toFixed(1)} KB`);
+  setText('tbl-n4-status', kpi.node4_evac_status || 'Pre-flush');
+
+  setText('tbl-p50-stat', 'Not instrumented');
+  setText('tbl-p50-tac', 'Not instrumented');
+  setText('tbl-p50-gain', 'Requires frame samples');
+  setText('tbl-p95-stat', 'Not instrumented');
+  setText('tbl-p95-tac', 'Not instrumented');
+  setText('tbl-p95-gain', 'Requires frame samples');
+
+  // Target Node Inspection
+  const nodes = frame.nodes_telemetry || [];
+  const selNode = nodes.find(n => n.node_id === selectedNodeId);
+  const allocations = Array.isArray(frame.active_gantt_allocations) ? frame.active_gantt_allocations : [];
+  const selectedAllocations = allocations.filter(a => Number(a.node_id) === Number(selectedNodeId));
+  const allocatedSeconds = selectedAllocations.reduce((sum, a) => sum + Math.max(0, Number(a.duration_s ?? ((Number(a.duration_ms) || 0) / 1000)) || 0), 0);
+  setText('alloc-node-label', selNode ? `Node ${selectedNodeId} · ${selNode.name || 'Terminal'}` : `Node ${selectedNodeId}`);
+  setText('alloc-airtime', `${(allocatedSeconds * 1000).toFixed(2)} ms`);
+  setText('alloc-segments', String(selectedAllocations.length));
+  setText('alloc-inspector-note', selectedAllocations.length
+    ? `Current frame ${frame.frame_index ?? '--'} · summed duration from ${selectedAllocations.length} worker allocation segment(s). This is per-frame airtime, not a long-run utilization estimate.`
+    : `No allocation segment for Node ${selectedNodeId} in current frame ${frame.frame_index ?? '--'}. This may indicate no queued eligible traffic or a telemetry frame with no allocation for this node.`);
+  if (selNode) {
+    const st = selNode.state_name || 'NORMAL_LOS';
+    const stBadge = st === 'HARD_SHADOW_CUTOFF' ? 'CUTOFF (IN SHADOW)' : st === 'PRE_OCCLUSION_FLUSH' ? 'PRE-OCCLUSION FLUSH' : st === 'RE_EMERGENCE_BURST' ? 'BURST RECOVERY' : 'PRISTINE LOS';
+    const stClass = st === 'HARD_SHADOW_CUTOFF' ? 'kpi-badge badge-crimson' : st === 'PRE_OCCLUSION_FLUSH' ? 'kpi-badge badge-amber' : 'kpi-badge badge-emerald';
+
+    const b1 = $('overview-state-badge'), b2 = $('term-state-pill');
+    if (b1) { b1.textContent = stBadge; b1.className = stClass; }
+    if (b2) { b2.textContent = stBadge; b2.className = stClass; }
+
+    setText('glance-slant', `${(selNode.slant_range_km || 0).toFixed(1)} km`);
+    setText('glance-snr', `${(selNode.snr_db || 0).toFixed(1)} dB`);
+    setText('glance-rate', `${(selNode.bitrate_mbps !== undefined ? selNode.bitrate_mbps : (selNode.bitrate_bps || 0) / 1e6).toFixed(2)} M`);
+
+    // Tab 3 Link Budget
+    setText('fresnel-node-label', `Node ${selNode.node_id} (${selNode.name})`);
+    setText('link-modcod-tag', selNode.modcod_name || 'QPSK');
+    setText('lb-slant', `${(selNode.slant_range_km || 0).toFixed(2)} km`);
+    setText('lb-snr', `${(selNode.snr_db || 0).toFixed(1)} dB`);
+    setText('lb-se', `${(selNode.spectral_efficiency_bps_hz || 1.49).toFixed(2)} bps/Hz`);
+    setText('lb-fspl', `${(134 + Math.log10(Math.max(1, selNode.slant_range_km || 1)) * 20).toFixed(1)} dB`);
+    const dLoss = selNode.diffraction_loss_db || (st === 'HARD_SHADOW_CUTOFF' ? 45.0 : 0.0);
+    setText('lb-diff', `${dLoss.toFixed(1)} dB`);
+    setText('lb-prx', `${(-75 - dLoss).toFixed(1)} dBm`);
+    setText('lb-bulge', `${((Math.max(1, selNode.slant_range_km || 1) * 1000) * 0.003).toFixed(1)} m`);
+    setText('lb-gas', `${(0.012 * (selNode.slant_range_km || 15)).toFixed(2)} dB`);
+
+    // Tab 4 Queues
+    const c2 = selNode.c2_bytes ?? 0;
+    const vo = selNode.voice_bytes ?? 0;
+    const vi = selNode.video_bytes ?? 0;
+    const ph = selNode.photo_bytes ?? 0;
+
+    const setQBar = (id, bytes, maxB) => {
+      const el = $('qbar-' + id);
+      if (el) el.style.width = `${Math.min(100, (bytes / maxB) * 100)}%`;
+      setText('qval-' + id, `${(bytes / 1024).toFixed(1)} KB`);
+    };
+    setQBar('69', c2, 1024);
+    setQBar('65', vo, 4096);
+    setQBar('67', vi, 65536);
+    const pEl = $('qbar-70');
+    if (pEl) pEl.style.width = `${Math.min(100, (ph / 2000000) * 100)}%`;
+    setText('qval-70', `${(ph / 1024).toFixed(0)} / 2000 KB`);
+  }
+
+  // Active Transfer State Machine
+  const tx = frame.transfer_telemetry;
+  if (tx) {
+    const status = tx.status || 'IDLE';
+    const pct = tx.progress_pct || 0;
+    const bar = $('tx-progress-bar');
+    if (bar) bar.style.width = `${Math.min(100, pct)}%`;
+
+    const badge = $('tx-status-badge');
+    if (badge) {
+      if (status === 'TRANSMITTING') { badge.className = 'kpi-badge badge-cyan'; badge.textContent = 'TRANSMITTING'; }
+      else if (status === 'BLOCKED_NLOS') { badge.className = 'kpi-badge badge-amber'; badge.textContent = '⚠️ BLOCKED (BUFFERED)'; }
+      else if (status === 'FAILED_DROPPED') { badge.className = 'kpi-badge badge-crimson'; badge.textContent = '❌ DROPPED'; }
+      else if (status === 'ACKNOWLEDGED') { badge.className = 'kpi-badge badge-emerald'; badge.textContent = '[✓] ACKNOWLEDGED'; }
+      else { badge.className = 'kpi-badge'; badge.textContent = 'STANDBY'; }
+    }
+
+    setText('tx-type-lbl', tx.active_type ? `Uploading ${tx.active_type}` : 'IDLE - Standby');
+    setText('tx-bytes-lbl', `${((tx.delivered_bytes || 0) / 1e6).toFixed(2)} / ${((tx.total_bytes || 0) / 1e6).toFixed(2)} MB (${pct.toFixed(1)}%)`);
+    setText('tx-msg-lbl', tx.status_message || (status === 'IDLE' ? 'Select terminal and inject traffic.' : ''));
+  }
+}
+
+/* ====================================================================
+   RADAR CANVAS (TAB 1) - STRICT 1:1 SQUARE ASPECT RATIO PROJECTION
+   ==================================================================== */
+function getRadarGeometry(w, h) {
+  const centerX = w / 2, centerY = h / 2;
+  const scale = (Math.min(centerX, centerY) * 0.94) / currentRadarRangeM;
+  return { centerX, centerY, scale };
+}
+function worldToScreen(x, y, w, h) {
+  const g = getRadarGeometry(w, h);
+  return { x: g.centerX + (x - panOffsetX_m) * g.scale, y: g.centerY - (y - panOffsetY_m) * g.scale };
+}
+function screenToWorld(px, py, w, h) {
+  const g = getRadarGeometry(w, h);
+  return { x: (px - g.centerX) / g.scale + panOffsetX_m, y: (g.centerY - py) / g.scale + panOffsetY_m };
+}
+
+function drawRadar() {
+  try {
+    const cvs = radarCanvas;
+    if (!cvs) return;
+    const w = cvs.parentElement.clientWidth || 600;
+    const h = cvs.parentElement.clientHeight || 500;
+    if (w <= 0 || h <= 0) return;
+
+    const ctx = radarCtx;
+    ctx.clearRect(0, 0, w, h);
+
+    const { centerX: cx, centerY: cy, scale } = getRadarGeometry(w, h);
+    const bounds_m = THEATER_RADIUS_M || 300000;
+
+    // 1. Dark matte tactical canvas base
+    ctx.fillStyle = '#0b0e14';
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. Full-bleed terrain map with 1:1 square pixel aspect ratio
+    if (hillshadeCanvas) {
+      const tl = worldToScreen(-bounds_m, bounds_m, w, h);
+      const br = worldToScreen(bounds_m, -bounds_m, w, h);
+      const tWidth = br.x - tl.x;
+      const tHeight = br.y - tl.y;
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(hillshadeCanvas, tl.x, tl.y, tWidth, tHeight);
+      ctx.restore();
+    }
+
+    // Dynamic zoom tile overlay if available
+    if (window.__xbandDrawTile) {
+      window.__xbandDrawTile(ctx, (x, y, pw, ph) => worldToScreen(x, y, pw, ph), w, h);
+    }
+
+    // 3. Topographic Ridge Spines across Rectangular Area
+    ctx.save();
+    ctx.strokeStyle = 'rgba(74, 103, 139, 0.45)'; ctx.lineWidth = 0.9;
+    const contour = (pts) => {
+      ctx.beginPath();
+      pts.forEach((pt, idx) => {
+        const p = worldToScreen(pt[0], pt[1], w, h);
+        idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+      });
+      ctx.stroke();
+    };
+    contour([[-25000, 16000], [-8000, 20000], [8000, 24000], [28000, 22000]]);
+    contour([[-26000, -10000], [-5000, -15000], [9000, -16000], [26000, -12000]]);
+    contour([[2000, 1500], [5000, 270], [8000, -1500]]);
+
+    // Summit markers
+    const summits = [
+      ['▲ 4150m MT. KARGIL-I', 5000, 270],
+      ['▲ 5640m ZANSKAR-NW', -9000, 12000],
+      ['▲ 5820m NUN-KUN', 14000, 15000],
+      ['▲ 5120m SURU CRAG', 12000, -9000],
+      ['▲ 4790m DRAS PASS', -14000, -8000]
+    ];
+    ctx.font = `9px ${MONO}`; ctx.fillStyle = 'rgba(175, 205, 235, 0.85)';
+    summits.forEach(([name, sx, sy]) => {
+      const p = worldToScreen(sx, sy, w, h);
+      if (p.x >= 15 && p.x <= w - 60 && p.y >= 15 && p.y <= h - 15) {
+        ctx.fillText(name, p.x + 4, p.y + 2);
+      }
+    });
+    ctx.restore();
+
+    // 4. Concentric Range Rings over Rectangular Map
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)'; ctx.lineWidth = 1;
+    const ringM = currentRadarRangeM <= 30000 ? 10000 : (currentRadarRangeM <= 60000 ? 20000 : 50000);
+    ctx.font = `9px ${MONO}`; ctx.fillStyle = 'rgba(139, 155, 180, 0.85)';
+    const maxScreenRadius = Math.hypot(w, h);
+    for (let r = ringM; r <= bounds_m; r += ringM) {
+      const ringPx = r * scale;
+      if (ringPx > maxScreenRadius) break;
+      ctx.beginPath();
+      ctx.arc(cx, cy, ringPx, 0, TAU);
+      ctx.stroke();
+      ctx.fillText(`${r / 1000} km`, cx + 6, cy - ringPx + 11);
+    }
+
+    // Full-canvas crosshairs
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+    ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+    ctx.stroke();
+
+    // Corner reticles
+    const retLen = 14;
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)'; ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.moveTo(8, 8 + retLen); ctx.lineTo(8, 8); ctx.lineTo(8 + retLen, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(w - 8 - retLen, 8); ctx.lineTo(w - 8, 8); ctx.lineTo(w - 8, 8 + retLen); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8, h - 8 - retLen); ctx.lineTo(8, h - 8); ctx.lineTo(8 + retLen, h - 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(w - 8 - retLen, h - 8); ctx.lineTo(w - 8, h - 8); ctx.lineTo(w - 8, h - 8 - retLen); ctx.stroke();
+    ctx.restore();
+
+    const acn = latestTelemetry.acn_telemetry || {};
+    const ax = acn.pos_x ?? 0, ay = acn.pos_y ?? 0;
+    const acnPos = worldToScreen(ax, ay, w, h);
+
+    // 5. ACN Coverage Footprint & Sweep
+    const covKm = acn.coverage_radius_km || 35;
+    const covPx = covKm * 1000 * scale;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)'; ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.arc(acnPos.x, acnPos.y, covPx, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.04)'; ctx.fill();
+    ctx.restore();
+
+    // 6. Elliptical Flight Path
+    const fp = latestTelemetry.flight_path || [];
+    if (fp.length) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)'; ctx.lineWidth = 1.1; ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      fp.forEach((pt, i) => { const s = worldToScreen(pt[0], pt[1], w, h); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
+      ctx.closePath(); ctx.stroke();
+      ctx.restore();
+    }
+
+    // ------------------------------------------------------------------
+    // ACN +30s Forward Flight Vector Tape
+    // ------------------------------------------------------------------
+    const vel = acn.velocity || [acn.vel_x || 0, acn.vel_y || 0];
+    const vx = vel[0] || 0, vy = vel[1] || 0;
+    const targetX = ax + vx * 30.0;
+    const targetY = ay + vy * 30.0;
+    const targetPos = worldToScreen(targetX, targetY, w, h);
+
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(acnPos.x, acnPos.y);
+    ctx.lineTo(targetPos.x, targetPos.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const vdx = targetPos.x - acnPos.x;
+    const vdy = targetPos.y - acnPos.y;
+    const vlen = Math.hypot(vdx, vdy);
+    if (vlen > 1e-3) {
+      const vnx = -vdy / vlen;
+      const vny = vdx / vlen;
+      const tickSize = 4.5;
+      ctx.beginPath();
+      ctx.moveTo(targetPos.x - vnx * tickSize, targetPos.y - vny * tickSize);
+      ctx.lineTo(targetPos.x + vnx * tickSize, targetPos.y + vny * tickSize);
+      ctx.stroke();
+
+      ctx.font = `9px ${MONO}`;
+      ctx.fillStyle = '#38bdf8';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('+30s', targetPos.x + 6, targetPos.y);
+    }
+    ctx.restore();
+
+    // 7. Ground Terminals & Air-to-Ground Links
+    const placedNodeLabels = [];
+    const nodeLabelCandidates = (latestTelemetry.nodes_telemetry || []).map(node => {
+      const nx = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
+      const ny = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
+      const pos = worldToScreen(nx, ny, w, h);
+      return { node, pos, selected: node.node_id === selectedNodeId, mcp: node.node_type === 'mcp' };
+    }).sort((a, b) => Number(b.selected) - Number(a.selected) || Number(b.mcp) - Number(a.mcp));
+
+    (latestTelemetry.nodes_telemetry || []).forEach(node => {
+      const nx = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
+      const ny = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
+      const nPos = worldToScreen(nx, ny, w, h);
+      const state = node.state_name || 'NORMAL_LOS';
+      const isSel = node.node_id === selectedNodeId, isMCP = node.node_type === 'mcp';
+
+      let linkColor = 'rgba(56, 189, 248, 0.3)', dash = [], lw = 1;
+      let nodeColor = '#10b981';
+      if (state === 'PRE_OCCLUSION_FLUSH') { linkColor = '#f59e0b'; nodeColor = '#f59e0b'; lw = 1.6; }
+      else if (state === 'HARD_SHADOW_CUTOFF') { linkColor = 'rgba(239, 68, 68, 0.7)'; nodeColor = '#ef4444'; dash = [3, 3]; }
+      else if (state === 'RE_EMERGENCE_BURST') { linkColor = '#10b981'; nodeColor = '#10b981'; lw = 1.8; }
+
+      ctx.save();
+      ctx.beginPath(); ctx.moveTo(acnPos.x, acnPos.y); ctx.lineTo(nPos.x, nPos.y);
+      ctx.strokeStyle = linkColor; ctx.lineWidth = lw; ctx.setLineDash(dash); ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      if (isMCP) {
+        ctx.fillStyle = '#38bdf8';
+        ctx.rect(nPos.x - 5, nPos.y - 5, 10, 10);
+      } else {
+        ctx.fillStyle = nodeColor;
+        ctx.arc(nPos.x, nPos.y, 4.5, 0, TAU);
+      }
+      ctx.fill();
+      ctx.strokeStyle = isSel ? '#ffffff' : '#0b0e14'; ctx.lineWidth = 1.3; ctx.stroke();
+
+      if (isSel) {
+        ctx.beginPath(); ctx.arc(nPos.x, nPos.y, 9, 0, TAU);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)'; ctx.lineWidth = 1.2; ctx.stroke();
+      }
+      ctx.restore();
+
+      const label = isMCP ? 'MCP' : `S${node.node_id}`;
+      const isHovered = node.node_id === hoveredNodeId;
+      const showLabel = isSel || isHovered || isMCP || (currentRadarRangeM <= 30000 && placedNodeLabels.length < 5);
+      if (showLabel) {
+        ctx.save(); ctx.font = `${isSel || isHovered ? '600 ' : ''}9.5px ${MONO}`;
+        const labelWidth = ctx.measureText(label).width;
+        const labelBox = { x: nPos.x + 8, y: nPos.y - 7, w: labelWidth + 5, h: 13 };
+        const overlaps = !isSel && placedNodeLabels.some(r => labelBox.x < r.x + r.w + 4 && labelBox.x + labelBox.w + 4 > r.x && labelBox.y < r.y + r.h + 3 && labelBox.y + labelBox.h + 3 > r.y);
+        if (!overlaps) {
+          ctx.fillStyle = isSel ? '#38bdf8' : isHovered ? '#f8fafc' : 'rgba(226, 232, 240, 0.92)';
+          ctx.fillText(label, nPos.x + 8, nPos.y + 3);
+          placedNodeLabels.push(labelBox);
+        }
+        ctx.restore();
+      }
+    });
+
+    // ------------------------------------------------------------------
+    // Hover Target-Lock Reticle & Tactical Callout
+    // ------------------------------------------------------------------
+    if (hoveredNodeId !== null) {
+      const hovNode = (latestTelemetry.nodes_telemetry || []).find(n => n.node_id === hoveredNodeId);
+      if (hovNode) {
+        const hnx = hovNode.x_m !== undefined ? hovNode.x_m : (hovNode.position ? hovNode.position[0] : 0);
+        const hny = hovNode.y_m !== undefined ? hovNode.y_m : (hovNode.position ? hovNode.position[1] : 0);
+        const hp = worldToScreen(hnx, hny, w, h);
+
+        const bs = 9.5;
+        const bl = 4.0;
+        const reticleColor = hovNode.state_name === 'HARD_SHADOW_CUTOFF' ? '#ff7070' :
+                             hovNode.state_name === 'PRE_OCCLUSION_FLUSH' ? '#f3b54a' : '#38bdf8';
+
+        ctx.save();
+        ctx.strokeStyle = reticleColor;
+        ctx.lineWidth = 1.4;
+
+        // Top-left
+        ctx.beginPath();
+        ctx.moveTo(hp.x - bs, hp.y - bs + bl);
+        ctx.lineTo(hp.x - bs, hp.y - bs);
+        ctx.lineTo(hp.x - bs + bl, hp.y - bs);
+        ctx.stroke();
+
+        // Top-right
+        ctx.beginPath();
+        ctx.moveTo(hp.x + bs - bl, hp.y - bs);
+        ctx.lineTo(hp.x + bs, hp.y - bs);
+        ctx.lineTo(hp.x + bs, hp.y - bs + bl);
+        ctx.stroke();
+
+        // Bottom-left
+        ctx.beginPath();
+        ctx.moveTo(hp.x - bs, hp.y + bs - bl);
+        ctx.lineTo(hp.x - bs, hp.y + bs);
+        ctx.lineTo(hp.x - bs + bl, hp.y + bs);
+        ctx.stroke();
+
+        // Bottom-right
+        ctx.beginPath();
+        ctx.moveTo(hp.x + bs - bl, hp.y + bs);
+        ctx.lineTo(hp.x + bs, hp.y + bs);
+        ctx.lineTo(hp.x + bs, hp.y + bs - bl);
+        ctx.stroke();
+
+        const nodeName = hovNode.name || `S${hovNode.node_id}`;
+        const nodeType = (hovNode.node_type || (hovNode.node_id === 15 ? 'mcp' : 'soldier')).toUpperCase();
+        const slantKm = Number(hovNode.slant_range_km || 0).toFixed(1);
+        const snrDb = Number(hovNode.snr_db || 0).toFixed(1);
+        const modcod = hovNode.modcod_name || 'QPSK';
+        const state = hovNode.state_name || 'NORMAL_LOS';
+        const backlogKb = ((hovNode.total_backlog_bytes || 0) / 1024).toFixed(1);
+
+        const line1 = `[ ${nodeName} // ${nodeType} ]`;
+        const line2 = `RANGE: ${slantKm} km | SNR: ${snrDb} dB (${modcod})`;
+        const line3 = `STATE: ${state} | BACKLOG: ${backlogKb} KB`;
+
+        ctx.font = `600 10px ${MONO}`;
+        const tw1 = ctx.measureText(line1).width;
+        ctx.font = `10px ${MONO}`;
+        const tw2 = ctx.measureText(line2).width;
+        const tw3 = ctx.measureText(line3).width;
+        const boxW = Math.max(tw1, tw2, tw3) + 16;
+        const boxH = 48;
+
+        let bx = hp.x + 14;
+        let by = hp.y - 24;
+        if (bx + boxW > w - 10) bx = hp.x - boxW - 14;
+        if (by < 10) by = 10;
+        if (by + boxH > h - 10) by = h - boxH - 10;
+
+        ctx.fillStyle = '#0f1522';
+        ctx.fillRect(bx, by, boxW, boxH);
+        ctx.strokeStyle = '#1e2633';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx, by, boxW, boxH);
+
+        ctx.fillStyle = reticleColor;
+        ctx.fillRect(bx, by, 2.5, boxH);
+
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        ctx.font = `600 10px ${MONO}`;
+        ctx.fillStyle = reticleColor;
+        ctx.fillText(line1, bx + 7, by + 5);
+
+        ctx.font = `10px ${MONO}`;
+        ctx.fillStyle = '#e8ecef';
+        ctx.fillText(line2, bx + 7, by + 19);
+
+        ctx.fillStyle = '#9aa8b3';
+        ctx.fillText(line3, bx + 7, by + 33);
+        ctx.restore();
+      }
+    }
+
+    // 8. ACN Aircraft Icon & Heading
+    ctx.save();
+    ctx.translate(acnPos.x, acnPos.y);
+    const heading = acn.heading_rad !== undefined ? acn.heading_rad : Math.atan2(vy, vx);
+    ctx.rotate(-heading + Math.PI / 2);
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(9, 7); ctx.lineTo(0, 3); ctx.lineTo(-9, 7); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.restore();
+
+    ctx.save(); ctx.font = `10px ${MONO}`; ctx.fillStyle = '#38bdf8';
+    ctx.fillText(`ACN-1 [${(acn.altitude_msl_m || 5000).toFixed(0)}m]`, acnPos.x + 13, acnPos.y);
+    ctx.restore();
+
+    // ------------------------------------------------------------------
+    // Cursor Geographic & MGRS Coordinate HUD Tape (Exclusively Bottom-Left)
+    // ------------------------------------------------------------------
+    const curWx = isMouseInsideRadar ? mouseWorldX : (panOffsetX_m);
+    const curWy = isMouseInsideRadar ? mouseWorldY : (panOffsetY_m);
+
+    const curLat = 34.5 + curWy / 111320.0;
+    const curLon = 76.5 + curWx / (111320.0 * Math.cos(34.5 * Math.PI / 180.0));
+    const curElev = queryElevation(curWx, curWy);
+
+    const e100k = Math.floor(Math.abs(curWx / 100)) % 10000;
+    const n100k = Math.floor(Math.abs(curWy / 100)) % 10000;
+    const mgrsStr = `43X DM ${String(e100k).padStart(4, '0')} ${String(n100k).padStart(4, '0')}`;
+    const hudText = `CRS: MGRS ${mgrsStr} | ${curLat.toFixed(4)}°N, ${curLon.toFixed(4)}°E | ELEV: ${curElev.toFixed(0)}m MSL`;
+
+    ctx.save();
+    ctx.font = `10px ${MONO}`;
+    const hudW = ctx.measureText(hudText).width + 16;
+    const hudH = 20;
+    const hudX = 10;
+    const hudY = h - hudH - 8;
+
+    ctx.fillStyle = 'rgba(15, 21, 34, 0.90)';
+    ctx.fillRect(hudX, hudY, hudW, hudH);
+    ctx.strokeStyle = '#1e2633';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(hudX, hudY, hudW, hudH);
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(hudX, hudY, 2, hudH);
+
+    ctx.fillStyle = '#8b9bb4';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(hudText, hudX + 8, hudY + hudH / 2);
+    ctx.restore();
+
+  } catch (err) {
+    console.error('Error drawing radar canvas:', err);
+  }
+}
+
+/* Radar Interaction Handlers */
+radarCanvas.addEventListener('mousedown', (e) => {
+  const rect = radarCanvas.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  const w = radarCanvas.parentElement.clientWidth, h = radarCanvas.parentElement.clientHeight;
+  if (e.button === 0) {
+    for (const node of (latestTelemetry.nodes_telemetry || [])) {
+      const nx = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
+      const ny = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
+      const p = worldToScreen(nx, ny, w, h);
+      if (Math.hypot(px - p.x, py - p.y) <= 16) {
+        draggedEntity = { type: 'node', id: node.node_id };
+        selectedNodeId = node.node_id;
+        syncNodeDropdowns(selectedNodeId);
+        sendCommand({ type: 'SELECT_NODE', node_id: node.node_id });
+        radarCanvas.style.cursor = 'grabbing';
+        return;
+      }
+    }
+  }
+  isPanning = true; panStartX = e.clientX; panStartY = e.clientY; radarCanvas.style.cursor = 'move';
+});
+
+radarCanvas.addEventListener('mouseenter', () => { isMouseInsideRadar = true; });
+radarCanvas.addEventListener('mouseleave', () => { isMouseInsideRadar = false; hoveredNodeId = null; });
+
+window.addEventListener('mousemove', (e) => {
+  const rect = radarCanvas.getBoundingClientRect();
+  const w = radarCanvas.parentElement.clientWidth, h = radarCanvas.parentElement.clientHeight;
+  const insideRadar = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+  
+  if (insideRadar) {
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    mouseScreenX = px;
+    mouseScreenY = py;
+    isMouseInsideRadar = true;
+    const world = screenToWorld(px, py, w, h);
+    mouseWorldX = world.x;
+    mouseWorldY = world.y;
+  } else {
+    isMouseInsideRadar = false;
+  }
+
+  if (!draggedEntity && !isPanning && insideRadar) {
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    let hit = null, best = 14;
+    for (const node of (latestTelemetry.nodes_telemetry || [])) {
+      const nx = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
+      const ny = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
+      const pos = worldToScreen(nx, ny, w, h);
+      const distance = Math.hypot(px - pos.x, py - pos.y);
+      if (distance <= best) { best = distance; hit = node.node_id; }
+    }
+    hoveredNodeId = hit;
+    radarCanvas.style.cursor = hit === null ? 'grab' : 'pointer';
+  } else if (!insideRadar && !draggedEntity && !isPanning) {
+    hoveredNodeId = null;
+    radarCanvas.style.cursor = 'grab';
+  }
+
+  if (draggedEntity) {
+    const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top, w, h);
+    const now = performance.now();
+    if (now - lastMoveSendTime > 40) {
+      sendCommand({ type: 'NODE_MOVE', node_id: draggedEntity.id, x_m: world.x, y_m: world.y });
+      lastMoveSendTime = now;
+    }
+  } else if (isPanning) {
+    const { scale } = getRadarGeometry(w, h);
+    panOffsetX_m -= (e.clientX - panStartX) / scale;
+    panOffsetY_m += (e.clientY - panStartY) / scale;
+    panStartX = e.clientX; panStartY = e.clientY;
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  draggedEntity = null; isPanning = false; radarCanvas.style.cursor = 'grab';
+});
+radarCanvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  currentRadarRangeM = Math.max(15000, Math.min(300000, currentRadarRangeM * (e.deltaY < 0 ? 0.85 : 1.15)));
+  setRadarRange(currentRadarRangeM);
+}, { passive: false });
+
+/* ====================================================================
+   WATERFALL & FRESNEL CANVAS RENDERERS
+   ==================================================================== */
+function gfxRRect(g, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  g.beginPath();
+  g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.arcTo(x + w, y, x + w, y + r, r);
+  g.lineTo(x + w, y + h - r); g.arcTo(x + w, y + h, x + w - r, y + h, r);
+  g.lineTo(x + r, y + h); g.arcTo(x, y + h, x, y + h - r, r);
+  g.lineTo(x, y + r); g.arcTo(x, y, x + r, y, r); g.closePath();
+}
+function gfxNiceStep(range, target) {
+  const raw = Math.max(range, 1e-6) / target, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
+}
+
+function drawWaterfall() {
+  try {
+    const cvs = waterfallCanvas;
+    if (!cvs) return;
+    const w = cvs.parentElement.clientWidth || 800;
+    const h = cvs.parentElement.clientHeight || 220;
+    if (w <= 0 || h <= 0) return;
+    const g = waterfallCtx;
+    g.clearRect(0, 0, w, h);
+
+    const FP = 0.020, padL = 118, padR = 18, padT = 22, padB = 24, gap = 18;
+    const plotW = Math.max(60, w - padL - padR);
+    const trackH = Math.max(34, Math.min(64, (h - padT - padB - gap) / 2));
+    const yStatic = padT, yTac = padT + trackH + gap;
+    const xOf = s => padL + (s / FP) * plotW;
+    const sel = typeof selectedNodeId === 'number' ? selectedNodeId : -1;
+    const nodes = latestTelemetry.nodes_telemetry || [];
+
+    // Time grid
+    g.font = `10px ${MONO}`; g.textAlign = 'center'; g.lineWidth = 1;
+    for (let ms = 0; ms <= 20; ms += 2) {
+      const x = Math.round(xOf(ms / 1000)) + 0.5;
+      g.strokeStyle = ms % 10 === 0 ? 'rgba(157,180,255,0.28)' : 'rgba(120,140,160,0.14)';
+      g.beginPath(); g.moveTo(x, padT - 6); g.lineTo(x, yTac + trackH + 5); g.stroke();
+      g.fillStyle = '#7d8c99'; g.fillText(String(ms), x, h - 8);
+    }
+    g.textAlign = 'left'; g.fillText('ms', padL + plotW + 3, h - 8);
+
+    const trackLabel = (title, sub, y, col) => {
+      g.textAlign = 'right';
+      g.fillStyle = col; g.font = `600 11px ${MONO}`; g.fillText(title, padL - 12, y + trackH / 2 - 1);
+      g.fillStyle = '#7d8c99'; g.font = `10px ${MONO}`; g.fillText(sub, padL - 12, y + trackH / 2 + 12);
+    };
+    trackLabel('STATIC TDMA', 'fixed 16 slots', yStatic, '#e8ecef');
+    trackLabel('TAC-TAD', 'dynamic slots', yTac, '#9db4ff');
+
+    // Static track
+    gfxRRect(g, padL, yStatic, plotW, trackH, 4);
+    g.fillStyle = '#0e141b'; g.fill(); g.strokeStyle = '#2c3844'; g.stroke();
+    const slotW = plotW / 16;
+    for (let i = 0; i < 16; i++) {
+      const x = padL + i * slotW + 1.5, sw = slotW - 3, y = yStatic + 3, sh = trackH - 6;
+      const n = nodes.find(nd => nd.node_id === i);
+      const out = !!n && n.state_name === 'HARD_SHADOW_CUTOFF';
+      gfxRRect(g, x, y, sw, sh, 3);
+      g.fillStyle = out ? 'rgba(255,112,112,0.2)' : 'rgba(120,140,160,0.16)'; g.fill();
+      if (out) {
+        g.save(); g.clip();
+        g.strokeStyle = 'rgba(255,112,112,0.55)'; g.lineWidth = 1;
+        for (let k = -sh; k < sw + sh; k += 6) { g.beginPath(); g.moveTo(x + k, y + sh); g.lineTo(x + k + sh, y); g.stroke(); }
+        g.restore();
+      }
+      gfxRRect(g, x, y, sw, sh, 3);
+      g.strokeStyle = i === sel ? '#9db4ff' : out ? '#ff7070' : 'rgba(120,140,160,0.35)';
+      g.lineWidth = i === sel ? 1.8 : 1; g.stroke();
+      if (slotW > 20) {
+        g.fillStyle = out ? '#ffb3b3' : '#9aa8b3'; g.font = `10px ${MONO}`; g.textAlign = 'center';
+        g.fillText(`S${i}`, x + sw / 2, y + sh / 2 + 3.5);
+      }
+    }
+
+    // Tac-TAD track
+    gfxRRect(g, padL, yTac, plotW, trackH, 4);
+    g.fillStyle = '#0e141b'; g.fill(); g.strokeStyle = '#2c3844'; g.lineWidth = 1; g.stroke();
+    const ctrlW = (0.001 / FP) * plotW, dlW = (0.003 / FP) * plotW;
+    g.fillStyle = 'rgba(157,180,255,0.10)'; g.fillRect(padL + 1, yTac + 1, ctrlW, trackH - 2);
+    g.fillStyle = 'rgba(157,180,255,0.18)'; g.fillRect(padL + 1 + ctrlW, yTac + 1, dlW, trackH - 2);
+    g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
+    g.fillText('CTRL', padL + 1, yTac - 5); g.fillText('DL', padL + ctrlW + 4, yTac - 5);
+
+    (latestTelemetry.active_gantt_allocations || []).forEach(a => {
+      const startS = a.slot_start_s !== undefined ? (a.slot_start_s % FP) : ((a.start_ms || 0) / 1000);
+      const durS = a.duration_s !== undefined ? a.duration_s : ((a.duration_ms || 0) / 1000);
+      const ax = xOf(startS), aw = Math.max(2, (durS / FP) * plotW);
+      let col = '#10b981';
+      if (a.is_pre_occlusion_flush) col = '#f59e0b';
+      else if ((a.video_bytes || 0) > 0) col = '#f59e0b';
+      else if ((a.photo_bytes || 0) > 0) col = '#fb923c';
+      else if ((a.c2_bytes || 0) > 0 || a.node_id === 15) col = '#38bdf8';
+      const y = yTac + 3, sh = trackH - 6;
+      gfxRRect(g, ax, y, Math.max(1.5, aw - 1), sh, 3);
+      const grad = g.createLinearGradient(0, y, 0, y + sh);
+      grad.addColorStop(0, col); grad.addColorStop(1, col + 'aa');
+      g.fillStyle = grad; g.fill();
+      if (a.node_id === sel) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke(); }
+      if (aw > 20) {
+        g.fillStyle = '#0b1015'; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
+        g.fillText(`S${a.node_id}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
+      }
+    });
+  } catch (err) {
+    console.error('Error drawing waterfall canvas:', err);
+  }
+}
+
+function drawFresnel() {
+  try {
+    const cvs = fresnelCanvas;
+    if (!cvs) return;
+    const w = cvs.parentElement.clientWidth || 800;
+    const h = cvs.parentElement.clientHeight || 320;
+    if (w <= 0 || h <= 0) return;
+    const g = fresnelCtx;
+    g.clearRect(0, 0, w, h);
+
+    const f = latestTelemetry.selected_node_fresnel;
+    const selNode = (latestTelemetry.nodes_telemetry || []).find(n => n.node_id === selectedNodeId);
+    const clearM = f ? f.clearance_m : 0;
+    const isObs = !!((f && f.obstructed) || (selNode && selNode.state_name === 'HARD_SHADOW_CUTOFF'));
+
+    const badge = $('fresnel-status-badge');
+    if (badge) {
+      if (isObs) { badge.className = 'kpi-badge badge-crimson'; badge.textContent = 'TERRAIN OCCLUSION (DIFFRACTION OUTAGE)'; }
+      else if (clearM < 15) { badge.className = 'kpi-badge badge-amber'; badge.textContent = 'GRAZING 0.6 F1 BOUNDARY'; }
+      else { badge.className = 'kpi-badge badge-emerald'; badge.textContent = 'PRISTINE LINE-OF-SIGHT'; }
+    }
+
+    const sky = g.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#0f1a27'); sky.addColorStop(1, '#0b1015');
+    g.fillStyle = sky; g.fillRect(0, 0, w, h);
+
+    const pts = (f && f.profile_points && f.profile_points.length > 1) ? f.profile_points : null;
+    if (!pts) {
+      g.fillStyle = '#7d8c99'; g.font = `12px ${MONO}`; g.textAlign = 'center';
+      g.fillText('Waiting for terrain profile…', w / 2, h / 2);
+      return;
+    }
+
+    const last = pts.length - 1;
+    const padL = 56, padR = 20, padT = 24, padB = 32, gw = w - padL - padR, gh = h - padT - padB;
+    let lo = Infinity, hi = -Infinity;
+    pts.forEach(p => { lo = Math.min(lo, p[1], p[3]); hi = Math.max(hi, p[1], p[2], 2 * p[2] - p[3]); });
+    const aStep = gfxNiceStep(hi - lo + 400, 5);
+    const minAlt = Math.floor((lo - 250) / aStep) * aStep, maxAlt = Math.ceil((hi + 250) / aStep) * aStep;
+    const dMax = Math.max(pts[last][0], 0.1);
+    const X = d => padL + (d / dMax) * gw;
+    const Y = a => padT + gh - ((a - minAlt) / (maxAlt - minAlt)) * gh;
+
+    // Grid and axes
+    g.lineWidth = 1; g.font = `10px ${MONO}`;
+    for (let a = Math.ceil(minAlt / aStep) * aStep; a <= maxAlt + 1e-6; a += aStep) {
+      const y = Math.round(Y(a)) + 0.5;
+      g.strokeStyle = 'rgba(120,140,160,0.14)'; g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+      g.fillStyle = '#7d8c99'; g.textAlign = 'right'; g.fillText(`${Math.round(a)} m`, padL - 8, y + 3);
+    }
+    const dStep = gfxNiceStep(dMax, 6);
+    for (let d = 0; d <= dMax + 1e-6; d += dStep) {
+      const x = Math.round(X(d)) + 0.5;
+      g.strokeStyle = 'rgba(120,140,160,0.10)'; g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + gh); g.stroke();
+      g.fillStyle = '#7d8c99'; g.textAlign = 'center'; g.fillText(String(+d.toFixed(1)), x, padT + gh + 14);
+    }
+    g.textAlign = 'right'; g.fillText('km from terminal', w - padR, h - 5);
+
+    // First Fresnel zone (0.6 F1 band)
+    g.beginPath();
+    pts.forEach((p, i) => { const x = X(p[0]), y = Y(2 * p[2] - p[3]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    for (let i = last; i >= 0; i--) g.lineTo(X(pts[i][0]), Y(pts[i][3]));
+    g.closePath(); g.fillStyle = 'rgba(243,181,74,0.10)'; g.fill();
+    g.save(); g.setLineDash([4, 4]); g.strokeStyle = 'rgba(243,181,74,0.55)'; g.lineWidth = 1;
+    [3, -1].forEach(mode => {
+      g.beginPath();
+      pts.forEach((p, i) => { const a = mode === 3 ? p[3] : 2 * p[2] - p[3]; i ? g.lineTo(X(p[0]), Y(a)) : g.moveTo(X(p[0]), Y(a)); });
+      g.stroke();
+    });
+    g.restore();
+
+    // Terrain body
+    const base = Y(minAlt);
+    const tg = g.createLinearGradient(0, padT, 0, padT + gh);
+    tg.addColorStop(0, '#33465a'); tg.addColorStop(1, '#141c26');
+    g.beginPath(); g.moveTo(X(pts[0][0]), base);
+    pts.forEach(p => g.lineTo(X(p[0]), Y(p[1])));
+    g.lineTo(X(pts[last][0]), base); g.closePath(); g.fillStyle = tg; g.fill();
+
+    // Obstructed stretches
+    let i = 0;
+    while (i <= last) {
+      if (pts[i][1] > pts[i][2]) {
+        let j = i; while (j <= last && pts[j][1] > pts[j][2]) j++;
+        g.beginPath();
+        for (let k = i; k < j; k++) g.lineTo(X(pts[k][0]), Y(pts[k][1]));
+        for (let k = j - 1; k >= i; k--) g.lineTo(X(pts[k][0]), Y(pts[k][2]));
+        g.closePath(); g.fillStyle = 'rgba(255,112,112,0.38)'; g.fill();
+        i = j;
+      } else i++;
+    }
+    g.lineJoin = 'round'; g.strokeStyle = isObs ? '#ff7070' : '#7f9ab5'; g.lineWidth = 1.8;
+    g.beginPath(); pts.forEach((p, k) => k ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1]))); g.stroke();
+
+    // Direct line of sight
+    const pN = { x: X(pts[0][0]), y: Y(pts[0][2]) }, pA = { x: X(pts[last][0]), y: Y(pts[last][2]) };
+    g.strokeStyle = isObs ? '#ff7070' : '#9db4ff'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(pN.x, pN.y); g.lineTo(pA.x, pA.y); g.stroke();
+    const dot = (p, col) => { g.fillStyle = col; g.beginPath(); g.arc(p.x, p.y, 4.5, 0, TAU); g.fill(); g.strokeStyle = '#0b1015'; g.lineWidth = 1.5; g.stroke(); };
+    dot(pN, '#4fd1a1'); dot(pA, '#38bdf8');
+    g.font = `600 10.5px ${MONO}`; g.fillStyle = '#e8ecef';
+    g.textAlign = 'left'; g.fillText((f && f.node_name) || (selNode && selNode.name) || 'Terminal', pN.x + 8, pN.y - 8);
+    g.textAlign = 'right'; g.fillText('ACN', pA.x - 8, pA.y - 8);
+
+    // Minimum clearance marker
+    let minC = Infinity, ci = 1;
+    for (let k = 1; k < last; k++) { const c = pts[k][2] - pts[k][1]; if (c < minC) { minC = c; ci = k; } }
+    if (Number.isFinite(minC)) {
+      const tT = { x: X(pts[ci][0]), y: Y(pts[ci][1]) }, tL = { x: X(pts[ci][0]), y: Y(pts[ci][2]) };
+      const col = minC >= 0 ? '#4fd1a1' : '#ff7070';
+      g.strokeStyle = col; g.lineWidth = 1.4; g.beginPath(); g.moveTo(tT.x, tT.y); g.lineTo(tL.x, tL.y); g.stroke();
+      const txt = `${minC >= 0 ? '+' : ''}${minC.toFixed(0)} m`;
+      g.font = `600 10.5px ${MONO}`;
+      const tw = g.measureText(txt).width + 12, cx = tL.x + tw + 10 < w - padR ? tL.x + 8 : tL.x - 8 - tw, cy = (tT.y + tL.y) / 2 - 9;
+      gfxRRect(g, cx, cy, tw, 18, 9); g.fillStyle = 'rgba(11,16,21,0.88)'; g.fill(); g.strokeStyle = col; g.lineWidth = 1; g.stroke();
+      g.fillStyle = col; g.textAlign = 'left'; g.fillText(txt, cx + 6, cy + 12.5);
+    }
+
+    g.font = `10.5px ${MONO}`; g.fillStyle = '#9aa8b3'; g.textAlign = 'left';
+    const dl = f && Number.isFinite(f.diffraction_loss_db) ? `  ·  diffraction ${f.diffraction_loss_db.toFixed(1)} dB` : '';
+    g.fillText(`path ${dMax.toFixed(1)} km${dl}`, padL + 4, 14);
+  } catch (err) {
+    console.error('Error drawing Fresnel canvas:', err);
+  }
+}
+
+/* ====================================================================
+   MAIN RENDER LOOP
+   ==================================================================== */
+function animationLoop() {
+  try {
+    const activeTab = document.querySelector('.tab-content.active');
+    if (activeTab) {
+      drawRadar();
+      if (activeTab.id === 'tab-scheduler') drawWaterfall();
+      else if (activeTab.id === 'tab-terrain') drawFresnel();
+    }
+  } catch (err) {
+    console.error('Animation loop exception:', err);
+  }
+  requestAnimationFrame(animationLoop);
+}
+requestAnimationFrame(animationLoop);
+
+setTimeout(() => {
+  sendCommand({ type: 'GET_HILLSHADE' });
+}, 80);
+
+/* Telemetry sampling */
+(() => {
+  const canvas = document.getElementById('overview-goodput-canvas');
+  const sampleCount = document.getElementById('overview-trend-sample-count');
+  const eventList = document.getElementById('overview-event-list');
+  if (!canvas || !sampleCount || !eventList) return;
+  const points = [];
+  const maxPoints = 90;
+  let previousGoodput = '';
+  let previousSituation = '';
+  let previousTerminal = '';
+  let previousScheduler = '';
+  const clock = () => {
+    const el = document.getElementById('clock-display');
+    return el ? el.textContent.trim() : 'simulation time unavailable';
+  };
+  const addEvent = (message) => {
+    const empty = eventList.querySelector('.overview-event-empty');
+    if (empty) empty.remove();
+    const li = document.createElement('li');
+    const stamp = document.createElement('span');
+    stamp.className = 'event-time';
+    stamp.textContent = clock();
+    li.append(stamp, document.createTextNode(message));
+    eventList.prepend(li);
+    while (eventList.children.length > 8) eventList.lastElementChild.remove();
+  };
+  const parseMb = (raw) => {
+    const m = (raw || '').replace(/,/g, '').match(/(-?\d+(?:\.\d+)?)\s*Mb/i);
+    return m ? Number(m[1]) : null;
+  };
+  const draw = () => {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.floor(rect.width * dpr), h = Math.floor(rect.height * dpr);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cw = rect.width, ch = rect.height;
+    ctx.clearRect(0, 0, cw, ch);
+    const pad = {l:30,r:8,t:8,b:18}, pw=cw-pad.l-pad.r, ph=ch-pad.t-pad.b;
+    ctx.strokeStyle = 'rgba(139,155,180,.18)'; ctx.lineWidth=1;
+    for(let i=0;i<4;i++){const y=pad.t+ph*i/3;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(cw-pad.r,y);ctx.stroke();}
+    const vals=points.map(p=>p.value).filter(v=>Number.isFinite(v));
+    if(vals.length<2){ctx.fillStyle='#8b9bb4';ctx.font='10px sans-serif';ctx.fillText('Collecting telemetry samples…',pad.l+4,ch/2);return;}
+    const min=Math.min(...vals), max=Math.max(...vals), span=Math.max(max-min,0.01);
+    ctx.fillStyle='#8b9bb4';ctx.font='9px monospace';ctx.fillText(max.toFixed(1)+' Mb',2, pad.t+4);ctx.fillText(min.toFixed(1)+' Mb',2,ch-pad.b);
+    ctx.strokeStyle='#38bdf8';ctx.lineWidth=1.8;ctx.beginPath();
+    points.forEach((p,i)=>{const x=pad.l+pw*i/(maxPoints-1);const y=pad.t+ph-(p.value-min)/span*ph;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});
+    ctx.stroke();
+  };
+  const sample = () => {
+    const goodputEl=document.getElementById('kpi-tac-tx');
+    const raw=goodputEl ? goodputEl.textContent.trim() : '';
+    const value=parseMb(raw);
+    if(value!==null){
+      points.push({value,time:Date.now()});
+      if(points.length>maxPoints)points.shift();
+      sampleCount.textContent=points.length+' samples';
+      if(previousGoodput && raw!==previousGoodput && value>parseMb(previousGoodput)+0.001) {
+        if(points.length===1 || points.length%10===0) addEvent('Delivered goodput advanced to '+raw+'.');
+      }
+      previousGoodput=raw;
+    }
+    const situationEl=document.querySelector('.situation-strip, #situation-strip, [id*="situation"]');
+    const situation=situationEl ? situationEl.textContent.replace(/\s+/g,' ').trim() : '';
+    if(situation && situation!==previousSituation){addEvent('Situation: '+situation.slice(0,180));previousSituation=situation;}
+    const node=document.getElementById('quickNodeSelect');
+    const selected=node ? node.options[node.selectedIndex]?.textContent.trim() : '';
+    if(selected && selected!==previousTerminal){addEvent('Inspection target changed: '+selected+'.');previousTerminal=selected;}
+    const mode=document.getElementById('scheduler-quick-toggle');
+    const scheduler=mode ? mode.textContent.trim() : '';
+    if(scheduler && scheduler!==previousScheduler){if(previousScheduler)addEvent('Scheduler mode changed: '+scheduler+'.');previousScheduler=scheduler;}
+    draw();
+  };
+  sample();
+  window.setInterval(sample,1000);
+  window.addEventListener('resize',draw);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)draw();});
+})();
+
+// Analysis context sync
+(function installAnalysisContext(){
+  const text = (id) => { const el=document.getElementById(id); return el ? (el.textContent||'').replace(/\s+/g,' ').trim() : ''; };
+  const firstText = (ids) => { for(const id of ids){const v=text(id); if(v) return v;} return '--'; };
+  function update(){
+    const nodeSelect=document.getElementById('termNodeSelect') || document.getElementById('quickNodeSelect');
+    const nodeName=nodeSelect && nodeSelect.selectedIndex>=0 ? nodeSelect.options[nodeSelect.selectedIndex].textContent.trim() : '--';
+    const time=firstText(['sim-clock','sim-time','clock-display','simulation-clock']);
+    const frame=firstText(['frame-counter','sim-frame','frame-display']);
+    const mode=firstText(['scheduler-quick-toggle','scheduler-mode-label']);
+    const snr=text('lb-snr');
+    const status=firstText(['term-state-pill','fresnel-status-badge']);
+    document.querySelectorAll('.analysis-context').forEach(panel=>{
+      panel.querySelectorAll('[data-context-node]').forEach(el=>el.textContent=nodeName||'--');
+      panel.querySelectorAll('[data-context-time]').forEach(el=>el.textContent=time);
+      panel.querySelectorAll('[data-context-frame]').forEach(el=>el.textContent=frame);
+      panel.querySelectorAll('[data-context-mode]').forEach(el=>el.textContent=mode||'--');
+      panel.querySelectorAll('[data-context-link]').forEach(el=>el.textContent=snr ? ('SNR '+snr) : status);
+    });
+  }
+  update(); window.setInterval(update,1000);
+  document.addEventListener('change',e=>{if(e.target && (e.target.id==='termNodeSelect'||e.target.id==='quickNodeSelect')) update();});
+})();
+</script>
+</body>
+</html>
