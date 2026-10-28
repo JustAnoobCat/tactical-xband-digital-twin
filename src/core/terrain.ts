@@ -238,15 +238,28 @@ export class TerrainEngine {
    * Dynamically resolves using Vite's BASE_URL or relative paths for GitHub Pages subpaths.
    */
   public async loadRealSatelliteDem(url?: string): Promise<boolean> {
-    const baseUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.BASE_URL)
-      ? (import.meta as any).env.BASE_URL
-      : './';
-    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    const defaultUrl = `${cleanBase}terrain/real_ladakh_dem.bin`;
+    
+const baseUrl = import.meta.env.BASE_URL || "/";
+const cleanBase = baseUrl.endsWith("/")
+  ? baseUrl
+  : `${baseUrl}/`;
 
-    const candidateUrls = url
-      ? [url, defaultUrl, './terrain/real_ladakh_dem.bin', `${cleanBase}public/terrain/real_ladakh_dem.bin`]
-      : [defaultUrl, './terrain/real_ladakh_dem.bin', `${cleanBase}public/terrain/real_ladakh_dem.bin`, '/terrain/real_ladakh_dem.bin'];
+const defaultUrl = new URL(
+  `${cleanBase}terrain/real_ladakh_dem.bin`,
+  self.location.origin
+).toString();
+
+
+    
+const candidateUrls = url
+  ? [url, defaultUrl]
+  : [
+      defaultUrl,
+      new URL(
+        "terrain/real_ladakh_dem.bin",
+        self.location.href
+      ).toString(),
+    ];
 
     for (const targetUrl of candidateUrls) {
       try {
