@@ -4,7 +4,7 @@
  *
  * Runs headless discrete-event network simulation in a background thread:
  * 1. Generates 512x512 3D Lambertian hillshade across the expanded 1,200x1,200 km regional theater.
- * 2. Awaits real satellite DEM acquisition (/terrain/real_ladakh_dem.bin) on startup.
+ * 2. Awaits real satellite DEM acquisition (/terrain/real_ladakh_dem.bin) on startup using dynamic Base URL.
  * 3. Dual-scheduler simulation (Static TDMA vs. Tac-TAD Dynamic) with live KPI accumulation.
  * 4. Active mission transfer state machine (SOS, Photo, Video, Voice) with ACK/drop tracking.
  */
@@ -520,18 +520,10 @@ export class SimulationWorkerManager {
     const activeNodes = this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic;
     const [vx, vy] = this.trajectoryEngine.getAcnVelocity(this.simTimeS);
 
-    let flushNode: [GroundNodeTrafficSubsystem, PredictiveState] | null = null;
-    let cutoffNode: [GroundNodeTrafficSubsystem, PredictiveState] | null = null;
-    let burstNode: [GroundNodeTrafficSubsystem, PredictiveState] | null = null;
-
     const nodesTel = activeNodes.map((node) => {
       const ls = this.linkStatuses.get(node.nodeId);
       const ps = this.predStates.get(node.nodeId);
       const q = node.queue;
-
-      if (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH && !flushNode) flushNode = [node, ps];
-      else if (ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF && !cutoffNode) cutoffNode = [node, ps];
-      else if (ps?.currentState === NodeTerrainState.RE_EMERGENCE_BURST && !burstNode) burstNode = [node, ps];
 
       const c2Bytes = q.getClassBacklogBytes(69);
       const voiceBytes = q.getClassBacklogBytes(65);
@@ -566,16 +558,31 @@ export class SimulationWorkerManager {
       };
     });
 
+    // Detect state nodes synchronously so TypeScript tracks types cleanly
+    let flushNode: { node: GroundNodeTrafficSubsystem; ps: PredictiveState } | null = null;
+    let cutoffNode: { node: GroundNodeTrafficSubsystem; ps: PredictiveState } | null = null;
+    let burstNode: { node: GroundNodeTrafficSubsystem; ps: PredictiveState } | null = null;
+
+    for (const node of activeNodes) {
+      const ps = this.predStates.get(node.nodeId);
+      if (ps) {
+        if (ps.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH && !flushNode) {
+          flushNode = { node, ps };
+        } else if (ps.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF && !cutoffNode) {
+          cutoffNode = { node, ps };
+        } else if (ps.currentState === NodeTerrainState.RE_EMERGENCE_BURST && !burstNode) {
+          burstNode = { node, ps };
+        }
+      }
+    }
+
     let narrative = 'NOMINAL PATROL: All terminals in clear Line-of-Sight. ACN coverage bubble tracking along elliptical orbit at FL500 (5,000m).';
     if (flushNode) {
-      const [fn, fps] = flushNode;
-      narrative = `LOOK-AHEAD EVENT: S${fn.nodeId} predicted to enter mountain shadow in ${fps.timeToOcclusionS.toFixed(1)}s. Tac-TAD expanded its slot to evacuate queue backlog before cutoff.`;
+      narrative = `LOOK-AHEAD EVENT: S${flushNode.node.nodeId} predicted to enter mountain shadow in ${flushNode.ps.timeToOcclusionS.toFixed(1)}s. Tac-TAD expanded its slot to evacuate queue backlog before cutoff.`;
     } else if (cutoffNode) {
-      const [cn] = cutoffNode;
-      narrative = `TERRAIN OUTAGE: S${cn.nodeId} line-of-sight is severed by mountain ridge. Static TDMA is wasting frame time radiating into rock. Tac-TAD reclaims 100% of the slot for other units.`;
+      narrative = `TERRAIN OUTAGE: S${cutoffNode.node.nodeId} line-of-sight is severed by mountain ridge. Static TDMA is wasting frame time radiating into rock. Tac-TAD reclaims 100% of the slot for other units.`;
     } else if (burstNode) {
-      const [bn] = burstNode;
-      narrative = `RE-EMERGENCE: S${bn.nodeId} cleared the ridge. Tac-TAD allocated an immediate zero-contention burst to restore tactical comms.`;
+      narrative = `RE-EMERGENCE: S${burstNode.node.nodeId} cleared the ridge. Tac-TAD allocated an immediate zero-contention burst to restore tactical comms.`;
     }
 
     const sg = this.metrics.staticGoodputBits;
@@ -968,11 +975,11 @@ export class SimulationWorkerManager {
   }
 
   public async start(): Promise<void> {
-    // 1. Try to load real satellite DEM from Vite public assets
+    // 1. Try to load real satellite DEM using dynamic Base URL
     try {
-      const ok = await this.terrainEngine.loadRealSatelliteDem('/terrain/real_ladakh_dem.bin');
+      const ok = await this.terrainEngine.loadRealSatelliteDem();
       if (ok) {
-        console.log('[Worker] Real satellite DEM loaded successfully from /terrain/real_ladakh_dem.bin');
+        console.log('[Worker] Real satellite DEM loaded successfully.');
       } else {
         console.log('[Worker] Real satellite DEM not found, using synthetic procedural fallback.');
         this.terrainEngine.setTerrainMode('synthetic');

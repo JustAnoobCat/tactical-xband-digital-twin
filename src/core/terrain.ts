@@ -234,25 +234,42 @@ export class TerrainEngine {
   }
 
   /**
-   * Asynchronously loads real satellite elevation data from Vite public assets.
+   * Asynchronously loads real satellite elevation data.
+   * Dynamically resolves using Vite's BASE_URL or relative paths for GitHub Pages subpaths.
    */
-  public async loadRealSatelliteDem(url: string = '/terrain/real_ladakh_dem.bin'): Promise<boolean> {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) return false;
-      const buffer = await response.arrayBuffer();
-      if (buffer.byteLength < 512 * 512 * 4) {
-        console.warn('Real DEM buffer size mismatch, expected at least 1MB.');
-        return false;
+  public async loadRealSatelliteDem(url?: string): Promise<boolean> {
+    const baseUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.BASE_URL)
+      ? (import.meta as any).env.BASE_URL
+      : './';
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    const defaultUrl = `${cleanBase}terrain/real_ladakh_dem.bin`;
+
+    const candidateUrls = url
+      ? [url, defaultUrl, './terrain/real_ladakh_dem.bin', `${cleanBase}public/terrain/real_ladakh_dem.bin`]
+      : [defaultUrl, './terrain/real_ladakh_dem.bin', `${cleanBase}public/terrain/real_ladakh_dem.bin`, '/terrain/real_ladakh_dem.bin'];
+
+    for (const targetUrl of candidateUrls) {
+      try {
+        const response = await fetch(targetUrl);
+        if (response.ok) {
+          const buffer = await response.arrayBuffer();
+          if (buffer.byteLength >= 512 * 512 * 4) {
+            this.realDemGrid = new Float32Array(buffer, 0, 512 * 512);
+            this.hasRealDem = true;
+            this.terrainMode = 'real';
+            console.log(`[TerrainEngine] Loaded real satellite DEM from: ${targetUrl}`);
+            return true;
+          } else {
+            console.warn(`[TerrainEngine] Buffer size mismatch from ${targetUrl}, expected >= 1MB.`);
+          }
+        }
+      } catch (_) {
+        // Try next candidate URL
       }
-      this.realDemGrid = new Float32Array(buffer, 0, 512 * 512);
-      this.hasRealDem = true;
-      this.terrainMode = 'real';
-      return true;
-    } catch (e) {
-      console.warn('Could not fetch real DEM, using synthetic fallback:', e);
-      return false;
     }
+
+    console.warn('[TerrainEngine] Could not fetch real satellite DEM from any candidate URL, using synthetic fallback.');
+    return false;
   }
 
   public loadCustomDem(data: Float32Array | ArrayBuffer): boolean {
