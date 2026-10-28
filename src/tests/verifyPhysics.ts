@@ -9,8 +9,7 @@
  * 4. Mountain Occlusion Outage (Diffraction Loss >= 25 dB, Bitrate == 0.0 bps).
  *
  * Execution:
- *   npx ts-node src/tests/verifyPhysics.ts
- *   (or: npx tsx src/tests/verifyPhysics.ts)
+ *   npm run verify:physics
  */
 
 import {

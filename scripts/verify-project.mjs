@@ -6,8 +6,8 @@ const worker = readFileSync(new URL('../src/worker/simWorker.ts', import.meta.ur
 const requiredFiles = [
   '../src/core/config.ts', '../src/core/terrain.ts', '../src/core/linkBudget.ts',
   '../src/core/trajectory.ts', '../src/core/queues.ts', '../src/core/scheduler.ts',
-  '../src/tests/verifyPhysics.ts', '../src/tests/verifyScheduler.ts',
-  '../benchmark_results/BENCHMARK_DOSSIER.md', '../benchmark_results/summary_metrics.csv', '../EXPERIMENT_02_NOTES.md',
+  '../src/tests/verifyPhysics.ts', '../src/tests/verifyScheduler.ts', '../src/tests/verifyWorkerState.ts',
+  '../benchmark_results/BENCHMARK_DOSSIER.md', '../benchmark_results/summary_metrics.csv', '../METRICS_PATCH_NOTES.md',
 ];
 
 const checks = [];
@@ -31,8 +31,9 @@ check('Persistent map mount and resize separator are wired', () => {
   assert.match(html, /xband-map-width-pct/);
 });
 check('Map renderer continues while detail navigation changes', () => {
-  assert.match(html, /drawRadar\(\); \/\/ Persistent map remains live on every detail view\./);
+  assert.match(html, /drawRadar\(\);/);
   assert.match(html, /function drawRadar\(\)/);
+  assert.match(html, /requestAnimationFrame\(animationLoop\)/);
 });
 check('Simulation remains worker-backed and telemetry-driven', () => {
   assert.match(html, /new Worker\(new URL\("\.\/src\/worker\/simWorker\.ts", import\.meta\.url\)/);
@@ -60,14 +61,14 @@ check('Scheduler allocation inspector uses current worker-frame allocations', ()
 
 
 check('Detail tabs stack live context above their analytical workspace', () => {
-  assert.match(html, /\.tab-content\.active\{display:flex;flex-direction:column;min-width:0;min-height:0\}/);
+  assert.match(html, /\.tab-content\.active\{display:flex;flex-direction:column\}/);
   assert.match(html, /\.analysis-context\{flex:none;display:flex;/);
 });
 
 check('Detailed analysis workspaces use responsive layouts', () => {
-  assert.match(html, /\.scheduler-layout\{display:grid;grid-template-columns:minmax\(0,1\.35fr\) minmax\(300px,1fr\)/);
-  assert.match(html, /@media\(max-width:1180px\)/);
-  assert.match(html, /@media\(max-width:820px\)/);
+  assert.match(html, /\.cols\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(300px,1fr\)\)/);
+  assert.match(html, /@media\(max-width:860px\)/);
+  assert.match(html, /\.main-viewport\{grid-template-columns:minmax\(0,1fr\)/);
   assert.match(html, /\.fresnel-canvas-box\{height:clamp\(/);
 });
 
@@ -87,8 +88,9 @@ check('Goodput percentiles use observed frame-to-frame samples with a minimum sa
 });
 
 check('Stage 12 reduces horizontal overflow in analytical panels', () => {
-  assert.match(html, /\.scheduler-layout \.data-table\{width:100%;table-layout:fixed\}/);
-  assert.match(html, /\.terminal-layout \.traffic-actions\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(html, /\.table-scroll\{overflow-x:auto\}/);
+  assert.match(html, /\.data-table\{width:100%;border-collapse:collapse;font-size:12px;min-width:480px\}/);
+  assert.match(html, /\.traffic-actions\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(html, /Exploratory UI telemetry: values are differences between successive cumulative-goodput readings/);
 });
 

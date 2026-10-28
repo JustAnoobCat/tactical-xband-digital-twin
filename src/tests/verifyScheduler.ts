@@ -10,8 +10,7 @@
  * 5. 100-Frame comparative simulation: Tac-TAD gain >= 1.5x and 0.0% severed-link waste.
  *
  * Execution:
- *   npx ts-node src/tests/verifyScheduler.ts
- *   (or: npx tsx src/tests/verifyScheduler.ts)
+ *   npm run verify:scheduler
  */
 
 import { ACNFlightConfig, EnvironmentConfig, RFConfig } from '../core/config';

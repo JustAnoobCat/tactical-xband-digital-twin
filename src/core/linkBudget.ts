@@ -54,6 +54,8 @@ export interface LinkStatus {
   readonly bitrateBps: number;
   readonly bitrateMbps: number;
   readonly isOutage: boolean;
+  /** True when geometry intersects a screening-only obstacle; no attenuation is inferred. */
+  readonly obstacleBlocked?: boolean;
 }
 
 export class LinkBudgetEngine {
@@ -139,7 +141,8 @@ export class LinkBudgetEngine {
     slantRangeM: number,
     diffractionLossDb: number,
     rf: RFConfig,
-    env: EnvironmentConfig
+    env: EnvironmentConfig,
+    obstacleBlocked: boolean = false
   ): LinkStatus {
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM);
@@ -176,7 +179,7 @@ export class LinkBudgetEngine {
 
     // Dynamic MODCOD selection & capacity mapping
     const modcod = LinkBudgetEngine.selectModCod(snrDb);
-    const isOutage = modcod.name === 'LINK_OUTAGE';
+    const isOutage = obstacleBlocked || modcod.name === 'LINK_OUTAGE';
     const spectralEfficiency = isOutage ? 0.0 : modcod.spectralEfficiencyBpsHz;
     const bitrateBps = isOutage ? 0.0 : spectralEfficiency * rf.channelBandwidthHz;
     const bitrateMbps = bitrateBps / 1.0e6;
@@ -197,11 +200,12 @@ export class LinkBudgetEngine {
       prxDbm,
       pNoiseDbm,
       snrDb,
-      modcodName: modcod.name,
+      modcodName: obstacleBlocked ? 'OBSTACLE_BLOCKED' : modcod.name,
       spectralEfficiency,
       bitrateBps,
       bitrateMbps,
       isOutage,
+      obstacleBlocked,
     };
   }
 }

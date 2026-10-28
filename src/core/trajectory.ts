@@ -9,9 +9,10 @@
  *    NORMAL_LOS -> PRE_OCCLUSION_FLUSH -> HARD_SHADOW_CUTOFF -> RE_EMERGENCE_BURST.
  */
 
-import { ACNFlightConfig, EnvironmentConfig, RFConfig } from './config';
+import { ACNFlightConfig, ACNWaypoint, EnvironmentConfig, RFConfig } from './config';
 import { LinkBudgetEngine } from './linkBudget';
 import { Position3D, TerrainEngine } from './terrain';
+import { validateClosedWaypointPath } from './waypoints';
 
 export enum NodeTerrainState {
   NORMAL_LOS = 'NORMAL_LOS',
@@ -27,6 +28,14 @@ export interface PredictiveState {
   readonly fresnelClearanceM: number;
   readonly fresnelRateOfChangeMps: number;
   readonly predictedOutageDurationS: number;
+  readonly obstacleBlocked?: boolean;
+}
+
+/** Position/velocity contract shared by the live simulation and look-ahead engine. */
+export interface ACNTrajectory {
+  getAcnPosition(tS: number): [number, number, number];
+  getAcnVelocity(tS: number): [number, number, number];
+  getPathPoints(numPoints?: number): [number, number][];
 }
 
 /**
@@ -35,7 +44,7 @@ export interface PredictiveState {
  * Integrates arc-length parameterized orbit so tangential speed |v| = 60.0 m/s
  * remains invariant along the rotated ellipse.
  */
-export class ACNTrajectoryEngine {
+export class ACNTrajectoryEngine implements ACNTrajectory {
   public readonly flightConfig: ACNFlightConfig;
   public readonly numLutSamples: number;
   public readonly orbitPeriodS: number;
@@ -45,6 +54,14 @@ export class ACNTrajectoryEngine {
   private readonly totalPerimeterM: number;
 
   constructor(flightConfig: ACNFlightConfig, numLutSamples: number = 2048) {
+    if (!Number.isFinite(flightConfig.loiterSpeedMps) || flightConfig.loiterSpeedMps <= 0 || flightConfig.loiterSpeedMps > 1000) {
+      throw new Error('Trajectory speed must be finite and in (0, 1000] m/s.');
+    }
+    if (!Number.isFinite(flightConfig.altitudeMslM) || !Number.isFinite(flightConfig.centerXm) || !Number.isFinite(flightConfig.centerYm) ||
+        !Number.isFinite(flightConfig.loiterRadiusAM) || !Number.isFinite(flightConfig.loiterRadiusBM) ||
+        flightConfig.loiterRadiusAM <= 0 || flightConfig.loiterRadiusBM <= 0 || !Number.isFinite(flightConfig.loiterRotationDeg)) {
+      throw new Error('Ellipse trajectory configuration must contain finite coordinates, altitude, rotation, and positive axes.');
+    }
     this.flightConfig = flightConfig;
     this.numLutSamples = numLutSamples;
 
@@ -162,6 +179,171 @@ export class ACNTrajectoryEngine {
 
     return [vx, vy, 0.0];
   }
+
+  public getPathPoints(numPoints: number = 64): [number, number][] {
+    const a = this.flightConfig.loiterRadiusAM;
+    const b = this.flightConfig.loiterRadiusBM;
+    const phi = (this.flightConfig.loiterRotationDeg * Math.PI) / 180.0;
+    const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
+    const points: [number, number][] = [];
+    for (let i = 0; i < numPoints; i++) {
+      const theta = (2.0 * Math.PI * i) / numPoints;
+      const xr = a * Math.cos(theta), yr = b * Math.sin(theta);
+      points.push([
+        this.flightConfig.centerXm + xr * cosPhi - yr * sinPhi,
+        this.flightConfig.centerYm + xr * sinPhi + yr * cosPhi,
+      ]);
+    }
+    return points;
+  }
+}
+
+interface WaypointSample {
+  readonly distanceM: number;
+  readonly segment: number;
+  readonly u: number;
+  readonly point: readonly [number, number];
+}
+
+/**
+ * Closed, shape-limited cubic Hermite waypoint loop, sampled by arc length.
+ * Shared bounded tangents keep the curve C1 at waypoints. Tangent arms are
+ * limited by adjacent edge lengths to control excursions on irregular routes.
+ */
+export class WaypointTrajectoryEngine implements ACNTrajectory {
+  public readonly flightConfig: ACNFlightConfig;
+  public readonly totalLengthM: number;
+  public readonly orbitPeriodS: number;
+
+  private readonly points: readonly ACNWaypoint[];
+  private readonly samples: WaypointSample[] = [];
+
+  constructor(flightConfig: ACNFlightConfig, samplesPerSegment: number = 512) {
+    if (flightConfig.trajectoryMode !== 'waypoints') throw new Error('Waypoint trajectory mode must be explicit.');
+    if (!Number.isFinite(flightConfig.loiterSpeedMps) || flightConfig.loiterSpeedMps <= 0 || flightConfig.loiterSpeedMps > 1000) {
+      throw new Error('Waypoint trajectory speed must be finite and in (0, 1000] m/s.');
+    }
+    if (!Number.isFinite(flightConfig.altitudeMslM)) throw new Error('ACN altitude must be finite.');
+    const input = flightConfig.waypoints;
+    if (!Number.isInteger(samplesPerSegment) || samplesPerSegment < 8) throw new Error('samplesPerSegment must be an integer of at least 8.');
+    const copied = validateClosedWaypointPath(input);
+    this.points = Object.freeze(copied);
+    this.flightConfig = flightConfig;
+
+    let distanceM = 0;
+    let previous = this.evaluateSegment(0, 0);
+    this.samples.push({ distanceM, segment: 0, u: 0, point: previous });
+    for (let segment = 0; segment < copied.length; segment++) {
+      if (segment > 0) {
+        const start = this.evaluateSegment(segment, 0);
+        this.samples.push({ distanceM, segment, u: 0, point: start });
+        previous = start;
+      }
+      for (let step = 1; step <= samplesPerSegment; step++) {
+        const u = step / samplesPerSegment;
+        const point = this.evaluateSegment(segment, u);
+        distanceM += Math.hypot(point[0] - previous[0], point[1] - previous[1]);
+        this.samples.push({ distanceM, segment, u, point });
+        previous = point;
+      }
+    }
+    if (!(distanceM > 1e-6) || !Number.isFinite(distanceM)) throw new Error('Waypoint loop is degenerate.');
+    this.totalLengthM = distanceM;
+    this.orbitPeriodS = distanceM / flightConfig.loiterSpeedMps;
+  }
+
+  private evaluateSegment(segment: number, u: number): [number, number] {
+    const count = this.points.length;
+    const p1 = this.points[segment % count];
+    const p2 = this.points[(segment + 1) % count];
+    const tangentAt = (index: number): [number, number] => {
+      const previous = this.points[(index + count - 1) % count];
+      const current = this.points[index % count];
+      const next = this.points[(index + 1) % count];
+      const inX = current.xM - previous.xM, inY = current.yM - previous.yM;
+      const outX = next.xM - current.xM, outY = next.yM - current.yM;
+      const inLength = Math.hypot(inX, inY), outLength = Math.hypot(outX, outY);
+      const inUx = inX / inLength, inUy = inY / inLength;
+      const outUx = outX / outLength, outUy = outY / outLength;
+      let tx = inUx + outUx, ty = inUy + outUy;
+      let tangentLength = Math.hypot(tx, ty);
+      if (tangentLength <= 1e-9) {
+        tx = outUx;
+        ty = outUy;
+        tangentLength = 1;
+      }
+      // The Bézier-equivalent control arm is at most one quarter of either
+      // adjacent edge, limiting excursions on acute and irregular corners.
+      const magnitude = 0.75 * Math.min(inLength, outLength);
+      return [tx / tangentLength * magnitude, ty / tangentLength * magnitude];
+    };
+    const [m1x, m1y] = tangentAt(segment);
+    const [m2x, m2y] = tangentAt(segment + 1);
+    const t = Math.max(0, Math.min(1, u));
+    const t2 = t * t, t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    return [
+      h00 * p1.xM + h10 * m1x + h01 * p2.xM + h11 * m2x,
+      h00 * p1.yM + h10 * m1y + h01 * p2.yM + h11 * m2y,
+    ];
+  }
+
+  private distanceAtTime(tS: number): number {
+    if (!Number.isFinite(tS)) throw new Error('Simulation time must be finite.');
+    const distance = (this.flightConfig.loiterSpeedMps * tS) % this.totalLengthM;
+    return distance < 0 ? distance + this.totalLengthM : distance;
+  }
+
+  private pointAtDistance(distanceM: number): [number, number] {
+    let low = 0, high = this.samples.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (this.samples[mid].distanceM <= distanceM) low = mid + 1;
+      else high = mid;
+    }
+    const leftIndex = Math.max(0, low - 1);
+    const left = this.samples[leftIndex];
+    const right = this.samples[Math.min(this.samples.length - 1, leftIndex + 1)];
+    if (left.segment !== right.segment || right.distanceM <= left.distanceM) return [...left.point];
+    const fraction = Math.max(0, Math.min(1, (distanceM - left.distanceM) / (right.distanceM - left.distanceM)));
+    return this.evaluateSegment(left.segment, left.u + fraction * (right.u - left.u));
+  }
+
+  public getAcnPosition(tS: number): [number, number, number] {
+    const [x, y] = this.pointAtDistance(this.distanceAtTime(tS));
+    return [x, y, this.flightConfig.altitudeMslM];
+  }
+
+  public getAcnVelocity(tS: number): [number, number, number] {
+    // Return the centered 20 ms position derivative used by the 50 Hz worker.
+    // Its magnitude is deliberately not normalized: the arc-length table's
+    // measured timing error must remain visible to link/telemetry consumers.
+    const halfStepS = 0.01;
+    const before = this.getAcnPosition(tS - halfStepS);
+    const after = this.getAcnPosition(tS + halfStepS);
+    return [(after[0] - before[0]) / (2 * halfStepS), (after[1] - before[1]) / (2 * halfStepS), 0];
+  }
+
+  public getPathPoints(numPoints: number = 64): [number, number][] {
+    if (!Number.isInteger(numPoints) || numPoints < 3) throw new Error('numPoints must be an integer of at least 3.');
+    return Array.from({ length: numPoints }, (_, i) => this.pointAtDistance(this.totalLengthM * i / numPoints));
+  }
+
+  /** Segment starts derived from the same chord-length table used for timing. */
+  public getSegmentBoundaryTimesS(): number[] {
+    return this.samples
+      .filter(sample => sample.u === 0)
+      .map(sample => sample.distanceM / this.flightConfig.loiterSpeedMps);
+  }
+}
+
+export function createACNTrajectory(flightConfig: ACNFlightConfig): ACNTrajectory {
+  return flightConfig.trajectoryMode === 'waypoints'
+    ? new WaypointTrajectoryEngine(flightConfig)
+    : new ACNTrajectoryEngine(flightConfig);
 }
 
 /**
@@ -176,7 +358,7 @@ export class PredictiveLookAheadEngine {
   public readonly rfConfig: RFConfig;
   public readonly envConfig: EnvironmentConfig;
   public readonly flightConfig: ACNFlightConfig;
-  public readonly trajectoryEngine: ACNTrajectoryEngine;
+  public readonly trajectoryEngine: ACNTrajectory;
 
   public horizonS: number;
   public dtStepS: number;
@@ -188,7 +370,7 @@ export class PredictiveLookAheadEngine {
     rfConfig: RFConfig,
     envConfig: EnvironmentConfig,
     flightConfig: ACNFlightConfig,
-    trajectoryEngine?: ACNTrajectoryEngine,
+    trajectoryEngine?: ACNTrajectory,
     options?: {
       horizonS?: number;
       dtStepS?: number;
@@ -200,7 +382,7 @@ export class PredictiveLookAheadEngine {
     this.rfConfig = rfConfig;
     this.envConfig = envConfig;
     this.flightConfig = flightConfig;
-    this.trajectoryEngine = trajectoryEngine ?? new ACNTrajectoryEngine(flightConfig);
+    this.trajectoryEngine = trajectoryEngine ?? createACNTrajectory(flightConfig);
     this.horizonS = options?.horizonS ?? 15.0;
     this.dtStepS = options?.dtStepS ?? 0.5;
     this.warningTimeThresholdS = options?.warningTimeThresholdS ?? 3.0;
@@ -230,7 +412,7 @@ export class PredictiveLookAheadEngine {
 
     const steps = Math.floor(this.horizonS / this.dtStepS);
 
-    if (!currentObs.isLos) {
+    if (!currentObs.isLos || currentObs.obstacleBlocked) {
       // Regime A: Hard shadow (Optical ray blocked)
       let timeToEmergenceS = Number.POSITIVE_INFINITY;
 
@@ -243,7 +425,7 @@ export class PredictiveLookAheadEngine {
           this.rfConfig,
           this.envConfig
         );
-        if (futureObs.isLos) {
+        if (futureObs.isLos && !futureObs.obstacleBlocked) {
           timeToEmergenceS = step * this.dtStepS;
           break;
         }
@@ -262,6 +444,7 @@ export class PredictiveLookAheadEngine {
         fresnelClearanceM: currentObs.minClearanceM,
         fresnelRateOfChangeMps,
         predictedOutageDurationS,
+        obstacleBlocked: currentObs.obstacleBlocked,
       };
     } else {
       // Regime B: Unobstructed Line-of-Sight
@@ -278,7 +461,7 @@ export class PredictiveLookAheadEngine {
           this.rfConfig,
           this.envConfig
         );
-        if (!futureObs.isLos) {
+        if (!futureObs.isLos || futureObs.obstacleBlocked) {
           timeToOcclusionS = step * this.dtStepS;
           occlusionStep = step;
           break;
@@ -296,7 +479,7 @@ export class PredictiveLookAheadEngine {
             this.rfConfig,
             this.envConfig
           );
-          if (futureObs.isLos) {
+          if (futureObs.isLos && !futureObs.obstacleBlocked) {
             predictedOutageDurationS = (step - occlusionStep) * this.dtStepS;
             emergenceFound = true;
             break;
@@ -319,6 +502,7 @@ export class PredictiveLookAheadEngine {
         fresnelClearanceM: currentObs.minClearanceM,
         fresnelRateOfChangeMps,
         predictedOutageDurationS,
+        obstacleBlocked: currentObs.obstacleBlocked,
       };
     }
   }

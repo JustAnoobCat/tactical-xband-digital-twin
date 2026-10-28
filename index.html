@@ -73,7 +73,7 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 .radar-canvas-container{flex:1 1 0;min-height:0}
 .radar-canvas-container canvas,.waterfall-canvas-container canvas,.fresnel-canvas-box canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
 
-/* RELOCATED TOP-RIGHT: Completely avoids collision with bottom-left MGRS HUD tape */
+/* Map legend */
 .map-legend {
   position: absolute;
   top: 10px;
@@ -137,6 +137,25 @@ details.more[open]>summary::after{transform:rotate(225deg)}
 details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;margin-right:auto}
 .more-body{padding-bottom:16px}
 .overview-trend-chart-wrap{height:120px;position:relative}#overview-goodput-canvas{display:block;width:100%;height:100%}
+.trajectory-editor{border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:12px;margin:12px 0}
+.trajectory-editor .editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.trajectory-editor label{display:block;color:var(--muted);font-size:11px}
+.trajectory-editor input[type=number],.trajectory-editor select{width:100%;margin-top:3px;background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:6px;color:var(--text)}
+.trajectory-editor .editor-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.trajectory-editor .waypoint-list{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+.trajectory-editor .waypoint-list button{padding:3px 7px;font:11px var(--mono)}
+.trajectory-editor .editor-message{min-height:1.5em;margin-top:7px;font-size:11px;color:var(--muted)}
+.trajectory-editor .editor-message.error{color:var(--bad)}
+.obstacle-editor{border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:12px;margin:12px 0}
+.obstacle-editor .editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.obstacle-editor label{display:block;color:var(--muted);font-size:11px}
+.obstacle-editor input[type=number],.obstacle-editor select{width:100%;margin-top:3px;background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:6px;color:var(--text)}
+.obstacle-editor .editor-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.obstacle-list{display:flex;flex-direction:column;gap:4px;margin:8px 0;max-height:150px;overflow:auto}
+.obstacle-list button{text-align:left;padding:5px 8px;font:11px var(--mono)}
+.obstacle-message{min-height:1.5em;margin-top:7px;font-size:11px;color:var(--muted)}
+.obstacle-message.error{color:var(--bad)}
+.map-tool-active{border-color:var(--warn)!important;color:var(--warn)!important}
 .overview-trend-footer{display:flex;justify-content:space-between;font-size:11px;margin-top:5px}
 .overview-event-list{list-style:none;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow:auto;margin-top:12px}
 .overview-event-list li{font-size:11.5px;border-left:2px solid var(--accent);padding:2px 8px;background:rgba(157,180,255,.05)}
@@ -243,6 +262,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <button class="btn-danger" onclick="resetSim()" title="Restart the simulation">RESET</button>
   </div>
   <div class="clock"><span id="clock-display">T+00:00.0s</span><span id="frame-display" class="muted">#0</span></div>
+  <button id="btn-spatial-lock" type="button" aria-pressed="false" onclick="toggleSpatialLock()" title="Prevent spatial scenario edits in the simulation worker">Spatial lock: OFF</button>
   <div class="conn-status"><span id="worker-indicator" class="dot online"></span><span id="worker-label">Worker 50 Hz</span></div>
   <div class="seg" role="group" aria-label="Interface help">
     <button id="btn-expert" type="button" aria-pressed="false" title="Open every collapsed section">Expert view</button>
@@ -286,6 +306,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <button id="zoom-100" onclick="setRadarRange(100000)">100 km</button>
               <button id="zoom-200" onclick="setRadarRange(200000)">200 km</button>
               <button onclick="centerMapOnACN()" title="Re-center on the airborne relay">Center</button>
+              <button id="obstacle-map-tool" type="button" aria-pressed="false" title="Select and move obstacle drafts on the map">Obstacle tool: OFF</button>
             </div>
           </div>
         </div>
@@ -331,6 +352,78 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <button id="scheduler-quick-toggle" onclick="toggleActiveScheduler()" title="Switch between Tac-TAD (dynamic) and Static scheduling">Mode: Tac-TAD</button>
           </div>
         </div>
+
+        <details class="trajectory-editor" open>
+          <summary><strong>Flight-path editor</strong> <small id="trajectory-commit-label" class="muted">Worker configuration</small></summary>
+          <div style="margin-top:9px">
+            <label for="trajectory-mode">Trajectory mode</label>
+            <select id="trajectory-mode" aria-label="Trajectory mode">
+              <option value="ellipse">Ellipse</option>
+              <option value="waypoints">Closed waypoint route</option>
+            </select>
+          </div>
+          <div id="ellipse-editor">
+            <div class="editor-grid">
+              <label>Center X (m)<input id="traj-center-x" type="number" step="any"></label>
+              <label>Center Y (m)<input id="traj-center-y" type="number" step="any"></label>
+              <label>Semi-major axis (m)<input id="traj-axis-a" type="number" step="any" min="0.001" max="600000"></label>
+              <label>Semi-minor axis (m)<input id="traj-axis-b" type="number" step="any" min="0.001" max="600000"></label>
+              <label>Rotation (&deg;)<input id="traj-rotation" type="number" step="any" min="-360" max="360"></label>
+            </div>
+          </div>
+          <div id="waypoint-editor" hidden>
+            <p class="muted" style="font-size:11px;margin-top:8px">Closed route · drag markers or select one to edit local X/Y metres. Ground nodes take priority when map targets overlap; use the waypoint list for covered markers. Add places a point with a map click. Amber line is a draft preview; Apply uses the worker curve.</p>
+            <div id="waypoint-list" class="waypoint-list" role="group" aria-label="Select waypoint"></div>
+            <div class="editor-grid">
+              <label>Selected X (m)<input id="traj-waypoint-x" type="number" step="any"></label>
+              <label>Selected Y (m)<input id="traj-waypoint-y" type="number" step="any"></label>
+            </div>
+            <div class="editor-actions">
+              <button type="button" id="trajectory-add-point">Add waypoint</button>
+              <button type="button" id="trajectory-place-point">Place on map</button>
+              <button type="button" id="trajectory-remove-point" class="btn-danger">Remove selected</button>
+            </div>
+          </div>
+          <div class="editor-actions">
+            <button type="button" id="trajectory-apply" class="primary">Apply to simulation</button>
+            <button type="button" id="trajectory-cancel">Cancel draft</button>
+          </div>
+          <div id="trajectory-editor-message" class="editor-message" role="status" aria-live="polite">Edits are previews until applied.</div>
+        </details>
+
+        <details class="obstacle-editor">
+          <summary><strong>Obstacle editor</strong> <small id="obstacle-commit-label" class="muted">Worker-confirmed set · 0 / 128</small></summary>
+          <p class="muted" style="font-size:11px;margin:8px 0">Plan-view footprints only. The worker uses terrain elevation for physical obstruction. Select mode lets you drag centers; Place mode adds the selected shape at a map click.</p>
+          <div class="editor-grid">
+            <label for="obstacle-shape">Shape</label>
+            <select id="obstacle-shape" aria-label="New obstacle shape">
+              <option value="cuboid">Cuboid</option><option value="cone">Cone</option><option value="pyramid">Pyramid</option>
+            </select>
+          </div>
+          <div class="editor-actions">
+            <button type="button" id="obstacle-add">Add at map center</button>
+            <button type="button" id="obstacle-place">Place on map</button>
+            <button type="button" id="obstacle-select-mode">Select / move</button>
+          </div>
+          <div id="obstacle-list" class="obstacle-list" role="group" aria-label="Select obstacle"></div>
+          <div class="editor-grid">
+            <label for="obstacle-x">Center X (m)<input id="obstacle-x" type="number" step="any"></label>
+            <label for="obstacle-y">Center Y (m)<input id="obstacle-y" type="number" step="any"></label>
+            <label id="obstacle-width-label" for="obstacle-width">Width (m)<input id="obstacle-width" type="number" step="any"></label>
+            <label id="obstacle-depth-label" for="obstacle-depth">Depth (m)<input id="obstacle-depth" type="number" step="any"></label>
+            <label id="obstacle-radius-label" for="obstacle-radius" hidden>Radius (m)<input id="obstacle-radius" type="number" step="any"></label>
+            <label for="obstacle-height">Height (m)<input id="obstacle-height" type="number" step="any"></label>
+            <label id="obstacle-rotation-label" for="obstacle-rotation">Rotation (&deg;)<input id="obstacle-rotation" type="number" step="any"></label>
+          </div>
+          <div class="editor-actions">
+            <button type="button" id="obstacle-delete" class="btn-danger">Delete selected</button>
+            <button type="button" id="obstacle-apply" class="primary">Apply obstacle set</button>
+            <button type="button" id="obstacle-cancel">Cancel draft</button>
+          </div>
+          <div id="obstacle-editor-message" class="obstacle-message" role="status" aria-live="polite">Obstacle edits are previews until applied.</div>
+          <div id="obstacle-obstruction-summary" class="muted" role="status" aria-live="polite"></div>
+          <div id="obstacle-lock-note" class="muted" aria-live="polite"></div>
+        </details>
 
         <div class="sec">
           <div class="sec-title">How is it performing?</div>
@@ -754,6 +847,12 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 </script>
 
 <script type="module">
+import { MAX_ACN_WAYPOINTS } from './src/core/config.ts';
+import { parseEditorNumber, TrajectoryEditorState } from './src/ui/trajectoryEditorState.ts';
+import { obstacleContainsPoint, obstacleFootprintPoints } from './src/core/obstacles.ts';
+import { ObstacleEditorState, OBSTACLE_EDITOR_LIMITS, resolveSpatialCanvasTarget } from './src/ui/obstacleEditorState.ts';
+import { routeCommandResult } from './src/ui/commandResultRouter.ts';
+
 /* ====================================================================
    CLIENT-SIDE WEBWORKER & RENDERING CONTROLLER
    ==================================================================== */
@@ -833,20 +932,20 @@ let panStartX = 0;
 let panStartY = 0;
 let activeSchedulerMode = 'tac_tad';
 let activeTerrainMode = 'real';
+let spatialLocked = false;
+const trajectoryEditor = new TrajectoryEditorState();
+const obstacleEditor = new ObstacleEditorState();
+let trajectoryConfigSignature = '';
+let committedTrajectoryMode = 'ellipse';
+let trajectoryRequestSerial = 0;
+let pendingTrajectoryRequest = null;
+let waypointPlacementArmed = false;
+let obstacleRequestSerial = 0;
 
 // Radar Cursor & Reticle Tracking
 let mouseScreenX = -1, mouseScreenY = -1;
 let mouseWorldX = 0, mouseWorldY = 0;
 let isMouseInsideRadar = false;
-
-/* Tactical elevation query (Himalayan geomorphology matching Kargil barrier ridge) */
-function queryElevation(x, y) {
-  const xArg = Math.max(-100.0, -Math.pow((x - 5000.0) / 450.0, 2));
-  const yArg = Math.max(-50.0, Math.min(50.0, (Math.abs(y - 270.0) - 90.0) / 12.0));
-  const ridgeKargil = 1150.0 * Math.exp(xArg) * (1.0 / (1.0 + Math.exp(yArg)));
-  const base = 3100.0 + 380.0 * Math.sin(x * 0.00004) * Math.cos(y * 0.00004);
-  return Math.max(2800, Math.min(5900, Math.round(base + ridgeKargil)));
-}
 
 let latestTelemetry = {
   frame_index: 0, sim_time_s: 0, active_scheduler_mode: 'tac_tad',
@@ -869,12 +968,51 @@ worker.onmessage = (event) => {
   if (!msg) return;
 
   if (msg.type === 'TELEMETRY_FRAME') {
+    obstacleEditor.markSimulationFrameAdvanced();
     latestTelemetry = msg.frame;
+    if (typeof msg.frame.spatial_locked === 'boolean') updateSpatialLockControl(msg.frame.spatial_locked);
+    syncTrajectoryEditorFromWorker(msg.frame.trajectory_config);
     updateDashboardDOM(msg.frame);
   } else if (msg.type === 'HILLSHADE_READY') {
     renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode);
+  } else if (msg.type === 'COMMAND_RESULT') {
+    routeCommandResult(msg, {
+      pendingObstacleRequestId: obstacleEditor.pendingRequestId,
+      pendingTrajectoryRequestId: pendingTrajectoryRequest,
+      reconcileObstacle: result => {
+        const reconciled = obstacleEditor.reconcile(result);
+        if (reconciled) refreshObstacleEditor();
+        return reconciled;
+      },
+      reconcileTrajectory: result => {
+      if (!result.accepted) {
+        pendingTrajectoryRequest = null;
+        trajectoryEditor.cancel();
+        waypointPlacementArmed = false;
+        refreshTrajectoryEditor();
+        setTrajectoryMessage(`Worker rejected the path: ${result.reason || 'Invalid trajectory.'}`, true);
+      } else {
+        syncTrajectoryEditorFromWorker(result.trajectory_config);
+        setTrajectoryMessage('Path committed by the simulation worker.');
+      }
+      },
+      updateSpatialLock: updateSpatialLockControl,
+      setWorkerLabel: label => setText('worker-label', label),
+    });
   }
 };
+
+function updateSpatialLockControl(locked) {
+  spatialLocked = locked;
+  obstacleEditor.setSpatialLock(locked);
+  const button = $('btn-spatial-lock');
+  if (!button) return;
+  button.textContent = `Spatial lock: ${locked ? 'ON' : 'OFF'}`;
+  button.setAttribute('aria-pressed', String(locked));
+  button.classList.toggle('active', locked);
+  refreshTrajectoryEditor();
+  refreshObstacleEditor();
+}
 
 function renderHillshadeFromWorker(data, size, boundsKm, terrainMode) {
   if (!data || !data.length) return;
@@ -919,12 +1057,326 @@ const radarCanvas = $('radar-canvas'), radarCtx = radarCanvas.getContext('2d');
 const waterfallCanvas = $('waterfall-canvas'), waterfallCtx = waterfallCanvas.getContext('2d');
 const fresnelCanvas = $('fresnel-canvas'), fresnelCtx = fresnelCanvas.getContext('2d');
 
+function setTrajectoryMessage(message, error = false) {
+  const el = $('trajectory-editor-message');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle('error', error);
+}
+
+function syncTrajectoryEditorFromWorker(config) {
+  if (!config) return;
+  committedTrajectoryMode = config.trajectory_mode;
+  const signature = JSON.stringify(config);
+  if (signature === trajectoryConfigSignature) {
+    if (pendingTrajectoryRequest !== null) {
+      pendingTrajectoryRequest = null;
+      trajectoryEditor.setMode(config.trajectory_mode);
+      trajectoryEditor.syncCommitted(config, true);
+      refreshTrajectoryEditor();
+    }
+    return;
+  }
+  trajectoryConfigSignature = signature;
+  const forceDraftSync = !trajectoryEditorReady || pendingTrajectoryRequest !== null;
+  const shouldFollowWorkerMode = forceDraftSync || !trajectoryEditor.dirty;
+  if (shouldFollowWorkerMode) trajectoryEditor.setMode(config.trajectory_mode);
+  trajectoryEditor.syncCommitted(config, forceDraftSync);
+  if (!trajectoryEditorReady) {
+    trajectoryEditorReady = true;
+  } else if (pendingTrajectoryRequest !== null) {
+    pendingTrajectoryRequest = null;
+    setTrajectoryMessage('Path committed by the simulation worker.');
+  }
+  refreshTrajectoryEditor();
+}
+
+let trajectoryEditorReady = false;
+
+function setTrajectoryDraftMode(mode) {
+  trajectoryEditor.setMode(mode);
+  waypointPlacementArmed = false;
+  $('trajectory-place-point').classList.remove('active');
+  $('ellipse-editor').hidden = mode !== 'ellipse';
+  $('waypoint-editor').hidden = mode !== 'waypoints';
+  refreshTrajectoryEditor();
+  setTrajectoryMessage(mode === 'ellipse' ? 'Ellipse draft. Apply to change the simulation.' : 'Waypoint draft. Add at least three points, then apply.');
+}
+
+function refreshTrajectoryEditor() {
+  const root = $('trajectory-mode');
+  if (!root) return;
+  const draft = trajectoryEditor.preview;
+  $('trajectory-commit-label').textContent = `Active: ${committedTrajectoryMode === 'ellipse' ? 'Ellipse' : 'Closed waypoint route'}`;
+  root.value = draft.mode;
+  $('ellipse-editor').hidden = draft.mode !== 'ellipse';
+  $('waypoint-editor').hidden = draft.mode !== 'waypoints';
+  if (draft.mode === 'ellipse') {
+    [['traj-center-x', draft.centerXm], ['traj-center-y', draft.centerYm], ['traj-axis-a', draft.radiusAM], ['traj-axis-b', draft.radiusBM], ['traj-rotation', draft.rotationDeg]].forEach(([id, value]) => {
+      if (document.activeElement !== $(id)) $(id).value = Number.isFinite(value) ? value : '';
+    });
+  } else {
+    const list = $('waypoint-list');
+    while (list.children.length > draft.points.length) list.lastElementChild.remove();
+    while (list.children.length < draft.points.length) {
+      const index = list.children.length;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.addEventListener('click', event => { trajectoryEditor.selectWaypoint(Number(event.currentTarget.dataset.index)); refreshTrajectoryEditor(); });
+      list.append(button);
+    }
+    draft.points.forEach((_, index) => {
+      const button = list.children[index];
+      button.textContent = `WP ${index + 1}`;
+      button.dataset.index = String(index);
+      button.setAttribute('aria-pressed', String(index === trajectoryEditor.selectedWaypoint));
+      button.classList.toggle('active', index === trajectoryEditor.selectedWaypoint);
+      button.disabled = spatialLocked || pendingTrajectoryRequest !== null;
+    });
+    const point = draft.points[trajectoryEditor.selectedWaypoint];
+    if (document.activeElement !== $('traj-waypoint-x')) $('traj-waypoint-x').value = point ? String(point.xM) : '';
+    if (document.activeElement !== $('traj-waypoint-y')) $('traj-waypoint-y').value = point ? String(point.yM) : '';
+    $('trajectory-remove-point').disabled = spatialLocked || pendingTrajectoryRequest !== null || draft.points.length <= 3 || !point;
+    $('trajectory-add-point').disabled = spatialLocked || pendingTrajectoryRequest !== null || draft.points.length >= MAX_ACN_WAYPOINTS;
+    $('trajectory-place-point').disabled = spatialLocked || pendingTrajectoryRequest !== null || draft.points.length >= MAX_ACN_WAYPOINTS;
+  }
+  const disabled = spatialLocked || pendingTrajectoryRequest !== null;
+  root.disabled = disabled;
+  ['traj-center-x', 'traj-center-y', 'traj-axis-a', 'traj-axis-b', 'traj-rotation', 'traj-waypoint-x', 'traj-waypoint-y'].forEach(id => { $(id).disabled = disabled; });
+  $('trajectory-apply').disabled = disabled;
+  $('trajectory-cancel').disabled = pendingTrajectoryRequest !== null;
+  if (spatialLocked) {
+    waypointPlacementArmed = false;
+    $('trajectory-place-point').classList.remove('active');
+    setTrajectoryMessage('Spatial lock is on. Unlock to edit the flight path.', true);
+  }
+  const applyError = trajectoryEditor.validatePreview();
+  if (!spatialLocked && pendingTrajectoryRequest === null) $('trajectory-apply').title = applyError || 'Commit this draft to the simulation worker';
+}
+
+function refreshObstacleEditor() {
+  const editor = $('obstacle-editor-message');
+  if (!editor) return;
+  const draft = obstacleEditor.draft;
+  const committed = obstacleEditor.committed;
+  const selected = obstacleEditor.selectedObstacle;
+  const locked = spatialLocked || obstacleEditor.spatialLocked;
+  const pending = obstacleEditor.pendingRequestId !== null;
+  const validation = obstacleEditor.validate();
+  const obstructionSnapshot = obstacleEditor.obstructionSnapshot;
+  $('obstacle-commit-label').textContent = `Worker-confirmed set · ${committed.length} / ${OBSTACLE_EDITOR_LIMITS.maxObstacles}`;
+  const list = $('obstacle-list');
+  while (list.children.length > draft.length) list.lastElementChild.remove();
+  while (list.children.length < draft.length) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.addEventListener('click', event => { obstacleEditor.select(event.currentTarget.dataset.id); refreshObstacleEditor(); });
+    list.append(button);
+  }
+  draft.forEach((obstacle, index) => {
+    const button = list.children[index];
+    button.dataset.id = obstacle.id;
+    button.textContent = `${obstacle.shape} · ${obstacle.id}`;
+    button.setAttribute('aria-pressed', String(obstacle.id === obstacleEditor.selectedId));
+    button.classList.toggle('active', obstacle.id === obstacleEditor.selectedId);
+  });
+  const setInput = (id, value) => { if (document.activeElement !== $(id)) $(id).value = value === undefined || !Number.isFinite(value) ? '' : String(value); };
+  setInput('obstacle-x', selected?.xM); setInput('obstacle-y', selected?.yM); setInput('obstacle-height', selected?.heightM);
+  const isCone = selected?.shape === 'cone';
+  $('obstacle-width-label').hidden = !selected || isCone;
+  $('obstacle-depth-label').hidden = !selected || isCone;
+  $('obstacle-radius-label').hidden = !isCone;
+  $('obstacle-rotation-label').hidden = !selected || isCone;
+  setInput('obstacle-width', selected && selected.shape !== 'cone' ? selected.widthM : undefined);
+  setInput('obstacle-depth', selected && selected.shape !== 'cone' ? selected.depthM : undefined);
+  setInput('obstacle-radius', selected?.shape === 'cone' ? selected.radiusM : undefined);
+  setInput('obstacle-rotation', selected && selected.shape !== 'cone' ? selected.rotationDeg : undefined);
+  const numericInputs = ['obstacle-x', 'obstacle-y', 'obstacle-width', 'obstacle-depth', 'obstacle-radius', 'obstacle-height', 'obstacle-rotation'];
+  numericInputs.forEach(id => { $(id).disabled = locked || pending || !selected; });
+  ['obstacle-x', 'obstacle-y'].forEach(id => { $(id).min = String(-OBSTACLE_EDITOR_LIMITS.worldLimitM); $(id).max = String(OBSTACLE_EDITOR_LIMITS.worldLimitM); });
+  ['obstacle-width', 'obstacle-depth', 'obstacle-radius'].forEach(id => { $(id).min = String(OBSTACLE_EDITOR_LIMITS.minDimensionM); $(id).max = String(OBSTACLE_EDITOR_LIMITS.maxDimensionM); });
+  $('obstacle-height').min = String(OBSTACLE_EDITOR_LIMITS.minDimensionM);
+  $('obstacle-height').max = String(OBSTACLE_EDITOR_LIMITS.maxHeightM);
+  $('obstacle-rotation').min = '-360'; $('obstacle-rotation').max = '360';
+  $('obstacle-shape').disabled = locked || pending;
+  $('obstacle-add').disabled = locked || pending || draft.length >= OBSTACLE_EDITOR_LIMITS.maxObstacles;
+  $('obstacle-place').disabled = locked || pending || draft.length >= OBSTACLE_EDITOR_LIMITS.maxObstacles;
+  $('obstacle-select-mode').disabled = pending;
+  $('obstacle-delete').disabled = locked || pending || !selected;
+  $('obstacle-apply').disabled = locked || pending || !obstacleEditor.dirty || Boolean(validation);
+  $('obstacle-cancel').disabled = pending;
+  $('obstacle-lock-note').textContent = locked ? 'Spatial lock is on. Draft remains visible and read-only; map navigation and list selection remain available.' : '';
+  const blockedCount = obstructionSnapshot.filter(item => item.obstacle_blocked).length;
+  $('obstacle-obstruction-summary').textContent = obstacleEditor.obstructionSnapshotIsCurrent
+    ? `${blockedCount} of ${obstructionSnapshot.length} links obstacle-blocked in the worker refresh. Frame metrics have not advanced.`
+    : 'Map link/shadow status follows the latest telemetry frame.';
+  editor.textContent = validation || obstacleEditor.message;
+  editor.classList.toggle('error', Boolean(validation) || obstacleEditor.message.toLowerCase().includes('reject'));
+  const tool = $('obstacle-map-tool');
+  const active = obstacleEditor.mode !== 'navigate';
+  tool.textContent = active ? `Obstacle tool: ${obstacleEditor.mode === 'place' ? 'PLACE' : 'SELECT'}` : 'Obstacle tool: OFF';
+  tool.setAttribute('aria-pressed', String(active));
+  tool.classList.toggle('map-tool-active', active);
+  $('obstacle-place').classList.toggle('active', obstacleEditor.mode === 'place');
+  $('obstacle-select-mode').classList.toggle('active', obstacleEditor.mode === 'select');
+}
+
+function editSelectedObstacleFromInputs(id) {
+  const selected = obstacleEditor.selectedObstacle;
+  if (!selected) return;
+  const value = numericInput(id);
+  const patch = id === 'obstacle-x' ? { xM: value }
+    : id === 'obstacle-y' ? { yM: value }
+    : id === 'obstacle-height' ? { heightM: value }
+    : id === 'obstacle-width' ? { widthM: value }
+    : id === 'obstacle-depth' ? { depthM: value }
+    : id === 'obstacle-radius' ? { radiusM: value }
+    : { rotationDeg: value };
+  obstacleEditor.updateSelected(patch);
+  refreshObstacleEditor();
+}
+
+function createObstacleAt(x, y) {
+  try {
+    obstacleEditor.create($('obstacle-shape').value, x, y);
+    obstacleEditor.setMode('select');
+  } catch (error) { obstacleEditor.message = error.message; }
+  refreshObstacleEditor();
+}
+
+function applyObstacleDraft() {
+  const requestId = `obstacles-${++obstacleRequestSerial}`;
+  try {
+    const obstacles = obstacleEditor.beginApply(requestId);
+    refreshObstacleEditor();
+    sendCommand({ type: 'OBSTACLES_REPLACE', request_id: requestId, obstacles });
+  } catch (error) { obstacleEditor.message = error.message; refreshObstacleEditor(); }
+}
+
+function cancelObstacleDraft() {
+  try { obstacleEditor.cancel(); }
+  catch (error) { obstacleEditor.message = error.message; }
+  refreshObstacleEditor();
+}
+
+function activateObstacleMode(mode) {
+  if (mode !== 'navigate') {
+    waypointPlacementArmed = false;
+    $('trajectory-place-point').classList.remove('active');
+  }
+  obstacleEditor.setMode(mode);
+  refreshObstacleEditor();
+}
+
+['obstacle-x', 'obstacle-y', 'obstacle-width', 'obstacle-depth', 'obstacle-radius', 'obstacle-height', 'obstacle-rotation']
+  .forEach(id => $(id).addEventListener('input', () => editSelectedObstacleFromInputs(id)));
+$('obstacle-shape').addEventListener('change', event => obstacleEditor.setPlacementShape(event.target.value));
+$('obstacle-add').addEventListener('click', () => createObstacleAt(panOffsetX_m, panOffsetY_m));
+$('obstacle-place').addEventListener('click', () => activateObstacleMode(obstacleEditor.mode === 'place' ? 'navigate' : 'place'));
+$('obstacle-select-mode').addEventListener('click', () => activateObstacleMode(obstacleEditor.mode === 'select' ? 'navigate' : 'select'));
+$('obstacle-map-tool').addEventListener('click', () => activateObstacleMode(obstacleEditor.mode === 'navigate' ? 'select' : 'navigate'));
+$('obstacle-delete').addEventListener('click', () => { try { obstacleEditor.deleteSelected(); } catch (error) { obstacleEditor.message = error.message; } refreshObstacleEditor(); });
+$('obstacle-apply').addEventListener('click', applyObstacleDraft);
+$('obstacle-cancel').addEventListener('click', cancelObstacleDraft);
+refreshObstacleEditor();
+
+function editEllipseFromInputs() {
+  trajectoryEditor.editEllipse({
+    centerXm: numericInput('traj-center-x'), centerYm: numericInput('traj-center-y'),
+    radiusAM: numericInput('traj-axis-a'), radiusBM: numericInput('traj-axis-b'),
+    rotationDeg: numericInput('traj-rotation'),
+  });
+  refreshTrajectoryEditor();
+  const error = trajectoryEditor.validatePreview();
+  setTrajectoryMessage(error || 'Ellipse draft updated. Apply to commit it.', Boolean(error));
+}
+
+function editSelectedWaypointFromInputs() {
+  const index = trajectoryEditor.selectedWaypoint;
+  if (index < 0) return;
+  try {
+    const point = { xM: numericInput('traj-waypoint-x'), yM: numericInput('traj-waypoint-y') };
+    trajectoryEditor.moveWaypoint(index, point);
+    refreshTrajectoryEditor();
+    setTrajectoryMessage('Waypoint draft updated. Apply to commit it.');
+  } catch (error) {
+    trajectoryEditor.setInputError(error.message);
+    refreshTrajectoryEditor();
+    setTrajectoryMessage(error.message, true);
+  }
+}
+
+function numericInput(id) { return parseEditorNumber($(id).value); }
+
+function addWaypointAt(x, y) {
+  try {
+    trajectoryEditor.addWaypoint({ xM: x, yM: y });
+    waypointPlacementArmed = false;
+    refreshTrajectoryEditor();
+    setTrajectoryMessage('Waypoint added to the draft. Apply to update the simulation.');
+  } catch (error) { setTrajectoryMessage(error.message, true); }
+}
+
+function applyTrajectoryDraft() {
+  const error = trajectoryEditor.validatePreview();
+  if (error) { setTrajectoryMessage(error, true); return; }
+  if (spatialLocked) { setTrajectoryMessage('Spatial lock is on. Unlock before applying.', true); return; }
+  const draft = trajectoryEditor.preview;
+  const params = draft.mode === 'ellipse' ? {
+    trajectory_mode: 'ellipse', center_x_m: draft.centerXm, center_y_m: draft.centerYm,
+    orbit_a_m: draft.radiusAM, orbit_b_m: draft.radiusBM, orbit_rotation_deg: draft.rotationDeg,
+  } : {
+    trajectory_mode: 'waypoints', waypoints: draft.points.map(point => ({ x_m: point.xM, y_m: point.yM })),
+  };
+  const requestId = `trajectory-${++trajectoryRequestSerial}`;
+  pendingTrajectoryRequest = requestId;
+  refreshTrajectoryEditor();
+  setTrajectoryMessage('Applying path to the simulation worker…');
+  sendCommand({ type: 'CONFIG_UPDATE', request_id: requestId, params });
+}
+
+function cancelTrajectoryDraft() {
+  if (pendingTrajectoryRequest !== null) return;
+  trajectoryEditor.cancel();
+  waypointPlacementArmed = false;
+  $('trajectory-place-point').classList.remove('active');
+  refreshTrajectoryEditor();
+  setTrajectoryMessage('Draft canceled. Showing the last committed path.');
+}
+
+$('trajectory-mode').addEventListener('change', event => setTrajectoryDraftMode(event.target.value));
+['traj-center-x', 'traj-center-y', 'traj-axis-a', 'traj-axis-b', 'traj-rotation'].forEach(id => $(id).addEventListener('input', editEllipseFromInputs));
+['traj-waypoint-x', 'traj-waypoint-y'].forEach(id => $(id).addEventListener('input', editSelectedWaypointFromInputs));
+$('trajectory-add-point').addEventListener('click', () => {
+  const draft = trajectoryEditor.preview;
+  const count = draft.mode === 'waypoints' ? draft.points.length : 0;
+  const acn = latestTelemetry.acn_telemetry || {};
+  addWaypointAt(isMouseInsideRadar ? mouseWorldX : (acn.pos_x || 0) + count * 1000,
+    isMouseInsideRadar ? mouseWorldY : (acn.pos_y || 0));
+});
+$('trajectory-place-point').addEventListener('click', () => {
+  waypointPlacementArmed = !waypointPlacementArmed;
+  $('trajectory-place-point').classList.toggle('active', waypointPlacementArmed);
+  setTrajectoryMessage(waypointPlacementArmed ? 'Click the map to place a draft waypoint.' : 'Map placement canceled.');
+});
+$('trajectory-remove-point').addEventListener('click', () => {
+  try { trajectoryEditor.removeSelectedWaypoint(); refreshTrajectoryEditor(); setTrajectoryMessage('Waypoint removed from the draft.'); }
+  catch (error) { setTrajectoryMessage(error.message, true); }
+});
+$('trajectory-apply').addEventListener('click', applyTrajectoryDraft);
+$('trajectory-cancel').addEventListener('click', cancelTrajectoryDraft);
+refreshTrajectoryEditor();
+
 /* ---------- UI Controls ---------- */
 window.togglePause = function() {
   isPaused = !isPaused;
   sendCommand({ type: 'SIM_CONTROL', action: isPaused ? 'pause' : 'resume' });
   $('btn-pause').textContent = isPaused ? 'RESUME' : 'PAUSE';
   $('btn-pause').classList.toggle('active', isPaused);
+};
+
+window.toggleSpatialLock = function() {
+  sendCommand({ type: 'SET_SPATIAL_LOCK', locked: !spatialLocked });
 };
 
 window.stepSim = function() {
@@ -1029,6 +1481,10 @@ window.clearTransfer = function() {
 };
 
 window.setTerrainMode = function(mode) {
+  if (spatialLocked) {
+    setText('worker-label', 'Spatial lock is enabled; terrain mode cannot be changed.');
+    return;
+  }
   activeTerrainMode = mode;
   $('btnRealTerrain').classList.toggle('active', mode === 'real');
   $('btnSynthTerrain').classList.toggle('active', mode === 'synthetic');
@@ -1592,7 +2048,7 @@ function drawRadar() {
     ctx.restore();
 
     // 6. Elliptical Flight Path
-    const fp = latestTelemetry.flight_path || [];
+    const fp = latestTelemetry.flight_path?.length ? latestTelemetry.flight_path : (acn.flight_path || []);
     if (fp.length) {
       ctx.save();
       ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)'; ctx.lineWidth = 1.1; ctx.setLineDash([4, 4]);
@@ -1601,6 +2057,62 @@ function drawRadar() {
       ctx.closePath(); ctx.stroke();
       ctx.restore();
     }
+
+    const pathDraft = trajectoryEditor.preview;
+    if (pathDraft.mode === 'waypoints') {
+      if (trajectoryEditor.dirty && pathDraft.points.length > 1) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(243,181,74,.95)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        pathDraft.points.forEach((point, i) => {
+          const screen = worldToScreen(point.xM, point.yM, w, h);
+          i ? ctx.lineTo(screen.x, screen.y) : ctx.moveTo(screen.x, screen.y);
+        });
+        ctx.closePath(); ctx.stroke(); ctx.restore();
+      }
+      pathDraft.points.forEach((point, i) => {
+        const screen = worldToScreen(point.xM, point.yM, w, h);
+        ctx.save();
+        ctx.fillStyle = i === trajectoryEditor.selectedWaypoint ? '#f3b54a' : '#f8d487';
+        ctx.strokeStyle = '#17212b'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(screen.x, screen.y, i === trajectoryEditor.selectedWaypoint ? 7 : 5, 0, TAU);
+        ctx.fill(); ctx.stroke();
+        ctx.font = `9px ${MONO}`; ctx.fillStyle = '#fff'; ctx.fillText(String(i + 1), screen.x + 8, screen.y - 8);
+        ctx.restore();
+      });
+    }
+
+    // Obstacles are rendered as plan-view footprints. Terrain draping and vertical
+    // obstruction remain worker-owned; this overlay does not imply a 3D surface.
+    const committedObstacles = obstacleEditor.committed;
+    const draftObstacles = obstacleEditor.draft;
+    const committedById = new Map(committedObstacles.map(item => [item.id, item]));
+    const draftById = new Map(draftObstacles.map(item => [item.id, item]));
+    const drawObstacle = (obstacle, style) => {
+      if (![obstacle.xM, obstacle.yM].every(Number.isFinite)) return;
+      const vertices = obstacleFootprintPoints(obstacle, 48).map(point => worldToScreen(point[0], point[1], w, h));
+      if (vertices.length < 3 || vertices.some(point => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return;
+      ctx.save();
+      ctx.beginPath(); vertices.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.closePath();
+      ctx.fillStyle = style.fill; ctx.fill(); ctx.strokeStyle = style.stroke; ctx.lineWidth = style.width;
+      ctx.setLineDash(style.dash); ctx.stroke(); ctx.restore();
+    };
+    committedObstacles.forEach(obstacle => {
+      const draftVersion = draftById.get(obstacle.id);
+      if (!draftVersion) drawObstacle(obstacle, { fill: 'rgba(148,163,184,.08)', stroke: 'rgba(148,163,184,.75)', width: 1.2, dash: [4, 3] });
+      else if (JSON.stringify(draftVersion) !== JSON.stringify(obstacle)) drawObstacle(obstacle, { fill: 'rgba(148,163,184,.05)', stroke: 'rgba(148,163,184,.5)', width: 1, dash: [2, 4] });
+      else drawObstacle(obstacle, { fill: 'rgba(56,189,248,.08)', stroke: 'rgba(56,189,248,.75)', width: 1.2, dash: [] });
+    });
+    draftObstacles.forEach(obstacle => {
+      const committed = committedById.get(obstacle.id);
+      const changed = !committed || JSON.stringify(committed) !== JSON.stringify(obstacle);
+      const selected = obstacle.id === obstacleEditor.selectedId;
+      if (changed || selected) drawObstacle(obstacle, {
+        fill: selected ? 'rgba(243,181,74,.20)' : 'rgba(243,181,74,.10)',
+        stroke: selected ? '#f3b54a' : 'rgba(243,181,74,.9)',
+        width: selected ? 2.4 : 1.6, dash: changed ? [5, 3] : [],
+      });
+    });
 
     // ------------------------------------------------------------------
     // ACN +30s Forward Flight Vector Tape
@@ -1654,7 +2166,10 @@ function drawRadar() {
       const nx = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
       const ny = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
       const nPos = worldToScreen(nx, ny, w, h);
-      const state = node.state_name || 'NORMAL_LOS';
+      const obstacleState = obstacleEditor.obstructionSnapshotIsCurrent
+        ? obstacleEditor.obstructionSnapshot.find(item => item.node_id === node.node_id)
+        : null;
+      const state = obstacleState?.predicted_state || node.state_name || 'NORMAL_LOS';
       const isSel = node.node_id === selectedNodeId, isMCP = node.node_type === 'mcp';
 
       let linkColor = 'rgba(56, 189, 248, 0.3)', dash = [], lw = 1;
@@ -1818,19 +2333,12 @@ function drawRadar() {
     ctx.restore();
 
     // ------------------------------------------------------------------
-    // Cursor Geographic & MGRS Coordinate HUD Tape (Exclusively Bottom-Left)
+    // Local Cartesian coordinate HUD. No geographic transform is configured.
     // ------------------------------------------------------------------
     const curWx = isMouseInsideRadar ? mouseWorldX : (panOffsetX_m);
     const curWy = isMouseInsideRadar ? mouseWorldY : (panOffsetY_m);
 
-    const curLat = 34.5 + curWy / 111320.0;
-    const curLon = 76.5 + curWx / (111320.0 * Math.cos(34.5 * Math.PI / 180.0));
-    const curElev = queryElevation(curWx, curWy);
-
-    const e100k = Math.floor(Math.abs(curWx / 100)) % 10000;
-    const n100k = Math.floor(Math.abs(curWy / 100)) % 10000;
-    const mgrsStr = `43X DM ${String(e100k).padStart(4, '0')} ${String(n100k).padStart(4, '0')}`;
-    const hudText = `CRS: MGRS ${mgrsStr} | ${curLat.toFixed(4)}°N, ${curLon.toFixed(4)}°E | ELEV: ${curElev.toFixed(0)}m MSL`;
+    const hudText = `LOCAL x ${curWx.toFixed(0)} m | y ${curWy.toFixed(0)} m`;
 
     ctx.save();
     ctx.font = `10px ${MONO}`;
@@ -1865,18 +2373,74 @@ radarCanvas.addEventListener('mousedown', (e) => {
   const px = e.clientX - rect.left, py = e.clientY - rect.top;
   const w = radarCanvas.parentElement.clientWidth, h = radarCanvas.parentElement.clientHeight;
   if (e.button === 0) {
+    const world = screenToWorld(px, py, w, h);
+    // In armed placement mode the click itself is the command to add a route point,
+    // not a hit-test selection. Node-first priority applies to select/drag below.
+    if (!spatialLocked && trajectoryEditor.activeMode === 'waypoints' && waypointPlacementArmed) {
+      addWaypointAt(world.x, world.y);
+      $('trajectory-place-point').classList.remove('active');
+      return;
+    }
+    let nodeHit = null, nodeHitDistance = Number.POSITIVE_INFINITY;
     for (const node of (latestTelemetry.nodes_telemetry || [])) {
       const nx = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
       const ny = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
       const p = worldToScreen(nx, ny, w, h);
-      if (Math.hypot(px - p.x, py - p.y) <= 16) {
-        draggedEntity = { type: 'node', id: node.node_id };
-        selectedNodeId = node.node_id;
-        syncNodeDropdowns(selectedNodeId);
-        sendCommand({ type: 'SELECT_NODE', node_id: node.node_id });
-        radarCanvas.style.cursor = 'grabbing';
+      const distance = Math.hypot(px - p.x, py - p.y);
+      if (distance < nodeHitDistance) { nodeHitDistance = distance; nodeHit = node; }
+    }
+    let waypointHitIndex = -1, waypointHitDistance = Number.POSITIVE_INFINITY;
+    if (obstacleEditor.mode === 'navigate' && !spatialLocked && trajectoryEditor.activeMode === 'waypoints') {
+      const draft = trajectoryEditor.preview;
+      draft.points.forEach((point, index) => {
+        const screen = worldToScreen(point.xM, point.yM, w, h);
+        const distance = Math.hypot(px - screen.x, py - screen.y);
+        if (distance < waypointHitDistance) { waypointHitDistance = distance; waypointHitIndex = index; }
+      });
+    }
+    let obstacleHitId = null, obstacleHitDistance = Number.POSITIVE_INFINITY;
+    if (obstacleEditor.mode !== 'navigate') {
+      const geometry = getRadarGeometry(w, h), toleranceM = 12 / geometry.scale;
+      obstacleEditor.draft.forEach(obstacle => {
+        if (!obstacleContainsPoint(obstacle, world.x, world.y, toleranceM)) return;
+        const center = worldToScreen(obstacle.xM, obstacle.yM, w, h);
+        const distance = Math.hypot(px - center.x, py - center.y);
+        if (distance < obstacleHitDistance) { obstacleHitDistance = distance; obstacleHitId = obstacle.id; }
+      });
+    }
+    const pointerTarget = resolveSpatialCanvasTarget(
+      nodeHitDistance, waypointHitDistance, obstacleHitDistance, obstacleEditor.mode,
+      trajectoryEditor.activeMode === 'waypoints' && !spatialLocked,
+    );
+    if (pointerTarget === 'node' && nodeHit) {
+      selectedNodeId = nodeHit.node_id;
+      syncNodeDropdowns(selectedNodeId);
+      sendCommand({ type: 'SELECT_NODE', node_id: nodeHit.node_id });
+      if (spatialLocked) {
+        radarCanvas.style.cursor = 'pointer';
         return;
       }
+      draggedEntity = { type: 'node', id: nodeHit.node_id };
+      radarCanvas.style.cursor = 'grabbing';
+      return;
+    }
+    if (obstacleEditor.mode === 'place' && !spatialLocked) {
+      createObstacleAt(world.x, world.y);
+      return;
+    }
+    if (pointerTarget === 'obstacle' && obstacleHitId) {
+      obstacleEditor.select(obstacleHitId);
+      if (!spatialLocked && obstacleEditor.mode === 'select') draggedEntity = { type: 'obstacle', id: obstacleHitId };
+      radarCanvas.style.cursor = spatialLocked ? 'pointer' : 'grabbing';
+      refreshObstacleEditor();
+      return;
+    }
+    if (pointerTarget === 'waypoint' && waypointHitIndex >= 0) {
+      trajectoryEditor.selectWaypoint(waypointHitIndex);
+      draggedEntity = { type: 'waypoint', id: waypointHitIndex };
+      radarCanvas.style.cursor = 'grabbing';
+      refreshTrajectoryEditor();
+      return;
     }
   }
   isPanning = true; panStartX = e.clientX; panStartY = e.clientY; radarCanvas.style.cursor = 'move';
@@ -1913,7 +2477,14 @@ window.addEventListener('mousemove', (e) => {
       if (distance <= best) { best = distance; hit = node.node_id; }
     }
     hoveredNodeId = hit;
-    radarCanvas.style.cursor = hit === null ? 'grab' : 'pointer';
+    let obstacleHover = false;
+    if (hit === null && obstacleEditor.mode !== 'navigate') {
+      const world = screenToWorld(px, py, w, h), toleranceM = 12 / getRadarGeometry(w, h).scale;
+      obstacleHover = obstacleEditor.draft.some(obstacle => obstacleContainsPoint(obstacle, world.x, world.y, toleranceM));
+    }
+    radarCanvas.style.cursor = hit !== null ? 'pointer'
+      : obstacleEditor.mode === 'place' && !spatialLocked ? 'crosshair'
+      : obstacleHover ? (spatialLocked ? 'pointer' : 'grab') : 'grab';
   } else if (!insideRadar && !draggedEntity && !isPanning) {
     hoveredNodeId = null;
     radarCanvas.style.cursor = 'grab';
@@ -1921,10 +2492,20 @@ window.addEventListener('mousemove', (e) => {
 
   if (draggedEntity) {
     const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top, w, h);
-    const now = performance.now();
-    if (now - lastMoveSendTime > 40) {
-      sendCommand({ type: 'NODE_MOVE', node_id: draggedEntity.id, x_m: world.x, y_m: world.y });
-      lastMoveSendTime = now;
+    if (draggedEntity.type === 'waypoint') {
+      try { trajectoryEditor.moveWaypoint(draggedEntity.id, { xM: world.x, yM: world.y }); refreshTrajectoryEditor(); }
+      catch (error) { setTrajectoryMessage(error.message, true); }
+    } else if (draggedEntity.type === 'obstacle') {
+      if (!spatialLocked) {
+        try { obstacleEditor.move(draggedEntity.id, world.x, world.y); refreshObstacleEditor(); }
+        catch (error) { obstacleEditor.message = error.message; refreshObstacleEditor(); }
+      }
+    } else {
+      const now = performance.now();
+      if (now - lastMoveSendTime > 40) {
+        sendCommand({ type: 'NODE_MOVE', node_id: draggedEntity.id, x_m: world.x, y_m: world.y });
+        lastMoveSendTime = now;
+      }
     }
   } else if (isPanning) {
     const { scale } = getRadarGeometry(w, h);

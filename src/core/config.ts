@@ -12,6 +12,9 @@ export const BOLTZMANN_CONSTANT = 1.380649e-23; // Exact SI constant (J/K)
 
 export type NodeType = 'soldier' | 'mcp' | 'acn';
 
+/** Authoritative IDs for the registered ground-node population. */
+export const GROUND_NODE_IDS: readonly number[] = Object.freeze(Array.from({ length: 16 }, (_, id) => id));
+
 export interface TransmitterParams {
   readonly txPowerDbm: number;
   readonly antennaGainDbi: number;
@@ -138,7 +141,19 @@ export class EnvironmentConfig implements IEnvironmentConfig {
   }
 }
 
+export type ACNTrajectoryMode = 'ellipse' | 'waypoints';
+/** Maximum editable waypoints keeps worker lookup tables bounded at 512 samples per segment. */
+export const MAX_ACN_WAYPOINTS = 64;
+
+/** A local Cartesian waypoint in metres. Waypoint loops close from last to first. */
+export interface ACNWaypoint {
+  readonly xM: number;
+  readonly yM: number;
+}
+
 export interface IACNFlightConfig {
+  readonly trajectoryMode: ACNTrajectoryMode;
+  readonly waypoints: readonly ACNWaypoint[];
   readonly altitudeMslM: number;
   readonly loiterRadiusAM: number;
   readonly loiterRadiusBM: number;
@@ -150,6 +165,8 @@ export interface IACNFlightConfig {
 }
 
 export class ACNFlightConfig implements IACNFlightConfig {
+  public readonly trajectoryMode: ACNTrajectoryMode;
+  public readonly waypoints: readonly ACNWaypoint[];
   public readonly altitudeMslM: number;
   public readonly loiterRadiusAM: number; // Semi-major axis (m)
   public readonly loiterRadiusBM: number; // Semi-minor axis (m)
@@ -160,6 +177,8 @@ export class ACNFlightConfig implements IACNFlightConfig {
   public readonly coverageRadiusKm: number; // Radio footprint radius (km)
 
   constructor(init?: Partial<IACNFlightConfig>) {
+    this.trajectoryMode = init?.trajectoryMode ?? 'ellipse';
+    this.waypoints = Object.freeze((init?.waypoints ?? []).map(point => Object.freeze({ xM: point.xM, yM: point.yM })));
     this.altitudeMslM = init?.altitudeMslM ?? 5000.0;
     this.loiterRadiusAM = init?.loiterRadiusAM ?? 20000.0;
     this.loiterRadiusBM = init?.loiterRadiusBM ?? 10000.0;

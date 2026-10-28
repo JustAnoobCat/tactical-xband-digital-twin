@@ -246,6 +246,8 @@ export class GroundNodeTrafficSubsystem {
   public readonly nodeId: number;
   public readonly nodeType: NodeType;
   public position: Position3D;
+  /** Configured antenna height above local terrain, in metres (0–1000 m). */
+  public aglM: number = 2.0;
   public readonly queue: FQCoDelQueue;
 
   public hasVoice: boolean;

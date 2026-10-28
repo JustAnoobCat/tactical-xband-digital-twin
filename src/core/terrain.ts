@@ -7,6 +7,7 @@
  */
 
 import { EnvironmentConfig, RFConfig, SPEED_OF_LIGHT } from './config';
+import { ObstacleField, ObstacleIntersection } from './obstacles';
 
 export type Position3D = readonly [xM: number, yM: number, zM: number];
 
@@ -22,6 +23,9 @@ export interface TerrainObstruction {
   readonly fresnelRadiusM: number;
   readonly diffractionLossDb: number;
   readonly isLos: boolean;
+  /** Structural geometry result; independent of terrain LOS and terrain diffraction. */
+  readonly obstacleBlocked: boolean;
+  readonly obstacleIntersections: readonly ObstacleIntersection[];
 }
 
 // Regional 1,200 x 1,200 km Theater Extent (+/- 600 km from origin)
@@ -205,6 +209,8 @@ export class TerrainEngine {
   public hasRealDem: boolean = false;
   public realDemGrid: Float32Array | null = null;
   private readonly customElevationFn?: (xM: number, yM: number) => number;
+  /** Canonical committed obstacle state shared by live links, prediction and profiles. */
+  public readonly obstacleField = new ObstacleField();
 
   constructor(options?: {
     theaterExtentM?: number;
@@ -472,11 +478,17 @@ const candidateUrls = url
       diffractionLossDb = knifeEdgeLoss + fockPenaltyDb;
     }
 
+    const obstacleIntersections = this.obstacleField.intersectRay(nodePos, acnPos, (x, y, fraction) => {
+      const d1 = d3D * fraction, d2 = d3D - d1;
+      return this.getElevation(x, y) + TerrainEngine.computeEarthBulge(d1, d2, rEff);
+    });
     return {
       minClearanceM,
       fresnelRadiusM: critFresnelRadiusM,
       diffractionLossDb,
       isLos,
+      obstacleBlocked: obstacleIntersections.length > 0,
+      obstacleIntersections,
     };
   }
 }
