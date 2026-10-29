@@ -523,7 +523,22 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       <div class="pane-head"><h2>Terrain &amp; RF</h2></div>
       <p class="lede">See what stands between the aircraft and the selected terminal, then follow the signal through the link budget. Sliders change the simulation live.</p>
       <div class="panel">
-        <div class="panel-head"><div><span class="sec-title">Line-of-sight profile (ITU-R P.526-15)</span> <span id="fresnel-node-label" class="badge-sub">Node 4</span></div><span id="fresnel-status-badge" class="kpi-badge badge-emerald">PRISTINE LINE-OF-SIGHT</span></div>
+        <div class="panel-head">
+          <div>
+            <span class="sec-title">Line-of-sight profile (ITU-R P.526-15)</span>
+            <span id="fresnel-node-label" class="badge-sub">Node 4</span>
+            <span id="profile-zoom-label" class="badge-sub">1.0×</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <div class="seg" role="toolbar" aria-label="Profile zoom controls">
+              <button type="button" id="btn-profile-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+              <button type="button" id="btn-profile-zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button>
+              <button type="button" id="btn-profile-reset-fit" title="Reset view (Fit)" aria-label="Reset profile view to fit">Fit</button>
+            </div>
+            <span id="fresnel-status-badge" class="kpi-badge badge-emerald">PRISTINE LINE-OF-SIGHT</span>
+            <span id="profile-obstacle-badge" class="kpi-badge badge-emerald">OBSTACLES: CLEAR</span>
+          </div>
+        </div>
         <div class="fresnel-canvas-box"><canvas id="fresnel-canvas"></canvas></div>
       </div>
       <div class="cols">
@@ -852,6 +867,7 @@ import { parseEditorNumber, TrajectoryEditorState } from './src/ui/trajectoryEdi
 import { obstacleContainsPoint, obstacleFootprintPoints } from './src/core/obstacles.ts';
 import { ObstacleEditorState, OBSTACLE_EDITOR_LIMITS, resolveSpatialCanvasTarget } from './src/ui/obstacleEditorState.ts';
 import { routeCommandResult } from './src/ui/commandResultRouter.ts';
+import { LinkProfileViewportState, renderLinkProfileViewport, summarizeProfileStatus } from './src/ui/linkProfileViewport.ts';
 
 /* ====================================================================
    CLIENT-SIDE WEBWORKER & RENDERING CONTROLLER
@@ -935,6 +951,7 @@ let activeTerrainMode = 'real';
 let spatialLocked = false;
 const trajectoryEditor = new TrajectoryEditorState();
 const obstacleEditor = new ObstacleEditorState();
+const linkProfileViewport = new LinkProfileViewportState();
 let trajectoryConfigSignature = '';
 let committedTrajectoryMode = 'ellipse';
 let trajectoryRequestSerial = 0;
@@ -953,6 +970,16 @@ let latestTelemetry = {
   flight_path: [], nodes_telemetry: [], active_gantt_allocations: [], comparative_kpi_dashboard: {},
   selected_node_fresnel: null, transfer_telemetry: null
 };
+
+/**
+ * Stale-response protection for PROFILE_FRAME messages.
+ * latestProfileSerial tracks the highest serial we have accepted; any PROFILE_FRAME
+ * with a serial <= this value arrived out of order and is silently discarded.
+ * latestProfileNodeId tracks which node the last accepted profile belongs to;
+ * a profile for a different node than the current selectedNodeId is also discarded.
+ */
+let latestProfileSerial = 0;
+let latestProfileNodeId = -1;
 
 // Dedicated 50 Hz WebWorker
 const worker = new Worker(new URL("./src/worker/simWorker.ts", import.meta.url), { type: "module" });
@@ -973,6 +1000,20 @@ worker.onmessage = (event) => {
     if (typeof msg.frame.spatial_locked === 'boolean') updateSpatialLockControl(msg.frame.spatial_locked);
     syncTrajectoryEditorFromWorker(msg.frame.trajectory_config);
     updateDashboardDOM(msg.frame);
+  } else if (msg.type === 'PROFILE_FRAME') {
+    // Stale-response protection: discard if the serial is not strictly newer than the
+    // last accepted profile, or if the profile is for a different node than the one
+    // currently selected by the UI. Neither condition can be guaranteed by timing alone.
+    const serial = typeof msg.profileSerial === 'number' ? msg.profileSerial : -1;
+    const nodeId = typeof msg.selectedNodeId === 'number' ? msg.selectedNodeId : -1;
+    if (serial <= latestProfileSerial) return;
+    if (nodeId !== selectedNodeId) return;
+    if (!msg.fresnel || typeof msg.fresnel !== 'object') return;
+    latestProfileSerial = serial;
+    latestProfileNodeId = nodeId;
+    // Splice the refreshed profile data into the telemetry snapshot so the Canvas
+    // renderer picks it up on its next animation frame without any other change.
+    latestTelemetry = { ...latestTelemetry, selected_node_fresnel: msg.fresnel };
   } else if (msg.type === 'HILLSHADE_READY') {
     renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode);
   } else if (msg.type === 'COMMAND_RESULT') {
@@ -2646,120 +2687,146 @@ function drawFresnel() {
     g.clearRect(0, 0, w, h);
 
     const f = latestTelemetry.selected_node_fresnel;
-    const selNode = (latestTelemetry.nodes_telemetry || []).find(n => n.node_id === selectedNodeId);
-    const clearM = f ? f.clearance_m : 0;
-    const isObs = !!((f && f.obstructed) || (selNode && selNode.state_name === 'HARD_SHADOW_CUTOFF'));
+    const profile = f && f.profile && f.profile.valid ? f.profile : null;
 
+    linkProfileViewport.syncProfile(profile);
+
+    const status = summarizeProfileStatus(profile, f);
     const badge = $('fresnel-status-badge');
     if (badge) {
-      if (isObs) { badge.className = 'kpi-badge badge-crimson'; badge.textContent = 'TERRAIN OCCLUSION (DIFFRACTION OUTAGE)'; }
-      else if (clearM < 15) { badge.className = 'kpi-badge badge-amber'; badge.textContent = 'GRAZING 0.6 F1 BOUNDARY'; }
-      else { badge.className = 'kpi-badge badge-emerald'; badge.textContent = 'PRISTINE LINE-OF-SIGHT'; }
+      badge.className = status.terrainBadgeClass;
+      badge.textContent = status.terrainStatusText;
+    }
+    const obsBadge = $('profile-obstacle-badge');
+    if (obsBadge) {
+      obsBadge.className = status.obstacleBadgeClass;
+      obsBadge.textContent = status.obstacleStatusText;
+    }
+    const zoomBadge = $('profile-zoom-label');
+    if (zoomBadge) {
+      zoomBadge.textContent = `${linkProfileViewport.zoomFactor.toFixed(1)}×`;
     }
 
-    const sky = g.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, '#0f1a27'); sky.addColorStop(1, '#0b1015');
-    g.fillStyle = sky; g.fillRect(0, 0, w, h);
-
-    const pts = (f && f.profile_points && f.profile_points.length > 1) ? f.profile_points : null;
-    if (!pts) {
-      g.fillStyle = '#7d8c99'; g.font = `12px ${MONO}`; g.textAlign = 'center';
-      g.fillText('Waiting for terrain profile…', w / 2, h / 2);
-      return;
-    }
-
-    const last = pts.length - 1;
-    const padL = 56, padR = 20, padT = 24, padB = 32, gw = w - padL - padR, gh = h - padT - padB;
-    let lo = Infinity, hi = -Infinity;
-    pts.forEach(p => { lo = Math.min(lo, p[1], p[3]); hi = Math.max(hi, p[1], p[2], 2 * p[2] - p[3]); });
-    const aStep = gfxNiceStep(hi - lo + 400, 5);
-    const minAlt = Math.floor((lo - 250) / aStep) * aStep, maxAlt = Math.ceil((hi + 250) / aStep) * aStep;
-    const dMax = Math.max(pts[last][0], 0.1);
-    const X = d => padL + (d / dMax) * gw;
-    const Y = a => padT + gh - ((a - minAlt) / (maxAlt - minAlt)) * gh;
-
-    // Grid and axes
-    g.lineWidth = 1; g.font = `10px ${MONO}`;
-    for (let a = Math.ceil(minAlt / aStep) * aStep; a <= maxAlt + 1e-6; a += aStep) {
-      const y = Math.round(Y(a)) + 0.5;
-      g.strokeStyle = 'rgba(120,140,160,0.14)'; g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
-      g.fillStyle = '#7d8c99'; g.textAlign = 'right'; g.fillText(`${Math.round(a)} m`, padL - 8, y + 3);
-    }
-    const dStep = gfxNiceStep(dMax, 6);
-    for (let d = 0; d <= dMax + 1e-6; d += dStep) {
-      const x = Math.round(X(d)) + 0.5;
-      g.strokeStyle = 'rgba(120,140,160,0.10)'; g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + gh); g.stroke();
-      g.fillStyle = '#7d8c99'; g.textAlign = 'center'; g.fillText(String(+d.toFixed(1)), x, padT + gh + 14);
-    }
-    g.textAlign = 'right'; g.fillText('km from terminal', w - padR, h - 5);
-
-    // First Fresnel zone (0.6 F1 band)
-    g.beginPath();
-    pts.forEach((p, i) => { const x = X(p[0]), y = Y(2 * p[2] - p[3]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
-    for (let i = last; i >= 0; i--) g.lineTo(X(pts[i][0]), Y(pts[i][3]));
-    g.closePath(); g.fillStyle = 'rgba(243,181,74,0.10)'; g.fill();
-    g.save(); g.setLineDash([4, 4]); g.strokeStyle = 'rgba(243,181,74,0.55)'; g.lineWidth = 1;
-    [3, -1].forEach(mode => {
-      g.beginPath();
-      pts.forEach((p, i) => { const a = mode === 3 ? p[3] : 2 * p[2] - p[3]; i ? g.lineTo(X(p[0]), Y(a)) : g.moveTo(X(p[0]), Y(a)); });
-      g.stroke();
-    });
-    g.restore();
-
-    // Terrain body
-    const base = Y(minAlt);
-    const tg = g.createLinearGradient(0, padT, 0, padT + gh);
-    tg.addColorStop(0, '#33465a'); tg.addColorStop(1, '#141c26');
-    g.beginPath(); g.moveTo(X(pts[0][0]), base);
-    pts.forEach(p => g.lineTo(X(p[0]), Y(p[1])));
-    g.lineTo(X(pts[last][0]), base); g.closePath(); g.fillStyle = tg; g.fill();
-
-    // Obstructed stretches
-    let i = 0;
-    while (i <= last) {
-      if (pts[i][1] > pts[i][2]) {
-        let j = i; while (j <= last && pts[j][1] > pts[j][2]) j++;
-        g.beginPath();
-        for (let k = i; k < j; k++) g.lineTo(X(pts[k][0]), Y(pts[k][1]));
-        for (let k = j - 1; k >= i; k--) g.lineTo(X(pts[k][0]), Y(pts[k][2]));
-        g.closePath(); g.fillStyle = 'rgba(255,112,112,0.38)'; g.fill();
-        i = j;
-      } else i++;
-    }
-    g.lineJoin = 'round'; g.strokeStyle = isObs ? '#ff7070' : '#7f9ab5'; g.lineWidth = 1.8;
-    g.beginPath(); pts.forEach((p, k) => k ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1]))); g.stroke();
-
-    // Direct line of sight
-    const pN = { x: X(pts[0][0]), y: Y(pts[0][2]) }, pA = { x: X(pts[last][0]), y: Y(pts[last][2]) };
-    g.strokeStyle = isObs ? '#ff7070' : '#9db4ff'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(pN.x, pN.y); g.lineTo(pA.x, pA.y); g.stroke();
-    const dot = (p, col) => { g.fillStyle = col; g.beginPath(); g.arc(p.x, p.y, 4.5, 0, TAU); g.fill(); g.strokeStyle = '#0b1015'; g.lineWidth = 1.5; g.stroke(); };
-    dot(pN, '#4fd1a1'); dot(pA, '#38bdf8');
-    g.font = `600 10.5px ${MONO}`; g.fillStyle = '#e8ecef';
-    g.textAlign = 'left'; g.fillText((f && f.node_name) || (selNode && selNode.name) || 'Terminal', pN.x + 8, pN.y - 8);
-    g.textAlign = 'right'; g.fillText('ACN', pA.x - 8, pA.y - 8);
-
-    // Minimum clearance marker
-    let minC = Infinity, ci = 1;
-    for (let k = 1; k < last; k++) { const c = pts[k][2] - pts[k][1]; if (c < minC) { minC = c; ci = k; } }
-    if (Number.isFinite(minC)) {
-      const tT = { x: X(pts[ci][0]), y: Y(pts[ci][1]) }, tL = { x: X(pts[ci][0]), y: Y(pts[ci][2]) };
-      const col = minC >= 0 ? '#4fd1a1' : '#ff7070';
-      g.strokeStyle = col; g.lineWidth = 1.4; g.beginPath(); g.moveTo(tT.x, tT.y); g.lineTo(tL.x, tL.y); g.stroke();
-      const txt = `${minC >= 0 ? '+' : ''}${minC.toFixed(0)} m`;
-      g.font = `600 10.5px ${MONO}`;
-      const tw = g.measureText(txt).width + 12, cx = tL.x + tw + 10 < w - padR ? tL.x + 8 : tL.x - 8 - tw, cy = (tT.y + tL.y) / 2 - 9;
-      gfxRRect(g, cx, cy, tw, 18, 9); g.fillStyle = 'rgba(11,16,21,0.88)'; g.fill(); g.strokeStyle = col; g.lineWidth = 1; g.stroke();
-      g.fillStyle = col; g.textAlign = 'left'; g.fillText(txt, cx + 6, cy + 12.5);
-    }
-
-    g.font = `10.5px ${MONO}`; g.fillStyle = '#9aa8b3'; g.textAlign = 'left';
-    const dl = f && Number.isFinite(f.diffraction_loss_db) ? `  ·  diffraction ${f.diffraction_loss_db.toFixed(1)} dB` : '';
-    g.fillText(`path ${dMax.toFixed(1)} km${dl}`, padL + 4, 14);
+    const layout = { width: w, height: h, padL: 60, padR: 24, padT: 28, padB: 34 };
+    renderLinkProfileViewport(g, layout, linkProfileViewport, profile, f ? f.profile_points : null);
   } catch (err) {
     console.error('Error drawing Fresnel canvas:', err);
   }
 }
+
+// Profile canvas interactive viewport listeners
+(function setupProfileCanvasInteractions() {
+  if (!fresnelCanvas) return;
+  fresnelCanvas.style.cursor = 'grab';
+  fresnelCanvas.tabIndex = 0;
+
+  function getFresnelLayout() {
+    const w = fresnelCanvas.parentElement.clientWidth || 800;
+    const h = fresnelCanvas.parentElement.clientHeight || 320;
+    return { width: w, height: h, padL: 60, padR: 24, padT: 28, padB: 34 };
+  }
+
+  let isPanningProfile = false;
+  let panStartX = 0;
+  let panStartY = 0;
+
+  fresnelCanvas.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    isPanningProfile = true;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    fresnelCanvas.style.cursor = 'grabbing';
+    try { fresnelCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  fresnelCanvas.addEventListener('pointermove', (e) => {
+    e.stopPropagation();
+    if (!isPanningProfile) return;
+    const dx = e.clientX - panStartX;
+    const dy = e.clientY - panStartY;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    linkProfileViewport.pan(dx, dy, getFresnelLayout());
+    drawFresnel();
+  });
+
+  const endPan = (e) => {
+    if (isPanningProfile) {
+      e.stopPropagation();
+      isPanningProfile = false;
+      fresnelCanvas.style.cursor = 'grab';
+      try { fresnelCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+  };
+  fresnelCanvas.addEventListener('pointerup', endPan);
+  fresnelCanvas.addEventListener('pointercancel', endPan);
+
+  fresnelCanvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = fresnelCanvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.15 : 0.87;
+    linkProfileViewport.zoomAt(factor, px, py, getFresnelLayout());
+    drawFresnel();
+  }, { passive: false });
+
+  fresnelCanvas.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    linkProfileViewport.resetFit();
+    drawFresnel();
+  });
+
+  fresnelCanvas.addEventListener('keydown', (e) => {
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault(); e.stopPropagation();
+      linkProfileViewport.zoom(1.25);
+      drawFresnel();
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault(); e.stopPropagation();
+      linkProfileViewport.zoom(0.8);
+      drawFresnel();
+    } else if (e.key === '0' || e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'f') {
+      e.preventDefault(); e.stopPropagation();
+      linkProfileViewport.resetFit();
+      drawFresnel();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault(); e.stopPropagation();
+      linkProfileViewport.pan(40, 0, getFresnelLayout());
+      drawFresnel();
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault(); e.stopPropagation();
+      linkProfileViewport.pan(-40, 0, getFresnelLayout());
+      drawFresnel();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      linkProfileViewport.pan(0, 30, getFresnelLayout());
+      drawFresnel();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault(); e.stopPropagation();
+      linkProfileViewport.pan(0, -30, getFresnelLayout());
+      drawFresnel();
+    }
+  });
+
+  $('btn-profile-zoom-in')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    linkProfileViewport.zoom(1.25);
+    drawFresnel();
+  });
+  $('btn-profile-zoom-out')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    linkProfileViewport.zoom(0.8);
+    drawFresnel();
+  });
+  $('btn-profile-reset-fit')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    linkProfileViewport.resetFit();
+    drawFresnel();
+  });
+})();
 
 /* ====================================================================
    MAIN RENDER LOOP

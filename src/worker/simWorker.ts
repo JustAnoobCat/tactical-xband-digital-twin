@@ -166,6 +166,8 @@ export class SimulationWorkerManager {
   private node4Frozen: boolean = false;
   private lastReportStatic: FrameScheduleReport | null = null;
   private lastReportTac: FrameScheduleReport | null = null;
+  /** Monotone counter incremented on every profile emission; used for stale-response detection. */
+  private profileSerial: number = 0;
 
   constructor(private readonly seedOffset: number = 0) {
     this.rfConfig = new RFConfig();
@@ -394,6 +396,28 @@ export class SimulationWorkerManager {
     if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
       self.postMessage(message);
     }
+  }
+
+  /**
+   * Build and emit a PROFILE_FRAME for the currently selected node using the
+   * current committed geometry and sim time. Does NOT advance time, queues,
+   * scheduler, or frame-based KPIs.
+   *
+   * The emitted message carries `selectedNodeId` and a monotone `profileSerial`
+   * so the UI can discard any response that arrived for an older selection or
+   * after a newer request was already processed.
+   */
+  public emitProfileFrame(): void {
+    const activeNodes = this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic;
+    const selNode = activeNodes.find((n) => n.nodeId === this.selectedNodeId) ?? activeNodes[0];
+    const acnPos = this.trajectoryEngine.getAcnPosition(this.simTimeS);
+    const fresnelSlice = this.buildFresnelSlice(selNode, acnPos);
+    this.emitHostMessage({
+      type: 'PROFILE_FRAME',
+      selectedNodeId: this.selectedNodeId,
+      profileSerial: ++this.profileSerial,
+      fresnel: fresnelSlice,
+    });
   }
 
   public tickSimulation(): void {
@@ -956,6 +980,9 @@ export class SimulationWorkerManager {
           this.terrainEngine.obstacleField.replace(previousObstacles);
           return reject(error instanceof Error ? error.message : 'Invalid obstacle set.');
         }
+        // Emit an out-of-band profile frame so the UI reflects the new obstacle geometry
+        // immediately, without waiting for the next normal telemetry tick.
+        this.emitProfileFrame();
         return result(true);
       }
 
@@ -1201,6 +1228,7 @@ export class SimulationWorkerManager {
       case 'SELECT_NODE':
         if (!Number.isInteger(msg.node_id) || msg.node_id < 0 || msg.node_id >= NUM_NODES) return reject('node_id must identify a registered ground node.');
         this.selectedNodeId = msg.node_id;
+        this.emitProfileFrame();
         return result(true);
 
       case 'CLEAR_TRANSFER': {
