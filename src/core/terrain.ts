@@ -262,7 +262,7 @@ const candidateUrls = url
   : [
       defaultUrl,
       new URL(
-        "terrain/real_ladakh_dem.bin",
+        "../terrain/real_ladakh_dem.bin",
         self.location.href
       ).toString(),
     ];

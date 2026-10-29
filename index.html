@@ -99,6 +99,13 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 }
 .map-legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .legend-dot{width:7px;height:7px;border-radius:50%;display:inline-block}.legend-dot.los{background:var(--ok)}.legend-dot.warning{background:var(--warn)}.legend-dot.shadow{background:var(--bad)}.legend-square{width:7px;height:7px;background:#38bdf8;display:inline-block}
+.legend-line{width:14px;height:0;display:inline-block;vertical-align:middle;border-top-width:2px}
+.legend-line.conn{border-top-style:solid;border-top-color:#38bdf8}
+.legend-line.deg{border-top-style:dashed;border-top-color:#f59e0b}
+.legend-line.blk-t{border-top-style:dashed;border-top-color:#ef4444}
+.legend-line.blk-o{border-top-style:dotted;border-top-color:#f97316}
+.legend-line.out{border-top-style:dashed;border-top-color:#94a3b8}
+.legend-line.unk{border-top-style:dotted;border-top-color:#64748b}
 .radar-canvas-container::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 62%,rgba(8,12,16,.5))}
 .situation-strip{flex:none;display:flex;gap:10px;align-items:flex-start;padding:9px 12px;background:var(--surface);border-top:1px solid var(--line);font-size:12px;min-height:46px}
 .situation-strip strong{color:var(--accent);font-weight:600;flex:none}
@@ -127,6 +134,8 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 .badge-amber{background:rgba(243,181,74,.13);color:var(--warn);border-color:rgba(243,181,74,.4)}
 .badge-crimson{background:rgba(255,112,112,.13);color:var(--bad);border-color:rgba(255,112,112,.4)}
 .badge-cyan{background:rgba(157,180,255,.13);color:var(--accent);border-color:rgba(157,180,255,.4)}
+.badge-slate{background:rgba(148,163,184,.13);color:#94a3b8;border-color:rgba(148,163,184,.4)}
+.badge-neutral{background:rgba(100,116,139,.13);color:#64748b;border-color:rgba(100,116,139,.4)}
 .badge-sub{font:11px var(--mono);color:var(--faint)}
 
 details.more{border-top:1px solid var(--line)}
@@ -171,12 +180,33 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 .context-meta{display:flex;flex-wrap:wrap;gap:4px 16px;margin-left:auto}.context-meta span{color:var(--muted)}.context-meta b{color:var(--text);font:600 11.5px var(--mono);margin-left:4px}
 .waterfall-canvas-container{height:clamp(210px,30vh,280px);border:1px solid var(--line);border-radius:6px}
 .fresnel-canvas-box{height:clamp(240px,36vh,340px);border:1px solid var(--line);border-radius:6px}
+.timeline-scrubber-panel{margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:6px}
+.timeline-scrubber-bar{display:flex;flex-direction:column;gap:8px}
+.timeline-scrubber-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.timeline-scrubber-track-wrap{display:flex;align-items:center;gap:10px;width:100%}
+.timeline-scrubber-track-wrap input[type=range]{flex:1;accent-color:var(--accent);height:6px;cursor:pointer}
+.timeline-scrubber-meta{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-family:var(--mono)}
+.history-current-pos{font-family:var(--mono);font-size:12px;color:var(--text)}
+.btn-live{font:600 11px var(--mono);padding:3px 10px;border-radius:4px;border:1px solid var(--line2);background:var(--raised);color:var(--muted);cursor:pointer;transition:all .15s ease}
+.btn-live.active{background:rgba(79,209,161,.15);color:var(--ok);border-color:rgba(79,209,161,.5);font-weight:700}
+.btn-live:hover:not(.active){background:var(--line);color:var(--text)}
+.history-banner{padding:6px 10px;border-radius:4px;font-size:11.5px;font-family:var(--mono);margin-top:6px}
+.history-banner.warning{background:rgba(243,181,74,.12);color:var(--warn);border:1px solid rgba(243,181,74,.3)}
+.history-banner.historical{background:rgba(243,181,74,.15);color:var(--warn);border:1px solid rgba(243,181,74,.4)}
+.sched-charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:6px}
+.sched-chart-card{background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+.sched-chart-head{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-family:var(--mono);color:var(--muted)}
+.sched-chart-canvas-wrap{height:110px;position:relative;width:100%}
+.sched-chart-canvas-wrap canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
 .legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--muted);margin-bottom:10px}.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
 .table-scroll{overflow-x:auto}
 .data-table{width:100%;border-collapse:collapse;font-size:12px;min-width:480px}
 .data-table th{font-weight:600;font-size:11.5px;color:var(--muted);text-align:right;padding:8px 10px;border-bottom:1px solid var(--line2)}
 .data-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;font:12px var(--mono)}
 .data-table th:first-child,.data-table td:first-child{text-align:left}.data-table td:first-child{font:12.5px var(--sans)}
+#terminal-inventory-tbody tr{cursor:pointer;transition:background .15s ease}
+#terminal-inventory-tbody tr:hover{background:rgba(56,189,248,.08)}
+#terminal-inventory-tbody tr.is-selected{background:rgba(56,189,248,.15);font-weight:600}
 .c-bad{color:var(--bad)}.c-ok{color:var(--ok)}.c-acc{color:var(--accent)}
 .inspector-footnote{margin-top:8px;color:var(--muted);font-size:11.5px;max-width:78ch}
 .inspector-metric{background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 10px}.inspector-metric span{display:block;font-size:11px;color:var(--muted)}.inspector-metric strong{font:600 12.5px var(--mono);overflow-wrap:anywhere}
@@ -313,9 +343,12 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="radar-canvas-container" id="radar-container" style="cursor:grab">
           <canvas id="radar-canvas" aria-label="Live terrain and ground terminal network map"></canvas>
           <div class="map-legend" aria-label="Map legend">
-            <span><i class="legend-dot los"></i>Clear line of sight</span>
-            <span><i class="legend-dot warning"></i>About to be blocked</span>
-            <span><i class="legend-dot shadow"></i>Blocked by terrain</span>
+            <span><i class="legend-line conn"></i>Connected</span>
+            <span><i class="legend-line deg"></i>Degraded</span>
+            <span><i class="legend-line blk-t"></i>Blocked (terrain)</span>
+            <span><i class="legend-line blk-o"></i>Blocked (obstacle)</span>
+            <span><i class="legend-line out"></i>Outage</span>
+            <span><i class="legend-line unk"></i>Unknown</span>
             <span><i class="legend-square"></i>Airborne relay</span>
             <span>◎ Selected terminal</span>
           </div>
@@ -446,7 +479,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         </div>
 
         <details class="more" open data-adv>
-          <summary>Inspect a terminal<small>Pick any of the 16 ground terminals</small><span id="overview-state-badge" class="kpi-badge badge-emerald">PRISTINE LOS</span></summary>
+          <summary>Inspect a terminal<small>Pick any of the 16 ground terminals</small><span id="overview-state-badge" class="kpi-badge badge-neutral">UNKNOWN</span></summary>
           <div class="more-body">
             <select id="quickNodeSelect" onchange="onTargetNodeChange(this.value)" aria-label="Target terminal">
               <option value="4" selected>Node 4: S4 - Recon Patrol (Occlusion Target)</option>
@@ -481,6 +514,103 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <div class="pane scheduler-layout">
       <div class="pane-head"><h2>Scheduler</h2></div>
       <p class="lede">Every 20 ms the aircraft divides airtime among terminals. Static TDMA gives each a fixed slice; Tac-TAD resizes slices to demand and skips blocked links.</p>
+
+      <!-- Historical Timeline Scrubber Panel for Scheduler -->
+      <div class="panel timeline-scrubber-panel" id="sched-history-panel" aria-label="Scheduler performance historical timeline scrubber">
+        <div class="timeline-scrubber-bar">
+          <div class="timeline-scrubber-controls">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <button type="button" id="btn-sched-history-live" class="btn-live active" title="Return to live simulation (or press Live)">● LIVE</button>
+              <span id="sched-history-mode-pill" class="kpi-badge badge-emerald">LIVE STREAM</span>
+              <span id="sched-history-target-pill" class="badge-sub">Selected Terminal</span>
+            </div>
+            <div id="sched-history-current-pos" class="history-current-pos"><b>T+0.00s</b> <small>(#0)</small></div>
+          </div>
+          <div class="timeline-scrubber-track-wrap">
+            <input type="range" id="sched-history-scrubber" min="0" max="0" value="0" step="1" aria-label="Scheduler timeline scrubber" disabled>
+          </div>
+          <div class="timeline-scrubber-meta">
+            <span id="sched-history-span-oldest" class="muted">T+0.0s (#0)</span>
+            <span class="muted" style="font-size:10px">60-SECOND ROLLING HISTORY (3,000 FRAMES) · SCHEDULER INSPECTION</span>
+            <span id="sched-history-span-newest" class="muted">T+0.0s (#0)</span>
+          </div>
+        </div>
+        <div id="sched-history-eviction-warning" class="history-banner warning" style="display:none">
+          ⚠️ Selected historical frame was evicted from the 60s buffer. Showing oldest available frame.
+        </div>
+        <div id="sched-spatial-revision-warning" class="history-banner warning" style="display:none"></div>
+      </div>
+
+      <!-- Historical Performance Trend Charts Panel -->
+      <div class="panel" id="sched-charts-panel">
+        <div class="panel-head">
+          <span class="sec-title">Historical performance trends</span>
+          <span class="badge-sub">60-second rolling buffer (3,000 frames)</span>
+        </div>
+        <div class="sched-charts-grid">
+          <div class="sched-chart-card">
+            <div class="sched-chart-head">
+              <span>Uplink airtime utilization (%)</span>
+              <b id="chart-util-val" class="c-acc">--</b>
+            </div>
+            <div class="sched-chart-canvas-wrap">
+              <canvas id="sched-chart-utilization" aria-label="Historical airtime utilization chart"></canvas>
+            </div>
+          </div>
+          <div class="sched-chart-card">
+            <div class="sched-chart-head">
+              <span id="chart-backlog-label">Queue backlog (KB) &amp; drops</span>
+              <b id="chart-backlog-val" class="c-acc">--</b>
+            </div>
+            <div class="sched-chart-canvas-wrap">
+              <canvas id="sched-chart-backlog" aria-label="Historical queue backlog and packet drops chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected Historical Frame Snapshot Panel -->
+      <div class="panel" id="sched-snapshot-panel" style="display:none">
+        <div class="panel-head">
+          <span class="sec-title">Historical performance snapshot</span>
+          <span id="sched-snapshot-badge" class="kpi-badge badge-amber">HISTORICAL #0</span>
+        </div>
+        <div class="inspector-grid">
+          <div class="inspector-metric">
+            <span>Simulation Time</span>
+            <strong id="snap-time">T+0.00s (#0)</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Scheduler Mode</span>
+            <strong id="snap-mode">Tac-TAD</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Airtime Utilization</span>
+            <strong id="snap-util">0.0%</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Frame Goodput (Exact 20ms)</span>
+            <strong id="snap-goodput">--</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Frame Drops (Delay / Oflw)</span>
+            <strong id="snap-drops">0 pkts</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Terminal Backlog (Selected)</span>
+            <strong id="snap-backlog">--</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Cumulative Goodput (Session)</span>
+            <strong id="snap-cum-goodput">--</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Cumulative Drops (Session)</span>
+            <strong id="snap-cum-drops">--</strong>
+          </div>
+        </div>
+      </div>
+
       <div class="panel waterfall-card">
         <div class="panel-head"><span class="sec-title">Superframe timeline (20 ms, 50 Hz)</span></div>
         <div class="legend">
@@ -491,7 +621,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       <div class="panel" id="allocation-inspector">
         <div class="panel-head"><span class="sec-title">Allocation for the selected terminal</span><span class="badge-sub">current frame</span></div>
         <div class="inspector-grid">
-          <div class="inspector-metric"><span>Terminal</span><strong id="alloc-node-label">Node 4</strong></div>
+          <div class="inspector-metric"><span>Terminal</span><strong id="alloc-node-label">Selected Terminal</strong></div>
           <div class="inspector-metric"><span>Airtime</span><strong id="alloc-airtime">--</strong></div>
           <div class="inspector-metric"><span>Segments</span><strong id="alloc-segments">--</strong></div>
         </div>
@@ -506,7 +636,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <tr><td>Hard-shadow slot allocation waste</td><td id="tbl-stat-waste" class="c-bad">0.0%</td><td id="tbl-tac-waste" class="c-ok">0.0%</td><td id="tbl-waste-saved" class="c-ok">0.0% saved</td></tr>
             <tr><td>Concluded packets dropped</td><td id="tbl-stat-drops">0 (0.0%)</td><td id="tbl-tac-drops" class="c-ok">0 (0.0%)</td><td id="tbl-drop-reduc" class="c-ok">0% fewer</td></tr>
             <tr><td>Active uplink frame utilization</td><td id="tbl-stat-util">100.0%</td><td id="tbl-tac-util">0.0%</td><td class="muted">Adaptive sizing</td></tr>
-            <tr><td>Recon Node 4 pre-cutoff backlog</td><td id="tbl-n4-stat">--</td><td id="tbl-n4-tac">--</td><td id="tbl-n4-status">Pre-flush</td></tr>
+            <tr><td id="tbl-backlog-label">Selected terminal queue backlog</td><td id="tbl-n4-stat">--</td><td id="tbl-n4-tac">--</td><td id="tbl-n4-status">--</td></tr>
             <tr><td>Per-frame goodput increment (P50)</td><td id="tbl-p50-stat">--</td><td id="tbl-p50-tac">--</td><td id="tbl-p50-gain">--</td></tr>
             <tr><td>Per-frame goodput increment (P95)</td><td id="tbl-p95-stat">--</td><td id="tbl-p95-tac">--</td><td id="tbl-p95-gain">--</td></tr>
           </tbody>
@@ -522,6 +652,33 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <div class="pane terrain-layout">
       <div class="pane-head"><h2>Terrain &amp; RF</h2></div>
       <p class="lede">See what stands between the aircraft and the selected terminal, then follow the signal through the link budget. Sliders change the simulation live.</p>
+
+      <!-- Historical Timeline Scrubber Panel -->
+      <div class="panel timeline-scrubber-panel" id="profile-history-panel" aria-label="Terrain and RF historical timeline scrubber">
+        <div class="timeline-scrubber-bar">
+          <div class="timeline-scrubber-controls">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <button type="button" id="btn-history-live" class="btn-live active" title="Return to live simulation (or press Live)">● LIVE</button>
+              <span id="history-mode-pill" class="kpi-badge badge-emerald">LIVE STREAM</span>
+              <span id="history-target-pill" class="badge-sub">Node 4</span>
+            </div>
+            <div id="history-current-pos" class="history-current-pos"><b>T+0.00s</b> <small>(#0)</small></div>
+          </div>
+          <div class="timeline-scrubber-track-wrap">
+            <input type="range" id="profile-history-scrubber" min="0" max="0" value="0" step="1" aria-label="Simulation timeline scrubber" disabled>
+          </div>
+          <div class="timeline-scrubber-meta">
+            <span id="history-span-oldest" class="muted">T+0.0s (#0)</span>
+            <span class="muted" style="font-size:10px">60-SECOND ROLLING HISTORY (3,000 FRAMES) · MAIN MAP REMAINS LIVE</span>
+            <span id="history-span-newest" class="muted">T+0.0s (#0)</span>
+          </div>
+        </div>
+        <div id="history-eviction-warning" class="history-banner warning" style="display:none">
+          ⚠️ Selected historical frame was evicted from the 60s buffer. Showing oldest available frame.
+        </div>
+        <div id="history-spatial-revision-warning" class="history-banner warning" style="display:none"></div>
+      </div>
+
       <div class="panel">
         <div class="panel-head">
           <div>
@@ -535,21 +692,21 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <button type="button" id="btn-profile-zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button>
               <button type="button" id="btn-profile-reset-fit" title="Reset view (Fit)" aria-label="Reset profile view to fit">Fit</button>
             </div>
-            <span id="fresnel-status-badge" class="kpi-badge badge-emerald">PRISTINE LINE-OF-SIGHT</span>
-            <span id="profile-obstacle-badge" class="kpi-badge badge-emerald">OBSTACLES: CLEAR</span>
+            <span id="fresnel-status-badge" class="kpi-badge badge-neutral">UNKNOWN</span>
+            <span id="profile-obstacle-badge" class="kpi-badge badge-neutral">OBSTACLES: UNKNOWN</span>
           </div>
         </div>
         <div class="fresnel-canvas-box"><canvas id="fresnel-canvas"></canvas></div>
       </div>
       <div class="cols">
         <div class="panel">
-          <div class="panel-head"><span class="sec-title">Link budget (DVB-S2X)</span><span id="link-modcod-tag" class="kpi-badge badge-cyan">QPSK 3/4</span></div>
+          <div class="panel-head"><span class="sec-title">Link budget (DVB-S2X)</span><span id="link-modcod-tag" class="kpi-badge badge-neutral">--</span></div>
           <div class="group-title">Result</div>
           <div class="facts">
             <div class="form-row"><span>Net channel SNR</span><b id="lb-snr">--</b></div>
             <div class="form-row"><span>Spectral efficiency</span><b id="lb-se">--</b></div>
             <div class="form-row"><span>Received power (P<sub>rx</sub>)</span><b id="lb-prx">--</b></div>
-            <div class="form-row"><span>Noise floor (P<sub>noise</sub>)</span><b id="lb-pnoise">-108.97 dBm</b></div>
+            <div class="form-row"><span>Noise floor (P<sub>noise</sub>)</span><b id="lb-pnoise">--</b></div>
           </div>
           <div class="group-title">Geometry</div>
           <div class="facts">
@@ -559,9 +716,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div class="group-title">Losses</div>
           <div class="facts">
             <div class="form-row"><span>Free-space loss (FSPL)</span><b id="lb-fspl">--</b></div>
-            <div class="form-row"><span>Diffraction loss</span><b id="lb-diff">0.0 dB</b></div>
+            <div class="form-row"><span>Diffraction loss</span><b id="lb-diff">--</b></div>
             <div class="form-row"><span>Gaseous loss (P.676)</span><b id="lb-gas">--</b></div>
-            <div class="form-row"><span>Rain loss (P.838)</span><b id="lb-rain">0.0 dB</b></div>
+            <div class="form-row"><span>Rain loss (P.838)</span><b id="lb-rain">--</b></div>
           </div>
         </div>
         <div class="panel">
@@ -583,7 +740,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       <p class="lede">Choose a terminal, see what is waiting in its queues, and inject traffic to watch it travel, get blocked, or arrive.</p>
       <div class="cols">
         <div class="panel">
-          <div class="panel-head"><span class="sec-title">Queues and traffic</span><span id="term-state-pill" class="kpi-badge badge-emerald">NORMAL LOS</span></div>
+          <div class="panel-head"><span class="sec-title">Queues and traffic</span><span id="term-state-pill" class="kpi-badge badge-neutral">UNKNOWN</span></div>
           <input id="terminal-search" class="terminal-search" type="search" placeholder="Search by node ID, callsign or role…" aria-label="Search terminals" oninput="filterTerminalOptions(this.value)">
           <select id="termNodeSelect" onchange="onTargetNodeChange(this.value)" aria-label="Terminal">
             <option value="4" selected>Node 4: S4 - Recon Patrol (Occlusion Target)</option>
@@ -613,6 +770,40 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           </div>
           <div class="group-title" style="margin-top:16px">How blocked links are handled</div>
           <p class="muted" style="font-size:12px">When terrain cuts line of sight, the terminal stops radiating and its buffers stay queued. Tac-TAD detects the blockage 3.0 s ahead and raises priority (&Phi;<sub>evac</sub>) to flush queues to 0 KB before cutoff.</p>
+        </div>
+      </div>
+
+      <!-- Ground-Terminal Inventory Panel -->
+      <div class="panel" style="margin-top:14px">
+        <div class="panel-head">
+          <div>
+            <span class="sec-title">Ground terminal inventory</span>
+            <span class="badge-sub">16 active nodes · Local Cartesian coordinates</span>
+          </div>
+          <span id="inventory-selected-pill" class="kpi-badge badge-cyan">Selected: Node 4</span>
+        </div>
+        <p class="muted" style="font-size:11.5px;margin-bottom:10px">
+          Coordinate reference: Local Cartesian theater projection (X/Y metres relative to Kargil theater origin, Z altitude MSL). Direct geodetic latitude/longitude transform remains uncalibrated in this engine build. Click any row to select the terminal.
+        </p>
+        <div class="table-scroll">
+          <table class="data-table" id="terminal-inventory-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Callsign</th>
+                <th>Tactical role</th>
+                <th>Coord X (m)</th>
+                <th>Coord Y (m)</th>
+                <th>Terrain MSL (m)</th>
+                <th>Antenna AGL (m)</th>
+                <th>Total MSL (m)</th>
+                <th>Link status</th>
+              </tr>
+            </thead>
+            <tbody id="terminal-inventory-tbody">
+              <!-- Dynamically populated from authoritative nodes_telemetry -->
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -868,6 +1059,19 @@ import { obstacleContainsPoint, obstacleFootprintPoints } from './src/core/obsta
 import { ObstacleEditorState, OBSTACLE_EDITOR_LIMITS, resolveSpatialCanvasTarget } from './src/ui/obstacleEditorState.ts';
 import { routeCommandResult } from './src/ui/commandResultRouter.ts';
 import { LinkProfileViewportState, renderLinkProfileViewport, summarizeProfileStatus } from './src/ui/linkProfileViewport.ts';
+import {
+  createHistoricalRecordSnapshot,
+  SimulationHistoryBuffer,
+  SimulationHistoryController,
+} from './src/ui/simulationHistory.ts';
+import {
+  createSchedulerRecordSnapshot,
+  SchedulerHistoryBuffer,
+  SchedulerHistoryController,
+} from './src/ui/schedulerHistory.ts';
+import { HistoricalSessionCoordinator } from './src/ui/historicalSessionCoordinator.ts';
+import { classifyLinkCommunicationStatus } from './src/core/linkStatusClassifier.ts';
+import { classifyAndStyleLink, getMapLinkStyle, getStatusBadgeInfo } from './src/ui/mapLinkStyles.ts';
 
 /* ====================================================================
    CLIENT-SIDE WEBWORKER & RENDERING CONTROLLER
@@ -952,6 +1156,12 @@ let spatialLocked = false;
 const trajectoryEditor = new TrajectoryEditorState();
 const obstacleEditor = new ObstacleEditorState();
 const linkProfileViewport = new LinkProfileViewportState();
+const historyBuffer = new SimulationHistoryBuffer(3000);
+const historyController = new SimulationHistoryController(historyBuffer);
+const schedHistoryBuffer = new SchedulerHistoryBuffer(3000);
+const schedHistoryController = new SchedulerHistoryController(schedHistoryBuffer);
+const sessionCoordinator = new HistoricalSessionCoordinator();
+let currentSpatialRevision = 0;
 let trajectoryConfigSignature = '';
 let committedTrajectoryMode = 'ellipse';
 let trajectoryRequestSerial = 0;
@@ -990,13 +1200,804 @@ function sendCommand(msg) {
   }
 }
 
+function recordHistoricalFrame(frame) {
+  if (!frame) return;
+  const f = frame.selected_node_fresnel;
+  if (!f || !f.profile || !f.profile.valid) return;
+
+  const selNode = (frame.nodes_telemetry || []).find(n => n.node_id === frame.selected_node_id) || {};
+  const status = summarizeProfileStatus(f.profile, f);
+  const acn = frame.acn_telemetry || {};
+  const acnPos = [acn.pos_x ?? 0, acn.pos_y ?? 0, acn.pos_z ?? 5000];
+  const groundNodePos = selNode.position ? [...selNode.position] : [0, 0, 0];
+  const slantKm = typeof selNode.slant_range_km === 'number' ? selNode.slant_range_km : (typeof f.distance_km === 'number' ? f.distance_km : 0);
+
+  const lb = frame.selected_link_budget || f.link_budget;
+  const rec = createHistoricalRecordSnapshot({
+    frameIndex: frame.frame_index,
+    simulationTimeS: frame.sim_time_s,
+    spatialRevision: typeof frame.spatial_revision === 'number' ? frame.spatial_revision : currentSpatialRevision,
+    selectedNodeId: frame.selected_node_id,
+    nodeName: selNode.name ? `Node ${selNode.node_id} (${selNode.name})` : `Node ${frame.selected_node_id}`,
+    profileSerial: latestProfileSerial,
+    groundNodePositionMslM: groundNodePos,
+    acnPositionMslM: acnPos,
+    profile: f.profile,
+    obstruction: {
+      terrainIsLos: status.terrainIsLos,
+      obstacleBlocked: status.obstacleBlocked,
+      minClearanceM: status.terrainClearanceM,
+      diffractionLossDb: status.diffractionLossDb,
+      primaryBlockedObstacleId: status.primaryBlockedObstacleId,
+      terrainStatusText: status.terrainStatusText,
+      terrainBadgeClass: status.terrainBadgeClass,
+      obstacleStatusText: status.obstacleStatusText,
+      obstacleBadgeClass: status.obstacleBadgeClass,
+    },
+    linkBudget: {
+      modcodName: lb ? lb.modcod_name : (selNode.modcod_name || 'UNKNOWN'),
+      snrDb: lb ? lb.snr_db : (typeof selNode.snr_db === 'number' ? selNode.snr_db : 0),
+      spectralEfficiencyBpsHz: lb ? lb.spectral_efficiency_bps_hz : (typeof selNode.spectral_efficiency_bps_hz === 'number' ? selNode.spectral_efficiency_bps_hz : 0),
+      slantRangeKm: lb ? lb.slant_range_km : slantKm,
+      fsplDb: lb ? Number(lb.fspl_db.toFixed(1)) : 0,
+      diffractionLossDb: lb ? lb.diffraction_loss_db : (typeof selNode.diffraction_loss_db === 'number' ? selNode.diffraction_loss_db : 0),
+      rxPowerDbm: lb ? Number(lb.prx_dbm.toFixed(1)) : 0,
+      earthBulgeM: lb ? Number(lb.earth_bulge_m.toFixed(1)) : 0,
+      gaseousLossDb: lb ? Number(lb.gas_loss_db.toFixed(2)) : 0,
+      pNoiseDbm: lb && typeof lb.pnoise_dbm === 'number' ? Number(lb.pnoise_dbm.toFixed(2)) : undefined,
+      rainLossDb: lb && typeof lb.rain_loss_db === 'number' ? Number(lb.rain_loss_db.toFixed(1)) : undefined,
+    },
+    profilePoints: f.profile_points,
+  });
+
+  historyBuffer.push(rec);
+  updateScrubberUI();
+}
+
+function updateScrubberUI() {
+  const scrubber = $('profile-history-scrubber');
+  if (!scrubber) return;
+  const span = historyBuffer.getSpan();
+
+  if (span.count < 1 || span.oldestFrame === null || span.newestFrame === null) {
+    scrubber.disabled = true;
+    scrubber.min = '0';
+    scrubber.max = '0';
+    scrubber.value = '0';
+    return;
+  }
+
+  scrubber.min = String(span.oldestFrame);
+  scrubber.max = String(span.newestFrame);
+
+  const oldestEl = $('history-span-oldest');
+  if (oldestEl) oldestEl.textContent = `T+${(span.oldestTimeS ?? 0).toFixed(2)}s (#${span.oldestFrame})`;
+  const newestEl = $('history-span-newest');
+  if (newestEl) newestEl.textContent = `T+${(span.newestTimeS ?? 0).toFixed(2)}s (#${span.newestFrame})`;
+
+  if (!historyController.isInspecting) {
+    scrubber.disabled = false;
+    scrubber.value = String(span.newestFrame);
+    const posEl = $('history-current-pos');
+    if (posEl) posEl.innerHTML = `<b>T+${(span.newestTimeS ?? 0).toFixed(2)}s</b> <small>(#${span.newestFrame})</small>`;
+    const targetEl = $('history-target-pill');
+    if (targetEl) targetEl.textContent = `Node ${selectedNodeId}`;
+    const evWarn = $('history-eviction-warning');
+    if (evWarn) evWarn.style.display = 'none';
+    const spatWarn = $('history-spatial-revision-warning');
+    if (spatWarn) spatWarn.style.display = 'none';
+  } else {
+    const currentFrame = historyController.currentInspectedFrame;
+    if (currentFrame !== null) {
+      scrubber.value = String(currentFrame);
+      const rec = historyController.getActiveHistoricalRecord();
+      if (rec) {
+        const posEl = $('history-current-pos');
+        if (posEl) posEl.innerHTML = `<b>T+${rec.simulationTimeS.toFixed(2)}s</b> <small>(#${rec.frameIndex})</small>`;
+        const targetEl = $('history-target-pill');
+        if (targetEl) targetEl.textContent = rec.nodeName;
+        const spatWarn = $('history-spatial-revision-warning');
+        if (spatWarn) {
+          if (typeof rec.spatialRevision === 'number' && rec.spatialRevision !== currentSpatialRevision) {
+            spatWarn.style.display = 'block';
+            spatWarn.textContent = `⚠️ Spatial environment modified (snapshot rev ${rec.spatialRevision} vs current rev ${currentSpatialRevision}). Historical profile reflects prior geometry.`;
+          } else {
+            spatWarn.style.display = 'none';
+          }
+        }
+      }
+    }
+    const evWarn = $('history-eviction-warning');
+    if (evWarn) evWarn.style.display = historyController.isEvicted ? 'block' : 'none';
+    if (historyController.isEvicted) {
+      syncHistoricalUIState();
+    }
+  }
+}
+
+function syncHistoricalUIState() {
+  const rec = historyController.getActiveHistoricalRecord();
+  if (!rec) return;
+
+  $('btn-history-live')?.classList.remove('active');
+  const pill = $('history-mode-pill');
+  if (pill) {
+    pill.className = 'kpi-badge badge-amber';
+    pill.textContent = 'HISTORICAL INSPECTION';
+  }
+
+  const targetEl = $('history-target-pill');
+  if (targetEl) targetEl.textContent = rec.nodeName;
+  const posEl = $('history-current-pos');
+  if (posEl) posEl.innerHTML = `<b>T+${rec.simulationTimeS.toFixed(2)}s</b> <small>(#${rec.frameIndex})</small>`;
+  const evWarn = $('history-eviction-warning');
+  if (evWarn) evWarn.style.display = historyController.isEvicted ? 'block' : 'none';
+  const spatWarn = $('history-spatial-revision-warning');
+  if (spatWarn) {
+    if (typeof rec.spatialRevision === 'number' && rec.spatialRevision !== currentSpatialRevision) {
+      spatWarn.style.display = 'block';
+      spatWarn.textContent = `⚠️ Spatial environment modified (snapshot rev ${rec.spatialRevision} vs current rev ${currentSpatialRevision}). Historical profile reflects prior geometry.`;
+    } else {
+      spatWarn.style.display = 'none';
+    }
+  }
+
+  ['quickNodeSelect', 'termNodeSelect'].forEach(id => {
+    const el = $(id);
+    if (el) {
+      el.disabled = true;
+      el.title = 'Node selection is locked during historical inspection. Return to LIVE to select nodes.';
+    }
+  });
+
+  const rfContext = document.querySelector('#tab-terrain .analysis-context');
+  if (rfContext) {
+    const kicker = rfContext.querySelector('.context-kicker');
+    if (kicker) {
+      kicker.textContent = `HISTORICAL (T+${rec.simulationTimeS.toFixed(2)}s, #${rec.frameIndex})`;
+      kicker.style.color = 'var(--warn)';
+    }
+    const nodeEl = rfContext.querySelector('[data-context-node]');
+    if (nodeEl) nodeEl.textContent = `${rec.nodeName} [Hist]`;
+    const timeEl = rfContext.querySelector('[data-context-time]');
+    if (timeEl) timeEl.textContent = `T+${rec.simulationTimeS.toFixed(2)}s`;
+    const frameEl = rfContext.querySelector('[data-context-frame]');
+    if (frameEl) frameEl.textContent = `#${rec.frameIndex}`;
+    const histInput = {
+      terrain_is_los: rec.obstruction.terrainIsLos,
+      obstacle_blocked: rec.obstruction.obstacleBlocked,
+      link_outage: rec.linkBudget.modcodName === 'LINK_OUTAGE' || rec.linkBudget.modcodName === 'OBSTACLE_BLOCKED' || rec.linkBudget.snrDb < -1.5,
+      is_outage: rec.linkBudget.modcodName === 'LINK_OUTAGE' || rec.linkBudget.modcodName === 'OBSTACLE_BLOCKED' || rec.linkBudget.snrDb < -1.5,
+      modcod_name: rec.linkBudget.modcodName,
+      diffraction_loss_db: rec.linkBudget.diffractionLossDb,
+      snr_db: rec.linkBudget.snrDb,
+      fresnel_clearance_m: rec.obstruction.minClearanceM,
+    };
+    const histClass = classifyLinkCommunicationStatus(histInput);
+    const histBadge = getStatusBadgeInfo(histClass.status);
+
+    const linkEl = rfContext.querySelector('[data-context-link]');
+    if (linkEl) linkEl.textContent = `SNR ${rec.linkBudget.snrDb.toFixed(1)} dB (${histBadge.badgeText})`;
+  }
+
+  setText('fresnel-node-label', `${rec.nodeName} [Historical #${rec.frameIndex}]`);
+  setText('link-modcod-tag', rec.linkBudget.modcodName || '--');
+  setText('lb-slant', typeof rec.linkBudget.slantRangeKm === 'number' ? `${rec.linkBudget.slantRangeKm.toFixed(2)} km` : '--');
+  setText('lb-snr', typeof rec.linkBudget.snrDb === 'number' ? `${rec.linkBudget.snrDb.toFixed(1)} dB` : '--');
+  setText('lb-se', typeof rec.linkBudget.spectralEfficiencyBpsHz === 'number' ? `${rec.linkBudget.spectralEfficiencyBpsHz.toFixed(2)} bps/Hz` : '--');
+  setText('lb-fspl', typeof rec.linkBudget.fsplDb === 'number' ? `${rec.linkBudget.fsplDb.toFixed(1)} dB` : '--');
+  setText('lb-diff', typeof rec.linkBudget.diffractionLossDb === 'number' ? `${rec.linkBudget.diffractionLossDb.toFixed(1)} dB` : '--');
+  setText('lb-prx', typeof rec.linkBudget.rxPowerDbm === 'number' ? `${rec.linkBudget.rxPowerDbm.toFixed(1)} dBm` : '--');
+  setText('lb-bulge', typeof rec.linkBudget.earthBulgeM === 'number' ? `${rec.linkBudget.earthBulgeM.toFixed(1)} m` : '--');
+  setText('lb-gas', typeof rec.linkBudget.gaseousLossDb === 'number' ? `${rec.linkBudget.gaseousLossDb.toFixed(2)} dB` : '--');
+  setText('lb-pnoise', typeof rec.linkBudget.pNoiseDbm === 'number' ? `${rec.linkBudget.pNoiseDbm.toFixed(2)} dBm` : '--');
+  setText('lb-rain', typeof rec.linkBudget.rainLossDb === 'number' ? `${rec.linkBudget.rainLossDb.toFixed(1)} dB` : '--');
+
+  drawFresnel();
+}
+
+function syncLiveUIState() {
+  $('btn-history-live')?.classList.add('active');
+  const pill = $('history-mode-pill');
+  if (pill) {
+    pill.className = 'kpi-badge badge-emerald';
+    pill.textContent = 'LIVE STREAM';
+  }
+
+  const evWarn = $('history-eviction-warning');
+  if (evWarn) evWarn.style.display = 'none';
+  const spatWarn = $('history-spatial-revision-warning');
+  if (spatWarn) spatWarn.style.display = 'none';
+
+  ['quickNodeSelect', 'termNodeSelect'].forEach(id => {
+    const el = $(id);
+    if (el) {
+      el.disabled = false;
+      el.title = '';
+      el.value = String(selectedNodeId);
+    }
+  });
+
+  const rfContext = document.querySelector('#tab-terrain .analysis-context');
+  if (rfContext) {
+    const kicker = rfContext.querySelector('.context-kicker');
+    if (kicker) {
+      kicker.textContent = 'Live';
+      kicker.style.color = '';
+    }
+  }
+
+  updateScrubberUI();
+  updateDashboardDOM(latestTelemetry);
+  drawFresnel();
+}
+
+window.returnToLive = function() {
+  if (!historyController.isInspecting) return;
+  historyController.exitHistorical();
+  syncLiveUIState();
+
+  const { shouldResumeWorker } = sessionCoordinator.onExitHistorical({
+    rfInspecting: historyController.isInspecting,
+    schedInspecting: schedHistoryController.isInspecting,
+  });
+
+  if (shouldResumeWorker && isPaused) {
+    isPaused = false;
+    sendCommand({ type: 'SIM_CONTROL', action: 'resume' });
+    $('btn-pause').textContent = 'PAUSE';
+    $('btn-pause').classList.remove('active');
+  }
+};
+
+/* ====================================================================
+   SCHEDULER PERFORMANCE HISTORY & TREND CHARTS
+   ==================================================================== */
+function recordSchedulerHistoricalFrame(frame) {
+  if (!frame || typeof frame.frame_index !== 'number') return;
+  const kpi = frame.comparative_kpi_dashboard || {};
+  const nodes = frame.nodes_telemetry || [];
+  const allocations = Array.isArray(frame.active_gantt_allocations) ? frame.active_gantt_allocations : [];
+  const staticAllocations = Array.isArray(frame.static_gantt_allocations) ? frame.static_gantt_allocations : undefined;
+  const tacAllocations = Array.isArray(frame.tac_gantt_allocations) ? frame.tac_gantt_allocations : undefined;
+
+  const nodeBacklogs = nodes.map(n => ({
+    nodeId: n.node_id,
+    name: n.name,
+    c2Bytes: n.c2_bytes ?? 0,
+    voiceBytes: n.voice_bytes ?? 0,
+    videoBytes: n.video_bytes ?? 0,
+    photoBytes: n.photo_bytes ?? 0,
+    totalBacklogBytes: n.total_backlog_bytes ?? 0,
+    c2Packets: n.c2_backlog ?? 0,
+    voicePackets: n.voice_backlog ?? 0,
+    videoPackets: n.video_backlog ?? 0,
+    photoPackets: n.photo_backlog ?? 0,
+    snrDb: n.snr_db,
+    bitrateMbps: n.bitrate_mbps !== undefined ? n.bitrate_mbps : (n.bitrate_bps ? n.bitrate_bps / 1e6 : 0),
+    stateName: n.state_name,
+    linkOutage: n.link_outage,
+    obstacleBlocked: n.obstacle_blocked,
+  }));
+
+  const mapAllocs = arr => arr ? arr.map(a => ({
+    nodeId: a.node_id ?? a.nodeId,
+    startMs: a.start_ms ?? a.startMs ?? 0,
+    durationMs: a.duration_ms ?? a.durationMs ?? ((a.duration_s || a.durationS || 0) * 1000),
+    durationS: a.duration_s ?? a.durationS ?? ((a.duration_ms || a.durationMs || 0) / 1000),
+    slotStartS: a.slot_start_s ?? a.slotStartS ?? 0,
+    capacityBits: a.capacity_bits ?? a.capacityBits ?? 0,
+    modcodName: a.modcod_name ?? a.modcodName,
+    spectralEfficiency: a.spectral_efficiency ?? a.spectralEfficiency,
+    c2Bytes: a.c2_bytes ?? a.c2Bytes,
+    voiceBytes: a.voice_bytes ?? a.voiceBytes,
+    videoBytes: a.video_bytes ?? a.videoBytes,
+    photoBytes: a.photo_bytes ?? a.photoBytes,
+    isPreOcclusionFlush: Boolean(a.is_pre_occlusion_flush ?? a.isPreOcclusionFlush),
+  })) : [];
+
+  const resolvedNodeId = typeof selectedNodeId === 'number'
+    ? selectedNodeId
+    : (typeof frame.selected_node_id === 'number' ? frame.selected_node_id : null);
+
+  const rec = createSchedulerRecordSnapshot({
+    frameIndex: frame.frame_index,
+    simulationTimeS: frame.sim_time_s,
+    spatialRevision: typeof frame.spatial_revision === 'number' ? frame.spatial_revision : currentSpatialRevision,
+    schedulerMode: frame.scheduler_mode || 'tac_tad',
+    selectedNodeId: resolvedNodeId,
+    activeAllocations: mapAllocs(allocations),
+    staticAllocations: staticAllocations ? mapAllocs(staticAllocations) : undefined,
+    tacAllocations: tacAllocations ? mapAllocs(tacAllocations) : undefined,
+    nodeBacklogs,
+    kpi: {
+      staticGoodputMb: kpi.static_goodput_mb ?? 0,
+      tacGoodputMb: kpi.tac_goodput_mb ?? 0,
+      gainMultiplier: kpi.gain_multiplier ?? 1.0,
+      staticWastePct: kpi.static_waste_pct ?? 0,
+      tacWastePct: kpi.tac_waste_pct ?? 0,
+      staticDrops: kpi.static_drops ?? 0,
+      staticDropPct: kpi.static_drop_pct ?? 0,
+      tacDrops: kpi.tac_drops ?? 0,
+      tacDropPct: kpi.tac_drop_pct ?? 0,
+      ulUtilizationPct: kpi.ul_utilization_pct ?? 0,
+      staticUtilizationPct: kpi.static_utilization_pct,
+      tacUtilizationPct: kpi.tac_utilization_pct,
+      activeGoodputFrameBits: kpi.active_goodput_frame_bits,
+      staticGoodputFrameBits: kpi.static_goodput_frame_bits,
+      tacGoodputFrameBits: kpi.tac_goodput_frame_bits,
+      activeWastedFrameBits: kpi.active_wasted_frame_bits,
+      staticWastedFrameBits: kpi.static_wasted_frame_bits,
+      tacWastedFrameBits: kpi.tac_wasted_frame_bits,
+      activeDropFramePkts: kpi.active_drop_frame_pkts,
+      staticDropFramePkts: kpi.static_drop_frame_pkts,
+      tacDropFramePkts: kpi.tac_drop_frame_pkts,
+      activeDropDelayFramePkts: kpi.active_drop_delay_frame_pkts,
+      activeDropOverflowFramePkts: kpi.active_drop_overflow_frame_pkts,
+      staticDropDelayFramePkts: kpi.static_drop_delay_frame_pkts,
+      staticDropOverflowFramePkts: kpi.static_drop_overflow_frame_pkts,
+      tacDropDelayFramePkts: kpi.tac_drop_delay_frame_pkts,
+      tacDropOverflowFramePkts: kpi.tac_drop_overflow_frame_pkts,
+      node4PreShadowBacklogKb: kpi.node4_pre_shadow_backlog_kb,
+      staticNode4PreShadowBacklogKb: kpi.static_node4_pre_shadow_backlog_kb,
+      node4EvacStatus: kpi.node4_evac_status,
+      staticSelectedBacklogKb: kpi.static_selected_backlog_kb,
+      tacSelectedBacklogKb: kpi.tac_selected_backlog_kb,
+    },
+  });
+
+  schedHistoryBuffer.push(rec);
+  updateSchedulerScrubberUI();
+  drawSchedulerCharts();
+}
+
+function updateSchedulerScrubberUI() {
+  const scrubber = $('sched-history-scrubber');
+  if (!scrubber) return;
+  const span = schedHistoryBuffer.getSpan();
+
+  if (span.count < 1 || span.oldestFrame === null || span.newestFrame === null) {
+    scrubber.disabled = true;
+    scrubber.min = '0';
+    scrubber.max = '0';
+    scrubber.value = '0';
+    return;
+  }
+
+  scrubber.min = String(span.oldestFrame);
+  scrubber.max = String(span.newestFrame);
+
+  const oldestEl = $('sched-history-span-oldest');
+  if (oldestEl) oldestEl.textContent = `T+${(span.oldestTimeS ?? 0).toFixed(2)}s (#${span.oldestFrame})`;
+  const newestEl = $('sched-history-span-newest');
+  if (newestEl) newestEl.textContent = `T+${(span.newestTimeS ?? 0).toFixed(2)}s (#${span.newestFrame})`;
+
+  if (!schedHistoryController.isInspecting) {
+    scrubber.disabled = false;
+    scrubber.value = String(span.newestFrame);
+    const posEl = $('sched-history-current-pos');
+    if (posEl) posEl.innerHTML = `<b>T+${(span.newestTimeS ?? 0).toFixed(2)}s</b> <small>(#${span.newestFrame})</small>`;
+    const nodes = (latestTelemetry && latestTelemetry.nodes_telemetry) || [];
+    const sel = typeof selectedNodeId === 'number' ? nodes.find(n => n.node_id === selectedNodeId) : null;
+    const targetLabel = typeof selectedNodeId === 'number'
+      ? (sel?.name ? `Node ${selectedNodeId} (${sel.name})` : `Node ${selectedNodeId}`)
+      : 'No terminal selected';
+    const targetEl = $('sched-history-target-pill');
+    if (targetEl) targetEl.textContent = targetLabel;
+    const evWarn = $('sched-history-eviction-warning');
+    if (evWarn) evWarn.style.display = 'none';
+    const spatWarn = $('sched-spatial-revision-warning');
+    if (spatWarn) spatWarn.style.display = 'none';
+  } else {
+    const currentFrame = schedHistoryController.currentInspectedFrame;
+    if (currentFrame !== null) {
+      scrubber.value = String(currentFrame);
+      const rec = schedHistoryController.getActiveHistoricalRecord();
+      if (rec) {
+        const posEl = $('sched-history-current-pos');
+        if (posEl) posEl.innerHTML = `<b>T+${rec.simulationTimeS.toFixed(2)}s</b> <small>(#${rec.frameIndex})</small>`;
+        const inspectNodeId = typeof selectedNodeId === 'number' ? selectedNodeId : rec.selectedNodeId;
+        const selBacklog = typeof inspectNodeId === 'number'
+          ? rec.nodeBacklogs.find(nb => nb.nodeId === inspectNodeId)
+          : null;
+        const targetLabel = typeof inspectNodeId === 'number'
+          ? (selBacklog?.name ? `Node ${inspectNodeId} (${selBacklog.name})` : `Node ${inspectNodeId}`)
+          : 'No terminal selected';
+        const targetEl = $('sched-history-target-pill');
+        if (targetEl) targetEl.textContent = targetLabel;
+        const spatWarn = $('sched-spatial-revision-warning');
+        if (spatWarn) {
+          if (typeof rec.spatialRevision === 'number' && rec.spatialRevision !== currentSpatialRevision) {
+            spatWarn.style.display = 'block';
+            spatWarn.textContent = `⚠️ Spatial environment modified (snapshot rev ${rec.spatialRevision} vs current rev ${currentSpatialRevision}). Historical scheduler state reflects prior geometry.`;
+          } else {
+            spatWarn.style.display = 'none';
+          }
+        }
+      }
+    }
+    const evWarn = $('sched-history-eviction-warning');
+    if (evWarn) evWarn.style.display = schedHistoryController.isEvicted ? 'block' : 'none';
+    if (schedHistoryController.isEvicted) {
+      syncSchedulerHistoricalUIState();
+    }
+  }
+}
+
+function syncSchedulerHistoricalUIState() {
+  const rec = schedHistoryController.getActiveHistoricalRecord();
+  if (!rec) return;
+
+  $('btn-sched-history-live')?.classList.remove('active');
+  const pill = $('sched-history-mode-pill');
+  if (pill) {
+    pill.className = 'kpi-badge badge-amber';
+    pill.textContent = 'HISTORICAL INSPECTION';
+  }
+
+  const inspectNodeId = typeof selectedNodeId === 'number' ? selectedNodeId : rec.selectedNodeId;
+  const selBacklog = typeof inspectNodeId === 'number'
+    ? rec.nodeBacklogs.find(nb => nb.nodeId === inspectNodeId)
+    : null;
+  const targetLabel = typeof inspectNodeId === 'number'
+    ? (selBacklog?.name ? `Node ${inspectNodeId} (${selBacklog.name})` : `Node ${inspectNodeId}`)
+    : 'No terminal selected';
+
+  const targetEl = $('sched-history-target-pill');
+  if (targetEl) targetEl.textContent = targetLabel;
+  const posEl = $('sched-history-current-pos');
+  if (posEl) posEl.innerHTML = `<b>T+${rec.simulationTimeS.toFixed(2)}s</b> <small>(#${rec.frameIndex})</small>`;
+  const evWarn = $('sched-history-eviction-warning');
+  if (evWarn) evWarn.style.display = schedHistoryController.isEvicted ? 'block' : 'none';
+  const spatWarn = $('sched-spatial-revision-warning');
+  if (spatWarn) {
+    if (typeof rec.spatialRevision === 'number' && rec.spatialRevision !== currentSpatialRevision) {
+      spatWarn.style.display = 'block';
+      spatWarn.textContent = `⚠️ Spatial environment modified (snapshot rev ${rec.spatialRevision} vs current rev ${currentSpatialRevision}). Historical scheduler state reflects prior geometry.`;
+    } else {
+      spatWarn.style.display = 'none';
+    }
+  }
+
+  // Analysis context banner
+  const schedContext = document.querySelector('#tab-scheduler .analysis-context');
+  if (schedContext) {
+    const kicker = schedContext.querySelector('.context-kicker');
+    if (kicker) {
+      kicker.textContent = `HISTORICAL (T+${rec.simulationTimeS.toFixed(2)}s, #${rec.frameIndex})`;
+      kicker.style.color = 'var(--warn)';
+    }
+    const nodeEl = schedContext.querySelector('[data-context-node]');
+    if (nodeEl) nodeEl.textContent = typeof inspectNodeId === 'number' ? `${targetLabel} [Hist]` : 'No terminal selected [Hist]';
+    const timeEl = schedContext.querySelector('[data-context-time]');
+    if (timeEl) timeEl.textContent = `T+${rec.simulationTimeS.toFixed(2)}s`;
+    const frameEl = schedContext.querySelector('[data-context-frame]');
+    if (frameEl) frameEl.textContent = `#${rec.frameIndex}`;
+    const modeEl = schedContext.querySelector('[data-context-mode]');
+    if (modeEl) modeEl.textContent = `${rec.schedulerMode} [Hist]`;
+  }
+
+  // Selected-frame snapshot panel
+  const snapPanel = $('sched-snapshot-panel');
+  if (snapPanel) {
+    snapPanel.style.display = 'block';
+    setText('sched-snapshot-badge', `HISTORICAL #${rec.frameIndex}`);
+    setText('snap-time', `T+${rec.simulationTimeS.toFixed(2)}s (#${rec.frameIndex})`);
+    setText('snap-mode', rec.schedulerMode === 'tac_tad' ? 'Tac-TAD (Dynamic)' : 'Legacy Static TDMA');
+    setText('snap-util', `${rec.kpi.ulUtilizationPct.toFixed(1)}%`);
+
+    if (rec.kpi.activeGoodputFrameBits !== undefined) {
+      const kb = (rec.kpi.activeGoodputFrameBits / 8 / 1024).toFixed(1);
+      const rateMbps = ((rec.kpi.activeGoodputFrameBits / 0.02) / 1e6).toFixed(2);
+      setText('snap-goodput', `${kb} KB (${rateMbps} Mbps)`);
+    } else {
+      setText('snap-goodput', 'Unavailable');
+    }
+
+    if (rec.kpi.activeDropFramePkts !== undefined) {
+      setText('snap-drops', `${rec.kpi.activeDropFramePkts} pkts (D:${rec.kpi.activeDropDelayFramePkts ?? 0}, O:${rec.kpi.activeDropOverflowFramePkts ?? 0})`);
+    } else {
+      setText('snap-drops', 'Unavailable');
+    }
+
+    if (selBacklog) {
+      const totalKb = (selBacklog.totalBacklogBytes / 1024).toFixed(1);
+      const c2Kb = (selBacklog.c2Bytes / 1024).toFixed(1);
+      const voKb = (selBacklog.voiceBytes / 1024).toFixed(1);
+      const viKb = (selBacklog.videoBytes / 1024).toFixed(1);
+      const phKb = (selBacklog.photoBytes / 1024).toFixed(0);
+      setText('snap-backlog', `${totalKb} KB (C2:${c2Kb}K, Vo:${voKb}K, Vi:${viKb}K, Ph:${phKb}K)`);
+    } else {
+      setText('snap-backlog', typeof inspectNodeId === 'number' ? 'No backlog recorded' : 'No terminal selected');
+    }
+
+    setText('snap-cum-goodput', `Tac:${rec.kpi.tacGoodputMb.toFixed(2)} Mb | Stat:${rec.kpi.staticGoodputMb.toFixed(2)} Mb (${rec.kpi.gainMultiplier.toFixed(2)}×)`);
+    setText('snap-cum-drops', `Tac:${rec.kpi.tacDrops} (${rec.kpi.tacDropPct.toFixed(1)}%) | Stat:${rec.kpi.staticDrops} (${rec.kpi.staticDropPct.toFixed(1)}%)`);
+  }
+
+  // Allocation inspector
+  const selAllocations = typeof inspectNodeId === 'number'
+    ? rec.activeAllocations.filter(a => a.nodeId === inspectNodeId)
+    : [];
+  const allocatedMs = selAllocations.reduce((sum, a) => sum + a.durationMs, 0);
+  setText('alloc-node-label', typeof inspectNodeId === 'number'
+    ? `${targetLabel} [Historical #${rec.frameIndex}]`
+    : 'No terminal selected');
+  setText('alloc-airtime', typeof inspectNodeId === 'number' ? `${allocatedMs.toFixed(2)} ms` : '--');
+  setText('alloc-segments', typeof inspectNodeId === 'number' ? String(selAllocations.length) : '--');
+  setText('alloc-inspector-note', typeof inspectNodeId === 'number'
+    ? (selAllocations.length
+        ? `Historical frame #${rec.frameIndex} (T+${rec.simulationTimeS.toFixed(2)}s) · ${selAllocations.length} allocation segment(s) recorded under ${rec.schedulerMode}. This is exact per-frame airtime.`
+        : `No allocation segment recorded for Node ${inspectNodeId} in historical frame #${rec.frameIndex}.`)
+    : 'No terminal selected. Select a terminal to inspect its historical allocations.');
+
+  drawWaterfall();
+  drawSchedulerCharts();
+}
+
+function syncSchedulerLiveUIState() {
+  $('btn-sched-history-live')?.classList.add('active');
+  const pill = $('sched-history-mode-pill');
+  if (pill) {
+    pill.className = 'kpi-badge badge-emerald';
+    pill.textContent = 'LIVE STREAM';
+  }
+
+  const evWarn = $('sched-history-eviction-warning');
+  if (evWarn) evWarn.style.display = 'none';
+  const spatWarn = $('sched-spatial-revision-warning');
+  if (spatWarn) spatWarn.style.display = 'none';
+
+  const snapPanel = $('sched-snapshot-panel');
+  if (snapPanel) snapPanel.style.display = 'none';
+
+  const schedContext = document.querySelector('#tab-scheduler .analysis-context');
+  if (schedContext) {
+    const kicker = schedContext.querySelector('.context-kicker');
+    if (kicker) {
+      kicker.textContent = 'Live';
+      kicker.style.color = '';
+    }
+  }
+
+  updateSchedulerScrubberUI();
+  updateDashboardDOM(latestTelemetry);
+  drawWaterfall();
+  drawSchedulerCharts();
+}
+
+window.returnSchedulerToLive = function() {
+  if (!schedHistoryController.isInspecting) return;
+  schedHistoryController.exitHistorical();
+  syncSchedulerLiveUIState();
+
+  const { shouldResumeWorker } = sessionCoordinator.onExitHistorical({
+    rfInspecting: historyController.isInspecting,
+    schedInspecting: schedHistoryController.isInspecting,
+  });
+
+  if (shouldResumeWorker && isPaused) {
+    isPaused = false;
+    sendCommand({ type: 'SIM_CONTROL', action: 'resume' });
+    $('btn-pause').textContent = 'PAUSE';
+    $('btn-pause').classList.remove('active');
+  }
+};
+
+/* ---------- Canvas Chart Renderers ---------- */
+function drawSchedulerCharts() {
+  const records = schedHistoryBuffer.getChronologicalRecords();
+  const utilCanvas = $('sched-chart-utilization');
+  const backlogCanvas = $('sched-chart-backlog');
+  if (!utilCanvas || !backlogCanvas) return;
+
+  const inspectedFrame = schedHistoryController.isInspecting
+    ? schedHistoryController.currentInspectedFrame
+    : (records.length > 0 ? records[records.length - 1].frameIndex : null);
+
+  const effectiveNodeId = typeof selectedNodeId === 'number'
+    ? selectedNodeId
+    : (inspectedFrame !== null && schedHistoryController.isInspecting
+        ? (schedHistoryController.getActiveHistoricalRecord()?.selectedNodeId ?? null)
+        : null);
+
+  drawUtilizationChart(utilCanvas, records, inspectedFrame);
+  drawBacklogChart(backlogCanvas, records, inspectedFrame, effectiveNodeId);
+}
+
+function drawUtilizationChart(canvas, records, inspectedFrame) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.floor(rect.width * dpr), h = Math.floor(rect.height * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cw = rect.width, ch = rect.height;
+  ctx.clearRect(0, 0, cw, ch);
+
+  const pad = { l: 30, r: 12, t: 10, b: 18 }, pw = cw - pad.l - pad.r, ph = ch - pad.t - pad.b;
+
+  // Grid lines: 0%, 50%, 100%
+  ctx.strokeStyle = 'rgba(139,155,180,.14)'; ctx.lineWidth = 1;
+  [0, 50, 100].forEach(pct => {
+    const y = pad.t + ph * (1 - pct / 100);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(cw - pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#7d8c99'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(`${pct}%`, pad.l - 4, y + 3);
+  });
+
+  if (records.length < 2) {
+    ctx.fillStyle = '#8b9bb4'; ctx.font = '10.5px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Collecting simulation frames…', cw / 2, ch / 2);
+    setText('chart-util-val', '--');
+    return;
+  }
+
+  // X axis labels
+  ctx.fillStyle = '#7d8c99'; ctx.font = '9px monospace'; ctx.textAlign = 'left';
+  ctx.fillText(`T+${records[0].simulationTimeS.toFixed(1)}s`, pad.l, ch - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(`T+${records[records.length - 1].simulationTimeS.toFixed(1)}s`, cw - pad.r, ch - 4);
+
+  // Plot utilization curve
+  ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.6; ctx.beginPath();
+  let cursorX = null, cursorVal = null;
+  const n = records.length;
+
+  for (let i = 0; i < n; i++) {
+    const r = records[i];
+    const x = pad.l + (i / (n - 1)) * pw;
+    const util = Math.max(0, Math.min(100, r.kpi.ulUtilizationPct));
+    const y = pad.t + ph * (1 - util / 100);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+
+    if (inspectedFrame !== null && r.frameIndex === inspectedFrame) {
+      cursorX = x;
+      cursorVal = util;
+    }
+  }
+  ctx.stroke();
+
+  // Draw synchronized cursor
+  if (cursorX !== null) {
+    ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.4; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(cursorX, pad.t); ctx.lineTo(cursorX, pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (cursorVal !== null) {
+      const cy = pad.t + ph * (1 - cursorVal / 100);
+      ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(cursorX, cy, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+    setText('chart-util-val', `${(cursorVal ?? 0).toFixed(1)}%`);
+  } else {
+    const last = records[records.length - 1];
+    setText('chart-util-val', `${last.kpi.ulUtilizationPct.toFixed(1)}%`);
+  }
+}
+
+function drawBacklogChart(canvas, records, inspectedFrame, targetNodeId) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.floor(rect.width * dpr), h = Math.floor(rect.height * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cw = rect.width, ch = rect.height;
+  ctx.clearRect(0, 0, cw, ch);
+
+  if (typeof targetNodeId !== 'number') {
+    setText('chart-backlog-label', 'Queue backlog & drops');
+    setText('chart-backlog-val', '--');
+    ctx.fillStyle = '#8b9bb4'; ctx.font = '10.5px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('No terminal selected', cw / 2, ch / 2);
+    return;
+  }
+
+  const pad = { l: 34, r: 12, t: 10, b: 18 }, pw = cw - pad.l - pad.r, ph = ch - pad.t - pad.b;
+
+  const targetNode = (latestTelemetry?.nodes_telemetry || []).find(n => n.node_id === targetNodeId);
+  const targetLabel = targetNode?.name ? `Node ${targetNodeId} (${targetNode.name})` : `Node ${targetNodeId}`;
+  setText('chart-backlog-label', `${targetLabel} backlog & drops`);
+
+  if (records.length < 2) {
+    ctx.fillStyle = '#8b9bb4'; ctx.font = '10.5px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Collecting simulation frames…', cw / 2, ch / 2);
+    setText('chart-backlog-val', '--');
+    return;
+  }
+
+  // Find max backlog for targetNodeId across window
+  let maxBytes = 10 * 1024; // Minimum 10 KB scale
+  const nodeValues = records.map(r => {
+    const nb = r.nodeBacklogs.find(n => n.nodeId === targetNodeId);
+    const bytes = nb?.totalBacklogBytes ?? 0;
+    if (bytes > maxBytes) maxBytes = bytes;
+    return {
+      bytes,
+      drops: r.kpi.activeDropFramePkts ?? 0,
+      frameIndex: r.frameIndex,
+      simTimeS: r.simulationTimeS,
+    };
+  });
+
+  const maxKb = maxBytes / 1024;
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(139,155,180,.14)'; ctx.lineWidth = 1;
+  [0, 0.5, 1.0].forEach(frac => {
+    const y = pad.t + ph * (1 - frac);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(cw - pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#7d8c99'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(`${(maxKb * frac).toFixed(0)}k`, pad.l - 4, y + 3);
+  });
+
+  // X axis labels
+  ctx.fillStyle = '#7d8c99'; ctx.font = '9px monospace'; ctx.textAlign = 'left';
+  ctx.fillText(`T+${records[0].simulationTimeS.toFixed(1)}s`, pad.l, ch - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(`T+${records[records.length - 1].simulationTimeS.toFixed(1)}s`, cw - pad.r, ch - 4);
+
+  // Plot Backlog Curve (Emerald)
+  ctx.strokeStyle = '#10b981'; ctx.lineWidth = 1.6; ctx.beginPath();
+  let cursorX = null, cursorKb = null, cursorDrops = 0;
+  const n = nodeValues.length;
+
+  for (let i = 0; i < n; i++) {
+    const val = nodeValues[i];
+    const x = pad.l + (i / (n - 1)) * pw;
+    const kb = val.bytes / 1024;
+    const y = pad.t + ph * (1 - Math.min(1.0, val.bytes / maxBytes));
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+
+    // Discrete packet drop markers (Crimson dots)
+    if (val.drops > 0) {
+      ctx.save();
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(x, pad.t + 3, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    if (inspectedFrame !== null && val.frameIndex === inspectedFrame) {
+      cursorX = x;
+      cursorKb = kb;
+      cursorDrops = val.drops;
+    }
+  }
+  ctx.stroke();
+
+  // Draw synchronized cursor
+  if (cursorX !== null) {
+    ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.4; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(cursorX, pad.t); ctx.lineTo(cursorX, pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (cursorKb !== null) {
+      const cy = pad.t + ph * (1 - Math.min(1.0, (cursorKb * 1024) / maxBytes));
+      ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(cursorX, cy, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+    const dropText = cursorDrops > 0 ? ` · ${cursorDrops} drops` : '';
+    setText('chart-backlog-val', `${(cursorKb ?? 0).toFixed(1)} KB${dropText}`);
+  } else {
+    const last = nodeValues[nodeValues.length - 1];
+    setText('chart-backlog-val', `${(last.bytes / 1024).toFixed(1)} KB`);
+  }
+  setText('chart-backlog-label', `${targetLabel} backlog & drops`);
+}
+
 worker.onmessage = (event) => {
   const msg = event.data;
   if (!msg) return;
 
   if (msg.type === 'TELEMETRY_FRAME') {
+    if (typeof msg.frame.spatial_revision === 'number') {
+      currentSpatialRevision = msg.frame.spatial_revision;
+    }
     obstacleEditor.markSimulationFrameAdvanced();
     latestTelemetry = msg.frame;
+    recordHistoricalFrame(msg.frame);
+    recordSchedulerHistoricalFrame(msg.frame);
     if (typeof msg.frame.spatial_locked === 'boolean') updateSpatialLockControl(msg.frame.spatial_locked);
     syncTrajectoryEditorFromWorker(msg.frame.trajectory_config);
     updateDashboardDOM(msg.frame);
@@ -1011,9 +2012,21 @@ worker.onmessage = (event) => {
     if (!msg.fresnel || typeof msg.fresnel !== 'object') return;
     latestProfileSerial = serial;
     latestProfileNodeId = nodeId;
+    if (typeof msg.spatial_revision === 'number') {
+      currentSpatialRevision = msg.spatial_revision;
+    }
     // Splice the refreshed profile data into the telemetry snapshot so the Canvas
     // renderer picks it up on its next animation frame without any other change.
-    latestTelemetry = { ...latestTelemetry, selected_node_fresnel: msg.fresnel };
+    latestTelemetry = {
+      ...latestTelemetry,
+      selected_node_fresnel: msg.fresnel,
+      ...(msg.selected_link_budget ? { selected_link_budget: msg.selected_link_budget } : {}),
+      ...(msg.nodes_telemetry ? { nodes_telemetry: msg.nodes_telemetry } : {}),
+    };
+    if (isPaused && !historyController.isInspecting) {
+      updateDashboardDOM(latestTelemetry);
+      drawFresnel();
+    }
   } else if (msg.type === 'HILLSHADE_READY') {
     renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode);
   } else if (msg.type === 'COMMAND_RESULT') {
@@ -1410,6 +2423,14 @@ refreshTrajectoryEditor();
 
 /* ---------- UI Controls ---------- */
 window.togglePause = function() {
+  if (historyController.isInspecting) {
+    returnToLive();
+    return;
+  }
+  if (schedHistoryController.isInspecting) {
+    returnSchedulerToLive();
+    return;
+  }
   isPaused = !isPaused;
   sendCommand({ type: 'SIM_CONTROL', action: isPaused ? 'pause' : 'resume' });
   $('btn-pause').textContent = isPaused ? 'RESUME' : 'PAUSE';
@@ -1421,6 +2442,14 @@ window.toggleSpatialLock = function() {
 };
 
 window.stepSim = function() {
+  if (historyController.isInspecting) {
+    historyController.exitHistorical();
+    syncLiveUIState();
+  }
+  if (schedHistoryController.isInspecting) {
+    schedHistoryController.exitHistorical();
+    syncSchedulerLiveUIState();
+  }
   isPaused = true;
   $('btn-pause').textContent = 'RESUME';
   $('btn-pause').classList.add('active');
@@ -1428,6 +2457,14 @@ window.stepSim = function() {
 };
 
 window.setSpeed = function(spd) {
+  if (historyController.isInspecting) {
+    historyController.exitHistorical();
+    syncLiveUIState();
+  }
+  if (schedHistoryController.isInspecting) {
+    schedHistoryController.exitHistorical();
+    syncSchedulerLiveUIState();
+  }
   isPaused = false;
   $('btn-pause').textContent = 'PAUSE';
   $('btn-pause').classList.remove('active');
@@ -1437,10 +2474,40 @@ window.setSpeed = function(spd) {
 };
 
 window.resetSim = function() {
+  if (historyController.isInspecting) {
+    historyController.exitHistorical();
+    syncLiveUIState();
+  }
+  if (schedHistoryController.isInspecting) {
+    schedHistoryController.exitHistorical();
+    syncSchedulerLiveUIState();
+  }
+  sessionCoordinator.reset();
+  currentSpatialRevision = 0;
+  historyController.reset();
+  schedHistoryController.reset();
+  updateScrubberUI();
+  updateSchedulerScrubberUI();
   sendCommand({ type: 'SIM_CONTROL', action: 'reset' });
 };
 
 window.loadPreset = function(id) {
+  if (id === 'PRESET_RESET') {
+    if (historyController.isInspecting) {
+      historyController.exitHistorical();
+      syncLiveUIState();
+    }
+    if (schedHistoryController.isInspecting) {
+      schedHistoryController.exitHistorical();
+      syncSchedulerLiveUIState();
+    }
+    sessionCoordinator.reset();
+    currentSpatialRevision = 0;
+    historyController.reset();
+    schedHistoryController.reset();
+    updateScrubberUI();
+    updateSchedulerScrubberUI();
+  }
   sendCommand({ type: 'LOAD_PRESET', preset_id: id });
 };
 
@@ -1487,9 +2554,21 @@ window.onCoverageParamChange = function() {
 };
 
 window.onTargetNodeChange = function(val) {
+  if (historyController.isInspecting) return;
   selectedNodeId = parseInt(val, 10);
   syncNodeDropdowns(selectedNodeId);
   sendCommand({ type: 'SELECT_NODE', node_id: selectedNodeId });
+  updateSchedulerScrubberUI();
+  if (latestTelemetry && latestTelemetry.nodes_telemetry) {
+    const search = $('terminal-search');
+    renderTerminalInventory(latestTelemetry.nodes_telemetry, selectedNodeId, search ? search.value : '');
+  }
+  if (schedHistoryController.isInspecting) {
+    syncSchedulerHistoricalUIState();
+  } else {
+    drawSchedulerCharts();
+    if (latestTelemetry) updateDashboardDOM(latestTelemetry);
+  }
 };
 
 function syncNodeDropdowns(nid) {
@@ -1511,6 +2590,10 @@ window.filterTerminalOptions = function(query) {
   });
   const selected = sel.selectedOptions[0];
   setText('terminal-search-status', `${visible} matching terminal${visible === 1 ? '' : 's'}${selected && selected.hidden ? ' · current selection is outside this filter' : ''}`);
+
+  if (latestTelemetry && latestTelemetry.nodes_telemetry) {
+    renderTerminalInventory(latestTelemetry.nodes_telemetry, selectedNodeId, q);
+  }
 };
 
 window.injectTraffic = function(type) {
@@ -1615,7 +2698,9 @@ syncTabWithLocationHash();
 
 /* ---------- Canvas Resize Engine ---------- */
 function resizeCanvases() {
-  [radarCanvas, waterfallCanvas, fresnelCanvas].forEach(cvs => {
+  const chart1 = $('sched-chart-utilization');
+  const chart2 = $('sched-chart-backlog');
+  [radarCanvas, waterfallCanvas, fresnelCanvas, chart1, chart2].forEach(cvs => {
     if (!cvs) return;
     const container = cvs.parentElement;
     if (!container) return;
@@ -1634,30 +2719,96 @@ function resizeCanvases() {
     ctx.resetTransform();
     ctx.scale(dpr, dpr);
   });
+  drawRadar();
+  drawWaterfall();
+  drawFresnel();
+  drawSchedulerCharts();
 }
 window.addEventListener('resize', resizeCanvases);
 setTimeout(resizeCanvases, 30);
 
 if ('ResizeObserver' in window) {
   const ro = new ResizeObserver(() => resizeCanvases());
-  [radarCanvas, waterfallCanvas, fresnelCanvas].forEach(c => {
+  [radarCanvas, waterfallCanvas, fresnelCanvas, $('sched-chart-utilization'), $('sched-chart-backlog')].forEach(c => {
     if (c && c.parentElement) ro.observe(c.parentElement);
   });
 }
 
 /* ---------- Dashboard DOM Updates ---------- */
+function getNodeRole(nodeId) {
+  if (nodeId === 15) return 'Main Command Post (20W Dish)';
+  if (nodeId === 4) return 'Recon Patrol (Occlusion Target)';
+  if (nodeId === 1) return 'Squad Leader (Voice Lead)';
+  if (nodeId === 2) return 'Medic (Voice MC-PTT)';
+  if (nodeId === 3 || nodeId === 6 || nodeId === 9) return 'Scout (Tactical Video)';
+  return 'Soldier Terminal';
+}
+
+function renderTerminalInventory(nodes, selectedId, query = '') {
+  const tbody = $('terminal-inventory-tbody');
+  if (!tbody || !Array.isArray(nodes)) return;
+
+  const pill = $('inventory-selected-pill');
+  if (pill) {
+    pill.textContent = `Selected: Node ${selectedId}`;
+  }
+
+  const q = String(query || '').trim().toLowerCase();
+  const rows = [];
+
+  for (const n of nodes) {
+    const role = getNodeRole(n.node_id);
+    const callsign = n.name || `S${n.node_id}`;
+    if (q) {
+      const match = String(n.node_id).includes(q) ||
+        callsign.toLowerCase().includes(q) ||
+        role.toLowerCase().includes(q);
+      if (!match) continue;
+    }
+
+    const isSelected = n.node_id === selectedId;
+    const x = typeof n.x_m === 'number' ? n.x_m : (n.position ? n.position[0] : 0);
+    const y = typeof n.y_m === 'number' ? n.y_m : (n.position ? n.position[1] : 0);
+    const terrainMsl = typeof n.terrain_elevation_msl_m === 'number' ? n.terrain_elevation_msl_m : 0;
+    const agl = typeof n.agl_m === 'number' ? n.agl_m : (typeof n.antenna_height_m === 'number' ? n.antenna_height_m : 2.0);
+    const totalMsl = typeof n.altitude_msl_m === 'number' ? n.altitude_msl_m : (typeof n.z_m === 'number' ? n.z_m : (terrainMsl + agl));
+
+    const statusObj = classifyLinkCommunicationStatus(n);
+    const badge = getStatusBadgeInfo(statusObj.status);
+
+    const tr = document.createElement('tr');
+    if (isSelected) tr.classList.add('is-selected');
+    tr.dataset.nodeId = String(n.node_id);
+    tr.onclick = () => {
+      if (typeof window.onTargetNodeChange === 'function') {
+        window.onTargetNodeChange(n.node_id);
+      }
+    };
+
+    tr.innerHTML = `
+      <td style="text-align:left;font-family:var(--mono)">${n.node_id}</td>
+      <td style="text-align:left;font-weight:600">${callsign}</td>
+      <td style="text-align:left;font-family:var(--sans)">${role}</td>
+      <td>${x.toFixed(0)}</td>
+      <td>${y.toFixed(0)}</td>
+      <td>${terrainMsl.toFixed(1)}</td>
+      <td>${agl.toFixed(1)}</td>
+      <td>${totalMsl.toFixed(1)}</td>
+      <td style="text-align:center"><span class="${badge.badgeClass}" style="display:inline-block;padding:2px 6px;font-size:10px">${badge.badgeText}</span></td>
+    `;
+    rows.push(tr);
+  }
+
+  tbody.replaceChildren(...rows);
+}
+
 function populateDropdownsOnce(nodes) {
   ['quickNodeSelect', 'termNodeSelect'].forEach(id => {
     const sel = $(id);
     if (!sel || sel.dataset.populated === 'true' || !nodes || !nodes.length) return;
     sel.innerHTML = '';
     nodes.forEach(n => {
-      let role = 'Soldier Terminal';
-      if (n.node_id === 15) role = 'Main Command Post (20W Dish)';
-      else if (n.node_id === 4) role = 'Recon Patrol (Occlusion Target)';
-      else if (n.node_id === 1) role = 'Squad Leader (Voice Lead)';
-      else if (n.node_id === 2) role = 'Medic (Voice MC-PTT)';
-      else if (n.node_id === 3 || n.node_id === 6 || n.node_id === 9) role = 'Scout (Tactical Video)';
+      const role = getNodeRole(n.node_id);
       const opt = document.createElement('option');
       opt.value = n.node_id;
       opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id} - ${role}`;
@@ -1801,7 +2952,13 @@ function updateDashboardDOM(frame) {
   setText('clock-display', `T+${(frame.sim_time_s ?? 0).toFixed(1)}s`);
   setText('frame-display', `#${frame.frame_index ?? 0}`);
   if (frame.plain_english_narrative) setText('overview-narrative', frame.plain_english_narrative);
-  if (frame.nodes_telemetry) { populateDropdownsOnce(frame.nodes_telemetry); const search = $('terminal-search'); if (search) window.filterTerminalOptions(search.value); }
+  if (frame.nodes_telemetry) {
+    populateDropdownsOnce(frame.nodes_telemetry);
+    const search = $('terminal-search');
+    const q = search ? search.value : '';
+    if (search) window.filterTerminalOptions(q);
+    renderTerminalInventory(frame.nodes_telemetry, selectedNodeId, q);
+  }
 
   const kpi = frame.comparative_kpi_dashboard || {};
   const sG = kpi.static_goodput_mb ?? 0, tG = kpi.tac_goodput_mb ?? 0;
@@ -1856,6 +3013,9 @@ function updateDashboardDOM(frame) {
   setText('kpi-util-stat', `Uplink Util: ${(kpi.ul_utilization_pct ?? 0).toFixed(1)}%`);
 
   // Table (Tab 2)
+  const nodes = frame.nodes_telemetry || [];
+  const hasSelected = typeof selectedNodeId === 'number';
+  const selNode = hasSelected ? nodes.find(n => n.node_id === selectedNodeId) : null;
   setText('tbl-stat-tx', `${sG.toFixed(2)} Mb`);
   setText('tbl-tac-tx', `${tG.toFixed(2)} Mb`);
   setText('tbl-tx-gain', `+${mult.toFixed(2)}×`);
@@ -1866,9 +3026,48 @@ function updateDashboardDOM(frame) {
   setText('tbl-tac-drops', `${tD} (${tDp.toFixed(1)}%)`);
   setText('tbl-drop-reduc', `${Math.max(0, dropReduc).toFixed(0)}% fewer`);
   setText('tbl-tac-util', `${(kpi.ul_utilization_pct ?? 0).toFixed(1)}%`);
-  setText('tbl-n4-stat', `${(kpi.static_node4_pre_shadow_backlog_kb ?? 0).toFixed(1)} KB`);
-  setText('tbl-n4-tac', `${(kpi.node4_pre_shadow_backlog_kb ?? 0).toFixed(1)} KB`);
-  setText('tbl-n4-status', kpi.node4_evac_status || 'Pre-flush');
+
+  const selNodeName = hasSelected
+    ? (selNode?.name ? `Node ${selectedNodeId} (${selNode.name})` : `Node ${selectedNodeId}`)
+    : 'No terminal selected';
+  setText('tbl-backlog-label', hasSelected ? `${selNodeName} queue backlog` : 'Terminal queue backlog');
+
+  if (hasSelected) {
+    const statKb = typeof kpi.static_selected_backlog_kb === 'number'
+      ? kpi.static_selected_backlog_kb
+      : null;
+    const tacKb = typeof kpi.tac_selected_backlog_kb === 'number'
+      ? kpi.tac_selected_backlog_kb
+      : (selNode && typeof selNode.total_backlog_bytes === 'number' ? selNode.total_backlog_bytes / 1024.0 : null);
+
+    const statText = statKb !== null ? `${statKb.toFixed(1)} KB` : 'N/A (untracked)';
+    const tacText = tacKb !== null ? `${tacKb.toFixed(1)} KB` : 'N/A (untracked)';
+
+    setText('tbl-n4-stat', statText);
+    setText('tbl-n4-tac', tacText);
+
+    let statusText = 'N/A';
+    if (statKb !== null && tacKb !== null) {
+      const diffKb = statKb - tacKb;
+      if (diffKb > 0.05) {
+        statusText = `${diffKb.toFixed(1)} KB drained`;
+      } else if (diffKb < -0.05) {
+        statusText = `${Math.abs(diffKb).toFixed(1)} KB added`;
+      } else {
+        statusText = 'Parity (0 KB)';
+      }
+      if (selNode && selNode.state_name && selNode.state_name !== 'NORMAL_LOS') {
+        statusText = `${statusText} (${selNode.state_name.replace(/_/g, ' ')})`;
+      }
+    } else {
+      statusText = 'N/A (metric unavailable for comparison)';
+    }
+    setText('tbl-n4-status', statusText);
+  } else {
+    setText('tbl-n4-stat', 'N/A (no terminal selected)');
+    setText('tbl-n4-tac', 'N/A (no terminal selected)');
+    setText('tbl-n4-status', 'No terminal selected');
+  }
 
   setText('tbl-p50-stat', 'Not instrumented');
   setText('tbl-p50-tac', 'Not instrumented');
@@ -1878,42 +3077,74 @@ function updateDashboardDOM(frame) {
   setText('tbl-p95-gain', 'Requires frame samples');
 
   // Target Node Inspection
-  const nodes = frame.nodes_telemetry || [];
-  const selNode = nodes.find(n => n.node_id === selectedNodeId);
   const allocations = Array.isArray(frame.active_gantt_allocations) ? frame.active_gantt_allocations : [];
-  const selectedAllocations = allocations.filter(a => Number(a.node_id) === Number(selectedNodeId));
+  const selectedAllocations = hasSelected ? allocations.filter(a => Number(a.node_id) === Number(selectedNodeId)) : [];
   const allocatedSeconds = selectedAllocations.reduce((sum, a) => sum + Math.max(0, Number(a.duration_s ?? ((Number(a.duration_ms) || 0) / 1000)) || 0), 0);
-  setText('alloc-node-label', selNode ? `Node ${selectedNodeId} · ${selNode.name || 'Terminal'}` : `Node ${selectedNodeId}`);
-  setText('alloc-airtime', `${(allocatedSeconds * 1000).toFixed(2)} ms`);
-  setText('alloc-segments', String(selectedAllocations.length));
-  setText('alloc-inspector-note', selectedAllocations.length
-    ? `Current frame ${frame.frame_index ?? '--'} · summed duration from ${selectedAllocations.length} worker allocation segment(s). This is per-frame airtime, not a long-run utilization estimate.`
-    : `No allocation segment for Node ${selectedNodeId} in current frame ${frame.frame_index ?? '--'}. This may indicate no queued eligible traffic or a telemetry frame with no allocation for this node.`);
+  if (!schedHistoryController.isInspecting) {
+    if (hasSelected) {
+      setText('alloc-node-label', selNode ? `Node ${selectedNodeId} · ${selNode.name || 'Terminal'}` : `Node ${selectedNodeId}`);
+      setText('alloc-airtime', `${(allocatedSeconds * 1000).toFixed(2)} ms`);
+      setText('alloc-segments', String(selectedAllocations.length));
+      setText('alloc-inspector-note', selectedAllocations.length
+        ? `Current frame ${frame.frame_index ?? '--'} · summed duration from ${selectedAllocations.length} worker allocation segment(s). This is per-frame airtime, not a long-run utilization estimate.`
+        : `No allocation segment for Node ${selectedNodeId} in current frame ${frame.frame_index ?? '--'}. This may indicate no queued eligible traffic or a telemetry frame with no allocation for this node.`);
+    } else {
+      setText('alloc-node-label', 'No terminal selected');
+      setText('alloc-airtime', '--');
+      setText('alloc-segments', '--');
+      setText('alloc-inspector-note', 'No terminal selected. Select a terminal to inspect its allocations.');
+    }
+  }
   if (selNode) {
-    const st = selNode.state_name || 'NORMAL_LOS';
-    const stBadge = st === 'HARD_SHADOW_CUTOFF' ? 'CUTOFF (IN SHADOW)' : st === 'PRE_OCCLUSION_FLUSH' ? 'PRE-OCCLUSION FLUSH' : st === 'RE_EMERGENCE_BURST' ? 'BURST RECOVERY' : 'PRISTINE LOS';
-    const stClass = st === 'HARD_SHADOW_CUTOFF' ? 'kpi-badge badge-crimson' : st === 'PRE_OCCLUSION_FLUSH' ? 'kpi-badge badge-amber' : 'kpi-badge badge-emerald';
+    const obstacleState = obstacleEditor.obstructionSnapshotIsCurrent
+      ? obstacleEditor.obstructionSnapshot.find(item => item.node_id === selNode.node_id)
+      : null;
+    const lb = frame.selected_link_budget || frame.selected_node_fresnel?.link_budget;
+    const telemetryInput = lb
+      ? { ...selNode, ...lb, ...(obstacleState || {}) }
+      : { ...selNode, ...(obstacleState || {}) };
+    const selClassification = classifyLinkCommunicationStatus(telemetryInput);
+    const badgeInfo = getStatusBadgeInfo(selClassification.status);
 
     const b1 = $('overview-state-badge'), b2 = $('term-state-pill');
-    if (b1) { b1.textContent = stBadge; b1.className = stClass; }
-    if (b2) { b2.textContent = stBadge; b2.className = stClass; }
+    if (b1) { b1.textContent = badgeInfo.badgeText; b1.className = badgeInfo.badgeClass; }
+    if (b2) { b2.textContent = badgeInfo.badgeText; b2.className = badgeInfo.badgeClass; }
 
-    setText('glance-slant', `${(selNode.slant_range_km || 0).toFixed(1)} km`);
-    setText('glance-snr', `${(selNode.snr_db || 0).toFixed(1)} dB`);
-    setText('glance-rate', `${(selNode.bitrate_mbps !== undefined ? selNode.bitrate_mbps : (selNode.bitrate_bps || 0) / 1e6).toFixed(2)} M`);
+    setText('glance-slant', lb && typeof lb.slant_range_km === 'number' ? `${lb.slant_range_km.toFixed(1)} km` : (typeof selNode.slant_range_km === 'number' ? `${selNode.slant_range_km.toFixed(1)} km` : '--'));
+    setText('glance-snr', lb && typeof lb.snr_db === 'number' ? `${lb.snr_db.toFixed(1)} dB` : (typeof selNode.snr_db === 'number' ? `${selNode.snr_db.toFixed(1)} dB` : '--'));
+    setText('glance-rate', lb && typeof lb.bitrate_mbps === 'number' ? `${lb.bitrate_mbps.toFixed(2)} M` : (typeof selNode.bitrate_mbps === 'number' ? `${selNode.bitrate_mbps.toFixed(2)} M` : (typeof selNode.bitrate_bps === 'number' ? `${(selNode.bitrate_bps / 1e6).toFixed(2)} M` : '--')));
 
     // Tab 3 Link Budget
-    setText('fresnel-node-label', `Node ${selNode.node_id} (${selNode.name})`);
-    setText('link-modcod-tag', selNode.modcod_name || 'QPSK');
-    setText('lb-slant', `${(selNode.slant_range_km || 0).toFixed(2)} km`);
-    setText('lb-snr', `${(selNode.snr_db || 0).toFixed(1)} dB`);
-    setText('lb-se', `${(selNode.spectral_efficiency_bps_hz || 1.49).toFixed(2)} bps/Hz`);
-    setText('lb-fspl', `${(134 + Math.log10(Math.max(1, selNode.slant_range_km || 1)) * 20).toFixed(1)} dB`);
-    const dLoss = selNode.diffraction_loss_db || (st === 'HARD_SHADOW_CUTOFF' ? 45.0 : 0.0);
-    setText('lb-diff', `${dLoss.toFixed(1)} dB`);
-    setText('lb-prx', `${(-75 - dLoss).toFixed(1)} dBm`);
-    setText('lb-bulge', `${((Math.max(1, selNode.slant_range_km || 1) * 1000) * 0.003).toFixed(1)} m`);
-    setText('lb-gas', `${(0.012 * (selNode.slant_range_km || 15)).toFixed(2)} dB`);
+    if (!historyController.isInspecting) {
+      const b3 = $('fresnel-status-badge');
+      if (b3) { b3.textContent = badgeInfo.badgeText; b3.className = badgeInfo.badgeClass; }
+      setText('fresnel-node-label', `Node ${selNode.node_id} (${selNode.name || 'Terminal'})`);
+      if (lb) {
+        setText('link-modcod-tag', lb.modcod_name || '--');
+        setText('lb-slant', typeof lb.slant_range_km === 'number' ? `${lb.slant_range_km.toFixed(2)} km` : '--');
+        setText('lb-snr', typeof lb.snr_db === 'number' ? `${lb.snr_db.toFixed(1)} dB` : '--');
+        setText('lb-se', typeof lb.spectral_efficiency_bps_hz === 'number' ? `${lb.spectral_efficiency_bps_hz.toFixed(2)} bps/Hz` : '--');
+        setText('lb-fspl', typeof lb.fspl_db === 'number' ? `${lb.fspl_db.toFixed(1)} dB` : '--');
+        setText('lb-diff', typeof lb.diffraction_loss_db === 'number' ? `${lb.diffraction_loss_db.toFixed(1)} dB` : '--');
+        setText('lb-prx', typeof lb.prx_dbm === 'number' ? `${lb.prx_dbm.toFixed(1)} dBm` : '--');
+        setText('lb-pnoise', typeof lb.pnoise_dbm === 'number' ? `${lb.pnoise_dbm.toFixed(2)} dBm` : '--');
+        setText('lb-bulge', typeof lb.earth_bulge_m === 'number' ? `${lb.earth_bulge_m.toFixed(1)} m` : '--');
+        setText('lb-gas', typeof lb.gas_loss_db === 'number' ? `${lb.gas_loss_db.toFixed(2)} dB` : '--');
+        setText('lb-rain', typeof lb.rain_loss_db === 'number' ? `${lb.rain_loss_db.toFixed(1)} dB` : '--');
+      } else {
+        setText('link-modcod-tag', selNode.modcod_name || '--');
+        setText('lb-slant', typeof selNode.slant_range_km === 'number' ? `${selNode.slant_range_km.toFixed(2)} km` : '--');
+        setText('lb-snr', typeof selNode.snr_db === 'number' ? `${selNode.snr_db.toFixed(1)} dB` : '--');
+        setText('lb-se', '--');
+        setText('lb-fspl', '--');
+        setText('lb-diff', typeof selNode.diffraction_loss_db === 'number' ? `${selNode.diffraction_loss_db.toFixed(1)} dB` : '--');
+        setText('lb-prx', '--');
+        setText('lb-pnoise', '--');
+        setText('lb-bulge', '--');
+        setText('lb-gas', '--');
+        setText('lb-rain', '--');
+      }
+    }
 
     // Tab 4 Queues
     const c2 = selNode.c2_bytes ?? 0;
@@ -1932,6 +3163,30 @@ function updateDashboardDOM(frame) {
     const pEl = $('qbar-70');
     if (pEl) pEl.style.width = `${Math.min(100, (ph / 2000000) * 100)}%`;
     setText('qval-70', `${(ph / 1024).toFixed(0)} / 2000 KB`);
+  } else {
+    const unknownBadge = getStatusBadgeInfo('UNKNOWN');
+    const b1 = $('overview-state-badge'), b2 = $('term-state-pill');
+    if (b1) { b1.textContent = unknownBadge.badgeText; b1.className = unknownBadge.badgeClass; }
+    if (b2) { b2.textContent = unknownBadge.badgeText; b2.className = unknownBadge.badgeClass; }
+    setText('glance-slant', '--');
+    setText('glance-snr', '--');
+    setText('glance-rate', '--');
+    if (!historyController.isInspecting) {
+      const b3 = $('fresnel-status-badge');
+      if (b3) { b3.textContent = unknownBadge.badgeText; b3.className = unknownBadge.badgeClass; }
+      setText('fresnel-node-label', 'No terminal selected');
+      setText('link-modcod-tag', '--');
+      setText('lb-slant', '--');
+      setText('lb-snr', '--');
+      setText('lb-se', '--');
+      setText('lb-fspl', '--');
+      setText('lb-diff', '--');
+      setText('lb-prx', '--');
+      setText('lb-pnoise', '--');
+      setText('lb-bulge', '--');
+      setText('lb-gas', '--');
+      setText('lb-rain', '--');
+    }
   }
 
   // Active Transfer State Machine
@@ -2194,59 +3449,98 @@ function drawRadar() {
     }
     ctx.restore();
 
-    // 7. Ground Terminals & Air-to-Ground Links
+    // 7. Ground Terminals & Air-to-Ground Links (Milestone 4 Step 3)
     const placedNodeLabels = [];
-    const nodeLabelCandidates = (latestTelemetry.nodes_telemetry || []).map(node => {
-      const nx = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
-      const ny = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
-      const pos = worldToScreen(nx, ny, w, h);
-      return { node, pos, selected: node.node_id === selectedNodeId, mcp: node.node_type === 'mcp' };
-    }).sort((a, b) => Number(b.selected) - Number(a.selected) || Number(b.mcp) - Number(a.mcp));
-
-    (latestTelemetry.nodes_telemetry || []).forEach(node => {
+    const nodeItems = (latestTelemetry.nodes_telemetry || []).map(node => {
       const nx = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
       const ny = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
       const nPos = worldToScreen(nx, ny, w, h);
       const obstacleState = obstacleEditor.obstructionSnapshotIsCurrent
         ? obstacleEditor.obstructionSnapshot.find(item => item.node_id === node.node_id)
         : null;
-      const state = obstacleState?.predicted_state || node.state_name || 'NORMAL_LOS';
-      const isSel = node.node_id === selectedNodeId, isMCP = node.node_type === 'mcp';
+      const telemetryInput = obstacleState ? { ...node, ...obstacleState } : node;
+      const { classification, style } = classifyAndStyleLink(telemetryInput);
+      const isSel = node.node_id === selectedNodeId;
+      const isMCP = node.node_type === 'mcp';
+      const isHovered = node.node_id === hoveredNodeId;
+      return {
+        node,
+        telemetryInput,
+        classification,
+        style,
+        nPos,
+        isSel,
+        isMCP,
+        isHovered,
+      };
+    });
 
-      let linkColor = 'rgba(56, 189, 248, 0.3)', dash = [], lw = 1;
-      let nodeColor = '#10b981';
-      if (state === 'PRE_OCCLUSION_FLUSH') { linkColor = '#f59e0b'; nodeColor = '#f59e0b'; lw = 1.6; }
-      else if (state === 'HARD_SHADOW_CUTOFF') { linkColor = 'rgba(239, 68, 68, 0.7)'; nodeColor = '#ef4444'; dash = [3, 3]; }
-      else if (state === 'RE_EMERGENCE_BURST') { linkColor = '#10b981'; nodeColor = '#10b981'; lw = 1.8; }
+    // Pass 1: Render unselected background links
+    ctx.save();
+    nodeItems.forEach(item => {
+      if (item.isSel) return;
+      ctx.beginPath();
+      ctx.moveTo(acnPos.x, acnPos.y);
+      ctx.lineTo(item.nPos.x, item.nPos.y);
+      ctx.strokeStyle = item.style.strokeColor;
+      ctx.lineWidth = item.style.lineWidth;
+      ctx.setLineDash(item.style.lineDash);
+      ctx.stroke();
+    });
+    ctx.restore();
 
+    // Pass 2: Render selected terminal link on top with enhanced contrast & thickness
+    const selectedItem = nodeItems.find(item => item.isSel);
+    if (selectedItem) {
       ctx.save();
-      ctx.beginPath(); ctx.moveTo(acnPos.x, acnPos.y); ctx.lineTo(nPos.x, nPos.y);
-      ctx.strokeStyle = linkColor; ctx.lineWidth = lw; ctx.setLineDash(dash); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(acnPos.x, acnPos.y);
+      ctx.lineTo(selectedItem.nPos.x, selectedItem.nPos.y);
+      ctx.strokeStyle = selectedItem.style.selectedStrokeColor;
+      ctx.lineWidth = selectedItem.style.selectedLineWidth;
+      ctx.setLineDash(selectedItem.style.lineDash);
+      ctx.stroke();
       ctx.restore();
+    }
 
+    // Pass 3: Render ground terminal markers, halos, and collision-checked labels
+    nodeItems.forEach(item => {
+      const { nPos, isSel, isMCP, isHovered, style, node } = item;
       ctx.save();
       ctx.beginPath();
       if (isMCP) {
         ctx.fillStyle = '#38bdf8';
         ctx.rect(nPos.x - 5, nPos.y - 5, 10, 10);
       } else {
-        ctx.fillStyle = nodeColor;
+        ctx.fillStyle = style.nodeColor;
         ctx.arc(nPos.x, nPos.y, 4.5, 0, TAU);
       }
       ctx.fill();
-      ctx.strokeStyle = isSel ? '#ffffff' : '#0b0e14'; ctx.lineWidth = 1.3; ctx.stroke();
+      ctx.strokeStyle = isSel ? '#ffffff' : '#0b0e14';
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
 
       if (isSel) {
-        ctx.beginPath(); ctx.arc(nPos.x, nPos.y, 9, 0, TAU);
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)'; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(nPos.x, nPos.y, 9, 0, TAU);
+        ctx.strokeStyle = style.selectedStrokeColor;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(nPos.x, nPos.y, 12.5, 0, TAU);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.lineWidth = 0.9;
+        ctx.setLineDash([2, 3]);
+        ctx.stroke();
       }
       ctx.restore();
 
       const label = isMCP ? 'MCP' : `S${node.node_id}`;
-      const isHovered = node.node_id === hoveredNodeId;
       const showLabel = isSel || isHovered || isMCP || (currentRadarRangeM <= 30000 && placedNodeLabels.length < 5);
       if (showLabel) {
-        ctx.save(); ctx.font = `${isSel || isHovered ? '600 ' : ''}9.5px ${MONO}`;
+        ctx.save();
+        ctx.font = `${isSel || isHovered ? '600 ' : ''}9.5px ${MONO}`;
         const labelWidth = ctx.measureText(label).width;
         const labelBox = { x: nPos.x + 8, y: nPos.y - 7, w: labelWidth + 5, h: 13 };
         const overlaps = !isSel && placedNodeLabels.some(r => labelBox.x < r.x + r.w + 4 && labelBox.x + labelBox.w + 4 > r.x && labelBox.y < r.y + r.h + 3 && labelBox.y + labelBox.h + 3 > r.y);
@@ -2263,16 +3557,13 @@ function drawRadar() {
     // Hover Target-Lock Reticle & Tactical Callout
     // ------------------------------------------------------------------
     if (hoveredNodeId !== null) {
-      const hovNode = (latestTelemetry.nodes_telemetry || []).find(n => n.node_id === hoveredNodeId);
-      if (hovNode) {
-        const hnx = hovNode.x_m !== undefined ? hovNode.x_m : (hovNode.position ? hovNode.position[0] : 0);
-        const hny = hovNode.y_m !== undefined ? hovNode.y_m : (hovNode.position ? hovNode.position[1] : 0);
-        const hp = worldToScreen(hnx, hny, w, h);
+      const hovItem = nodeItems.find(item => item.node.node_id === hoveredNodeId);
+      if (hovItem) {
+        const { node: hovNode, nPos: hp, classification: hovClass, style: hovStyle, telemetryInput: hovInput } = hovItem;
 
         const bs = 9.5;
         const bl = 4.0;
-        const reticleColor = hovNode.state_name === 'HARD_SHADOW_CUTOFF' ? '#ff7070' :
-                             hovNode.state_name === 'PRE_OCCLUSION_FLUSH' ? '#f3b54a' : '#38bdf8';
+        const reticleColor = hovStyle.badgeColor;
 
         ctx.save();
         ctx.strokeStyle = reticleColor;
@@ -2311,23 +3602,25 @@ function drawRadar() {
         const slantKm = Number(hovNode.slant_range_km || 0).toFixed(1);
         const snrDb = Number(hovNode.snr_db || 0).toFixed(1);
         const modcod = hovNode.modcod_name || 'QPSK';
-        const state = hovNode.state_name || 'NORMAL_LOS';
+        const state = hovInput.state_name || hovNode.state_name || 'NORMAL_LOS';
         const backlogKb = ((hovNode.total_backlog_bytes || 0) / 1024).toFixed(1);
 
-        const line1 = `[ ${nodeName} // ${nodeType} ]`;
-        const line2 = `RANGE: ${slantKm} km | SNR: ${snrDb} dB (${modcod})`;
-        const line3 = `STATE: ${state} | BACKLOG: ${backlogKb} KB`;
+        const line1 = `[ ${nodeName} // ${nodeType} ]  ${hovStyle.statusLabel}`;
+        const line2 = `COMM STATUS: ${hovClass.status} (${hovStyle.patternDescription})`;
+        const line3 = `RANGE: ${slantKm} km | SNR: ${snrDb} dB (${modcod})`;
+        const line4 = `STATE: ${state} | BACKLOG: ${backlogKb} KB`;
 
         ctx.font = `600 10px ${MONO}`;
         const tw1 = ctx.measureText(line1).width;
         ctx.font = `10px ${MONO}`;
         const tw2 = ctx.measureText(line2).width;
         const tw3 = ctx.measureText(line3).width;
-        const boxW = Math.max(tw1, tw2, tw3) + 16;
-        const boxH = 48;
+        const tw4 = ctx.measureText(line4).width;
+        const boxW = Math.max(tw1, tw2, tw3, tw4) + 16;
+        const boxH = 62;
 
         let bx = hp.x + 14;
-        let by = hp.y - 24;
+        let by = hp.y - 30;
         if (bx + boxW > w - 10) bx = hp.x - boxW - 14;
         if (by < 10) by = 10;
         if (by + boxH > h - 10) by = h - boxH - 10;
@@ -2339,7 +3632,7 @@ function drawRadar() {
         ctx.strokeRect(bx, by, boxW, boxH);
 
         ctx.fillStyle = reticleColor;
-        ctx.fillRect(bx, by, 2.5, boxH);
+        ctx.fillRect(bx, by, 3, boxH);
 
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
@@ -2349,11 +3642,14 @@ function drawRadar() {
         ctx.fillText(line1, bx + 7, by + 5);
 
         ctx.font = `10px ${MONO}`;
-        ctx.fillStyle = '#e8ecef';
+        ctx.fillStyle = hovStyle.badgeColor;
         ctx.fillText(line2, bx + 7, by + 19);
 
-        ctx.fillStyle = '#9aa8b3';
+        ctx.fillStyle = '#e8ecef';
         ctx.fillText(line3, bx + 7, by + 33);
+
+        ctx.fillStyle = '#9aa8b3';
+        ctx.fillText(line4, bx + 7, by + 47);
         ctx.restore();
       }
     }
@@ -2454,9 +3750,20 @@ radarCanvas.addEventListener('mousedown', (e) => {
       trajectoryEditor.activeMode === 'waypoints' && !spatialLocked,
     );
     if (pointerTarget === 'node' && nodeHit) {
+      if (historyController.isInspecting) {
+        radarCanvas.style.cursor = 'not-allowed';
+        return;
+      }
       selectedNodeId = nodeHit.node_id;
       syncNodeDropdowns(selectedNodeId);
       sendCommand({ type: 'SELECT_NODE', node_id: nodeHit.node_id });
+      updateSchedulerScrubberUI();
+      if (schedHistoryController.isInspecting) {
+        syncSchedulerHistoricalUIState();
+      } else {
+        drawSchedulerCharts();
+        if (latestTelemetry) updateDashboardDOM(latestTelemetry);
+      }
       if (spatialLocked) {
         radarCanvas.style.cursor = 'pointer';
         return;
@@ -2597,7 +3904,9 @@ function drawWaterfall() {
     const yStatic = padT, yTac = padT + trackH + gap;
     const xOf = s => padL + (s / FP) * plotW;
     const sel = typeof selectedNodeId === 'number' ? selectedNodeId : -1;
-    const nodes = latestTelemetry.nodes_telemetry || [];
+    const histSchedRec = schedHistoryController.isInspecting ? schedHistoryController.getActiveHistoricalRecord() : null;
+    const nodes = histSchedRec ? histSchedRec.nodeBacklogs : (latestTelemetry.nodes_telemetry || []);
+    const activeAllocations = histSchedRec ? histSchedRec.activeAllocations : (latestTelemetry.active_gantt_allocations || []);
 
     // Time grid
     g.font = `10px ${MONO}`; g.textAlign = 'center'; g.lineWidth = 1;
@@ -2623,8 +3932,8 @@ function drawWaterfall() {
     const slotW = plotW / 16;
     for (let i = 0; i < 16; i++) {
       const x = padL + i * slotW + 1.5, sw = slotW - 3, y = yStatic + 3, sh = trackH - 6;
-      const n = nodes.find(nd => nd.node_id === i);
-      const out = !!n && n.state_name === 'HARD_SHADOW_CUTOFF';
+      const n = nodes.find(nd => (nd.node_id ?? nd.nodeId) === i);
+      const out = !!n && ((n.state_name ?? n.stateName) === 'HARD_SHADOW_CUTOFF' || n.linkOutage || n.link_outage);
       gfxRRect(g, x, y, sw, sh, 3);
       g.fillStyle = out ? 'rgba(255,112,112,0.2)' : 'rgba(120,140,160,0.16)'; g.fill();
       if (out) {
@@ -2651,24 +3960,29 @@ function drawWaterfall() {
     g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
     g.fillText('CTRL', padL + 1, yTac - 5); g.fillText('DL', padL + ctrlW + 4, yTac - 5);
 
-    (latestTelemetry.active_gantt_allocations || []).forEach(a => {
-      const startS = a.slot_start_s !== undefined ? (a.slot_start_s % FP) : ((a.start_ms || 0) / 1000);
-      const durS = a.duration_s !== undefined ? a.duration_s : ((a.duration_ms || 0) / 1000);
+    activeAllocations.forEach(a => {
+      const nid = a.node_id ?? a.nodeId;
+      const startS = a.slot_start_s !== undefined ? (a.slot_start_s % FP) :
+        (a.slotStartS !== undefined ? (a.slotStartS % FP) :
+        ((a.start_ms ?? a.startMs ?? 0) / 1000));
+      const durS = a.duration_s !== undefined ? a.duration_s :
+        (a.durationS !== undefined ? a.durationS :
+        ((a.duration_ms ?? a.durationMs ?? 0) / 1000));
       const ax = xOf(startS), aw = Math.max(2, (durS / FP) * plotW);
       let col = '#10b981';
-      if (a.is_pre_occlusion_flush) col = '#f59e0b';
-      else if ((a.video_bytes || 0) > 0) col = '#f59e0b';
-      else if ((a.photo_bytes || 0) > 0) col = '#fb923c';
-      else if ((a.c2_bytes || 0) > 0 || a.node_id === 15) col = '#38bdf8';
+      if (a.is_pre_occlusion_flush || a.isPreOcclusionFlush) col = '#f59e0b';
+      else if ((a.video_bytes ?? a.videoBytes ?? 0) > 0) col = '#f59e0b';
+      else if ((a.photo_bytes ?? a.photoBytes ?? 0) > 0) col = '#fb923c';
+      else if ((a.c2_bytes ?? a.c2Bytes ?? 0) > 0 || nid === 15) col = '#38bdf8';
       const y = yTac + 3, sh = trackH - 6;
       gfxRRect(g, ax, y, Math.max(1.5, aw - 1), sh, 3);
       const grad = g.createLinearGradient(0, y, 0, y + sh);
       grad.addColorStop(0, col); grad.addColorStop(1, col + 'aa');
       g.fillStyle = grad; g.fill();
-      if (a.node_id === sel) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke(); }
+      if (nid === sel) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke(); }
       if (aw > 20) {
         g.fillStyle = '#0b1015'; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
-        g.fillText(`S${a.node_id}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
+        g.fillText(`S${nid}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
       }
     });
   } catch (err) {
@@ -2686,16 +4000,44 @@ function drawFresnel() {
     const g = fresnelCtx;
     g.clearRect(0, 0, w, h);
 
-    const f = latestTelemetry.selected_node_fresnel;
-    const profile = f && f.profile && f.profile.valid ? f.profile : null;
+    const histRecord = historyController.getActiveHistoricalRecord();
+    const f = histRecord ? null : latestTelemetry.selected_node_fresnel;
+    const profile = histRecord ? histRecord.profile : (f && f.profile && f.profile.valid ? f.profile : null);
 
     linkProfileViewport.syncProfile(profile);
 
-    const status = summarizeProfileStatus(profile, f);
+    const status = histRecord ? histRecord.obstruction : summarizeProfileStatus(profile, f);
+
+    let commStatus;
+    if (histRecord) {
+      const histInput = {
+        terrain_is_los: histRecord.obstruction.terrainIsLos,
+        obstacle_blocked: histRecord.obstruction.obstacleBlocked,
+        link_outage: histRecord.linkBudget.modcodName === 'LINK_OUTAGE' || histRecord.linkBudget.modcodName === 'OBSTACLE_BLOCKED' || histRecord.linkBudget.snrDb < -1.5,
+        is_outage: histRecord.linkBudget.modcodName === 'LINK_OUTAGE' || histRecord.linkBudget.modcodName === 'OBSTACLE_BLOCKED' || histRecord.linkBudget.snrDb < -1.5,
+        modcod_name: histRecord.linkBudget.modcodName,
+        diffraction_loss_db: histRecord.linkBudget.diffractionLossDb,
+        snr_db: histRecord.linkBudget.snrDb,
+        fresnel_clearance_m: histRecord.obstruction.minClearanceM,
+      };
+      commStatus = classifyLinkCommunicationStatus(histInput);
+    } else {
+      const selNode = (latestTelemetry.nodes_telemetry || []).find(n => n.node_id === selectedNodeId);
+      const obstacleState = obstacleEditor.obstructionSnapshotIsCurrent
+        ? obstacleEditor.obstructionSnapshot.find(item => item.node_id === selectedNodeId)
+        : null;
+      const lb = latestTelemetry.selected_link_budget || latestTelemetry.selected_node_fresnel?.link_budget;
+      const telemetryInput = lb
+        ? { ...selNode, ...lb, ...(obstacleState || {}) }
+        : (selNode ? { ...selNode, ...(obstacleState || {}) } : null);
+      commStatus = classifyLinkCommunicationStatus(telemetryInput);
+    }
+
+    const badgeInfo = getStatusBadgeInfo(commStatus.status);
     const badge = $('fresnel-status-badge');
     if (badge) {
-      badge.className = status.terrainBadgeClass;
-      badge.textContent = status.terrainStatusText;
+      badge.className = badgeInfo.badgeClass;
+      badge.textContent = badgeInfo.badgeText;
     }
     const obsBadge = $('profile-obstacle-badge');
     if (obsBadge) {
@@ -2708,7 +4050,7 @@ function drawFresnel() {
     }
 
     const layout = { width: w, height: h, padL: 60, padR: 24, padT: 28, padB: 34 };
-    renderLinkProfileViewport(g, layout, linkProfileViewport, profile, f ? f.profile_points : null);
+    renderLinkProfileViewport(g, layout, linkProfileViewport, profile, histRecord ? histRecord.profilePoints : (f ? f.profile_points : null));
   } catch (err) {
     console.error('Error drawing Fresnel canvas:', err);
   }
@@ -2945,15 +4287,105 @@ setTimeout(() => {
     const snr=text('lb-snr');
     const status=firstText(['term-state-pill','fresnel-status-badge']);
     document.querySelectorAll('.analysis-context').forEach(panel=>{
+      if (panel.getAttribute('data-context-view') === 'rf' && historyController.isInspecting) return;
+      if (panel.getAttribute('data-context-view') === 'scheduler' && schedHistoryController.isInspecting) return;
       panel.querySelectorAll('[data-context-node]').forEach(el=>el.textContent=nodeName||'--');
       panel.querySelectorAll('[data-context-time]').forEach(el=>el.textContent=time);
       panel.querySelectorAll('[data-context-frame]').forEach(el=>el.textContent=frame);
       panel.querySelectorAll('[data-context-mode]').forEach(el=>el.textContent=mode||'--');
-      panel.querySelectorAll('[data-context-link]').forEach(el=>el.textContent=snr ? ('SNR '+snr) : status);
+      panel.querySelectorAll('[data-context-link]').forEach(el=>el.textContent=(snr && snr !== '--') ? ('SNR '+snr + (status ? ' ('+status+')' : '')) : (status || '--'));
     });
   }
   update(); window.setInterval(update,1000);
-  document.addEventListener('change',e=>{if(e.target && (e.target.id==='termNodeSelect'||e.target.id==='quickNodeSelect')) update();});
+  document.addEventListener('change',e=>{
+    if(e.target && (e.target.id==='termNodeSelect'||e.target.id==='quickNodeSelect')) {
+      update();
+      if (schedHistoryController.isInspecting) syncSchedulerHistoricalUIState();
+      else drawSchedulerCharts();
+    }
+  });
+})();
+
+// Historical Timeline Scrubber Listeners
+(function setupHistoryScrubber() {
+  const scrubber = $('profile-history-scrubber');
+  if (scrubber) {
+    scrubber.addEventListener('input', (e) => {
+      const targetFrame = parseInt(e.target.value, 10);
+      if (!Number.isFinite(targetFrame)) return;
+
+      const span = historyBuffer.getSpan();
+      if (span.newestFrame !== null && targetFrame >= span.newestFrame) {
+        returnToLive();
+        return;
+      }
+
+      if (!historyController.isInspecting) {
+        const { shouldPauseWorker } = sessionCoordinator.onEnterHistorical({
+          isCurrentlyRunning: !isPaused,
+          rfInspecting: historyController.isInspecting,
+          schedInspecting: schedHistoryController.isInspecting,
+        });
+        historyController.enterHistorical(targetFrame, sessionCoordinator.wasRunningBefore);
+        if (shouldPauseWorker) {
+          isPaused = true;
+          sendCommand({ type: 'SIM_CONTROL', action: 'pause' });
+          $('btn-pause').textContent = 'RESUME';
+          $('btn-pause').classList.add('active');
+        }
+      } else {
+        historyController.scrubTo(targetFrame);
+      }
+
+      syncHistoricalUIState();
+    });
+  }
+
+  const liveBtn = $('btn-history-live');
+  if (liveBtn) {
+    liveBtn.addEventListener('click', returnToLive);
+  }
+})();
+
+// Scheduler Historical Timeline Scrubber Listeners
+(function setupSchedulerHistoryScrubber() {
+  const scrubber = $('sched-history-scrubber');
+  if (scrubber) {
+    scrubber.addEventListener('input', (e) => {
+      const targetFrame = parseInt(e.target.value, 10);
+      if (!Number.isFinite(targetFrame)) return;
+
+      const span = schedHistoryBuffer.getSpan();
+      if (span.newestFrame !== null && targetFrame >= span.newestFrame) {
+        returnSchedulerToLive();
+        return;
+      }
+
+      if (!schedHistoryController.isInspecting) {
+        const { shouldPauseWorker } = sessionCoordinator.onEnterHistorical({
+          isCurrentlyRunning: !isPaused,
+          rfInspecting: historyController.isInspecting,
+          schedInspecting: schedHistoryController.isInspecting,
+        });
+        schedHistoryController.enterHistorical(targetFrame, sessionCoordinator.wasRunningBefore);
+        if (shouldPauseWorker) {
+          isPaused = true;
+          sendCommand({ type: 'SIM_CONTROL', action: 'pause' });
+          $('btn-pause').textContent = 'RESUME';
+          $('btn-pause').classList.add('active');
+        }
+      } else {
+        schedHistoryController.scrubTo(targetFrame);
+      }
+
+      syncSchedulerHistoricalUIState();
+    });
+  }
+
+  const liveBtn = $('btn-sched-history-live');
+  if (liveBtn) {
+    liveBtn.addEventListener('click', returnSchedulerToLive);
+  }
 })();
 </script>
 </body>

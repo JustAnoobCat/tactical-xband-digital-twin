@@ -7,9 +7,13 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node scripts/verify-project.mjs && npm run typecheck && npm run verify:physics && npm run verify:scheduler && npm run verify:worker && npm run verify:trajectory && npm run verify:trajectory-editor && npm run verify:obstacles && npm run verify:obstacle-editor && npm run verify:profile-freshness && npm run verify:profile-viewport",
+    "test": "node scripts/verify-project.mjs && npm run typecheck && npm run verify:physics && npm run verify:scheduler && npm run verify:worker && npm run verify:trajectory && npm run verify:trajectory-editor && npm run verify:obstacles && npm run verify:obstacle-editor && npm run verify:profile-freshness && npm run verify:profile-viewport && npm run verify:history && npm run verify:history-scheduler && npm run verify:history-timeline && npm run verify:link-classifier",
+    "verify:history-timeline": "vite-node src/tests/verifyHistoryTimeline60s.ts",
+    "verify:link-classifier": "vite-node src/tests/verifyLinkClassifier.ts",
     "verify:profile-freshness": "vite-node src/tests/verifyProfileFreshness.ts",
     "verify:profile-viewport": "vite-node src/tests/verifyProfileViewport.ts",
+    "verify:history": "vite-node src/tests/verifyHistoricalProfile.ts",
+    "verify:history-scheduler": "vite-node src/tests/verifyHistoricalScheduler.ts",
     "dev": "vite",
     "build": "vite build",
     "verify": "node scripts/verify-project.mjs",
@@ -20,7 +24,7 @@
     "verify:trajectory-editor": "vite-node src/tests/verifyTrajectoryEditor.ts",
     "verify:obstacles": "vite-node src/tests/verifyObstacles.ts",
     "verify:obstacle-editor": "vite-node src/tests/verifyObstacleEditor.ts",
-    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types node,vite/client src/worker/simWorker.ts src/tests/verifyPhysics.ts src/tests/verifyScheduler.ts src/tests/verifyWorkerState.ts src/tests/verifyTrajectoryModes.ts src/tests/verifyTrajectoryEditor.ts src/tests/verifyObstacles.ts src/tests/verifyObstacleEditor.ts src/tests/verifyProfileFreshness.ts src/tests/verifyProfileViewport.ts scripts/run_ts_benchmark.ts",
+    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types node,vite/client src/worker/simWorker.ts src/tests/verifyPhysics.ts src/tests/verifyScheduler.ts src/tests/verifyWorkerState.ts src/tests/verifyTrajectoryModes.ts src/tests/verifyTrajectoryEditor.ts src/tests/verifyObstacles.ts src/tests/verifyObstacleEditor.ts src/tests/verifyProfileFreshness.ts src/tests/verifyProfileViewport.ts src/tests/verifyHistoricalProfile.ts src/tests/verifyHistoricalScheduler.ts src/tests/verifyHistoryTimeline60s.ts src/tests/verifyLinkClassifier.ts scripts/run_ts_benchmark.ts",
     "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts"
   },
   "keywords": [],

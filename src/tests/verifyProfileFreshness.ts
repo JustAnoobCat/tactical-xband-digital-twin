@@ -473,4 +473,136 @@ function snapshotSimState(sim: SimulationWorkerManager) {
   console.log('PASS Test 9 — Terrain LOS and obstacle blockage remain independent in profile metadata');
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 10 — NODE_MOVE while paused refreshes profile and telemetry immediately
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const sim = new SimulationWorkerManager();
+  sim.terrainEngine = new TerrainEngine({ terrainMode: 'synthetic', customElevationFn: () => 0 });
+  sim.lookaheadEngine = new PredictiveLookAheadEngine(
+    sim.terrainEngine, sim.linkEngine, sim.rfConfig, sim.envConfig, sim.flightConfig, sim.trajectoryEngine,
+  );
+  sim.isPaused = true;
+  const nid = sim.selectedNodeId;
+
+  const { frames, restore } = captureProfileFrames(sim);
+  const before = snapshotSimState(sim);
+
+  const moveRes = sim.handleMessage({ type: 'NODE_MOVE', node_id: nid, x_m: 25000, y_m: 15000 });
+  assert.equal(moveRes.accepted, true);
+
+  assert.equal(frames.length, 1, 'exactly one PROFILE_FRAME emitted after NODE_MOVE');
+  assert.equal(frames[0].selectedNodeId, nid);
+  assert.ok(frames[0].fresnel && typeof frames[0].fresnel === 'object');
+  assert.ok((frames[0] as any).selected_link_budget, 'selected_link_budget included in PROFILE_FRAME');
+  assert.equal((frames[0] as any).selected_link_budget.node_id, nid);
+  assert.ok((frames[0] as any).selected_link_budget.slant_range_km > 0);
+  assert.ok((frames[0] as any).selected_link_budget.earth_bulge_m >= 0);
+  assert.ok(Array.isArray((frames[0] as any).nodes_telemetry), 'nodes_telemetry included in PROFILE_FRAME');
+  const movedNodeTel = (frames[0] as any).nodes_telemetry.find((n: any) => n.node_id === nid);
+  assert.equal(movedNodeTel.x_m, 25000);
+  assert.equal(movedNodeTel.y_m, 15000);
+  assert.equal(typeof movedNodeTel.terrain_is_los, 'boolean');
+  assert.equal(typeof movedNodeTel.diffraction_loss_db, 'number');
+
+  // Verify simulation time, frame, queues, KPIs are unchanged
+  const after = snapshotSimState(sim);
+  assert.equal(after.simTimeS, before.simTimeS, 'sim time not advanced by NODE_MOVE');
+  assert.equal(after.frameIndex, before.frameIndex, 'frame index not advanced');
+  assert.deepEqual(after.queueBits, before.queueBits, 'queue state not changed');
+
+  restore();
+  console.log('PASS Test 10 — NODE_MOVE while paused refreshes profile and telemetry immediately');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 11 — CONFIG_UPDATE / SET_PARAMS while paused refreshes profile immediately
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const sim = new SimulationWorkerManager();
+  sim.terrainEngine = new TerrainEngine({ terrainMode: 'synthetic', customElevationFn: () => 0 });
+  sim.lookaheadEngine = new PredictiveLookAheadEngine(
+    sim.terrainEngine, sim.linkEngine, sim.rfConfig, sim.envConfig, sim.flightConfig, sim.trajectoryEngine,
+  );
+  sim.isPaused = true;
+
+  const { frames, restore } = captureProfileFrames(sim);
+  const before = snapshotSimState(sim);
+
+  // Test with CONFIG_UPDATE
+  const configRes = sim.handleMessage({
+    type: 'CONFIG_UPDATE',
+    params: { carrier_freq_ghz: 10.0, rain_rate_mmh: 15.0 },
+  });
+  assert.equal(configRes.accepted, true);
+  assert.equal(frames.length, 1, 'PROFILE_FRAME emitted on CONFIG_UPDATE');
+  assert.ok((frames[0] as any).selected_link_budget.rain_loss_db > 0, 'rain loss is computed authoritatively');
+  assert.equal(sim.rfConfig.carrierFrequencyHz, 10.0e9);
+
+  // Test alias SET_PARAMS
+  const setParamsRes = sim.handleMessage({
+    type: 'SET_PARAMS',
+    params: { carrier_freq_ghz: 11.5 },
+  });
+  assert.equal(setParamsRes.accepted, true);
+  assert.equal(frames.length, 2, 'PROFILE_FRAME emitted on SET_PARAMS');
+  assert.equal(sim.rfConfig.carrierFrequencyHz, 11.5e9);
+
+  // Verify simulation time, frame, queues, KPIs are unchanged
+  const after = snapshotSimState(sim);
+  assert.equal(after.simTimeS, before.simTimeS, 'sim time not advanced by parameter updates');
+  assert.equal(after.frameIndex, before.frameIndex, 'frame index not advanced');
+
+  restore();
+  console.log('PASS Test 11 — CONFIG_UPDATE / SET_PARAMS while paused refreshes profile immediately');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 12 — Telemetry frame carries authoritative link budget, terrain LOS, and earth bulge
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const sim = new SimulationWorkerManager();
+  sim.terrainEngine = new TerrainEngine({ terrainMode: 'synthetic', customElevationFn: () => 0 });
+  sim.lookaheadEngine = new PredictiveLookAheadEngine(
+    sim.terrainEngine, sim.linkEngine, sim.rfConfig, sim.envConfig, sim.flightConfig, sim.trajectoryEngine,
+  );
+  sim.isPaused = true;
+
+  const acnPos = sim.trajectoryEngine.getAcnPosition(sim.simTimeS);
+  const frame = (sim as any).buildTelemetryFrame(acnPos);
+
+  // 1. Check nodes_telemetry has authoritative terrain LOS and diffraction loss
+  assert.ok(Array.isArray(frame.nodes_telemetry));
+  assert.equal(frame.nodes_telemetry.length, 16);
+  for (const node of frame.nodes_telemetry) {
+    assert.equal(typeof node.terrain_is_los, 'boolean', 'terrain_is_los is boolean');
+    assert.equal(typeof node.diffraction_loss_db, 'number', 'diffraction_loss_db is numeric');
+    assert.equal(typeof node.obstacle_blocked, 'boolean', 'obstacle_blocked is boolean');
+    assert.equal(typeof node.link_outage, 'boolean', 'link_outage is boolean');
+  }
+
+  // 2. Check selected_link_budget has all authoritative DVB-S2X physics fields
+  const lb = frame.selected_link_budget;
+  assert.ok(lb && typeof lb === 'object', 'selected_link_budget is present');
+  assert.equal(lb.node_id, sim.selectedNodeId);
+  assert.equal(typeof lb.fspl_db, 'number');
+  assert.ok(lb.fspl_db > 100, 'free-space path loss is positive dB');
+  assert.equal(typeof lb.diffraction_loss_db, 'number');
+  assert.equal(typeof lb.gas_loss_db, 'number');
+  assert.equal(typeof lb.rain_loss_db, 'number');
+  assert.equal(typeof lb.prx_dbm, 'number');
+  assert.equal(typeof lb.pnoise_dbm, 'number');
+  assert.equal(typeof lb.snr_db, 'number');
+  assert.equal(typeof lb.modcod_name, 'string');
+  assert.equal(typeof lb.earth_bulge_m, 'number');
+  assert.ok(lb.earth_bulge_m >= 0, 'earth curvature bulge is non-negative');
+
+  // Verify that profile refresh never increments frame index
+  const initialFrameIndex = sim.frameIndex;
+  sim.emitProfileFrame();
+  assert.equal(sim.frameIndex, initialFrameIndex, 'emitProfileFrame never increments frameIndex');
+
+  console.log('PASS Test 12 — Telemetry frame carries authoritative link budget, terrain LOS, and earth bulge');
+}
+
 console.log('PASS All Milestone 3B.2B profile-freshness regression tests passed.');

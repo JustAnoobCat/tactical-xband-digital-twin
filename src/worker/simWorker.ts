@@ -87,6 +87,34 @@ export interface WorkerCommandResult {
   }[];
 }
 
+export interface SelectedLinkBudgetTelemetry {
+  readonly node_id: number;
+  readonly node_type: NodeType | string;
+  readonly slant_range_m: number;
+  readonly slant_range_km: number;
+  readonly fspl_db: number;
+  readonly diffraction_loss_db: number;
+  readonly gas_loss_db: number;
+  readonly rain_loss_db: number;
+  readonly cable_loss_db: number;
+  readonly implementation_margin_db: number;
+  readonly total_loss_db: number;
+  readonly tx_power_dbm: number;
+  readonly tx_gain_dbi: number;
+  readonly rx_gain_dbi: number;
+  readonly prx_dbm: number;
+  readonly pnoise_dbm: number;
+  readonly snr_db: number;
+  readonly modcod_name: string;
+  readonly spectral_efficiency_bps_hz: number;
+  readonly bitrate_bps: number;
+  readonly bitrate_mbps: number;
+  readonly is_outage: boolean;
+  readonly obstacle_blocked: boolean;
+  readonly terrain_is_los: boolean;
+  readonly earth_bulge_m: number;
+}
+
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
@@ -151,6 +179,7 @@ export class SimulationWorkerManager {
   public schedulerMode: string = 'tac_tad';
   public selectedNodeId: number = 4;
   public spatialLocked: boolean = false;
+  public spatialRevision: number = 0;
 
   public nodesStatic: GroundNodeTrafficSubsystem[] = [];
   public nodesTac: GroundNodeTrafficSubsystem[] = [];
@@ -416,7 +445,10 @@ export class SimulationWorkerManager {
       type: 'PROFILE_FRAME',
       selectedNodeId: this.selectedNodeId,
       profileSerial: ++this.profileSerial,
+      spatial_revision: this.spatialRevision,
       fresnel: fresnelSlice,
+      selected_link_budget: fresnelSlice.link_budget,
+      nodes_telemetry: this.buildNodesTelemetry(),
     });
   }
 
@@ -626,12 +658,16 @@ export class SimulationWorkerManager {
     }
   }
 
-  private buildTelemetryFrame(acnPos: [number, number, number]): any {
+  public buildNodesTelemetry(): any[] {
     const activeNodes = this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic;
-    const [vx, vy] = this.trajectoryEngine.getAcnVelocity(this.simTimeS);
-
-    const nodesTel = activeNodes.map((node) => {
-      const ls = this.linkStatuses.get(node.nodeId);
+    const acnPos = this.trajectoryEngine.getAcnPosition(this.simTimeS);
+    return activeNodes.map((node) => {
+      const obstruction = this.obstructionResults.get(node.nodeId)
+        ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
+      const [nx, ny, nz] = node.position;
+      const slantM = Math.hypot(acnPos[0] - nx, acnPos[1] - ny, acnPos[2] - nz);
+      const ls = this.linkStatuses.get(node.nodeId)
+        ?? this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked);
       const ps = this.predStates.get(node.nodeId);
       const q = node.queue;
 
@@ -657,6 +693,8 @@ export class SimulationWorkerManager {
         link_outage: ls?.isOutage ?? true,
         bitrate_bps: ls?.bitrateBps ?? 0,
         bitrate_mbps: ls?.bitrateMbps ?? 0,
+        terrain_is_los: obstruction?.isLos ?? true,
+        diffraction_loss_db: ls?.diffractionLossDb ?? obstruction?.diffractionLossDb ?? 0,
         state_name: ps?.currentState ?? NodeTerrainState.NORMAL_LOS,
         time_to_occlusion_s: ps?.timeToOcclusionS ?? -1,
         time_to_emergence_s: ps?.timeToEmergenceS ?? -1,
@@ -673,6 +711,13 @@ export class SimulationWorkerManager {
         total_backlog_bytes: q.getTotalBacklogBytes(),
       };
     });
+  }
+
+  private buildTelemetryFrame(acnPos: [number, number, number]): any {
+    const activeNodes = this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic;
+    const [vx, vy] = this.trajectoryEngine.getAcnVelocity(this.simTimeS);
+
+    const nodesTel = this.buildNodesTelemetry();
 
     // Detect state nodes synchronously so TypeScript tracks types cleanly
     let flushNode: { node: GroundNodeTrafficSubsystem; ps: PredictiveState } | null = null;
@@ -712,6 +757,33 @@ export class SimulationWorkerManager {
 
     const activeReport = this.schedulerMode === 'tac_tad' ? this.lastReportTac : this.lastReportStatic;
 
+    const staticDropDelayThisFrame = this.lastReportStatic?.packetsDroppedDelayThisFrame ?? 0;
+    const staticDropOverflowThisFrame = this.lastReportStatic?.packetsDroppedOverflowThisFrame ?? 0;
+    const staticDropTotalThisFrame = staticDropDelayThisFrame + staticDropOverflowThisFrame;
+
+    const tacDropDelayThisFrame = this.lastReportTac?.packetsDroppedDelayThisFrame ?? 0;
+    const tacDropOverflowThisFrame = this.lastReportTac?.packetsDroppedOverflowThisFrame ?? 0;
+    const tacDropTotalThisFrame = tacDropDelayThisFrame + tacDropOverflowThisFrame;
+
+    const activeDropDelayThisFrame = this.schedulerMode === 'tac_tad' ? tacDropDelayThisFrame : staticDropDelayThisFrame;
+    const activeDropOverflowThisFrame = this.schedulerMode === 'tac_tad' ? tacDropOverflowThisFrame : staticDropOverflowThisFrame;
+    const activeDropTotalThisFrame = this.schedulerMode === 'tac_tad' ? tacDropTotalThisFrame : staticDropTotalThisFrame;
+
+    const activeGoodputBitsThisFrame = this.schedulerMode === 'tac_tad'
+      ? (this.lastReportTac?.totalBitsTransmitted ?? 0)
+      : (this.lastReportStatic?.totalBitsTransmitted ?? 0);
+    const activeWastedBitsThisFrame = this.schedulerMode === 'tac_tad'
+      ? (this.lastReportTac?.totalBitsWastedOnOutage ?? 0)
+      : (this.lastReportStatic?.totalBitsWastedOnOutage ?? 0);
+
+    const hasSel = typeof this.selectedNodeId === 'number';
+    const staticSelectedBacklogKb = hasSel && this.nodesStatic[this.selectedNodeId]
+      ? this.nodesStatic[this.selectedNodeId].queue.getTotalBacklogBytes() / 1024.0
+      : null;
+    const tacSelectedBacklogKb = hasSel && this.nodesTac[this.selectedNodeId]
+      ? this.nodesTac[this.selectedNodeId].queue.getTotalBacklogBytes() / 1024.0
+      : null;
+
     const kpi = {
       static_goodput_mb: sg / 1e6,
       tac_goodput_mb: tg / 1e6,
@@ -726,6 +798,27 @@ export class SimulationWorkerManager {
       node4_pre_shadow_backlog_kb: this.metrics.node4PreShadowBacklogKb,
       static_node4_pre_shadow_backlog_kb: this.metrics.staticNode4PreShadowBacklogKb,
       node4_evac_status: this.getNode4Status(),
+      static_selected_backlog_kb: staticSelectedBacklogKb,
+      tac_selected_backlog_kb: tacSelectedBacklogKb,
+
+      // Exact per-frame scheduler metrics (purely additive):
+      static_goodput_frame_bits: this.lastReportStatic?.totalBitsTransmitted ?? 0,
+      tac_goodput_frame_bits: this.lastReportTac?.totalBitsTransmitted ?? 0,
+      active_goodput_frame_bits: activeGoodputBitsThisFrame,
+      static_wasted_frame_bits: this.lastReportStatic?.totalBitsWastedOnOutage ?? 0,
+      tac_wasted_frame_bits: this.lastReportTac?.totalBitsWastedOnOutage ?? 0,
+      active_wasted_frame_bits: activeWastedBitsThisFrame,
+      static_drop_delay_frame_pkts: staticDropDelayThisFrame,
+      static_drop_overflow_frame_pkts: staticDropOverflowThisFrame,
+      static_drop_frame_pkts: staticDropTotalThisFrame,
+      tac_drop_delay_frame_pkts: tacDropDelayThisFrame,
+      tac_drop_overflow_frame_pkts: tacDropOverflowThisFrame,
+      tac_drop_frame_pkts: tacDropTotalThisFrame,
+      active_drop_delay_frame_pkts: activeDropDelayThisFrame,
+      active_drop_overflow_frame_pkts: activeDropOverflowThisFrame,
+      active_drop_frame_pkts: activeDropTotalThisFrame,
+      static_utilization_pct: this.lastReportStatic?.totalUlUtilizationPct ?? 0,
+      tac_utilization_pct: this.lastReportTac?.totalUlUtilizationPct ?? 0,
     };
 
     const trans = this.nodeTransfers.get(this.selectedNodeId) ?? {
@@ -751,18 +844,23 @@ export class SimulationWorkerManager {
     const selNode = activeNodes.find((n) => n.nodeId === this.selectedNodeId) ?? activeNodes[0];
     const fresnelSlice = this.buildFresnelSlice(selNode, acnPos);
 
-    const allocations = (activeReport?.allocations ?? []).map((a) => ({
+    const mapAlloc = (a: SlotAllocation) => ({
       node_id: a.nodeId,
       start_ms: (a.slotStartS - (this.simTimeS - FRAME_DT)) * 1000.0,
       duration_ms: a.durationS * 1000.0,
       duration_s: a.durationS,
       slot_start_s: a.slotStartS,
+      capacity_bits: a.capacityBits,
+      modcod_name: a.modcodName,
+      spectral_efficiency: a.spectralEfficiency,
       c2_bytes: a.capacityBits > 0 ? 128 : 0,
       voice_bytes: 0,
       video_bytes: 0,
       photo_bytes: 0,
       is_pre_occlusion_flush: a.isPreOcclusionFlush,
-    }));
+    });
+
+    const allocations = (activeReport?.allocations ?? []).map(mapAlloc);
 
     return {
       frame_index: this.frameIndex,
@@ -770,6 +868,7 @@ export class SimulationWorkerManager {
       speed: this.speed,
       paused: this.isPaused,
       spatial_locked: this.spatialLocked,
+      spatial_revision: this.spatialRevision,
       trajectory_config: {
         trajectory_mode: this.flightConfig.trajectoryMode,
         center_x_m: this.flightConfig.centerXm,
@@ -795,8 +894,11 @@ export class SimulationWorkerManager {
       },
       nodes_telemetry: nodesTel,
       active_gantt_allocations: allocations,
+      static_gantt_allocations: (this.lastReportStatic?.allocations ?? []).map(mapAlloc),
+      tac_gantt_allocations: (this.lastReportTac?.allocations ?? []).map(mapAlloc),
       comparative_kpi_dashboard: kpi,
       selected_node_fresnel: fresnelSlice,
+      selected_link_budget: fresnelSlice.link_budget,
       transfer_telemetry: transferTel,
       terrain_mode: this.terrainEngine.terrain_mode,
       terrain_bounds_km: THEATER_HALF_M / 1000,
@@ -816,6 +918,46 @@ export class SimulationWorkerManager {
     }
   }
 
+  private buildSelectedLinkBudget(
+    node: GroundNodeTrafficSubsystem,
+    ls: LinkStatus | undefined,
+    obstruction: TerrainObstruction | undefined
+  ): SelectedLinkBudgetTelemetry {
+    const slantM = ls?.slantRangeM ?? 0;
+    const earthBulgeM = TerrainEngine.computeEarthBulge(
+      slantM / 2.0,
+      slantM / 2.0,
+      this.envConfig.effectiveEarthRadiusM
+    );
+    return {
+      node_id: node.nodeId,
+      node_type: node.nodeType,
+      slant_range_m: slantM,
+      slant_range_km: slantM / 1000.0,
+      fspl_db: ls?.fsplDb ?? 0,
+      diffraction_loss_db: ls?.diffractionLossDb ?? obstruction?.diffractionLossDb ?? 0,
+      gas_loss_db: ls?.gasLossDb ?? 0,
+      rain_loss_db: ls?.rainLossDb ?? 0,
+      cable_loss_db: ls?.cableLossDb ?? 0,
+      implementation_margin_db: ls?.implementationMarginDb ?? 0,
+      total_loss_db: ls?.totalLossDb ?? 0,
+      tx_power_dbm: ls?.pTxDbm ?? 0,
+      tx_gain_dbi: ls?.txGainDbi ?? 0,
+      rx_gain_dbi: ls?.rxGainDbi ?? 0,
+      prx_dbm: ls?.prxDbm ?? 0,
+      pnoise_dbm: ls?.pNoiseDbm ?? 0,
+      snr_db: ls?.snrDb ?? -99.0,
+      modcod_name: ls?.modcodName ?? 'LINK_OUTAGE',
+      spectral_efficiency_bps_hz: ls?.spectralEfficiency ?? 0,
+      bitrate_bps: ls?.bitrateBps ?? 0,
+      bitrate_mbps: ls?.bitrateMbps ?? 0,
+      is_outage: ls?.isOutage ?? true,
+      obstacle_blocked: ls?.obstacleBlocked ?? false,
+      terrain_is_los: obstruction?.isLos ?? true,
+      earth_bulge_m: earthBulgeM,
+    };
+  }
+
   private buildFresnelSlice(node: GroundNodeTrafficSubsystem, acnPos: [number, number, number]): {
     readonly profile: LinkProfile;
     readonly node_id: number;
@@ -831,6 +973,7 @@ export class SimulationWorkerManager {
     readonly state_name: NodeTerrainState;
     /** @deprecated Compatibility field; x is horizontal ground distance in km. */
     readonly profile_points: readonly [number, number, number, number][];
+    readonly link_budget: SelectedLinkBudgetTelemetry;
   } {
     const obstruction = this.obstructionResults.get(node.nodeId)
       ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
@@ -865,8 +1008,10 @@ export class SimulationWorkerManager {
       if (clearance < minClearanceM) minClearanceM = clearance;
     }
 
-    const ls = this.linkStatuses.get(node.nodeId);
+    const ls = this.linkStatuses.get(node.nodeId)
+      ?? this.linkEngine.evaluateLink(node.nodeType, linkProfile.slantDistanceM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked);
     const ps = this.predStates.get(node.nodeId);
+    const linkBudget = this.buildSelectedLinkBudget(node, ls, obstruction);
 
     return {
       profile: linkProfile,
@@ -882,6 +1027,7 @@ export class SimulationWorkerManager {
       obstacle_intersections: obstruction.obstacleIntersections,
       state_name: ps?.currentState ?? NodeTerrainState.NORMAL_LOS,
       profile_points: profilePoints,
+      link_budget: linkBudget,
     };
   }
 
@@ -901,6 +1047,7 @@ export class SimulationWorkerManager {
     this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
     this.simTimeS = 0.0;
     this.frameIndex = 0;
+    this.spatialRevision = 0;
     this.node4Frozen = false;
     this.lastReportStatic = null;
     this.lastReportTac = null;
@@ -982,6 +1129,7 @@ export class SimulationWorkerManager {
         }
         // Emit an out-of-band profile frame so the UI reflects the new obstacle geometry
         // immediately, without waiting for the next normal telemetry tick.
+        this.spatialRevision++;
         this.emitProfileFrame();
         return result(true);
       }
@@ -1023,6 +1171,9 @@ export class SimulationWorkerManager {
           staticNode.position = [xm, ym, terrainMsl + staticNode.aglM];
           tacNode.position = [xm, ym, terrainMsl + tacNode.aglM];
         }
+        this.spatialRevision++;
+        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.emitProfileFrame();
         return result(true);
       }
 
@@ -1036,6 +1187,7 @@ export class SimulationWorkerManager {
         if (!isOcclusion && !isAmbush && !isMonsoon && !isReset) return reject('Unknown preset.');
         if (this.spatialLocked && (isOcclusion || isReset)) return locked();
         if (isOcclusion) {
+          this.spatialRevision++;
           const terrainMsl = this.terrainEngine.getElevation(12000.0, 8000.0);
           this.nodesStatic[4].position = [12000.0, 8000.0, terrainMsl + this.nodesStatic[4].aglM];
           this.nodesTac[4].position = [12000.0, 8000.0, terrainMsl + this.nodesTac[4].aglM];
@@ -1102,8 +1254,9 @@ export class SimulationWorkerManager {
         this.initHillshade(512);
         return result(true);
 
+      case 'SET_PARAMS':
       case 'CONFIG_UPDATE': {
-        const p = msg.params;
+        const p = (msg.params && typeof msg.params === 'object' && !Array.isArray(msg.params)) ? msg.params : msg;
         if (!p || typeof p !== 'object' || Array.isArray(p)) return reject('params must be an object.');
         const numericKeys = ['carrier_freq_ghz', 'rain_rate_mmh', 'acn_altitude_m', 'orbit_a_m', 'orbit_b_m',
           'orbit_rotation_deg', 'loiter_speed_mps', 'coverage_radius_km', 'center_x_m', 'center_y_m', 'node_id', 'agl_m'];
@@ -1200,6 +1353,11 @@ export class SimulationWorkerManager {
           this.nodesTac[nid].position = [this.nodesTac[nid].position[0], this.nodesTac[nid].position[1], terrainMsl + p.agl_m];
         }
         if (changesTerrain) this.initHillshade(512);
+        if (changesTrajectory || changesTerrain || p.agl_m !== undefined) {
+          this.spatialRevision++;
+        }
+        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.emitProfileFrame();
         return result(true);
       }
 
