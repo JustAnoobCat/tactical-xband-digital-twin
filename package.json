@@ -7,7 +7,14 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node scripts/verify-project.mjs && npm run typecheck && npm run verify:physics && npm run verify:scheduler && npm run verify:worker && npm run verify:trajectory && npm run verify:trajectory-editor && npm run verify:obstacles && npm run verify:obstacle-editor && npm run verify:profile-freshness && npm run verify:profile-viewport && npm run verify:history && npm run verify:history-scheduler && npm run verify:history-timeline && npm run verify:link-classifier",
+    "test": "node scripts/verify-project.mjs && npm run typecheck && npm run verify:physics && npm run verify:scheduler && npm run verify:worker && npm run verify:trajectory && npm run verify:trajectory-editor && npm run verify:obstacles && npm run verify:obstacle-editor && npm run verify:profile-freshness && npm run verify:profile-viewport && npm run verify:history && npm run verify:history-scheduler && npm run verify:history-timeline && npm run verify:link-classifier && npm run verify:three-foundation && npm run verify:three-terrain && npm run verify:three-entities",
+    "verify:dem-mapping": "vite-node src/tests/verifyDemMapping.ts",
+    "verify:coverage-propagation": "vite-node src/tests/verifyCoveragePropagation.ts",
+    "verify:hillshade-bounds": "vite-node src/tests/verifyHillshadeBounds.ts",
+    "verify:canvas-terrain": "vite-node src/tests/verifyCanvasTerrain.ts",
+    "verify:three-foundation": "vite-node src/tests/verifyThreeFoundation.ts",
+    "verify:three-terrain": "vite-node src/tests/verifyThreeTerrain.ts",
+    "verify:three-entities": "vite-node src/tests/verifyThreeEntities.ts",
     "verify:history-timeline": "vite-node src/tests/verifyHistoryTimeline60s.ts",
     "verify:link-classifier": "vite-node src/tests/verifyLinkClassifier.ts",
     "verify:profile-freshness": "vite-node src/tests/verifyProfileFreshness.ts",
@@ -24,15 +31,19 @@
     "verify:trajectory-editor": "vite-node src/tests/verifyTrajectoryEditor.ts",
     "verify:obstacles": "vite-node src/tests/verifyObstacles.ts",
     "verify:obstacle-editor": "vite-node src/tests/verifyObstacleEditor.ts",
-    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types node,vite/client src/worker/simWorker.ts src/tests/verifyPhysics.ts src/tests/verifyScheduler.ts src/tests/verifyWorkerState.ts src/tests/verifyTrajectoryModes.ts src/tests/verifyTrajectoryEditor.ts src/tests/verifyObstacles.ts src/tests/verifyObstacleEditor.ts src/tests/verifyProfileFreshness.ts src/tests/verifyProfileViewport.ts src/tests/verifyHistoricalProfile.ts src/tests/verifyHistoricalScheduler.ts src/tests/verifyHistoryTimeline60s.ts src/tests/verifyLinkClassifier.ts scripts/run_ts_benchmark.ts",
+    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types node,vite/client src/worker/simWorker.ts src/ui/terrainMapRenderer.ts src/ui/three/index.ts src/ui/three/tacticalEntityManager.ts src/tests/verifyThreeFoundation.ts src/tests/verifyThreeTerrain.ts src/tests/verifyThreeEntities.ts src/tests/verifyPhysics.ts src/tests/verifyScheduler.ts src/tests/verifyWorkerState.ts src/tests/verifyTrajectoryModes.ts src/tests/verifyTrajectoryEditor.ts src/tests/verifyObstacles.ts src/tests/verifyObstacleEditor.ts src/tests/verifyProfileFreshness.ts src/tests/verifyProfileViewport.ts src/tests/verifyHistoricalProfile.ts src/tests/verifyHistoricalScheduler.ts src/tests/verifyHistoryTimeline60s.ts src/tests/verifyLinkClassifier.ts src/tests/verifyDemMapping.ts src/tests/verifyCoveragePropagation.ts src/tests/verifyHillshadeBounds.ts src/tests/verifyCanvasTerrain.ts scripts/run_ts_benchmark.ts",
     "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts"
   },
   "keywords": [],
   "type": "module",
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/three": "^0.186.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vite-node": "^6.0.0"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
   }
 }

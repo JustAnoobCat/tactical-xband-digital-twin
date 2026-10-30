@@ -34,7 +34,13 @@ import {
   TerrainAwareDynamicScheduler,
   T_FRAME_S,
 } from '../core/scheduler';
-import { Position3D, TerrainEngine, TerrainObstruction } from '../core/terrain';
+import {
+  Position3D,
+  REAL_LADAKH_DEM_METADATA,
+  TerrainBoundsTelemetry,
+  TerrainEngine,
+  TerrainObstruction,
+} from '../core/terrain';
 import {
   ACNTrajectory,
   createACNTrajectory,
@@ -84,6 +90,8 @@ export interface WorkerCommandResult {
     readonly time_to_occlusion_s: number;
     readonly time_to_emergence_s: number;
     readonly is_shadowed: boolean;
+    readonly is_coverage_complete?: boolean;
+    readonly coverage_note?: string;
   }[];
 }
 
@@ -113,6 +121,10 @@ export interface SelectedLinkBudgetTelemetry {
   readonly obstacle_blocked: boolean;
   readonly terrain_is_los: boolean;
   readonly earth_bulge_m: number;
+  readonly is_coverage_complete?: boolean;
+  readonly isCoverageComplete?: boolean;
+  readonly coverage_note?: string;
+  readonly coverageNote?: string;
 }
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -190,6 +202,9 @@ export class SimulationWorkerManager {
 
   public metrics: RunningMetrics;
   public hillshadeGrid: number[][] = [];
+
+  private cachedRealHillshade: { grid: number[][]; demRef: Float32Array | null; size: number } | null = null;
+  private cachedSynthHillshade: { grid: number[][]; size: number } | null = null;
 
   private timerId: number | null = null;
   private node4Frozen: boolean = false;
@@ -328,32 +343,100 @@ export class SimulationWorkerManager {
   }
 
   /**
-   * Generates a 512x512 shaded relief grid across the expanded 1,200x1,200 km regional domain
-   * using true 3D surface normal calculations and Northwest directional Lambertian illumination.
+   * Generates a shaded relief grid across genuine terrain coverage:
+   * - In real DEM mode: uses genuine Ladakh DEM coordinates (+/-91.8 km E-W, +/-110.9 km N-S, aspect ratio ~1.2079),
+   *   exact metric ground resolution (dx=359.45m, dy=434.17m), and 512x512 matrix.
+   * - In synthetic mode: covers full 1,200x1,200 km regional domain (+/-600 km).
+   * Caches results to ensure static terrain is computed once on startup/mode-switch rather than per-frame.
    */
   public initHillshade(gridSize: number = 512): void {
     const size = gridSize;
-    const grid: number[][] = [];
-    const step = (THEATER_HALF_M * 2) / (size - 1);
+    const isReal = this.terrainEngine.terrainMode === 'real' && this.terrainEngine.hasRealDem && this.terrainEngine.realDemGrid !== null;
+    const bounds = this.terrainEngine.getTerrainBoundsTelemetry();
+
+    // Check cache first to avoid recomputing static DEM hillshades
+    if (isReal) {
+      if (
+        this.cachedRealHillshade &&
+        this.cachedRealHillshade.demRef === this.terrainEngine.realDemGrid &&
+        this.cachedRealHillshade.size === size
+      ) {
+        this.hillshadeGrid = this.cachedRealHillshade.grid;
+        this.emitHostMessage({
+          type: 'HILLSHADE_READY',
+          grid_size: size,
+          bounds_km: bounds.halfWidthM / 1000.0,
+          bounds,
+          data: this.hillshadeGrid,
+          terrain_mode: this.terrainEngine.terrain_mode,
+        });
+        return;
+      }
+    } else {
+      if (
+        this.cachedSynthHillshade &&
+        this.cachedSynthHillshade.size === size
+      ) {
+        this.hillshadeGrid = this.cachedSynthHillshade.grid;
+        this.emitHostMessage({
+          type: 'HILLSHADE_READY',
+          grid_size: size,
+          bounds_km: bounds.halfWidthM / 1000.0,
+          bounds,
+          data: this.hillshadeGrid,
+          terrain_mode: this.terrainEngine.terrain_mode,
+        });
+        return;
+      }
+    }
+
+    const meta = REAL_LADAKH_DEM_METADATA;
+    const stepX = isReal ? (meta.halfWidthM * 2.0) / (size - 1) : (THEATER_HALF_M * 2.0) / (size - 1);
+    const stepY = isReal ? (meta.halfHeightM * 2.0) / (size - 1) : (THEATER_HALF_M * 2.0) / (size - 1);
 
     // Northwest Sun Illumination: Azimuth 315°, Altitude 45°
     const lx = -0.5;
     const ly = 0.5;
     const lz = 0.7071;
 
-    // 1. Pre-sample continuous elevations across the 1,200 km theater
+    // 1. Pre-sample continuous elevations across genuine coverage domain
     const elevMatrix: Float32Array[] = [];
-    for (let r = 0; r < size; r++) {
-      const y = THEATER_HALF_M - r * step;
-      const row = new Float32Array(size);
-      for (let c = 0; c < size; c++) {
-        const x = -THEATER_HALF_M + c * step;
-        row[c] = this.terrainEngine.getElevation(x, y);
+    if (isReal && size === meta.rasterWidth && meta.rasterHeight === 512) {
+      // Direct access from point-registered satellite DEM raster (zero interpolation overhead)
+      const realGrid = this.terrainEngine.realDemGrid!;
+      for (let r = 0; r < size; r++) {
+        const row = new Float32Array(size);
+        const offset = r * size;
+        for (let c = 0; c < size; c++) {
+          row[c] = realGrid[offset + c];
+        }
+        elevMatrix.push(row);
       }
-      elevMatrix.push(row);
+    } else if (isReal) {
+      for (let r = 0; r < size; r++) {
+        const y = meta.halfHeightM - r * stepY;
+        const row = new Float32Array(size);
+        for (let c = 0; c < size; c++) {
+          const x = -meta.halfWidthM + c * stepX;
+          row[c] = this.terrainEngine.getElevation(x, y);
+        }
+        elevMatrix.push(row);
+      }
+    } else {
+      // Synthetic procedural terrain across full 1,200 km regional domain
+      for (let r = 0; r < size; r++) {
+        const y = THEATER_HALF_M - r * stepY;
+        const row = new Float32Array(size);
+        for (let c = 0; c < size; c++) {
+          const x = -THEATER_HALF_M + c * stepX;
+          row[c] = this.terrainEngine.getElevation(x, y);
+        }
+        elevMatrix.push(row);
+      }
     }
 
     // 2. Calculate gradients, surface normals, and Lambertian lighting
+    const grid: number[][] = [];
     for (let r = 0; r < size; r++) {
       const rowPack: number[] = [];
       const rPrev = Math.max(0, r - 1);
@@ -364,8 +447,37 @@ export class SimulationWorkerManager {
         const cNext = Math.min(size - 1, c + 1);
 
         const z = elevMatrix[r][c];
-        const dzdx = (elevMatrix[r][cNext] - elevMatrix[r][cPrev]) / ((cNext - cPrev) * step);
-        const dzdy = (elevMatrix[rPrev][c] - elevMatrix[rNext][c]) / ((rNext - rPrev) * step);
+
+        // Explicit invalid / out-of-coverage handling: if elevation is NaN or non-finite, emit transparent/invalid pixel (0)
+        if (!Number.isFinite(z)) {
+          rowPack.push(0);
+          continue;
+        }
+
+        // Compute x-gradient with NaN-safe finite difference
+        let dzdx = 0.0;
+        const zCNext = elevMatrix[r][cNext];
+        const zCPrev = elevMatrix[r][cPrev];
+        if (Number.isFinite(zCNext) && Number.isFinite(zCPrev) && cNext !== cPrev) {
+          dzdx = (zCNext - zCPrev) / ((cNext - cPrev) * stepX);
+        } else if (Number.isFinite(zCNext) && cNext !== c) {
+          dzdx = (zCNext - z) / ((cNext - c) * stepX);
+        } else if (Number.isFinite(zCPrev) && c !== cPrev) {
+          dzdx = (z - zCPrev) / ((c - cPrev) * stepX);
+        }
+
+        // Compute y-gradient with NaN-safe finite difference
+        // Note: rPrev is North (+Y) of rNext (South -Y), so (elev[rPrev] - elev[rNext]) / ((rNext - rPrev) * stepY)
+        let dzdy = 0.0;
+        const zRPrev = elevMatrix[rPrev][c];
+        const zRNext = elevMatrix[rNext][c];
+        if (Number.isFinite(zRPrev) && Number.isFinite(zRNext) && rNext !== rPrev) {
+          dzdy = (zRPrev - zRNext) / ((rNext - rPrev) * stepY);
+        } else if (Number.isFinite(zRPrev) && r !== rPrev) {
+          dzdy = (zRPrev - z) / ((r - rPrev) * stepY);
+        } else if (Number.isFinite(zRNext) && rNext !== r) {
+          dzdy = (z - zRNext) / ((rNext - r) * stepY);
+        }
 
         // Surface normal N = (-dzdx * exaggeration, -dzdy * exaggeration, 1.0)
         const ex = 2.4;
@@ -410,20 +522,43 @@ export class SimulationWorkerManager {
       grid.push(rowPack);
     }
 
+    // Cache generated hillshade
+    if (isReal) {
+      this.cachedRealHillshade = {
+        grid,
+        demRef: this.terrainEngine.realDemGrid,
+        size,
+      };
+    } else {
+      this.cachedSynthHillshade = {
+        grid,
+        size,
+      };
+    }
+
     this.hillshadeGrid = grid;
     this.emitHostMessage({
       type: 'HILLSHADE_READY',
       grid_size: size,
-      bounds_km: THEATER_HALF_M / 1000,
+      bounds_km: bounds.halfWidthM / 1000.0,
+      bounds,
       data: grid,
       terrain_mode: this.terrainEngine.terrain_mode,
     });
   }
 
-  private emitHostMessage(message: unknown): void {
+  public getTerrainBounds(): TerrainBoundsTelemetry {
+    return this.terrainEngine.getTerrainBoundsTelemetry();
+  }
+
+  private emitHostMessage(message: unknown, transferList?: Transferable[]): void {
     // Keep the engine importable in Node-based headless benchmarks.
     if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
-      self.postMessage(message);
+      if (transferList && transferList.length > 0) {
+        self.postMessage(message, transferList as any);
+      } else {
+        self.postMessage(message);
+      }
     }
   }
 
@@ -584,6 +719,8 @@ export class SimulationWorkerManager {
         time_to_occlusion_s: prediction?.timeToOcclusionS ?? Number.POSITIVE_INFINITY,
         time_to_emergence_s: prediction?.timeToEmergenceS ?? Number.POSITIVE_INFINITY,
         is_shadowed: node.isShadowed,
+        is_coverage_complete: obstruction?.isCoverageComplete ?? true,
+        coverage_note: obstruction?.coverageNote,
       };
     });
   }
@@ -700,6 +837,10 @@ export class SimulationWorkerManager {
         time_to_emergence_s: ps?.timeToEmergenceS ?? -1,
         fresnel_clearance_m: ps?.fresnelClearanceM ?? 0,
         obstacle_blocked: ls?.obstacleBlocked ?? false,
+        is_coverage_complete: obstruction?.isCoverageComplete ?? true,
+        isCoverageComplete: obstruction?.isCoverageComplete ?? true,
+        coverage_note: obstruction?.coverageNote,
+        coverageNote: obstruction?.coverageNote,
         c2_backlog: q.getClassPacketCount(69),
         voice_backlog: q.getClassPacketCount(65),
         video_backlog: q.getClassPacketCount(67),
@@ -901,7 +1042,10 @@ export class SimulationWorkerManager {
       selected_link_budget: fresnelSlice.link_budget,
       transfer_telemetry: transferTel,
       terrain_mode: this.terrainEngine.terrain_mode,
-      terrain_bounds_km: THEATER_HALF_M / 1000,
+      terrain_bounds_km: this.terrainEngine.terrain_mode === 'real'
+        ? REAL_LADAKH_DEM_METADATA.halfWidthM / 1000
+        : THEATER_HALF_M / 1000,
+      terrain_bounds: this.terrainEngine.getTerrainBoundsTelemetry(),
     };
   }
 
@@ -955,6 +1099,10 @@ export class SimulationWorkerManager {
       obstacle_blocked: ls?.obstacleBlocked ?? false,
       terrain_is_los: obstruction?.isLos ?? true,
       earth_bulge_m: earthBulgeM,
+      is_coverage_complete: obstruction?.isCoverageComplete ?? true,
+      isCoverageComplete: obstruction?.isCoverageComplete ?? true,
+      coverage_note: obstruction?.coverageNote,
+      coverageNote: obstruction?.coverageNote,
     };
   }
 
@@ -974,6 +1122,8 @@ export class SimulationWorkerManager {
     /** @deprecated Compatibility field; x is horizontal ground distance in km. */
     readonly profile_points: readonly [number, number, number, number][];
     readonly link_budget: SelectedLinkBudgetTelemetry;
+    readonly is_coverage_complete?: boolean;
+    readonly coverage_note?: string;
   } {
     const obstruction = this.obstructionResults.get(node.nodeId)
       ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
@@ -1013,21 +1163,29 @@ export class SimulationWorkerManager {
     const ps = this.predStates.get(node.nodeId);
     const linkBudget = this.buildSelectedLinkBudget(node, ls, obstruction);
 
+    const isCoverageComplete = obstruction.isCoverageComplete !== false && linkProfile.valid;
+
     return {
       profile: linkProfile,
       node_id: node.nodeId,
       node_name: node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`,
       distance_km: linkProfile.slantDistanceM / 1000.0,
-      clearance_m: Number.isFinite(minClearanceM) ? minClearanceM : obstruction.minClearanceM,
-      status: obstructed ? 'OBSTRUCTED (LINE-OF-SIGHT SEVERED)' : 'CLEAR 1ST FRESNEL ZONE',
-      obstructed,
-      diffraction_loss_db: ls?.diffractionLossDb ?? 0,
+      clearance_m: isCoverageComplete
+        ? (Number.isFinite(minClearanceM) ? minClearanceM : obstruction.minClearanceM)
+        : Number.NaN,
+      status: !isCoverageComplete
+        ? 'UNAVAILABLE: PATH EXTENDS OUTSIDE DEM COVERAGE'
+        : (obstructed ? 'OBSTRUCTED (LINE-OF-SIGHT SEVERED)' : 'CLEAR 1ST FRESNEL ZONE'),
+      obstructed: isCoverageComplete ? obstructed : false,
+      diffraction_loss_db: ls?.diffractionLossDb ?? obstruction.diffractionLossDb,
       terrain_is_los: obstruction.isLos,
       obstacle_blocked: ls?.obstacleBlocked ?? false,
       obstacle_intersections: obstruction.obstacleIntersections,
       state_name: ps?.currentState ?? NodeTerrainState.NORMAL_LOS,
       profile_points: profilePoints,
       link_budget: linkBudget,
+      is_coverage_complete: isCoverageComplete,
+      coverage_note: obstruction.coverageNote ?? linkProfile.invalidReason,
     };
   }
 
@@ -1253,6 +1411,65 @@ export class SimulationWorkerManager {
       case 'GET_HILLSHADE':
         this.initHillshade(512);
         return result(true);
+
+      case 'GET_TERRAIN_BOUNDS': {
+        const bounds = this.getTerrainBounds();
+        this.emitHostMessage({
+          type: 'TERRAIN_BOUNDS_READY',
+          request_id: msg.request_id,
+          bounds,
+        });
+        return result(true);
+      }
+
+      case 'GET_TERRAIN_MESH_DATA': {
+        const isReal = this.terrainEngine.terrainMode === 'real' && this.terrainEngine.hasRealDem && this.terrainEngine.realDemGrid !== null;
+        const bounds = this.getTerrainBounds();
+        const gridSize = 512;
+        const transferGrid = new Float32Array(gridSize * gridSize);
+
+        let minElev = Number.POSITIVE_INFINITY;
+        let maxElev = Number.NEGATIVE_INFINITY;
+
+        if (isReal && this.terrainEngine.realDemGrid) {
+          // CRITICAL: Clone authoritative realDemGrid so it is NEVER detached or mutated in the worker
+          transferGrid.set(this.terrainEngine.realDemGrid);
+          for (let i = 0; i < transferGrid.length; i++) {
+            const v = transferGrid[i];
+            if (v < minElev) minElev = v;
+            if (v > maxElev) maxElev = v;
+          }
+        } else {
+          // Synthetic procedural mode: sample 512x512 matrix over bounds
+          const stepX = (bounds.maxX - bounds.minX) / 511.0;
+          const stepY = (bounds.maxY - bounds.minY) / 511.0;
+          for (let r = 0; r < gridSize; r++) {
+            const yM = bounds.maxY - r * stepY; // Row 0 is North (+Y)
+            for (let c = 0; c < gridSize; c++) {
+              const xM = bounds.minX + c * stepX; // Col 0 is West (-X)
+              const v = this.terrainEngine.getElevation(xM, yM);
+              transferGrid[r * gridSize + c] = v;
+              if (v < minElev) minElev = v;
+              if (v > maxElev) maxElev = v;
+            }
+          }
+        }
+
+        const payload = {
+          type: 'TERRAIN_MESH_DATA_READY',
+          request_id: msg.request_id,
+          terrain_mode: this.terrainEngine.terrainMode,
+          bounds,
+          grid_size: gridSize,
+          min_elevation_m: isFinite(minElev) ? minElev : 0,
+          max_elevation_m: isFinite(maxElev) ? maxElev : 5000,
+          elevations: transferGrid,
+        };
+
+        // Transfer ownership of transferGrid.buffer ONLY
+        this.emitHostMessage(payload, [transferGrid.buffer]);
+        return result(true);
+      }
 
       case 'SET_PARAMS':
       case 'CONFIG_UPDATE': {

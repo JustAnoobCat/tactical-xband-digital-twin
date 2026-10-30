@@ -323,6 +323,16 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="stage-toolbar">
           <div class="stage-title">Live map <span class="badge-sub">stays visible in every view</span></div>
           <div class="tool-group">
+            <span class="tool-label">View</span>
+            <div class="seg" id="view-mode-toggle">
+              <button id="btnView2D" class="active" onclick="setStageViewMode('2d')" title="2D Tactical Radar Map">2D Map</button>
+              <button id="btnView3D" onclick="setStageViewMode('3d')" title="3D Tactical Terrain View">3D Terrain</button>
+            </div>
+            <span class="tool-label" id="label-mesh-res" style="display:none">Mesh</span>
+            <div class="seg" id="mesh-res-toggle" style="display:none">
+              <button id="btnRes512" class="active" onclick="setTerrainMeshResolution('native512')" title="Native 512×512 DEM (High Fidelity)">512 Native</button>
+              <button id="btnRes256" onclick="setTerrainMeshResolution('balanced256')" title="256×256 Endpoint-Preserving Bilinear Mesh (Reduced Resolution)">256 Reduced</button>
+            </div>
             <span class="tool-label">Terrain</span>
             <div class="seg">
               <button id="btnRealTerrain" class="active" onclick="setTerrainMode('real')" title="Real satellite elevation data">Satellite</button>
@@ -342,6 +352,15 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         </div>
         <div class="radar-canvas-container" id="radar-container" style="cursor:grab">
           <canvas id="radar-canvas" aria-label="Live terrain and ground terminal network map"></canvas>
+          <div id="three-stage-container" class="three-stage-container" style="display:none;position:absolute;inset:0;width:100%;height:100%;overflow:hidden;z-index:2;" aria-hidden="true">
+            <canvas id="three-canvas" aria-label="3D Tactical Terrain View"></canvas>
+            <div class="three-hud-overlay" style="position:absolute;bottom:14px;left:14px;pointer-events:none;z-index:4;">
+              <span id="three-terrain-badge" class="kpi-badge badge-cyan" style="font-size:10.5px;letter-spacing:0.04em;background:rgba(15,23,42,0.88);border:1px solid rgba(56,189,248,0.35);padding:4px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:6px;">
+                <span id="three-terrain-dot" style="width:6px;height:6px;border-radius:50%;background:#38bdf8;box-shadow:0 0 6px #38bdf8;"></span>
+                <span id="three-terrain-status-text">3D TERRAIN — NATIVE 512×512</span>
+              </span>
+            </div>
+          </div>
           <div class="map-legend" aria-label="Map legend">
             <span><i class="legend-line conn"></i>Connected</span>
             <span><i class="legend-line deg"></i>Degraded</span>
@@ -1019,9 +1038,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     try{const d=ev.data;
       if(d&&d.type==='HILLSHADE_TILE_READY'){onTile(d);return ev}
       if(d&&d.type==='HILLSHADE_READY'&&Array.isArray(d.data)&&d.data.length){
-        tile=null;pending=null;boundsM=(d.bounds_km||600)*1000;
-        const n=d.data.length,f=n<=512?2:1;
-        if(f>1)return new MessageEvent('message',{data:{...d,data:upsample(d.data,n,f),grid_size:n*f}})}
+        tile=null;pending=null;boundsM=(d.bounds?.halfWidthM || (d.bounds_km||600)*1000);
+        return ev;
+      }
     }catch(_){}
     return ev}
   const NW=window.Worker,setter=Object.getOwnPropertyDescriptor(NW.prototype,'onmessage').set;
@@ -1072,6 +1091,13 @@ import {
 import { HistoricalSessionCoordinator } from './src/ui/historicalSessionCoordinator.ts';
 import { classifyLinkCommunicationStatus } from './src/core/linkStatusClassifier.ts';
 import { classifyAndStyleLink, getMapLinkStyle, getStatusBadgeInfo } from './src/ui/mapLinkStyles.ts';
+import {
+  computeTerrainScreenBounds,
+  processHillshadeImageData,
+  computeDemBoundaryGeometry,
+  renderDemCoverageBoundary,
+} from './src/ui/terrainMapRenderer.ts';
+import { createThreeStageController } from './src/ui/three/index.ts';
 
 /* ====================================================================
    CLIENT-SIDE WEBWORKER & RENDERING CONTROLLER
@@ -1152,6 +1178,7 @@ let panStartX = 0;
 let panStartY = 0;
 let activeSchedulerMode = 'tac_tad';
 let activeTerrainMode = 'real';
+let activeTerrainBounds = null;
 let spatialLocked = false;
 const trajectoryEditor = new TrajectoryEditorState();
 const obstacleEditor = new ObstacleEditorState();
@@ -1996,11 +2023,17 @@ worker.onmessage = (event) => {
     }
     obstacleEditor.markSimulationFrameAdvanced();
     latestTelemetry = msg.frame;
+    if (msg.frame && msg.frame.terrain_bounds) {
+      activeTerrainBounds = msg.frame.terrain_bounds;
+    }
     recordHistoricalFrame(msg.frame);
     recordSchedulerHistoricalFrame(msg.frame);
     if (typeof msg.frame.spatial_locked === 'boolean') updateSpatialLockControl(msg.frame.spatial_locked);
     syncTrajectoryEditorFromWorker(msg.frame.trajectory_config);
     updateDashboardDOM(msg.frame);
+    if (threeController) {
+      threeController.updateTelemetry(msg.frame);
+    }
   } else if (msg.type === 'PROFILE_FRAME') {
     // Stale-response protection: discard if the serial is not strictly newer than the
     // last accepted profile, or if the profile is for a different node than the one
@@ -2028,7 +2061,16 @@ worker.onmessage = (event) => {
       drawFresnel();
     }
   } else if (msg.type === 'HILLSHADE_READY') {
-    renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode);
+    renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode, msg.bounds);
+    if (threeController && hillshadeCanvas) {
+      threeController.setHillshadeCanvas(hillshadeCanvas);
+    }
+  } else if (msg.type === 'TERRAIN_MESH_DATA_READY') {
+    handleTerrainMeshDataResponse(msg);
+  } else if (msg.type === 'TERRAIN_BOUNDS_READY') {
+    if (msg.bounds) {
+      activeTerrainBounds = msg.bounds;
+    }
   } else if (msg.type === 'COMMAND_RESULT') {
     routeCommandResult(msg, {
       pendingObstacleRequestId: obstacleEditor.pendingRequestId,
@@ -2068,33 +2110,24 @@ function updateSpatialLockControl(locked) {
   refreshObstacleEditor();
 }
 
-function renderHillshadeFromWorker(data, size, boundsKm, terrainMode) {
+function renderHillshadeFromWorker(data, size, boundsKm, terrainMode, bounds) {
   if (!data || !data.length) return;
+  const numRows = data.length;
+  const numCols = data[0].length;
   const hCanvas = document.createElement('canvas');
-  hCanvas.width = hCanvas.height = size;
+  hCanvas.width = numCols;
+  hCanvas.height = numRows;
   const hCtx = hCanvas.getContext('2d');
-  const img = hCtx.createImageData(size, size);
-  let p = 0;
+  const img = hCtx.createImageData(numCols, numRows);
 
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      const v = data[r][c];
-      let red = 20, green = 26, blue = 38;
-      if (typeof v === 'number' && v > 255) {
-        red = (v >> 16) & 255;
-        green = (v >> 8) & 255;
-        blue = v & 255;
-      }
-      img.data[p++] = Math.min(255, red);
-      img.data[p++] = Math.min(255, green);
-      img.data[p++] = Math.min(255, blue);
-      img.data[p++] = 255;
-    }
-  }
+  processHillshadeImageData(data, img.data);
 
   hCtx.putImageData(img, 0, 0);
   hillshadeCanvas = hCanvas;
 
+  if (bounds && typeof bounds === 'object') {
+    activeTerrainBounds = bounds;
+  }
   if (boundsKm) {
     THEATER_RADIUS_M = boundsKm * 1000;
   }
@@ -2110,6 +2143,182 @@ function renderHillshadeFromWorker(data, size, boundsKm, terrainMode) {
 const radarCanvas = $('radar-canvas'), radarCtx = radarCanvas.getContext('2d');
 const waterfallCanvas = $('waterfall-canvas'), waterfallCtx = waterfallCanvas.getContext('2d');
 const fresnelCanvas = $('fresnel-canvas'), fresnelCtx = fresnelCanvas.getContext('2d');
+
+/* ---------- 2D / 3D Stage Coexistence Controller (M6.2.2) ---------- */
+let stageViewMode = '2d';
+let threeController = null;
+let terrainMeshRequestId = 0;
+let inFlightTerrainMeshRequest = null;
+let cachedTerrainMeshData = null;
+let currentTerrainResolution = 'native512';
+
+function handleNodeSelection(nodeId) {
+  if (historyController.isInspecting) return;
+  selectedNodeId = nodeId;
+  syncNodeDropdowns(selectedNodeId);
+  sendCommand({ type: 'SELECT_NODE', node_id: selectedNodeId });
+  updateSchedulerScrubberUI();
+  if (schedHistoryController.isInspecting) {
+    syncSchedulerHistoricalUIState();
+  } else {
+    drawSchedulerCharts();
+  }
+  if (latestTelemetry && latestTelemetry.nodes_telemetry) {
+    const search = $('terminal-search');
+    renderTerminalInventory(latestTelemetry.nodes_telemetry, selectedNodeId, search ? search.value : '');
+  }
+  drawRadar();
+  drawFresnel();
+  if (latestTelemetry) updateDashboardDOM(latestTelemetry);
+}
+
+function initThreeStage() {
+  const container = $('three-stage-container');
+  const canvas = $('three-canvas');
+  if (!container || !canvas || threeController) return;
+
+  try {
+    threeController = createThreeStageController({
+      container,
+      canvas,
+      antialias: true,
+      maxPixelRatio: 2,
+      powerPreference: 'high-performance',
+      clearColor: 0x080c10,
+    });
+    threeController.setSelectedNode(selectedNodeId);
+    threeController.onNodeSelected(handleNodeSelection);
+    if (latestTelemetry) {
+      threeController.updateTelemetry(latestTelemetry);
+    }
+    if (cachedTerrainMeshData) {
+      threeController.loadTerrainMeshData(cachedTerrainMeshData);
+      if (hillshadeCanvas) {
+        threeController.setHillshadeCanvas(hillshadeCanvas);
+      }
+    }
+    console.log('[StageController] Three.js 3D subsystem initialized successfully.');
+  } catch (err) {
+    console.error('[StageController] Failed to initialize Three.js subsystem:', err);
+  }
+}
+
+function requestTerrainMeshData(force = false) {
+  const currentMode = activeTerrainMode || 'real';
+  if (!force && cachedTerrainMeshData && cachedTerrainMeshData.terrainMode === currentMode) {
+    return;
+  }
+  if (inFlightTerrainMeshRequest && inFlightTerrainMeshRequest.terrainMode === currentMode) {
+    return;
+  }
+
+  const reqId = ++terrainMeshRequestId;
+  inFlightTerrainMeshRequest = { requestId: reqId, terrainMode: currentMode };
+  worker.postMessage({
+    type: 'GET_TERRAIN_MESH_DATA',
+    request_id: reqId,
+  });
+}
+
+function handleTerrainMeshDataResponse(msg) {
+  if (inFlightTerrainMeshRequest) {
+    if (msg.request_id !== undefined && msg.request_id !== inFlightTerrainMeshRequest.requestId) {
+      console.warn(`[ThreeStage] Discarding stale terrain mesh data (req ${msg.request_id} vs active ${inFlightTerrainMeshRequest.requestId})`);
+      return;
+    }
+    if (msg.terrain_mode !== activeTerrainMode) {
+      console.warn(`[ThreeStage] Discarding superseded terrain mode response (${msg.terrain_mode} vs active ${activeTerrainMode})`);
+      return;
+    }
+    inFlightTerrainMeshRequest = null;
+  }
+
+  cachedTerrainMeshData = {
+    terrainMode: msg.terrain_mode,
+    bounds: msg.bounds,
+    gridSize: msg.grid_size,
+    minElevationM: msg.min_elevation_m,
+    maxElevationM: msg.max_elevation_m,
+    elevations: msg.elevations,
+  };
+
+  updateTerrainHudBadge();
+
+  if (threeController) {
+    threeController.loadTerrainMeshData(cachedTerrainMeshData);
+    if (hillshadeCanvas) {
+      threeController.setHillshadeCanvas(hillshadeCanvas);
+    }
+  }
+}
+
+function updateTerrainHudBadge() {
+  const statusEl = $('three-terrain-status-text');
+  if (!statusEl) return;
+  const modeLabel = activeTerrainMode === 'real' ? 'REAL DEM' : 'SYNTHETIC';
+  const resLabel = currentTerrainResolution === 'native512' ? '512×512 (NATIVE)' : '256×256 (REDUCED)';
+  statusEl.textContent = `3D TERRAIN — ${modeLabel} · ${resLabel}`;
+}
+
+window.setTerrainMeshResolution = function(res) {
+  if (res !== 'native512' && res !== 'balanced256') return;
+  currentTerrainResolution = res;
+  $('btnRes512')?.classList.toggle('active', res === 'native512');
+  $('btnRes256')?.classList.toggle('active', res === 'balanced256');
+  updateTerrainHudBadge();
+  if (threeController) {
+    threeController.setTerrainResolution(res);
+  }
+};
+
+window.setStageViewMode = function(mode) {
+  if (mode === stageViewMode) return;
+  stageViewMode = mode;
+
+  const btn2D = $('btnView2D');
+  const btn3D = $('btnView3D');
+  if (btn2D) btn2D.classList.toggle('active', mode === '2d');
+  if (btn3D) btn3D.classList.toggle('active', mode === '3d');
+
+  const radarCvs = $('radar-canvas');
+  const threeWrap = $('three-stage-container');
+  const resLabel = $('label-mesh-res');
+  const resToggle = $('mesh-res-toggle');
+
+  if (mode === '3d') {
+    if (resLabel) resLabel.style.display = 'inline';
+    if (resToggle) resToggle.style.display = 'inline-flex';
+    if (!threeController) {
+      initThreeStage();
+    }
+    requestTerrainMeshData(false);
+    if (radarCvs) radarCvs.style.display = 'none';
+    if (threeWrap) {
+      threeWrap.style.display = 'block';
+      threeWrap.setAttribute('aria-hidden', 'false');
+    }
+    if (threeController) {
+      threeController.setViewMode('3d');
+      if (hillshadeCanvas) {
+        threeController.setHillshadeCanvas(hillshadeCanvas);
+      }
+    }
+  } else {
+    if (resLabel) resLabel.style.display = 'none';
+    if (resToggle) resToggle.style.display = 'none';
+    if (threeController) {
+      threeController.setViewMode('2d');
+    }
+    if (threeWrap) {
+      threeWrap.style.display = 'none';
+      threeWrap.setAttribute('aria-hidden', 'true');
+    }
+    if (radarCvs) {
+      radarCvs.style.display = 'block';
+      drawRadar();
+    }
+  }
+};
 
 function setTrajectoryMessage(message, error = false) {
   const el = $('trajectory-editor-message');
@@ -2535,6 +2744,9 @@ window.setRadarRange = function(rangeM) {
 window.centerMapOnACN = function() {
   panOffsetX_m = 0;
   panOffsetY_m = 0;
+  if (threeController && threeController.getViewMode() === '3d') {
+    threeController.resetCamera();
+  }
 };
 
 window.onParamChange = function() {
@@ -2576,6 +2788,9 @@ function syncNodeDropdowns(nid) {
     const sel = $(id);
     if (sel) sel.value = String(nid);
   });
+  if (threeController) {
+    threeController.setSelectedNode(nid);
+  }
 }
 
 window.filterTerminalOptions = function(query) {
@@ -2610,10 +2825,15 @@ window.setTerrainMode = function(mode) {
     return;
   }
   activeTerrainMode = mode;
+  cachedTerrainMeshData = null;
+  updateTerrainHudBadge();
   $('btnRealTerrain').classList.toggle('active', mode === 'real');
   $('btnSynthTerrain').classList.toggle('active', mode === 'synthetic');
   sendCommand({ type: 'SET_TERRAIN_MODE', mode: mode });
   sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: mode } });
+  if (stageViewMode === '3d') {
+    requestTerrainMeshData(true);
+  }
 };
 
 /* ---------- Upload Modal & File Parser ---------- */
@@ -2719,6 +2939,9 @@ function resizeCanvases() {
     ctx.resetTransform();
     ctx.scale(dpr, dpr);
   });
+  if (threeController) {
+    threeController.handleResize();
+  }
   drawRadar();
   drawWaterfall();
   drawFresnel();
@@ -3232,7 +3455,7 @@ function screenToWorld(px, py, w, h) {
 function drawRadar() {
   try {
     const cvs = radarCanvas;
-    if (!cvs) return;
+    if (!cvs || stageViewMode === '3d') return;
     const w = cvs.parentElement.clientWidth || 600;
     const h = cvs.parentElement.clientHeight || 500;
     if (w <= 0 || h <= 0) return;
@@ -3247,17 +3470,28 @@ function drawRadar() {
     ctx.fillStyle = '#0b0e14';
     ctx.fillRect(0, 0, w, h);
 
-    // 2. Full-bleed terrain map with 1:1 square pixel aspect ratio
-    if (hillshadeCanvas) {
-      const tl = worldToScreen(-bounds_m, bounds_m, w, h);
-      const br = worldToScreen(bounds_m, -bounds_m, w, h);
-      const tWidth = br.x - tl.x;
-      const tHeight = br.y - tl.y;
+    // Compute authoritative terrain bounds and screen coordinates
+    const terrainBounds = computeTerrainScreenBounds(
+      activeTerrainBounds,
+      bounds_m,
+      { centerX: cx, centerY: cy, scale },
+      { xM: panOffsetX_m, yM: panOffsetY_m }
+    );
 
+    // 2. Terrain map with authoritative geographic bounds and aspect ratio
+    if (hillshadeCanvas) {
       ctx.save();
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(hillshadeCanvas, tl.x, tl.y, tWidth, tHeight);
+      ctx.drawImage(hillshadeCanvas, terrainBounds.tl.x, terrainBounds.tl.y, terrainBounds.width, terrainBounds.height);
       ctx.restore();
+
+      // 2b. Satellite DEM Coverage Boundary (Real Mode only)
+      if (terrainBounds.isRealMode) {
+        const boundaryGeom = computeDemBoundaryGeometry(terrainBounds, w, h, activeTerrainBounds);
+        if (boundaryGeom) {
+          renderDemCoverageBoundary(ctx, boundaryGeom, MONO);
+        }
+      }
     }
 
     // Dynamic zoom tile overlay if available
@@ -3303,7 +3537,8 @@ function drawRadar() {
     const ringM = currentRadarRangeM <= 30000 ? 10000 : (currentRadarRangeM <= 60000 ? 20000 : 50000);
     ctx.font = `9px ${MONO}`; ctx.fillStyle = 'rgba(139, 155, 180, 0.85)';
     const maxScreenRadius = Math.hypot(w, h);
-    for (let r = ringM; r <= bounds_m; r += ringM) {
+    const maxRingM = Math.max(bounds_m, (maxScreenRadius / scale) + ringM);
+    for (let r = ringM; r <= maxRingM; r += ringM) {
       const ringPx = r * scale;
       if (ringPx > maxScreenRadius) break;
       ctx.beginPath();

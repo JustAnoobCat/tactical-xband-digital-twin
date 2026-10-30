@@ -83,6 +83,10 @@ export interface LinkStatusTelemetryInput {
   readonly predicted_state?: string | NodeTerrainState | null;
   readonly fresnel_clearance_m?: number | null;
   readonly time_to_occlusion_s?: number | null;
+  readonly is_coverage_complete?: boolean | null;
+  readonly isCoverageComplete?: boolean | null;
+  readonly coverage_note?: string | null;
+  readonly coverageNote?: string | null;
   readonly [key: string]: unknown;
 }
 
@@ -223,8 +227,37 @@ export function classifyLinkCommunicationStatus(
     };
   }
 
+  // Incomplete terrain coverage check for non-obstacle links
+  const isCoverageIncomplete =
+    input.is_coverage_complete === false || input.isCoverageComplete === false;
+
+  if (isCoverageIncomplete && !input.obstacle_blocked) {
+    const note =
+      (typeof input.coverage_note === 'string' && input.coverage_note) ||
+      (typeof input.coverageNote === 'string' && input.coverageNote) ||
+      'Propagation path traverses unmapped terrain outside DEM coverage.';
+    return {
+      status: 'UNKNOWN',
+      isOperational: false,
+      isBlocked: false,
+      isOutage: false,
+      reason: `Terrain coverage incomplete: ${note}`,
+      details: {
+        terrainIsLos: null,
+        obstacleBlocked: false,
+        isOutage: null,
+        diffractionLossDb: null,
+        snrDb: null,
+        modcodName: typeof input.modcod_name === 'string' ? input.modcod_name : null,
+        stateName: null,
+        degradationFactors: ['INCOMPLETE_TERRAIN_COVERAGE'],
+      },
+    };
+  }
+
   // Validate numeric fields when provided
   if (
+    !input.obstacle_blocked &&
     input.diffraction_loss_db !== undefined &&
     input.diffraction_loss_db !== null &&
     (typeof input.diffraction_loss_db !== 'number' || !Number.isFinite(input.diffraction_loss_db))
@@ -249,6 +282,7 @@ export function classifyLinkCommunicationStatus(
   }
 
   if (
+    !input.obstacle_blocked &&
     input.snr_db !== undefined &&
     input.snr_db !== null &&
     (typeof input.snr_db !== 'number' || !Number.isFinite(input.snr_db))
@@ -296,9 +330,11 @@ export function classifyLinkCommunicationStatus(
 
   // ── Step 1: Precedence Rule 1 — Artificial Obstacle Blockage ─────────────
   if (obstacleBlocked) {
-    const terrainNote = !terrainIsLos
-      ? ' (terrain optical line-of-sight is also occluded)'
-      : ' (terrain line-of-sight is clear)';
+    const terrainNote = isCoverageIncomplete
+      ? ' (terrain coverage is incomplete along path)'
+      : (!terrainIsLos
+        ? ' (terrain optical line-of-sight is also occluded)'
+        : ' (terrain line-of-sight is clear)');
     return {
       status: 'BLOCKED_OBSTACLE',
       isOperational: false,
@@ -313,7 +349,7 @@ export function classifyLinkCommunicationStatus(
         snrDb,
         modcodName,
         stateName,
-        degradationFactors: [],
+        degradationFactors: isCoverageIncomplete ? ['INCOMPLETE_TERRAIN_COVERAGE'] : [],
       },
     };
   }

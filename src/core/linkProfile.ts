@@ -50,8 +50,12 @@ export interface LinkProfile {
   readonly obstacleBlocked: boolean;
   readonly obstacleIntervals: readonly LinkProfileObstacleInterval[];
   readonly samples: readonly LinkProfileSample[];
-  /** False only when profile inputs are numerically invalid; no sample is emitted in that case. */
+  /** False only when profile inputs are numerically invalid or traverse out-of-coverage terrain; no sample is emitted in that case. */
   readonly valid: boolean;
+  /** Explicit terrain coverage status; false if any sample along the propagation profile is unmapped. */
+  readonly isCoverageComplete?: boolean;
+  /** Explanatory description when profile is invalid or extends outside DEM coverage. */
+  readonly invalidReason?: string;
 }
 
 export interface BuildLinkProfileInput {
@@ -83,7 +87,11 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
   const dx = acn[0] - node[0], dy = acn[1] - node[1], dz = acn[2] - node[2];
   const horizontalDistanceM = Math.hypot(dx, dy);
   const slantDistanceM = Math.hypot(horizontalDistanceM, dz);
-  let valid = finitePosition(node) && finitePosition(acn) &&
+  const isCoverageComplete = input.obstruction.isCoverageComplete !== false;
+  let invalidReason: string | undefined = undefined;
+
+  let valid = isCoverageComplete &&
+    finitePosition(node) && finitePosition(acn) &&
     Number.isFinite(input.frameIndex) && Number.isFinite(input.simulationTimeS) &&
     Number.isFinite(input.wavelengthM) && input.wavelengthM > 0 &&
     Number.isFinite(input.effectiveEarthRadiusM) && input.effectiveEarthRadiusM > 0 &&
@@ -97,6 +105,10 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
       Number.isFinite(hit.entryFraction) && Number.isFinite(hit.exitFraction) && hit.entryFraction >= 0 &&
       hit.exitFraction >= hit.entryFraction && hit.exitFraction <= 1 && Number.isFinite(hit.penetrationM));
 
+  if (!isCoverageComplete) {
+    invalidReason = input.obstruction.coverageNote ?? 'Propagation profile extends outside mapped DEM coverage';
+  }
+
   const samples: LinkProfileSample[] = [];
   if (valid) {
     try {
@@ -107,6 +119,11 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
         const xM = node[0] + along * dx;
         const yM = node[1] + along * dy;
         const terrainMslM = input.getTerrainElevationMslM(xM, yM);
+        if (!Number.isFinite(terrainMslM)) {
+          valid = false;
+          invalidReason = 'Propagation profile extends outside mapped DEM coverage (unmapped terrain sample)';
+          break;
+        }
         const bulgeM = slantDistanceM > 0
           ? input.computeEarthBulgeM(d1M, d2M, input.effectiveEarthRadiusM)
           : 0;
@@ -117,7 +134,11 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
           : 0;
         const offsetM = fraction * fresnelRadiusM;
         const values = [terrainMslM, effectiveTerrainMslM, losMslM, fresnelRadiusM, offsetM];
-        if (!values.every(Number.isFinite)) { valid = false; break; }
+        if (!values.every(Number.isFinite)) {
+          valid = false;
+          invalidReason = 'Propagation profile values contain non-finite numbers';
+          break;
+        }
         samples.push({
           horizontalGroundDistanceM: along * horizontalDistanceM,
           slantDistanceM: d1M,
@@ -132,6 +153,7 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
       }
     } catch {
       valid = false;
+      invalidReason = 'Exception occurred during profile sampling';
     }
   }
   if (!valid) samples.length = 0;
@@ -164,5 +186,7 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
     obstacleIntervals: intervals,
     samples,
     valid,
+    isCoverageComplete: valid && isCoverageComplete,
+    invalidReason: !valid ? (invalidReason ?? 'Profile inputs contain non-finite values') : undefined,
   };
 }
