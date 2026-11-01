@@ -41,6 +41,14 @@ import {
   TerrainEngine,
   TerrainObstruction,
 } from '../core/terrain';
+import { cartesianToGeodetic } from '../core/geodesy';
+import { RollingGoodputTracker } from '../core/rollingGoodput';
+import {
+  ActiveTransferTelemetry,
+  calculateTransferEtaSeconds,
+  calculateTransferRateBps,
+  smoothTransferRateBps,
+} from '../core/transferMetrics';
 import {
   ACNTrajectory,
   createACNTrajectory,
@@ -49,7 +57,7 @@ import {
   PredictiveState,
 } from '../core/trajectory';
 
-const FRAME_DT = 0.020; // 50 Hz superframe (20 ms)
+export const FRAME_DT = 0.020; // 50 Hz superframe (20 ms)
 const THEATER_HALF_M = 600000.0; // 1,200x1,200 km domain (+/- 600 km from center)
 const ANTENNA_HEIGHT_M = 2.0;
 const NUM_NODES = GROUND_NODE_IDS.length;
@@ -134,6 +142,7 @@ interface NodeTransferState {
   activeType: string | null;
   totalBytes: number;
   deliveredBytes: number;
+  prevDeliveredBytes: number;
   droppedBytes: number;
   droppedPackets: number;
   status: 'IDLE' | 'TRANSMITTING' | 'BLOCKED_NLOS' | 'FAILED_DROPPED' | 'ACKNOWLEDGED';
@@ -141,6 +150,10 @@ interface NodeTransferState {
   startTimeS: number;
   ackTimeS: number;
   lastQueueDrops: number;
+  lastUpdateSimTimeS: number;
+  currentRateBps: number;
+  etaS: number | null;
+  etaStatus: string;
 }
 
 interface RunningMetrics {
@@ -172,6 +185,99 @@ interface RunningMetrics {
   tacFinalBacklogBits: number;
 }
 
+export interface TelemetryGanttAllocation {
+  readonly node_id: number;
+  readonly start_ms: number;
+  readonly duration_ms: number;
+  readonly duration_s: number;
+  readonly slot_start_s: number;
+  readonly capacity_bits: number;
+  readonly modcod_name: string;
+  readonly spectral_efficiency: number;
+  readonly c2_bytes: number;
+  readonly voice_bytes: number;
+  readonly video_bytes: number;
+  readonly photo_bytes: number;
+  readonly is_pre_occlusion_flush: boolean;
+  readonly is_out_of_frame?: boolean;
+}
+
+/**
+ * Normalizes an authoritative SlotAllocation from absolute simulation seconds into
+ * current-frame-relative milliseconds [0.0, frameDurationMs), preserving exact duration,
+ * node ID, capacity, and pre-occlusion metadata.
+ *
+ * Emits an explicit diagnostic warning if an allocation falls outside the current frame interval,
+ * has non-finite values, or has non-positive duration.
+ */
+export function normalizeSlotAllocationToFrame(
+  a: SlotAllocation,
+  frameStartSimTimeS: number,
+  frameDurationS: number = FRAME_DT
+): TelemetryGanttAllocation {
+  const relStartS = a.slotStartS - frameStartSimTimeS;
+  const startMs = relStartS * 1000.0;
+  const durationMs = a.durationS * 1000.0;
+  const endMs = startMs + durationMs;
+  const maxFrameMs = frameDurationS * 1000.0;
+
+  // Floating-point tolerance for tiny numerical boundary deviations only (0.1 us)
+  const EPSILON = 1e-4;
+
+  // 1. Explicitly diagnose non-finite values
+  const isFiniteNumbers =
+    Number.isFinite(startMs) &&
+    Number.isFinite(durationMs) &&
+    Number.isFinite(endMs);
+
+  // 2. Explicitly diagnose zero or negative allocation durations
+  const isNonPositiveDuration = !isFiniteNumbers || durationMs <= 0.0;
+
+  // 3. Half-open interval [0, maxFrameMs): slot may end at maxFrameMs, but must not begin at maxFrameMs
+  const isOutOfInterval =
+    !isFiniteNumbers ||
+    startMs < -EPSILON ||
+    startMs >= maxFrameMs - EPSILON ||
+    endMs > maxFrameMs + EPSILON;
+
+  const isOutOfFrame = !isFiniteNumbers || isNonPositiveDuration || isOutOfInterval;
+
+  if (!isFiniteNumbers) {
+    console.warn(
+      `[Scheduler Diagnostic] Non-finite allocation timing for node ${a.nodeId}: ` +
+      `start_ms=${startMs}, duration_ms=${durationMs}, end_ms=${endMs}`
+    );
+  } else if (isNonPositiveDuration) {
+    console.warn(
+      `[Scheduler Diagnostic] Non-positive allocation duration for node ${a.nodeId}: ` +
+      `duration_ms=${durationMs.toFixed(3)}ms (must be strictly > 0)`
+    );
+  } else if (isOutOfInterval) {
+    console.warn(
+      `[Scheduler Diagnostic] Out-of-frame allocation for node ${a.nodeId}: ` +
+      `start=${startMs.toFixed(3)}ms, duration=${durationMs.toFixed(3)}ms, end=${endMs.toFixed(3)}ms ` +
+      `(frame interval [0.000, ${maxFrameMs.toFixed(3)}) ms, frameStartSimTimeS=${frameStartSimTimeS.toFixed(4)})`
+    );
+  }
+
+  return {
+    node_id: a.nodeId,
+    start_ms: startMs,
+    duration_ms: durationMs,
+    duration_s: a.durationS,
+    slot_start_s: a.slotStartS,
+    capacity_bits: a.capacityBits,
+    modcod_name: a.modcodName,
+    spectral_efficiency: a.spectralEfficiency,
+    c2_bytes: a.capacityBits > 0 ? 128 : 0,
+    voice_bytes: 0,
+    video_bytes: 0,
+    photo_bytes: 0,
+    is_pre_occlusion_flush: a.isPreOcclusionFlush,
+    is_out_of_frame: isOutOfFrame,
+  };
+}
+
 export class SimulationWorkerManager {
   public rfConfig: RFConfig;
   public envConfig: EnvironmentConfig;
@@ -188,6 +294,7 @@ export class SimulationWorkerManager {
   public frameIndex: number = 0;
   public speed: number = 1.0;
   public isPaused: boolean = false;
+  public activeStepRequestId: number | undefined = undefined;
   public schedulerMode: string = 'tac_tad';
   public selectedNodeId: number = 4;
   public spatialLocked: boolean = false;
@@ -212,6 +319,10 @@ export class SimulationWorkerManager {
   private lastReportTac: FrameScheduleReport | null = null;
   /** Monotone counter incremented on every profile emission; used for stale-response detection. */
   private profileSerial: number = 0;
+
+  /** Rolling 200-superframe (4-second) goodput trackers for P50 and P95 statistics (M7.3) */
+  public readonly staticGoodputTracker: RollingGoodputTracker = new RollingGoodputTracker(200);
+  public readonly tacGoodputTracker: RollingGoodputTracker = new RollingGoodputTracker(200);
 
   constructor(private readonly seedOffset: number = 0) {
     this.rfConfig = new RFConfig();
@@ -331,6 +442,7 @@ export class SimulationWorkerManager {
         activeType: null,
         totalBytes: 0,
         deliveredBytes: 0,
+        prevDeliveredBytes: 0,
         droppedBytes: 0,
         droppedPackets: 0,
         status: 'IDLE',
@@ -338,6 +450,10 @@ export class SimulationWorkerManager {
         startTimeS: -1.0,
         ackTimeS: -1.0,
         lastQueueDrops: 0,
+        lastUpdateSimTimeS: -1.0,
+        currentRateBps: 0,
+        etaS: null,
+        etaStatus: 'STANDBY',
       });
     }
   }
@@ -627,6 +743,10 @@ export class SimulationWorkerManager {
     this.lastReportStatic = reportStatic;
     this.lastReportTac = reportTac;
 
+    // Rolling goodput sampling (M7.3: 200 superframes / 4 seconds of completed payload delivery)
+    this.staticGoodputTracker.recordSuperframeDeliveredBits(reportStatic.totalBitsTransmitted);
+    this.tacGoodputTracker.recordSuperframeDeliveredBits(reportTac.totalBitsTransmitted);
+
     // 3. Metrics accumulation
     this.metrics.staticGoodputBits += reportStatic.totalBitsTransmitted;
     this.metrics.staticWastedBits += reportStatic.totalBitsWastedOnOutage;
@@ -738,7 +858,14 @@ export class SimulationWorkerManager {
     for (const node of activeNodes) {
       const nid = node.nodeId;
       const trans = this.nodeTransfers.get(nid);
-      if (!trans || trans.status === 'IDLE' || trans.status === 'ACKNOWLEDGED' || trans.status === 'FAILED_DROPPED') {
+      if (!trans || trans.status === 'IDLE') {
+        continue;
+      }
+
+      if (trans.status === 'ACKNOWLEDGED' || trans.status === 'FAILED_DROPPED') {
+        trans.currentRateBps = 0;
+        trans.etaS = trans.status === 'ACKNOWLEDGED' ? 0 : null;
+        trans.etaStatus = trans.status === 'ACKNOWLEDGED' ? 'COMPLETE' : 'DROPPED';
         continue;
       }
 
@@ -792,6 +919,24 @@ export class SimulationWorkerManager {
         trans.status = 'FAILED_DROPPED';
         trans.statusMessage = `[✖] ${activeT} FAILED: Packets expired/dropped in mountain shadow!`;
       }
+
+      // Update transfer rate and ETA strictly using simulation-time differences
+      const dtSim = trans.lastUpdateSimTimeS >= 0 ? Math.max(0.001, this.simTimeS - trans.lastUpdateSimTimeS) : FRAME_DT;
+      const deliveredDelta = Math.max(0, trans.deliveredBytes - trans.prevDeliveredBytes);
+      trans.prevDeliveredBytes = trans.deliveredBytes;
+      trans.lastUpdateSimTimeS = this.simTimeS;
+
+      if (trans.status === 'TRANSMITTING') {
+        const instRate = calculateTransferRateBps(deliveredDelta, dtSim);
+        trans.currentRateBps = smoothTransferRateBps(trans.currentRateBps, instRate, 0.3);
+      } else {
+        trans.currentRateBps = 0;
+      }
+
+      const remaining = Math.max(0, trans.totalBytes - trans.deliveredBytes);
+      const eta = calculateTransferEtaSeconds(remaining, trans.currentRateBps, trans.status, this.isPaused);
+      trans.etaS = eta.etaS;
+      trans.etaStatus = eta.etaStatus;
     }
   }
 
@@ -802,6 +947,7 @@ export class SimulationWorkerManager {
       const obstruction = this.obstructionResults.get(node.nodeId)
         ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
       const [nx, ny, nz] = node.position;
+      const geo = cartesianToGeodetic(nx, ny);
       const slantM = Math.hypot(acnPos[0] - nx, acnPos[1] - ny, acnPos[2] - nz);
       const ls = this.linkStatuses.get(node.nodeId)
         ?? this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked);
@@ -813,6 +959,42 @@ export class SimulationWorkerManager {
       const videoBytes = q.getClassBacklogBytes(67);
       const photoBytes = q.getClassBacklogBytes(70);
 
+      const activeReport = this.schedulerMode === 'tac_tad' ? this.lastReportTac : this.lastReportStatic;
+      const alloc = activeReport?.allocations.find((a) => a.nodeId === node.nodeId);
+      const trans = this.nodeTransfers.get(node.nodeId);
+      const isOutage = ls?.isOutage ?? true;
+      const isObstacleBlocked = ls?.obstacleBlocked ?? false;
+      const isTerrainBlocked = !(obstruction?.isLos ?? true);
+      const isBlocked = isTerrainBlocked || isObstacleBlocked;
+      const isHardShadow = ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF;
+      const hasSlotCapacity = alloc !== undefined && alloc.capacityBits > 0 && alloc.durationS > 0;
+      const isTransmitting = !isOutage && !isBlocked && !isHardShadow && (
+        (trans !== undefined && trans.status === 'TRANSMITTING') ||
+        (hasSlotCapacity && q.getTotalBacklogBytes() > 0)
+      );
+      const isWastingAirtime = Boolean(hasSlotCapacity && (isOutage || isBlocked || isHardShadow));
+
+      const transRemaining = trans ? Math.max(0, trans.totalBytes - trans.deliveredBytes) : 0;
+      const transEta = trans ? calculateTransferEtaSeconds(transRemaining, trans.currentRateBps, trans.status, this.isPaused) : { etaS: null, etaStatus: 'STANDBY' };
+
+      const transState = trans && trans.status !== 'IDLE' ? {
+        node_id: node.nodeId,
+        status: trans.status,
+        status_message: trans.statusMessage,
+        active_type: trans.activeType,
+        total_bytes: trans.totalBytes,
+        delivered_bytes: trans.deliveredBytes,
+        dropped_bytes: trans.droppedBytes,
+        dropped_packets: trans.droppedPackets,
+        progress_pct: trans.totalBytes > 0 ? Math.min(100.0, Math.round(((trans.deliveredBytes / trans.totalBytes) * 100.0) * 10) / 10) : 0.0,
+        start_time_s: trans.startTimeS,
+        ack_time_s: trans.ackTimeS,
+        current_rate_bps: trans.currentRateBps,
+        current_rate_mbps: trans.currentRateBps / 1e6,
+        eta_s: transEta.etaS,
+        eta_status: transEta.etaStatus,
+      } : null;
+
       return {
         node_id: node.nodeId,
         name: node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`,
@@ -820,6 +1002,8 @@ export class SimulationWorkerManager {
         x_m: node.position[0],
         y_m: node.position[1],
         z_m: node.position[2],
+        lat_deg: geo.latDeg,
+        lon_deg: geo.lonDeg,
         coordinate_reference: 'local Cartesian; x/y metres; z absolute altitude MSL metres',
         terrain_elevation_msl_m: this.terrainEngine.getElevation(node.position[0], node.position[1]),
         agl_m: node.aglM,
@@ -850,6 +1034,11 @@ export class SimulationWorkerManager {
         video_bytes: videoBytes,
         photo_bytes: photoBytes,
         total_backlog_bytes: q.getTotalBacklogBytes(),
+        is_transmitting: isTransmitting,
+        is_wasting_airtime: isWastingAirtime,
+        allocated_slot_ms: (alloc?.durationS ?? 0) * 1000.0,
+        allocated_capacity_bits: alloc?.capacityBits ?? 0,
+        transfer_state: transState,
       };
     });
   }
@@ -960,15 +1149,27 @@ export class SimulationWorkerManager {
       active_drop_frame_pkts: activeDropTotalThisFrame,
       static_utilization_pct: this.lastReportStatic?.totalUlUtilizationPct ?? 0,
       tac_utilization_pct: this.lastReportTac?.totalUlUtilizationPct ?? 0,
+
+      // Rolling P50/P95 goodput statistics in bps (M7.3)
+      static_p50_bps: this.staticGoodputTracker.p50Bps,
+      static_p95_bps: this.staticGoodputTracker.p95Bps,
+      tac_p50_bps: this.tacGoodputTracker.p50Bps,
+      tac_p95_bps: this.tacGoodputTracker.p95Bps,
+      rolling_window_sample_count: this.staticGoodputTracker.sampleCount,
+      rolling_window_capacity: this.staticGoodputTracker.capacity,
     };
 
     const trans = this.nodeTransfers.get(this.selectedNodeId) ?? {
-      activeType: null, totalBytes: 0, deliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
-      status: 'IDLE', statusMessage: '', startTimeS: -1, ackTimeS: -1, lastQueueDrops: 0
+      activeType: null, totalBytes: 0, deliveredBytes: 0, prevDeliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
+      status: 'IDLE', statusMessage: '', startTimeS: -1, ackTimeS: -1, lastQueueDrops: 0,
+      lastUpdateSimTimeS: -1, currentRateBps: 0, etaS: null, etaStatus: 'STANDBY'
     };
     const pct = trans.totalBytes > 0 ? (trans.deliveredBytes / trans.totalBytes) * 100.0 : 0.0;
 
-    const transferTel = {
+    const transRemaining = Math.max(0, trans.totalBytes - trans.deliveredBytes);
+    const transEta = calculateTransferEtaSeconds(transRemaining, trans.currentRateBps, trans.status, this.isPaused);
+
+    const transferTel: ActiveTransferTelemetry = {
       node_id: this.selectedNodeId,
       status: trans.status,
       status_message: trans.statusMessage,
@@ -980,34 +1181,52 @@ export class SimulationWorkerManager {
       progress_pct: Math.min(100.0, Math.round(pct * 10) / 10),
       start_time_s: trans.startTimeS,
       ack_time_s: trans.ackTimeS,
+      current_rate_bps: trans.currentRateBps,
+      current_rate_mbps: trans.currentRateBps / 1e6,
+      eta_s: transEta.etaS,
+      eta_status: transEta.etaStatus,
     };
+
+    const activeTransfers: ActiveTransferTelemetry[] = [];
+    for (const [nid, t] of this.nodeTransfers.entries()) {
+      if (t.status !== 'IDLE') {
+        const p = t.totalBytes > 0 ? (t.deliveredBytes / t.totalBytes) * 100.0 : 0.0;
+        const tRemaining = Math.max(0, t.totalBytes - t.deliveredBytes);
+        const tEta = calculateTransferEtaSeconds(tRemaining, t.currentRateBps, t.status, this.isPaused);
+        activeTransfers.push({
+          node_id: nid,
+          status: t.status,
+          status_message: t.statusMessage,
+          active_type: t.activeType,
+          total_bytes: t.totalBytes,
+          delivered_bytes: t.deliveredBytes,
+          dropped_bytes: t.droppedBytes,
+          dropped_packets: t.droppedPackets,
+          progress_pct: Math.min(100.0, Math.round(p * 10) / 10),
+          start_time_s: t.startTimeS,
+          ack_time_s: t.ackTimeS,
+          current_rate_bps: t.currentRateBps,
+          current_rate_mbps: t.currentRateBps / 1e6,
+          eta_s: tEta.etaS,
+          eta_status: tEta.etaStatus,
+        });
+      }
+    }
 
     const selNode = activeNodes.find((n) => n.nodeId === this.selectedNodeId) ?? activeNodes[0];
     const fresnelSlice = this.buildFresnelSlice(selNode, acnPos);
 
-    const mapAlloc = (a: SlotAllocation) => ({
-      node_id: a.nodeId,
-      start_ms: (a.slotStartS - (this.simTimeS - FRAME_DT)) * 1000.0,
-      duration_ms: a.durationS * 1000.0,
-      duration_s: a.durationS,
-      slot_start_s: a.slotStartS,
-      capacity_bits: a.capacityBits,
-      modcod_name: a.modcodName,
-      spectral_efficiency: a.spectralEfficiency,
-      c2_bytes: a.capacityBits > 0 ? 128 : 0,
-      voice_bytes: 0,
-      video_bytes: 0,
-      photo_bytes: 0,
-      is_pre_occlusion_flush: a.isPreOcclusionFlush,
-    });
+    const mapAlloc = (a: SlotAllocation) => normalizeSlotAllocationToFrame(a, this.simTimeS, FRAME_DT);
 
     const allocations = (activeReport?.allocations ?? []).map(mapAlloc);
+    const acnGeo = cartesianToGeodetic(acnPos[0], acnPos[1]);
 
     return {
       frame_index: this.frameIndex,
       sim_time_s: this.simTimeS,
       speed: this.speed,
       paused: this.isPaused,
+      step_request_id: this.activeStepRequestId,
       spatial_locked: this.spatialLocked,
       spatial_revision: this.spatialRevision,
       trajectory_config: {
@@ -1026,6 +1245,8 @@ export class SimulationWorkerManager {
         pos_x: acnPos[0],
         pos_y: acnPos[1],
         pos_z: acnPos[2],
+        lat_deg: acnGeo.latDeg,
+        lon_deg: acnGeo.lonDeg,
         vel_x: vx,
         vel_y: vy,
         heading_rad: Math.atan2(vy, vx),
@@ -1038,9 +1259,20 @@ export class SimulationWorkerManager {
       static_gantt_allocations: (this.lastReportStatic?.allocations ?? []).map(mapAlloc),
       tac_gantt_allocations: (this.lastReportTac?.allocations ?? []).map(mapAlloc),
       comparative_kpi_dashboard: kpi,
+      static_p50_bps: this.staticGoodputTracker.p50Bps,
+      static_p95_bps: this.staticGoodputTracker.p95Bps,
+      tac_p50_bps: this.tacGoodputTracker.p50Bps,
+      tac_p95_bps: this.tacGoodputTracker.p95Bps,
       selected_node_fresnel: fresnelSlice,
       selected_link_budget: fresnelSlice.link_budget,
       transfer_telemetry: transferTel,
+      active_transfers: activeTransfers,
+      downlink_telemetry: {
+        is_control_broadcast: true,
+        ctrl_duration_ms: 1.0,
+        dl_duration_ms: (this.schedulerMode === 'tac_tad' && this.lastReportTac ? Math.max(3.0, 20.0 - 1.0 - (this.lastReportTac.totalUlAvailableS * 1000.0)) : 3.0),
+        broadcast_active: true,
+      },
       terrain_mode: this.terrainEngine.terrain_mode,
       terrain_bounds_km: this.terrainEngine.terrain_mode === 'real'
         ? REAL_LADAKH_DEM_METADATA.halfWidthM / 1000
@@ -1207,8 +1439,11 @@ export class SimulationWorkerManager {
     this.frameIndex = 0;
     this.spatialRevision = 0;
     this.node4Frozen = false;
+    this.activeStepRequestId = undefined;
     this.lastReportStatic = null;
     this.lastReportTac = null;
+    this.staticGoodputTracker.reset();
+    this.tacGoodputTracker.reset();
     this.linkStatuses.clear();
     this.predStates.clear();
     this.obstructionResults.clear();
@@ -1355,9 +1590,10 @@ export class SimulationWorkerManager {
             this.nodesTac[4].enqueuePacket(70, this.simTimeS, 1400);
           }
           this.nodeTransfers.set(4, {
-            activeType: 'PHOTO', totalBytes: 42000, deliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
+            activeType: 'PHOTO', totalBytes: 42000, deliveredBytes: 0, prevDeliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
             status: 'TRANSMITTING', statusMessage: 'PRESET OCCLUSION: Node 4 enqueued 42 KB photo.',
-            startTimeS: this.simTimeS, ackTimeS: -1, lastQueueDrops: 0
+            startTimeS: this.simTimeS, ackTimeS: -1, lastQueueDrops: 0,
+            lastUpdateSimTimeS: this.simTimeS, currentRateBps: 0, etaS: null, etaStatus: 'CALCULATING'
           });
         } else if (isAmbush) {
           this.envConfig = new EnvironmentConfig({ ...this.envConfig, rainRateMmH: 0.0 });
@@ -1389,10 +1625,11 @@ export class SimulationWorkerManager {
         const ps = this.predStates.get(nid);
         const isBlocked = ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF;
         this.nodeTransfers.set(nid, {
-          activeType: ttype, totalBytes: bytes, deliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
+          activeType: ttype, totalBytes: bytes, deliveredBytes: 0, prevDeliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
           status: isBlocked ? 'BLOCKED_NLOS' : 'TRANSMITTING',
           statusMessage: isBlocked ? 'TERRAIN BLOCKED: Packet buffered awaiting re-emergence.' : 'TRANSMITTING: Uplink active.',
-          startTimeS: this.simTimeS, ackTimeS: -1, lastQueueDrops: 0
+          startTimeS: this.simTimeS, ackTimeS: -1, lastQueueDrops: 0,
+          lastUpdateSimTimeS: this.simTimeS, currentRateBps: 0, etaS: null, etaStatus: isBlocked ? 'BLOCKED (PAUSED)' : 'CALCULATING'
         });
         this.nodesStatic[nid].injectTraffic(ttype, this.simTimeS);
         this.nodesTac[nid].injectTraffic(ttype, this.simTimeS);
@@ -1584,7 +1821,12 @@ export class SimulationWorkerManager {
         if (act === 'reset' && this.spatialLocked) return locked();
         if (act === 'pause') this.isPaused = true;
         else if (act === 'resume') this.isPaused = false;
-        else if (act === 'step') { this.isPaused = true; this.tickSimulation(); }
+        else if (act === 'step') {
+          this.isPaused = true;
+          this.activeStepRequestId = typeof msg.step_request_id === 'number' ? msg.step_request_id : undefined;
+          this.tickSimulation();
+          this.activeStepRequestId = undefined;
+        }
         else this.resetSimulationState();
         return result(true);
       }
@@ -1610,8 +1852,9 @@ export class SimulationWorkerManager {
         const nid = msg.node_id === undefined ? this.selectedNodeId : msg.node_id;
         if (!Number.isInteger(nid) || nid < 0 || nid >= NUM_NODES) return reject('node_id must identify a registered ground node.');
         this.nodeTransfers.set(nid, {
-          activeType: null, totalBytes: 0, deliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
-          status: 'IDLE', statusMessage: '', startTimeS: -1, ackTimeS: -1, lastQueueDrops: 0
+          activeType: null, totalBytes: 0, deliveredBytes: 0, prevDeliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
+          status: 'IDLE', statusMessage: '', startTimeS: -1, ackTimeS: -1, lastQueueDrops: 0,
+          lastUpdateSimTimeS: -1, currentRateBps: 0, etaS: null, etaStatus: 'STANDBY'
         });
         return result(true);
       }

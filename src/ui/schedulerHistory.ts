@@ -100,6 +100,8 @@ export interface SchedulerFrameRecord {
   readonly tacAllocations?: readonly SchedulerSlotAllocation[];
   readonly nodeBacklogs: readonly SchedulerNodeBacklog[];
   readonly kpi: SchedulerKpiSnapshot;
+  readonly ctrlDurationMs?: number;
+  readonly dlDurationMs?: number;
 }
 
 export interface SchedulerHistorySpan {
@@ -168,6 +170,8 @@ export function createSchedulerRecordSnapshot(input: {
   tacAllocations?: readonly SchedulerSlotAllocation[];
   nodeBacklogs: readonly SchedulerNodeBacklog[];
   kpi: SchedulerKpiSnapshot;
+  ctrlDurationMs?: number;
+  dlDurationMs?: number;
 }): SchedulerFrameRecord {
   // Defensive copy and freeze of active allocations
   const clonedActiveAllocations: SchedulerSlotAllocation[] = Array.isArray(input.activeAllocations)
@@ -233,6 +237,8 @@ export function createSchedulerRecordSnapshot(input: {
     tacAllocations: clonedTacAllocations ? Object.freeze(clonedTacAllocations) : undefined,
     nodeBacklogs: Object.freeze(clonedBacklogs),
     kpi: frozenKpi,
+    ctrlDurationMs: input.ctrlDurationMs,
+    dlDurationMs: input.dlDurationMs,
   });
 
   return record;

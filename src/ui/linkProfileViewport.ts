@@ -376,6 +376,12 @@ export function summarizeProfileStatus(profile: LinkProfile | null, legacyObstru
   };
 }
 
+export interface RenderProfileOptions {
+  readonly showFresnel?: boolean;
+  readonly showObstacles?: boolean;
+  readonly titlePrefix?: string;
+}
+
 /**
  * Draws the complete profile to the canvas context using typed profile geometry.
  */
@@ -385,6 +391,7 @@ export function renderLinkProfileViewport(
   viewport: LinkProfileViewportState,
   profile: LinkProfile | null,
   legacyPoints?: readonly [number, number, number, number][] | null,
+  options?: RenderProfileOptions,
 ): void {
   const { width: w, height: h, padL, padR, padT, padB } = layout;
   if (w <= 0 || h <= 0) return;
@@ -465,7 +472,7 @@ export function renderLinkProfileViewport(
 
   // Draw typed profile or fallback
   if (samples) {
-    drawTypedProfileContent(ctx, layout, viewport, profile!, samples);
+    drawTypedProfileContent(ctx, layout, viewport, profile!, samples, options);
   } else if (legacyPoints) {
     drawLegacyProfileContent(ctx, layout, viewport, legacyPoints);
   }
@@ -477,12 +484,13 @@ export function renderLinkProfileViewport(
   const slantTotalKm = profile ? profile.slantDistanceM / 1000 : dTotalKm;
   const zoomText = viewport.isUserModified ? ` · Zoom ${viewport.zoomFactor.toFixed(1)}× (drag to pan, wheel to zoom)` : '';
   const diffLossText = profile && profile.diffractionLossDb > 0 ? ` · DiffLoss ${profile.diffractionLossDb.toFixed(1)} dB` : '';
+  const prefix = options?.titlePrefix ? `${options.titlePrefix} · ` : '';
 
   ctx.font = '10.5px ui-monospace, monospace';
   ctx.fillStyle = '#9aa8b3';
   ctx.textAlign = 'left';
   ctx.fillText(
-    `Ground path ${dTotalKm.toFixed(1)} km · Slant ${slantTotalKm.toFixed(1)} km${diffLossText}${zoomText}`,
+    `${prefix}Ground path ${dTotalKm.toFixed(1)} km · Slant ${slantTotalKm.toFixed(1)} km${diffLossText}${zoomText}`,
     padL + 4,
     16
   );
@@ -494,54 +502,60 @@ function drawTypedProfileContent(
   viewport: LinkProfileViewportState,
   profile: LinkProfile,
   samples: readonly LinkProfileSample[],
+  options?: RenderProfileOptions,
 ): void {
   const { padT, padB, height: h } = layout;
   const plotH = Math.max(1, h - padT - padB);
   const base = padT + plotH;
 
+  const showFresnel = options?.showFresnel !== false;
+  const showObstacles = options?.showObstacles !== false;
+
   // 1. First Fresnel zone (0.6 F1 band)
-  ctx.beginPath();
-  for (let i = 0; i < samples.length; i++) {
-    const s = samples[i];
-    const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
-    const y = viewport.yToCanvas(s.upperFresnelElevationMslM, layout);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  for (let i = samples.length - 1; i >= 0; i--) {
-    const s = samples[i];
-    const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
-    const y = viewport.yToCanvas(s.lowerFresnelElevationMslM, layout);
-    ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(243, 181, 74, 0.12)';
-  ctx.fill();
+  if (showFresnel) {
+    ctx.beginPath();
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
+      const y = viewport.yToCanvas(s.upperFresnelElevationMslM, layout);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    for (let i = samples.length - 1; i >= 0; i--) {
+      const s = samples[i];
+      const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
+      const y = viewport.yToCanvas(s.lowerFresnelElevationMslM, layout);
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(243, 181, 74, 0.12)';
+    ctx.fill();
 
-  // Dashed Fresnel upper and lower boundary lines
-  ctx.save();
-  ctx.setLineDash([4, 4]);
-  ctx.strokeStyle = 'rgba(243, 181, 74, 0.60)';
-  ctx.lineWidth = 1;
+    // Dashed Fresnel upper and lower boundary lines
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(243, 181, 74, 0.60)';
+    ctx.lineWidth = 1;
 
-  ctx.beginPath();
-  for (let i = 0; i < samples.length; i++) {
-    const x = viewport.xToCanvas(samples[i].horizontalGroundDistanceM / 1000, layout);
-    const y = viewport.yToCanvas(samples[i].upperFresnelElevationMslM, layout);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
+    ctx.beginPath();
+    for (let i = 0; i < samples.length; i++) {
+      const x = viewport.xToCanvas(samples[i].horizontalGroundDistanceM / 1000, layout);
+      const y = viewport.yToCanvas(samples[i].upperFresnelElevationMslM, layout);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
 
-  ctx.beginPath();
-  for (let i = 0; i < samples.length; i++) {
-    const x = viewport.xToCanvas(samples[i].horizontalGroundDistanceM / 1000, layout);
-    const y = viewport.yToCanvas(samples[i].lowerFresnelElevationMslM, layout);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    ctx.beginPath();
+    for (let i = 0; i < samples.length; i++) {
+      const x = viewport.xToCanvas(samples[i].horizontalGroundDistanceM / 1000, layout);
+      const y = viewport.yToCanvas(samples[i].lowerFresnelElevationMslM, layout);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
-  ctx.stroke();
-  ctx.restore();
 
   // 2. Obstacle Screening Intervals (Authoritative structural obstacles)
-  if (profile.obstacleIntervals && profile.obstacleIntervals.length > 0) {
+  if (showObstacles && profile.obstacleIntervals && profile.obstacleIntervals.length > 0) {
     for (const obs of profile.obstacleIntervals) {
       const x1 = viewport.xToCanvas(obs.entryHorizontalDistanceM / 1000, layout);
       const x2 = viewport.xToCanvas(obs.exitHorizontalDistanceM / 1000, layout);
@@ -768,5 +782,22 @@ function drawLegacyProfileContent(
   ctx.moveTo(pNX, pNY);
   ctx.lineTo(pAX, pAY);
   ctx.stroke();
+}
+
+/**
+ * Renders the dedicated Terrain Path Profile in cross-sectional PROFILE mode.
+ * Highlights the effective terrain profile, bare DEM, Earth curvature, and clearance without Fresnel overlay.
+ */
+export function renderTerrainProfileViewport(
+  ctx: CanvasRenderingContext2D,
+  layout: ViewportLayout,
+  viewport: LinkProfileViewportState,
+  profile: LinkProfile | null,
+  legacyPoints?: readonly [number, number, number, number][] | null,
+): void {
+  renderLinkProfileViewport(ctx, layout, viewport, profile, legacyPoints, {
+    showFresnel: false,
+    titlePrefix: 'TERRAIN PROFILE',
+  });
 }
 

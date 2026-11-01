@@ -1,0 +1,1024 @@
+# X-Band Aerial Communication Network Digital Twin
+## Complete Project Context and Feature Implementation Handoff
+
+**Document purpose:** Transfer all relevant project context, architectural decisions, feature requirements, technical constraints, and implementation plans to another LLM or coding agent.
+
+**Project:** Tactical X-Band Air-to-Ground Network Digital Twin  
+**Primary implementation language:** TypeScript  
+**Frontend:** HTML, CSS, TypeScript/JavaScript, Canvas  
+**Simulation execution:** Web Worker  
+**Legacy implementation:** Python; not the active source of truth  
+**Deployment:** GitHub Pages  
+**Current phase:** Adding seven mentor-requested features. Detailed backend validation and scientific-model improvements are deferred until later.
+
+---
+
+# 1. Instructions to the receiving LLM
+
+You are continuing an existing software engineering project. Do not treat this as a greenfield application.
+
+Your immediate objective is to understand the existing implementation and help implement seven requested features in the active TypeScript application.
+
+Before writing code:
+
+1. Inspect the actual repository structure and current source files.
+2. Read the current worker protocol and understand how simulation state is managed.
+3. Inspect the existing terrain, trajectory, link-budget, scheduler, queue, and rendering implementations.
+4. Determine which proposed types and modules already exist and reuse them where appropriate.
+5. Identify discrepancies between the proposed specification and the actual implementation.
+6. Report important architectural findings before making invasive changes.
+7. Implement incrementally, with regression tests after each milestone.
+8. Preserve the current application and its working deployment.
+
+**Do not blindly implement every illustrative code snippet in this document.** The proposed contracts and types describe intended behavior. Adapt them to the real source code after inspecting it.
+
+Do not rewrite the entire application, replace the scheduler unnecessarily, migrate back to Python, or introduce a full 3D rendering framework without an explicit reason.
+
+The immediate priority is feature implementation, not the previously discussed comprehensive scientific validation of the RF and terrain models.
+
+# 2. Project background
+
+The project is a web-based digital twin for an airborne communication node serving ground terminals over an X-Band air-to-ground network.
+
+The original implementation was Python-based. The project was subsequently migrated to TypeScript with a browser Web Worker handling the active simulation.
+
+**Important architectural clarification: Python is legacy code. TypeScript and the Web Worker are the active implementation.**
+
+Do not spend time maintaining Python/TypeScript parity or repairing the legacy Python backend unless explicitly requested.
+
+## Project objective
+
+Build an interactive simulation environment in which users can:
+
+- Visualize an airborne communication node and multiple ground terminals.
+- Observe terrain-dependent radio-link behavior.
+- Model traffic queues and QoS classes.
+- Compare scheduling algorithms.
+- Observe dynamic time-slot allocation.
+- Inspect node status, link quality, queue backlog, and scheduler metrics.
+- Modify the spatial scenario and observe the resulting changes in the simulation.
+- Review historical simulation frames.
+
+The simulation uses a 20 ms superframe configuration, an X-Band carrier configuration of 8 GHz, terrain-aware propagation, and dynamic scheduling.
+
+The existing simulation has a legacy static scheduler and a dynamic scheduler called Tac-TAD in the project code. Tac-TAD is a project-defined algorithm, not an established standards designation.
+
+# 3. Current architecture
+
+The repository contains a browser frontend, a TypeScript Web Worker, core simulation modules, terrain artifacts, benchmark tools, and legacy Python code.
+
+## Active components
+
+| File or directory | Responsibility |
+|---|---|
+| `index.html` | Existing browser interface, styles, controls, map, charts, and UI logic |
+| `src/worker/simWorker.ts` | Active simulation worker, state updates, command processing, telemetry |
+| `src/core/trajectory.ts` | ACN flight trajectory and predictive occlusion behavior |
+| `src/core/terrain.ts` | Terrain sampling, spatial geometry, and obstruction-related calculations |
+| `src/core/linkBudget.ts` | Radio link budget, SNR, modulation/coding, bitrate, and link status |
+| `src/core/scheduler.ts` | Static and dynamic scheduling logic |
+| `src/core/queues.ts` | Traffic queues, QoS classes, queueing, and drops |
+| `src/core/config.ts` | Simulation configuration and physical parameters |
+| `public/terrain/real_ladakh_dem.bin` | Terrain raster consumed by the browser application |
+| `dist/` | Included compiled frontend artifacts; these do not guarantee a fresh build will succeed |
+| `core/` and `server/app.py` | Legacy Python simulation and API; not the active source of truth |
+| `tests/` | Existing Python tests, which are not sufficient to validate new TypeScript features |
+
+The exact repository may have changed since the original archive was reviewed. Verify the current files before implementing changes.
+
+## Existing frontend behavior
+
+The interface already has:
+
+- An interactive Canvas-based map.
+- Map panning and zooming.
+- Terrain visualization.
+- A flight path based on an elliptical trajectory.
+- Ground-node visualization.
+- A terrain/path-profile view.
+- A scheduler allocation visualization.
+- Node selection and worker messaging.
+- Experiment capture and export functionality.
+- A Web Worker that advances the simulation.
+
+Preserve these capabilities.
+
+## Existing worker command names
+
+Previously observed command names include:
+
+- `NODE_MOVE`
+- `CONFIG_UPDATE`
+- `SELECT_NODE`
+- `SIM_CONTROL`
+- `SET_SPEED`
+
+Inspect their exact message shapes and semantics before changing them.
+
+One previously observed behavior is that moving the ACN changes the elliptical trajectory center, while ground-node movement uses a fixed 2 m antenna-height assumption. The new spatial model should replace hidden assumptions with explicit configuration without breaking unrelated functionality.
+
+# 4. The seven requested features
+
+The mentor requested the following features.
+
+1. Data communication visualization.
+2. Frame history resembling a timeline.
+3. Drag-and-drop flight-path editing.
+4. A global spatial lock button.
+5. A holistic node inventory.
+6. A zoomable path profile, custom obstacles, and top-view mode.
+7. A configurable AGL offset for ground nodes.
+
+These requirements have been discussed and the following design choices have been selected.
+
+# 5. Finalized design decisions
+
+| Feature | Decision |
+|---|---|
+| Communication visualization | Show both link status and traffic animation |
+| Communication direction | Visualize uplink and downlink distinctly |
+| Frame history | Scrubbing through stored snapshots |
+| Initial history retention | 60 seconds, nominally 3,000 frames at 50 Hz |
+| Flight-path editing | Support both ellipse and waypoint modes |
+| Waypoint trajectory | Closed, repeating route |
+| Spatial lock | Lock all spatial editing: path, nodes, obstacles |
+| Node inventory | Searchable/selectable table with spatial and simulation metrics |
+| Custom obstacles | Cuboid, cone, pyramid |
+| Obstacle placement | Ground-anchored by default |
+| Original DEM | Remains unchanged; obstacles are separate geometry |
+| Obstacle propagation effect | Custom obstacles must affect radio obstruction calculations |
+| Path profile | Zoomable, pannable, reset-to-fit |
+| Top view | Toggle using the existing Canvas architecture |
+| Ground-node altitude | Configurable AGL offset |
+| Live simulation | Worker remains authoritative |
+| Historical inspection | Must not rewind or mutate the live simulation |
+| Python | Legacy; no Python migration or parity work |
+
+The selected rendering architecture is Canvas. Do not introduce Three.js or another full 3D engine merely to implement these features. Simple 2D top-down geometry and projected obstacle representations are acceptable for the initial implementation.
+
+# 6. Feature specification: communication visualization
+
+## Required behavior
+
+Display a persistent communication link between the ACN and each ground node.
+
+The interface must distinguish:
+
+- Available links.
+- Degraded links.
+- Obstructed or unavailable links.
+- Links with scheduled or reported traffic.
+- Links that are available but not currently carrying payload.
+
+Provide two visual layers.
+
+### Link layer
+
+Render lines connecting the ACN to ground nodes. Use consistent visual styles for the link states, with a legend.
+
+Selecting a node or link should highlight it and expose available metrics.
+
+### Traffic layer
+
+Render animated pulses or packet-like markers along links when actual simulation telemetry indicates that traffic is being served.
+
+Traffic animation must not invent packet counts, throughput, or transmission events.
+
+Provide a toggle to hide or show the traffic layer.
+
+### Metrics
+
+Where available, expose:
+
+- Link status.
+- SNR.
+- Modeled bitrate.
+- Queue backlog.
+- Scheduled airtime.
+- Payload service or goodput.
+- Relevant scheduler allocation information.
+
+All values must come from the active TypeScript simulation.
+
+### Directionality caveat
+
+The current scheduler is primarily an uplink scheduling model.
+
+Showing bidirectional communication links does not mean that the simulation contains a complete downlink scheduler.
+
+The interface must distinguish:
+
+- A physically/modelled link that could support communication.
+- Actual uplink scheduling and traffic.
+- Downlink capability or telemetry, if present.
+- Downlink data that is not currently modeled.
+
+Do not fabricate downlink throughput merely to make the visualization look bidirectional.
+
+# 7. Feature specification: frame history
+
+Implement a bounded history buffer of immutable simulation snapshots.
+
+## Requirements
+
+- Default retention target: 60 seconds.
+- Nominal frame rate: 50 frames/s.
+- Nominal capacity: 3,000 snapshots.
+- Support a timeline scrubber.
+- Allow selecting a past frame.
+- Allow returning to live mode.
+- Keep simulation execution independent of historical inspection.
+- Show the selected frame's time and frame index.
+- Handle missing or expired frames explicitly.
+- Keep snapshot memory bounded.
+
+Do not store the full terrain raster in every frame. Terrain is mostly static and should be referenced separately.
+
+## Snapshot contents
+
+Store the information required to reconstruct the visual and diagnostic state:
+
+- Frame index.
+- Simulation time.
+- Scenario/configuration revision.
+- ACN position and trajectory state.
+- Ground-node positions and relevant state.
+- Link states and available communication metrics.
+- Scheduler allocations.
+- Queue and drop counters.
+- Obstacle geometry or a reference to an immutable configuration revision.
+- Any additional information required to render the frame faithfully.
+
+If historical snapshots reference configuration revisions, those revisions must remain available for as long as dependent snapshots are retained.
+
+## Live versus historical behavior
+
+The worker continues running while the user inspects history unless the user explicitly pauses the simulation.
+
+The frontend renders the selected snapshot without mutating the live simulation.
+
+New frames continue entering the history buffer.
+
+Returning to live mode selects the newest available frame.
+
+A historical frame must not silently become a live frame when it expires.
+
+Spatial edits must be recorded as configuration changes so that a frame from before an edit still represents the old configuration.
+
+The 60-second retention target must be verified with memory profiling before being considered guaranteed.
+
+# 8. Feature specification: editable flight paths
+
+Support two explicit trajectory modes.
+
+## Ellipse mode
+
+Preserve the existing elliptical trajectory model.
+
+Allow editing:
+
+- Center.
+- Semi-major axis.
+- Semi-minor axis.
+- Rotation.
+- Speed, if supported by the existing configuration.
+- Altitude, as a separate parameter.
+
+Preserve the existing arc-length-based movement behavior and predictive occlusion integration.
+
+Do not replace a working trajectory model unnecessarily.
+
+## Waypoint mode
+
+Allow users to:
+
+- Add waypoints.
+- Move waypoints.
+- Remove waypoints, subject to minimum path requirements.
+- Edit supported speed or altitude parameters.
+- Switch explicitly between ellipse and waypoint modes.
+
+The selected waypoint path is closed and repeats indefinitely.
+
+The implementation must define:
+
+- Interpolation method.
+- Speed behavior.
+- Loop-boundary continuity.
+- Minimum valid waypoint count.
+- Duplicate-point handling.
+- Behavior for degenerate paths.
+- Predictive look-ahead on the waypoint trajectory.
+
+A suitable initial design is a closed polyline or a smooth closed curve with deterministic arc-length parameterization. Select the least invasive option that fits the existing trajectory engine.
+
+The trajectory engine should expose a common interface conceptually equivalent to:
+
+- `getAcnPosition(t)`
+- `getAcnVelocity(t)`
+
+The exact signatures should follow the existing implementation.
+
+Predictive occlusion must use the selected trajectory implementation, not assume that all trajectories are ellipses.
+
+When a trajectory edit is invalid, retain the previous valid trajectory.
+
+# 9. Feature specification: global spatial lock
+
+Provide one global spatial lock button.
+
+## When locked
+
+Reject:
+
+- Flight-path movement or geometry changes.
+- Node movement.
+- Waypoint creation, removal, or movement.
+- Obstacle creation.
+- Obstacle movement.
+- Obstacle resizing.
+- Obstacle rotation.
+- Obstacle deletion.
+
+Allow:
+
+- Selection and inspection.
+- Panning and zooming.
+- Timeline scrubbing.
+- Simulation play/pause.
+- Switching visualization layers.
+- Switching top-view mode.
+- Viewing node and link metrics.
+
+The lock must be enforced in both frontend interactions and the Web Worker command handler.
+
+Disabling drag handles in the frontend is insufficient.
+
+A malicious or stale message must not bypass the lock.
+
+The worker should reject an unauthorized mutation and return a structured error.
+
+Use one authoritative lock state rather than separate independent locks for each feature.
+
+The initial default lock state should be chosen after inspecting the existing application. Do not silently alter established user workflows without justification.
+
+# 10. Feature specification: holistic node inventory
+
+Implement a searchable and selectable node table.
+
+Include the ACN and all registered ground nodes.
+
+## Required fields
+
+- Stable node ID.
+- Node type.
+- Position.
+- Latitude and longitude, when correctly available.
+- Local terrain elevation.
+- AGL.
+- Absolute altitude.
+- Link status.
+- SNR.
+- Queue backlog.
+- Scheduling/airtime information where applicable.
+
+Label units explicitly.
+
+Selection behavior:
+
+- Selecting a row highlights the corresponding node on the map.
+- The node inspector shows its available metrics.
+- The path profile selects the corresponding communication path.
+- Historical inspection displays the metrics from the selected historical frame.
+
+Stable IDs must not change because the table is sorted, filtered, or reordered.
+
+## Geographic coordinate caution
+
+The active terrain engine uses Cartesian metric coordinates.
+
+Latitude and longitude must not be invented or approximated by relabeling X/Y coordinates.
+
+Inspect the current coordinate system and terrain metadata. Only expose geographic coordinates after defining the appropriate coordinate transformation.
+
+If geographic conversion is not yet available, display clearly labeled local X/Y coordinates rather than false latitude/longitude values.
+
+# 11. Feature specification: path profile, obstacles, and top view
+
+This feature consists of three connected capabilities.
+
+## 11.1 Zoomable path profile
+
+Extend the existing profile.
+
+Required controls:
+
+- Horizontal zoom.
+- Vertical zoom.
+- Pan.
+- Reset-to-fit.
+- Coordinate/distance readouts.
+- Selected-link indication.
+
+Display:
+
+- Terrain elevation along the selected communication path.
+- ACN and ground-terminal altitudes.
+- Line of sight.
+- Fresnel clearance where supported by the existing model.
+- Custom obstacle intersections.
+- Relevant obstruction information.
+
+The horizontal axis represents distance along the selected path; the vertical axis represents elevation using a consistent vertical reference.
+
+Zooming must only change the view transform, not the terrain data or simulation state.
+
+Changing the selected node, ACN trajectory, or obstacle configuration must refresh the relevant profile.
+
+## 11.2 Custom obstacle editor
+
+Initial shapes:
+
+- Cuboid.
+- Cone.
+- Pyramid.
+
+Each obstacle should have:
+
+- Stable ID.
+- Shape.
+- Horizontal position.
+- Footprint dimensions.
+- Height.
+- Orientation where applicable.
+- Vertical reference/ground anchor.
+
+### Ground-anchored behavior
+
+The obstacle is anchored to the terrain at its defined anchor point.
+
+Conceptually:
+
+`baseElevation = terrainElevation(anchorX, anchorY)`
+
+`topElevation = baseElevation + obstacleHeight`
+
+The exact geometry differs by primitive.
+
+The original DEM must not be overwritten.
+
+Store obstacles as separate geometry objects and render them over the terrain.
+
+### Radio propagation integration
+
+The obstacles must affect actual modeled obstruction.
+
+A purely decorative obstacle is not sufficient.
+
+The obstruction evaluator must account for:
+
+1. Underlying terrain.
+2. Custom obstacle geometry.
+3. The ACN-to-ground-terminal line segment.
+4. Relevant Earth-curvature and Fresnel-clearance calculations already supported by the model.
+
+Start with deterministic geometric intersection tests for cuboids, cones, and pyramids.
+
+The implementation must define how terrain and obstacle obstruction results are combined without double-counting the same physical obstruction.
+
+Moving or resizing an obstacle must invalidate affected geometry and link-state caches.
+
+Allow overlapping obstacles if the implementation can evaluate them deterministically and retain their identities.
+
+Reject invalid dimensions and unsupported placements.
+
+## 11.3 Top-view mode
+
+Provide a toggle between the existing map view and a top-down spatial view.
+
+The top-down view must display aligned:
+
+- Terrain.
+- ACN.
+- Ground nodes.
+- Flight path.
+- Obstacle footprints.
+- Communication links.
+
+The same world-to-screen and screen-to-world transforms should be reused where practical.
+
+Switching view modes must not mutate simulation coordinates.
+
+The initial renderer remains Canvas. A true perspective 3D renderer is outside the current baseline scope.
+
+# 12. Feature specification: ground-node AGL offset
+
+Each ground node receives a configurable AGL offset in meters.
+
+Conceptually:
+
+`absoluteAltitude = terrainElevation(x, y) + aglOffset`
+
+For example, if local terrain elevation is 3,200 m and AGL is 2 m, the modeled absolute altitude is 3,202 m, assuming both use the same vertical reference.
+
+## Required behavior
+
+- AGL is editable in the node inspector or inventory.
+- Moving a node horizontally resamples the terrain.
+- The configured AGL offset remains constant when the node moves.
+- Absolute altitude updates with terrain elevation.
+- The same derived position is used by propagation, obstruction, and rendering.
+- Invalid AGL values are rejected.
+- Out-of-coverage behavior follows a documented policy.
+- The ACN altitude is configured separately from ground-node AGL.
+
+Centralize ground-node position construction. Do not independently add antenna heights in the map renderer, terrain model, or link-budget code.
+
+Replace the previous hidden/fixed ground-node antenna-height assumption with an explicit per-node configuration.
+
+# 13. Proposed shared state model
+
+Separate three kinds of state.
+
+## A. Scenario configuration
+
+Contains editable spatial and simulation inputs:
+
+- Scenario revision.
+- Spatial lock.
+- Trajectory definition.
+- Ground-node configurations.
+- Custom obstacles.
+- Terrain reference.
+- RF configuration.
+- Traffic configuration.
+- Scheduler selection.
+
+## B. Live simulation state
+
+Contains evolving state:
+
+- Frame index.
+- Simulation time.
+- Current ACN position.
+- Current ground-node positions.
+- Queue contents and counters.
+- Link states.
+- Predictive occlusion state.
+- Scheduler allocations.
+- Metrics.
+- Current scenario revision.
+
+## C. View state
+
+Contains UI-only state:
+
+- Selected historical frame.
+- Selected node.
+- Top-view toggle.
+- Traffic-layer visibility.
+- Map camera/pan/zoom.
+- Profile zoom.
+- Hover and selection.
+- Temporary drag preview.
+
+The frontend may maintain temporary previews, but the worker owns the authoritative simulation state.
+
+## Proposed type concepts
+
+Use existing types if compatible. Otherwise, introduce equivalent types.
+
+```typescript
+type Vec2 = {
+  xM: number;
+  yM: number;
+};
+
+type GroundNodeConfig = {
+  id: number;
+  nodeType: string;
+  position: Vec2;
+  aglOffsetM: number;
+};
+
+type Waypoint = {
+  id: string;
+  position: Vec2;
+  altitudeMslM?: number;
+  speedMps?: number;
+};
+
+type TrajectoryDefinition =
+  | {
+      mode: "ellipse";
+      center: Vec2;
+      semiMajorAxisM: number;
+      semiMinorAxisM: number;
+      rotationDeg: number;
+      altitudeMslM: number;
+      speedMps: number;
+    }
+  | {
+      mode: "waypoints";
+      closed: true;
+      waypoints: Waypoint[];
+      altitudeMslM: number;
+      defaultSpeedMps: number;
+    };
+
+type CustomObstacle = {
+  id: string;
+  shape: "cuboid" | "cone" | "pyramid";
+  center: Vec2;
+  baseElevationOffsetM: number;
+  heightM: number;
+  widthM: number;
+  depthM: number;
+  rotationDeg: number;
+};
+
+type ScenarioState = {
+  revision: number;
+  spatialLocked: boolean;
+  trajectory: TrajectoryDefinition;
+  groundNodes: GroundNodeConfig[];
+  obstacles: CustomObstacle[];
+};
+```
+
+These examples are conceptual. Verify the existing coordinate conventions, identifiers, altitude definitions, and configuration schema before adopting them.
+
+A frame snapshot should contain:
+
+- Frame index.
+- Simulation time.
+- Scenario revision.
+- ACN position.
+- Node frame state.
+- Link frame state.
+- Allocation frame state.
+- Frame metrics.
+
+All snapshots must be immutable. Do not retain mutable references to live simulation arrays.
+
+# 14. Web Worker protocol
+
+The worker owns the active simulation and validates every mutation.
+
+The existing protocol should be extended carefully, preserving current commands unless a deliberate migration is necessary.
+
+## Proposed commands
+
+New commands may include:
+
+- `SET_SPATIAL_LOCK`
+- `SET_TRAJECTORY`
+- `MOVE_NODE`
+- `SET_NODE_AGL`
+- `UPSERT_OBSTACLE`
+- `DELETE_OBSTACLE`
+- `SET_OBSTACLE_TRANSFORM`
+- `REQUEST_SCENARIO_STATE`
+- `REQUEST_FRAME_SNAPSHOT`
+
+Mutating commands should include:
+
+- A request ID.
+- The relevant object ID.
+- The desired new values.
+- An expected scenario revision.
+
+For example:
+
+```typescript
+{
+  type: "MOVE_NODE",
+  nodeId: 12,
+  position: { xM: 1000, yM: 2000 },
+  expectedRevision: 7,
+  requestId: "move-123"
+}
+```
+
+This is an illustrative payload, not necessarily the final shape.
+
+## Revision checks
+
+If a command uses an outdated revision, reject it rather than applying it to stale state.
+
+Every accepted spatial mutation increments the revision.
+
+Invalid commands must not partially mutate the state.
+
+## Proposed responses
+
+- `COMMAND_ACCEPTED`
+- `COMMAND_REJECTED`
+- `SCENARIO_STATE`
+- `FRAME_SNAPSHOT`
+- `SIMULATION_FRAME`
+- `HISTORY_STATUS`
+
+Rejections should carry a reason such as:
+
+- `LOCKED`
+- `INVALID_INPUT`
+- `STALE_REVISION`
+- `NOT_FOUND`
+- `OUT_OF_BOUNDS`
+
+The exact union should follow the existing error-handling architecture.
+
+The current worker's telemetry should be adapted into the new normalized frame representation at the worker boundary. Do not rewrite the scheduler or link-budget engine simply to rename messages.
+
+## Worker lifecycle
+
+For an accepted spatial mutation:
+
+1. Validate the lock.
+2. Validate the revision.
+3. Validate the input.
+4. Validate bounds and geometry.
+5. Construct the candidate configuration.
+6. Rebuild dependent trajectory or spatial state.
+7. Invalidate relevant cached calculations.
+8. Atomically commit the new configuration.
+9. Increment the scenario revision.
+10. Acknowledge the command and publish the accepted state.
+11. Ensure subsequent simulation frames use the new revision.
+
+For rejected commands, preserve the previous valid state.
+
+The frontend may display a local drag preview but must restore authoritative state if the worker rejects the final edit.
+
+# 15. Frame history design
+
+Implement a bounded ring buffer or equivalent efficient structure.
+
+At 50 Hz:
+
+- 30 seconds = 1,500 frames.
+- 60 seconds = 3,000 frames.
+- 5 minutes = 15,000 frames.
+
+The selected initial retention target is 60 seconds.
+
+Use compact data structures where appropriate.
+
+Avoid copying the full terrain array into each snapshot.
+
+Do not retain unlimited copies of scenario configurations. Use revisioned configuration records with reference tracking or another bounded strategy that preserves the configurations needed by retained snapshots.
+
+The timeline should select snapshots for rendering, not control the simulation clock.
+
+# 16. Proposed module-level implementation plan
+
+Inspect the actual repository before creating modules. These are suggested boundaries, not mandatory file names.
+
+| Module | Responsibility |
+|---|---|
+| `src/types/simulation.ts` | Shared simulation and frame types |
+| `src/types/workerMessages.ts` | Typed worker protocol |
+| `src/core/trajectory.ts` | Ellipse and closed waypoint trajectories |
+| `src/core/terrain.ts` | Terrain sampling and supported spatial bounds |
+| `src/core/obstacles.ts` | Obstacle geometry and intersection calculations |
+| `src/core/spatialState.ts` | Spatial mutations, validation, lock, revisions, AGL |
+| `src/core/frameHistory.ts` | Bounded history and snapshot lookup |
+| `src/worker/simWorker.ts` | Authoritative state, command processing, simulation telemetry |
+| `src/ui/mapRenderer.ts` | Canvas terrain/map and spatial overlays |
+| `src/ui/mapInteractions.ts` | Hit testing, dragging, waypoint editing, lock enforcement |
+| `src/ui/nodeInventory.ts` | Searchable/selectable node table |
+| `src/ui/pathProfile.ts` | Zoomable path profile |
+| `src/ui/frameTimeline.ts` | Historical frame controls |
+| `src/ui/communicationOverlay.ts` | Link states and traffic animation |
+
+If the current project is still organized primarily in `index.html`, extract modules incrementally. Do not restructure the entire frontend before the first feature is working.
+
+# 17. Implementation milestones
+
+Implement in dependency order.
+
+## M1 — Spatial foundation
+
+- Inspect current worker and spatial state.
+- Introduce or adapt shared types.
+- Implement explicit ground-node AGL.
+- Add spatial revision tracking.
+- Add global lock enforcement.
+- Add mutation validation.
+- Add worker command tests.
+
+**Exit condition:** spatial mutations work reliably and cannot bypass lock or validation.
+
+## M2 — Editable spatial workspace
+
+- Add ellipse controls.
+- Add closed waypoint trajectory mode.
+- Add node inventory.
+- Add node selection and drag interactions.
+- Add top-down spatial view.
+- Keep all changes synchronized with worker state.
+
+**Exit condition:** map, node inventory, and trajectory use the same authoritative configuration.
+
+## M3 — Obstacle-aware environment
+
+- Implement cuboid, cone, and pyramid geometry.
+- Add ground anchoring.
+- Add obstacle creation and editing.
+- Add line-segment intersection tests.
+- Integrate obstacles into obstruction evaluation.
+- Extend the path profile with zoom and obstacle display.
+
+**Exit condition:** an obstacle affects the actual modeled radio path, not just the drawing.
+
+## M4 — Communication visualization
+
+- Render links with state-dependent styles.
+- Add uplink/downlink distinctions.
+- Add telemetry-driven traffic animation.
+- Add node/link inspectors.
+- Verify historical rendering compatibility.
+
+**Exit condition:** all visualized link and traffic states come from the active simulation.
+
+## M5 — Frame history and final integration
+
+- Implement bounded frame snapshots.
+- Add timeline scrubbing.
+- Add return-to-live behavior.
+- Preserve configuration revisions.
+- Verify historical snapshots are immutable.
+- Run regression and build tests.
+
+**Exit condition:** the full interface remains coherent during live playback, editing, and historical inspection.
+
+# 18. Acceptance tests
+
+## Spatial state and lock
+
+- Moving a node updates coordinates and derived altitude.
+- Changing AGL updates absolute altitude.
+- Moving the ACN in ellipse mode updates the center without altering unrelated ellipse parameters.
+- Spatial edits are rejected while locked.
+- Valid edits are accepted while unlocked.
+- Stale revision commands are rejected.
+- Invalid coordinates and dimensions are rejected.
+- Out-of-domain positions follow the documented terrain policy.
+- Failed edits leave the previous valid state intact.
+
+## Flight paths
+
+- Existing ellipse behavior remains correct.
+- Closed waypoint trajectories repeat continuously.
+- Waypoint edits change subsequent ACN positions.
+- Invalid paths are rejected.
+- Prediction uses the selected trajectory mode.
+- Switching modes is explicit.
+- Loop-boundary position and velocity behavior are tested.
+
+## Obstacles
+
+- All three shapes can be created.
+- Ground anchoring uses sampled terrain elevation.
+- A line intersecting an obstacle is identified as obstructed.
+- A line clear of an obstacle is not obstructed by that obstacle.
+- Moving an obstacle updates affected link calculations.
+- Overlapping obstacles are evaluated deterministically.
+- The path profile displays obstacle intersections.
+- The lock prevents obstacle mutations.
+- The original DEM remains unchanged.
+
+## Frame history
+
+- Every captured frame has a unique index and timestamp.
+- Retention remains bounded.
+- Oldest snapshots are evicted first.
+- Snapshots are immutable.
+- Historical selection does not alter live simulation time.
+- Returning to live displays the latest frame.
+- Pre-edit snapshots retain their original configuration.
+- The 60-second target is tested against a memory budget.
+
+## Communication visualization
+
+- Link state matches telemetry.
+- A usable link with no traffic does not show false transmission.
+- Traffic animation requires supporting telemetry.
+- Uplink and downlink are distinguishable.
+- Unsupported downlink measurements are not fabricated.
+- Historical frames render historical links and traffic.
+- Selecting a node highlights its link.
+
+## Node inventory and profile
+
+- All registered nodes appear exactly once.
+- Units are explicit.
+- Selecting a row selects the same map node and profile.
+- Geographic coordinates are shown only when correctly transformed.
+- Zoom and pan do not modify spatial state.
+- Reset-to-fit shows the full profile.
+- Changing the selected link refreshes the profile.
+- Switching top-view mode preserves spatial coordinates.
+
+## Regression and build
+
+- Existing scheduler and link-budget behavior remains intact.
+- Worker startup and telemetry generation continue to work.
+- The application builds from a clean dependency installation.
+- TypeScript tests execute in CI.
+- GitHub Pages base-path behavior remains correct.
+- History does not cause unbounded memory growth.
+- Live/history switching does not break playback.
+
+Python tests may remain as legacy evidence, but they are not substitutes for active TypeScript tests.
+
+# 19. Existing risks and deferred work
+
+A prior source-level review identified several issues that should be tracked but are not the immediate implementation priority.
+
+## Terrain coordinate scaling
+
+The DEM downloader covers a much smaller geographic region than the default 1,200 km simulation grid. The terrain can therefore be stretched across an inappropriate spatial extent.
+
+The raster artifacts were internally consistent, but file consistency does not establish correct geographic mapping.
+
+Defer the comprehensive terrain-coordinate correction unless a feature cannot be implemented correctly without it. Do not conceal the mismatch when implementing obstacle or path geometry.
+
+## Physical-model validation
+
+The terrain, diffraction, Fresnel, RF link-budget, and predictive occlusion models require additional independent validation.
+
+Do not claim standards compliance merely because the code references ITU-R or 3GPP documents.
+
+## Benchmark validity
+
+Historical benchmark results need rerunning after metric corrections.
+
+Reported metrics have previously included issues with latency percentiles, wall-clock versus simulated-time interpretation, and insufficient reproducibility.
+
+Do not use historical benchmark results as proof that the new features or current scheduler are scientifically validated.
+
+## Existing tests
+
+A previous review reported 17 passing Python tests, 14 of 19 structural verification checks passing, and a broken bundled Vite launcher.
+
+Those results are from an earlier archive review and may no longer describe the current repository. Re-run the checks before relying on them.
+
+The frontend build problem should be addressed when necessary to validate feature work, not by assuming that included `dist/` files prove a successful fresh build.
+
+## Performance
+
+The history buffer and additional map overlays may affect performance on the intended hardware.
+
+Profile worker frame time, UI responsiveness, memory, and rendering behavior before choosing final release thresholds.
+
+# 20. Working rules for the coding agent
+
+1. Treat the active TypeScript implementation as authoritative.
+2. Treat Python as legacy.
+3. Inspect current files before proposing exact patches.
+4. Preserve working behavior and avoid unnecessary rewrites.
+5. Implement one milestone at a time.
+6. Keep each change focused and reviewable.
+7. Add tests alongside every new state mutation and simulation behavior.
+8. Do not invent unavailable telemetry.
+9. Do not mislabel local Cartesian coordinates as latitude/longitude.
+10. Do not make custom obstacles decorative only; they must affect the modeled obstruction.
+11. Do not let historical browsing mutate live simulation state.
+12. Enforce spatial locking at the worker boundary.
+13. Preserve configuration revisions and historical immutability.
+14. Re-run TypeScript tests and a clean production build after meaningful changes.
+15. Report exact files changed, design decisions, tests executed, failures, and remaining limitations.
+16. Do not claim a test or build passed unless it was actually run.
+17. Ask for clarification only when an unresolved decision materially affects correctness; otherwise use the finalized decisions in this document.
+
+# 21. Immediate next task
+
+Begin with **M1 — Spatial foundation**.
+
+First inspect:
+
+- `src/worker/simWorker.ts`
+- `src/core/trajectory.ts`
+- `src/core/terrain.ts`
+- `src/core/linkBudget.ts`
+- `src/core/config.ts`
+- `src/core/queues.ts`
+- The existing map interaction and node-rendering code in `index.html` or its extracted modules
+- Existing TypeScript tests and worker message definitions
+
+Then report:
+
+1. How spatial state is currently stored.
+2. How node movement is currently handled.
+3. Where ground-node altitude is derived.
+4. How trajectory configuration reaches the worker.
+5. How worker telemetry is structured.
+6. Where spatial edits can be validated atomically.
+7. Which existing types or helpers can be reused.
+8. The smallest safe patch for spatial state, AGL configuration, revision tracking, and global lock.
+
+After that review, implement M1 with tests. Do not start by implementing all seven features at once.
+
+**End goal:** a coherent, interactive TypeScript digital twin where spatial edits, terrain obstruction, communication visualization, node inventory, and historical frames all represent one consistent simulation state.

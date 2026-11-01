@@ -82,18 +82,17 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
   left: auto;
   z-index: 3;
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 4px 10px;
+  gap: 4px 8px;
   max-width: calc(100% - 20px);
-  width: max-content;
-  padding: 5px 9px;
+  padding: 4px 8px;
   background: rgba(18, 23, 29, .92);
   border: 1px solid var(--line2);
   border-radius: 5px;
-  font-size: 10.5px;
-  white-space: nowrap;
-  overflow-x: auto;
+  font-size: 10px;
+  line-height: 1.35;
   pointer-events: none;
   backdrop-filter: blur(4px);
 }
@@ -106,6 +105,43 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 .legend-line.blk-o{border-top-style:dotted;border-top-color:#f97316}
 .legend-line.out{border-top-style:dashed;border-top-color:#94a3b8}
 .legend-line.unk{border-top-style:dotted;border-top-color:#64748b}
+/* Radar Cursor Geographic Readout HUD (M7.2) */
+.radar-cursor-hud {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  background: rgba(11, 16, 21, 0.92);
+  border: 1px solid var(--line2);
+  border-left: 3px solid #38bdf8;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  user-select: none;
+  pointer-events: auto;
+  max-width: calc(100% - 20px);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+@media (max-width: 720px) {
+  .radar-cursor-hud {
+    font-size: 10px;
+    gap: 6px;
+    padding: 4px 8px;
+  }
+  .map-legend {
+    font-size: 9.5px;
+    gap: 3px 6px;
+    padding: 3px 6px;
+  }
+}
 .radar-canvas-container::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 62%,rgba(8,12,16,.5))}
 .situation-strip{flex:none;display:flex;gap:10px;align-items:flex-start;padding:9px 12px;background:var(--surface);border-top:1px solid var(--line);font-size:12px;min-height:46px}
 .situation-strip strong{color:var(--accent);font-weight:600;flex:none}
@@ -352,6 +388,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         </div>
         <div class="radar-canvas-container" id="radar-container" style="cursor:grab">
           <canvas id="radar-canvas" aria-label="Live terrain and ground terminal network map"></canvas>
+          <div id="radar-cursor-hud" class="radar-cursor-hud" aria-label="Geographic cursor coordinates and terrain elevation" title="Move cursor over map to inspect coordinates">
+            <span style="color:#64748b;display:inline-flex;align-items:center;gap:6px;"><span style="width:6px;height:6px;border-radius:50%;background:#475569;"></span>CURSOR: OUTSIDE RADAR MAP</span>
+          </div>
           <div id="three-stage-container" class="three-stage-container" style="display:none;position:absolute;inset:0;width:100%;height:100%;overflow:hidden;z-index:2;" aria-hidden="true">
             <canvas id="three-canvas" aria-label="3D Tactical Terrain View"></canvas>
             <div class="three-hud-overlay" style="position:absolute;bottom:14px;left:14px;pointer-events:none;z-index:4;">
@@ -367,9 +406,11 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <span><i class="legend-line blk-t"></i>Blocked (terrain)</span>
             <span><i class="legend-line blk-o"></i>Blocked (obstacle)</span>
             <span><i class="legend-line out"></i>Outage</span>
-            <span><i class="legend-line unk"></i>Unknown</span>
             <span><i class="legend-square"></i>Airborne relay</span>
             <span>◎ Selected terminal</span>
+            <span style="color:#38bdf8">▸▸ Uplink (UL: Node → ACN)</span>
+            <span style="color:#f8fafc">◂◂ Downlink (DL: ACN → Node)</span>
+            <span style="color:#38bdf8"><b>TX / RX</b> Active</span>
           </div>
         </div>
         <div class="situation-strip"><strong>What's happening</strong><span id="overview-narrative">Simulation active on dedicated WebWorker thread. Evaluating 50 Hz multi-class telemetry...</span></div>
@@ -633,7 +674,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       <div class="panel waterfall-card">
         <div class="panel-head"><span class="sec-title">Superframe timeline (20 ms, 50 Hz)</span></div>
         <div class="legend">
-          <span><i style="background:#38bdf8"></i>C2 signaling</span><span><i style="background:#10b981"></i>Voice (PTT)</span><span><i style="background:#f59e0b"></i>Video</span><span><i style="background:#fb923c"></i>Photo/data</span><span><i style="background:#ef4444"></i>Wasted on severed link</span><span><i style="background:#1f2937;outline:1px solid var(--line2)"></i>Headroom</span>
+          <span><i style="background:#38bdf8"></i>C2 signaling</span><span><i style="background:#10b981"></i>Voice (PTT)</span><span><i style="background:#f59e0b"></i>Video</span><span><i style="background:#fb923c"></i>Photo/data</span><span><i style="background:#ef4444"></i>Wasted on severed link</span><span><i style="background:rgba(16,185,129,0.25);border:1px dashed #34d399"></i>Reclaimed airtime</span><span><i style="background:#ef4444"></i>Overlap conflict</span><span><i style="background:#1f2937;outline:1px solid var(--line2)"></i>Headroom</span>
         </div>
         <div class="waterfall-canvas-container"><canvas id="waterfall-canvas"></canvas></div>
       </div>
@@ -656,11 +697,11 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <tr><td>Concluded packets dropped</td><td id="tbl-stat-drops">0 (0.0%)</td><td id="tbl-tac-drops" class="c-ok">0 (0.0%)</td><td id="tbl-drop-reduc" class="c-ok">0% fewer</td></tr>
             <tr><td>Active uplink frame utilization</td><td id="tbl-stat-util">100.0%</td><td id="tbl-tac-util">0.0%</td><td class="muted">Adaptive sizing</td></tr>
             <tr><td id="tbl-backlog-label">Selected terminal queue backlog</td><td id="tbl-n4-stat">--</td><td id="tbl-n4-tac">--</td><td id="tbl-n4-status">--</td></tr>
-            <tr><td>Per-frame goodput increment (P50)</td><td id="tbl-p50-stat">--</td><td id="tbl-p50-tac">--</td><td id="tbl-p50-gain">--</td></tr>
-            <tr><td>Per-frame goodput increment (P95)</td><td id="tbl-p95-stat">--</td><td id="tbl-p95-tac">--</td><td id="tbl-p95-gain">--</td></tr>
+            <tr><td>Rolling goodput (P50) <small class="muted" style="font-size:10.5px">· 4s / 200 superframes</small></td><td id="tbl-p50-stat">--</td><td id="tbl-p50-tac">--</td><td id="tbl-p50-gain">--</td></tr>
+            <tr><td>Rolling goodput (P95) <small class="muted" style="font-size:10.5px">· 4s / 200 superframes</small></td><td id="tbl-p95-stat">--</td><td id="tbl-p95-tac">--</td><td id="tbl-p95-gain">--</td></tr>
           </tbody>
         </table></div>
-        <p class="inspector-footnote">Statistical guardrail: P50/P95 are intentionally marked unavailable until the worker emits a validated per-superframe goodput sample series. Exploratory UI telemetry: values are differences between successive cumulative-goodput readings, not guaranteed one-per-frame samples. At least 20 non-negative increments are required. This session window resets on page reload and is not a controlled benchmark.</p>
+        <p class="inspector-footnote">Statistical specification (M7.3): P50/P95 rolling goodput statistics evaluate actual delivered payload bits over a rolling window of 200 completed superframes (4.0 seconds) using nearest-rank percentiles. Exploratory UI telemetry: values are differences between successive cumulative-goodput readings, not guaranteed one-per-frame samples. At least 20 non-negative increments are required. This session window resets on page reload and is not a controlled benchmark.</p>
       </div>
     </div>
   </section>
@@ -698,24 +739,29 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div id="history-spatial-revision-warning" class="history-banner warning" style="display:none"></div>
       </div>
 
-      <div class="panel">
+      <!-- Terrain Path Profile Section (Feature 6A) -->
+      <div class="panel" id="terrain-profile-panel" style="margin-bottom:14px">
         <div class="panel-head">
           <div>
-            <span class="sec-title">Line-of-sight profile (ITU-R P.526-15)</span>
-            <span id="fresnel-node-label" class="badge-sub">Node 4</span>
-            <span id="profile-zoom-label" class="badge-sub">1.0×</span>
+            <span class="sec-title">Terrain path profile</span>
+            <span id="terrain-node-label" class="badge-sub">Node 4</span>
+            <span id="terrain-zoom-label" class="badge-sub">1.0×</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <div class="seg" role="toolbar" aria-label="Profile zoom controls">
-              <button type="button" id="btn-profile-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
-              <button type="button" id="btn-profile-zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button>
-              <button type="button" id="btn-profile-reset-fit" title="Reset view (Fit)" aria-label="Reset profile view to fit">Fit</button>
+            <div class="seg" id="terrain-view-toggle" role="toolbar" aria-label="Terrain profile view mode">
+              <button type="button" id="btn-terrain-view-profile" class="active" title="Terrain elevation cross-section profile">Profile</button>
+              <button type="button" id="btn-terrain-view-top" title="Top-down terrain path corridor plan view">Top view</button>
             </div>
-            <span id="fresnel-status-badge" class="kpi-badge badge-neutral">UNKNOWN</span>
-            <span id="profile-obstacle-badge" class="kpi-badge badge-neutral">OBSTACLES: UNKNOWN</span>
+            <div class="seg" role="toolbar" aria-label="Terrain profile zoom controls">
+              <button type="button" id="btn-terrain-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+              <button type="button" id="btn-terrain-zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button>
+              <button type="button" id="btn-terrain-reset-fit" title="Reset view (Fit)" aria-label="Reset terrain view to fit">Fit</button>
+            </div>
+            <span id="terrain-clearance-badge" class="kpi-badge badge-neutral">CLEARANCE: --</span>
+            <span id="terrain-crest-badge" class="kpi-badge badge-neutral">PEAK: --</span>
           </div>
         </div>
-        <div class="fresnel-canvas-box"><canvas id="fresnel-canvas"></canvas></div>
+        <div class="fresnel-canvas-box"><canvas id="terrain-canvas" aria-label="Terrain path profile and top view canvas"></canvas></div>
       </div>
       <div class="cols">
         <div class="panel">
@@ -797,12 +843,12 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="panel-head">
           <div>
             <span class="sec-title">Ground terminal inventory</span>
-            <span class="badge-sub">16 active nodes · Local Cartesian coordinates</span>
+            <span class="badge-sub">16 active nodes · WGS-84 &amp; Local Cartesian</span>
           </div>
           <span id="inventory-selected-pill" class="kpi-badge badge-cyan">Selected: Node 4</span>
         </div>
         <p class="muted" style="font-size:11.5px;margin-bottom:10px">
-          Coordinate reference: Local Cartesian theater projection (X/Y metres relative to Kargil theater origin, Z altitude MSL). Direct geodetic latitude/longitude transform remains uncalibrated in this engine build. Click any row to select the terminal.
+          Coordinate reference: Local Cartesian theater projection (X/Y metres relative to DEM center 34.5°N, 76.5°E) with calibrated WGS-84 Local Equirectangular mapping (standard parallel 34.5°N; 1° lat = 110,931.5 m, 1° lon = 91,840.0 m). Hover over Lat/Lon for DMS format. Click any row to select the terminal.
         </p>
         <div class="table-scroll">
           <table class="data-table" id="terminal-inventory-table">
@@ -811,10 +857,12 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <th>ID</th>
                 <th>Callsign</th>
                 <th>Tactical role</th>
+                <th>Latitude</th>
+                <th>Longitude</th>
                 <th>Coord X (m)</th>
                 <th>Coord Y (m)</th>
-                <th>Terrain MSL (m)</th>
                 <th>Antenna AGL (m)</th>
+                <th>Terrain MSL (m)</th>
                 <th>Total MSL (m)</th>
                 <th>Link status</th>
               </tr>
@@ -1077,7 +1125,8 @@ import { parseEditorNumber, TrajectoryEditorState } from './src/ui/trajectoryEdi
 import { obstacleContainsPoint, obstacleFootprintPoints } from './src/core/obstacles.ts';
 import { ObstacleEditorState, OBSTACLE_EDITOR_LIMITS, resolveSpatialCanvasTarget } from './src/ui/obstacleEditorState.ts';
 import { routeCommandResult } from './src/ui/commandResultRouter.ts';
-import { LinkProfileViewportState, renderLinkProfileViewport, summarizeProfileStatus } from './src/ui/linkProfileViewport.ts';
+import { LinkProfileViewportState, renderTerrainProfileViewport, summarizeProfileStatus } from './src/ui/linkProfileViewport.ts';
+import { TopViewViewportState, renderTerrainTopView } from './src/ui/pathProfileTopView.ts';
 import {
   createHistoricalRecordSnapshot,
   SimulationHistoryBuffer,
@@ -1097,7 +1146,67 @@ import {
   computeDemBoundaryGeometry,
   renderDemCoverageBoundary,
 } from './src/ui/terrainMapRenderer.ts';
+import { TerrainEngine } from './src/core/terrain.ts';
+import {
+  computeRadarCursorReadout,
+  renderCursorHudHtml,
+} from './src/ui/radarCursorReadout.ts';
 import { createThreeStageController } from './src/ui/three/index.ts';
+import {
+  DataCommVisualizer,
+  createSuperframeSnapshot,
+  resolveSuperframeTimeline,
+  resolveActiveTdmaSlotState,
+} from './src/ui/dataCommVisualization.ts';
+
+const dataCommVisualizer = new DataCommVisualizer();
+
+function updateStepControlUI(enabled) {
+  const btn = $('btn-step');
+  if (!btn) return;
+  btn.disabled = !enabled;
+  btn.classList.toggle('disabled', !enabled);
+  if (!enabled) {
+    btn.setAttribute('aria-disabled', 'true');
+    btn.title = 'Stepped cycle in progress...';
+  } else {
+    btn.removeAttribute('aria-disabled');
+    btn.title = 'Advance one 20 ms frame (.)';
+  }
+}
+
+function updatePauseButtonUI() {
+  const btn = $('btn-pause');
+  if (!btn) return;
+  const pbMode = dataCommVisualizer.getPlaybackMode();
+  const stepState = dataCommVisualizer.getSteppedLifecycle();
+  const visualPaused = dataCommVisualizer.isVisualPaused();
+
+  if (pbMode === 'stepped') {
+    if (stepState === 'playing') {
+      btn.textContent = visualPaused ? 'RESUME' : 'PAUSE';
+      btn.classList.toggle('active', visualPaused);
+      btn.title = visualPaused ? 'Resume stepped visual playback (Space)' : 'Pause stepped visual playback (Space)';
+    } else if (stepState === 'complete') {
+      btn.textContent = 'RESUME SIM';
+      btn.classList.add('active');
+      btn.title = 'Resume continuous simulation (Space)';
+    } else {
+      btn.textContent = isPaused ? 'RESUME' : 'PAUSE';
+      btn.classList.toggle('active', isPaused);
+      btn.title = 'Pause or resume (Space)';
+    }
+  } else {
+    btn.textContent = isPaused ? 'RESUME' : 'PAUSE';
+    btn.classList.toggle('active', isPaused);
+    btn.title = 'Pause or resume (Space)';
+  }
+}
+
+dataCommVisualizer.setOnSteppedCycleComplete(() => {
+  updateStepControlUI(true);
+  updatePauseButtonUI();
+});
 
 /* ====================================================================
    CLIENT-SIDE WEBWORKER & RENDERING CONTROLLER
@@ -1182,7 +1291,10 @@ let activeTerrainBounds = null;
 let spatialLocked = false;
 const trajectoryEditor = new TrajectoryEditorState();
 const obstacleEditor = new ObstacleEditorState();
-const linkProfileViewport = new LinkProfileViewportState();
+// Terrain Path Profile View Mode & Viewport States (Feature 6A)
+let terrainProfileViewMode = 'profile'; // 'profile' | 'top'
+const terrainProfileViewport = new LinkProfileViewportState();
+const terrainTopViewport = new TopViewViewportState();
 const historyBuffer = new SimulationHistoryBuffer(3000);
 const historyController = new SimulationHistoryController(historyBuffer);
 const schedHistoryBuffer = new SchedulerHistoryBuffer(3000);
@@ -1200,6 +1312,49 @@ let obstacleRequestSerial = 0;
 let mouseScreenX = -1, mouseScreenY = -1;
 let mouseWorldX = 0, mouseWorldY = 0;
 let isMouseInsideRadar = false;
+
+// Main-thread TerrainEngine for live 2D tactical radar cursor readout (M7.2)
+const mainTerrainEngine = new TerrainEngine({ terrainMode: activeTerrainMode });
+mainTerrainEngine.loadRealSatelliteDem().catch(() => {});
+
+let lastReadoutX = Number.NaN, lastReadoutY = Number.NaN, lastInsideRadar = false;
+function updateRadarCursorReadout(xM, yM, isInside) {
+  const hudEl = $('radar-cursor-hud');
+  if (!hudEl) return;
+
+  if (!isInside) {
+    if (!lastInsideRadar) return;
+    lastInsideRadar = false;
+    hudEl.innerHTML = renderCursorHudHtml(computeRadarCursorReadout({ xM: 0, yM: 0, isInsideRadar: false }));
+    hudEl.title = 'Move pointer over radar map to inspect coordinates';
+    return;
+  }
+
+  if (lastInsideRadar && Math.abs(xM - lastReadoutX) < 1 && Math.abs(yM - lastReadoutY) < 1) {
+    return;
+  }
+
+  lastReadoutX = xM;
+  lastReadoutY = yM;
+  lastInsideRadar = true;
+
+  const readout = computeRadarCursorReadout({
+    xM,
+    yM,
+    isInsideRadar: true,
+    terrainMode: activeTerrainMode,
+    getElevation: (x, y) => {
+      if (activeTerrainMode === 'real') {
+        return mainTerrainEngine.getDemElevation(x, y);
+      }
+      return mainTerrainEngine.getElevation(x, y);
+    },
+    isWithinCoverage: (x, y) => mainTerrainEngine.isWithinDemCoverage(x, y),
+  });
+
+  hudEl.innerHTML = renderCursorHudHtml(readout);
+  hudEl.title = readout.tooltipText;
+}
 
 let latestTelemetry = {
   frame_index: 0, sim_time_s: 0, active_scheduler_mode: 'tac_tad',
@@ -1407,7 +1562,7 @@ function syncHistoricalUIState() {
     if (linkEl) linkEl.textContent = `SNR ${rec.linkBudget.snrDb.toFixed(1)} dB (${histBadge.badgeText})`;
   }
 
-  setText('fresnel-node-label', `${rec.nodeName} [Historical #${rec.frameIndex}]`);
+  setText('terrain-node-label', `${rec.nodeName} [Historical #${rec.frameIndex}]`);
   setText('link-modcod-tag', rec.linkBudget.modcodName || '--');
   setText('lb-slant', typeof rec.linkBudget.slantRangeKm === 'number' ? `${rec.linkBudget.slantRangeKm.toFixed(2)} km` : '--');
   setText('lb-snr', typeof rec.linkBudget.snrDb === 'number' ? `${rec.linkBudget.snrDb.toFixed(1)} dB` : '--');
@@ -1475,6 +1630,9 @@ window.returnToLive = function() {
     $('btn-pause').textContent = 'PAUSE';
     $('btn-pause').classList.remove('active');
   }
+
+  dataCommVisualizer.exitHistorical(isPaused);
+  updateStepControlUI(!isPaused || dataCommVisualizer.canStep());
 };
 
 /* ====================================================================
@@ -1536,6 +1694,8 @@ function recordSchedulerHistoricalFrame(frame) {
     activeAllocations: mapAllocs(allocations),
     staticAllocations: staticAllocations ? mapAllocs(staticAllocations) : undefined,
     tacAllocations: tacAllocations ? mapAllocs(tacAllocations) : undefined,
+    ctrlDurationMs: frame.downlink_telemetry?.ctrl_duration_ms ?? 1.0,
+    dlDurationMs: frame.downlink_telemetry?.dl_duration_ms ?? 3.0,
     nodeBacklogs,
     kpi: {
       staticGoodputMb: kpi.static_goodput_mb ?? 0,
@@ -1809,6 +1969,9 @@ window.returnSchedulerToLive = function() {
     $('btn-pause').textContent = 'PAUSE';
     $('btn-pause').classList.remove('active');
   }
+
+  dataCommVisualizer.exitHistorical(isPaused);
+  updateStepControlUI(!isPaused || dataCommVisualizer.canStep());
 };
 
 /* ---------- Canvas Chart Renderers ---------- */
@@ -2062,6 +2225,7 @@ worker.onmessage = (event) => {
     }
   } else if (msg.type === 'HILLSHADE_READY') {
     renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode, msg.bounds);
+    requestTerrainMeshData(false);
     if (threeController && hillshadeCanvas) {
       threeController.setHillshadeCanvas(hillshadeCanvas);
     }
@@ -2142,7 +2306,7 @@ function renderHillshadeFromWorker(data, size, boundsKm, terrainMode, bounds) {
 
 const radarCanvas = $('radar-canvas'), radarCtx = radarCanvas.getContext('2d');
 const waterfallCanvas = $('waterfall-canvas'), waterfallCtx = waterfallCanvas.getContext('2d');
-const fresnelCanvas = $('fresnel-canvas'), fresnelCtx = fresnelCanvas.getContext('2d');
+const terrainCanvas = $('terrain-canvas'), terrainCtx = terrainCanvas ? terrainCanvas.getContext('2d') : null;
 
 /* ---------- 2D / 3D Stage Coexistence Controller (M6.2.2) ---------- */
 let stageViewMode = '2d';
@@ -2242,7 +2406,16 @@ function handleTerrainMeshDataResponse(msg) {
     elevations: msg.elevations,
   };
 
+  if (msg.elevations && msg.terrain_mode === 'real') {
+    mainTerrainEngine.loadCustomDem(msg.elevations);
+  } else if (msg.terrain_mode === 'synthetic') {
+    mainTerrainEngine.setTerrainMode('synthetic');
+  }
+
   updateTerrainHudBadge();
+  if (isMouseInsideRadar) {
+    updateRadarCursorReadout(mouseWorldX, mouseWorldY, true);
+  }
 
   if (threeController) {
     threeController.loadTerrainMeshData(cachedTerrainMeshData);
@@ -2284,8 +2457,10 @@ window.setStageViewMode = function(mode) {
   const threeWrap = $('three-stage-container');
   const resLabel = $('label-mesh-res');
   const resToggle = $('mesh-res-toggle');
+  const radarCursorHud = $('radar-cursor-hud');
 
   if (mode === '3d') {
+    if (radarCursorHud) radarCursorHud.style.display = 'none';
     if (resLabel) resLabel.style.display = 'inline';
     if (resToggle) resToggle.style.display = 'inline-flex';
     if (!threeController) {
@@ -2304,6 +2479,7 @@ window.setStageViewMode = function(mode) {
       }
     }
   } else {
+    if (radarCursorHud) radarCursorHud.style.display = 'inline-flex';
     if (resLabel) resLabel.style.display = 'none';
     if (resToggle) resToggle.style.display = 'none';
     if (threeController) {
@@ -2640,10 +2816,39 @@ window.togglePause = function() {
     returnSchedulerToLive();
     return;
   }
+
+  const pbMode = dataCommVisualizer.getPlaybackMode();
+  const stepState = dataCommVisualizer.getSteppedLifecycle();
+
+  if (pbMode === 'stepped') {
+    if (stepState === 'playing') {
+      // Fix 2: Stepped visual playback running: toggle ONLY visual pause; worker remains physically paused
+      const currentlyVisualPaused = dataCommVisualizer.isVisualPaused();
+      dataCommVisualizer.setVisualPaused(!currentlyVisualPaused);
+      updatePauseButtonUI();
+      return;
+    } else if (stepState === 'complete') {
+      // Fix 2: Stepped cycle completed: explicit RESUME returns to normal continuous simulation
+      isPaused = false;
+      dataCommVisualizer.resumeContinuous();
+      updateStepControlUI(true);
+      sendCommand({ type: 'SIM_CONTROL', action: 'resume' });
+      updatePauseButtonUI();
+      return;
+    }
+  }
+
+  // Normal continuous mode:
   isPaused = !isPaused;
-  sendCommand({ type: 'SIM_CONTROL', action: isPaused ? 'pause' : 'resume' });
-  $('btn-pause').textContent = isPaused ? 'RESUME' : 'PAUSE';
-  $('btn-pause').classList.toggle('active', isPaused);
+  if (!isPaused) {
+    dataCommVisualizer.resumeContinuous();
+    updateStepControlUI(true);
+    sendCommand({ type: 'SIM_CONTROL', action: 'resume' });
+  } else {
+    dataCommVisualizer.setVisualPaused(true);
+    sendCommand({ type: 'SIM_CONTROL', action: 'pause' });
+  }
+  updatePauseButtonUI();
 };
 
 window.toggleSpatialLock = function() {
@@ -2651,6 +2856,10 @@ window.toggleSpatialLock = function() {
 };
 
 window.stepSim = function() {
+  if (!dataCommVisualizer.canStep()) {
+    console.warn('[Simulation] STEP rejected: cycle playing or awaiting telemetry.');
+    return;
+  }
   if (historyController.isInspecting) {
     historyController.exitHistorical();
     syncLiveUIState();
@@ -2659,10 +2868,13 @@ window.stepSim = function() {
     schedHistoryController.exitHistorical();
     syncSchedulerLiveUIState();
   }
+  const reqId = dataCommVisualizer.requestStep();
+  if (reqId === null) return;
+
   isPaused = true;
-  $('btn-pause').textContent = 'RESUME';
-  $('btn-pause').classList.add('active');
-  sendCommand({ type: 'SIM_CONTROL', action: 'step' });
+  updateStepControlUI(false);
+  updatePauseButtonUI();
+  sendCommand({ type: 'SIM_CONTROL', action: 'step', step_request_id: reqId });
 };
 
 window.setSpeed = function(spd) {
@@ -2674,9 +2886,6 @@ window.setSpeed = function(spd) {
     schedHistoryController.exitHistorical();
     syncSchedulerLiveUIState();
   }
-  isPaused = false;
-  $('btn-pause').textContent = 'PAUSE';
-  $('btn-pause').classList.remove('active');
   ['spd-01', 'spd-05', 'spd-10'].forEach(id => $(id).classList.remove('active'));
   $(spd === 0.1 ? 'spd-01' : spd === 0.5 ? 'spd-05' : 'spd-10').classList.add('active');
   sendCommand({ type: 'SET_SPEED', speed: spd });
@@ -2695,6 +2904,9 @@ window.resetSim = function() {
   currentSpatialRevision = 0;
   historyController.reset();
   schedHistoryController.reset();
+  dataCommVisualizer.reset();
+  updateStepControlUI(true);
+  updatePauseButtonUI();
   updateScrubberUI();
   updateSchedulerScrubberUI();
   sendCommand({ type: 'SIM_CONTROL', action: 'reset' });
@@ -2714,6 +2926,9 @@ window.loadPreset = function(id) {
     currentSpatialRevision = 0;
     historyController.reset();
     schedHistoryController.reset();
+    dataCommVisualizer.reset();
+    updateStepControlUI(true);
+    updatePauseButtonUI();
     updateScrubberUI();
     updateSchedulerScrubberUI();
   }
@@ -2825,14 +3040,16 @@ window.setTerrainMode = function(mode) {
     return;
   }
   activeTerrainMode = mode;
+  mainTerrainEngine.setTerrainMode(mode);
   cachedTerrainMeshData = null;
   updateTerrainHudBadge();
   $('btnRealTerrain').classList.toggle('active', mode === 'real');
   $('btnSynthTerrain').classList.toggle('active', mode === 'synthetic');
   sendCommand({ type: 'SET_TERRAIN_MODE', mode: mode });
   sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: mode } });
-  if (stageViewMode === '3d') {
-    requestTerrainMeshData(true);
+  requestTerrainMeshData(true);
+  if (isMouseInsideRadar) {
+    updateRadarCursorReadout(mouseWorldX, mouseWorldY, true);
   }
 };
 
@@ -2920,7 +3137,7 @@ syncTabWithLocationHash();
 function resizeCanvases() {
   const chart1 = $('sched-chart-utilization');
   const chart2 = $('sched-chart-backlog');
-  [radarCanvas, waterfallCanvas, fresnelCanvas, chart1, chart2].forEach(cvs => {
+  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2].forEach(cvs => {
     if (!cvs) return;
     const container = cvs.parentElement;
     if (!container) return;
@@ -2952,7 +3169,7 @@ setTimeout(resizeCanvases, 30);
 
 if ('ResizeObserver' in window) {
   const ro = new ResizeObserver(() => resizeCanvases());
-  [radarCanvas, waterfallCanvas, fresnelCanvas, $('sched-chart-utilization'), $('sched-chart-backlog')].forEach(c => {
+  [radarCanvas, waterfallCanvas, terrainCanvas, $('sched-chart-utilization'), $('sched-chart-backlog')].forEach(c => {
     if (c && c.parentElement) ro.observe(c.parentElement);
   });
 }
@@ -2965,6 +3182,17 @@ function getNodeRole(nodeId) {
   if (nodeId === 2) return 'Medic (Voice MC-PTT)';
   if (nodeId === 3 || nodeId === 6 || nodeId === 9) return 'Scout (Tactical Video)';
   return 'Soldier Terminal';
+}
+
+function formatDmsStr(deg, isLat) {
+  if (!Number.isFinite(deg)) return '--';
+  const hemi = isLat ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W');
+  const abs = Math.abs(deg);
+  const d = Math.floor(abs);
+  const remM = (abs - d) * 60;
+  const m = Math.floor(remM);
+  const s = ((remM - m) * 60).toFixed(1);
+  return `${d}°${String(m).padStart(2, '0')}'${s.padStart(4, '0')}"${hemi}`;
 }
 
 function renderTerminalInventory(nodes, selectedId, query = '') {
@@ -2992,6 +3220,13 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
     const isSelected = n.node_id === selectedId;
     const x = typeof n.x_m === 'number' ? n.x_m : (n.position ? n.position[0] : 0);
     const y = typeof n.y_m === 'number' ? n.y_m : (n.position ? n.position[1] : 0);
+    const lat = typeof n.lat_deg === 'number' ? n.lat_deg : (34.5 + y / 110931.4506);
+    const lon = typeof n.lon_deg === 'number' ? n.lon_deg : (76.5 + x / 91839.9774);
+    const latStr = `${Math.abs(lat).toFixed(5)}°${lat >= 0 ? 'N' : 'S'}`;
+    const lonStr = `${Math.abs(lon).toFixed(5)}°${lon >= 0 ? 'E' : 'W'}`;
+    const latDms = formatDmsStr(lat, true);
+    const lonDms = formatDmsStr(lon, false);
+
     const terrainMsl = typeof n.terrain_elevation_msl_m === 'number' ? n.terrain_elevation_msl_m : 0;
     const agl = typeof n.agl_m === 'number' ? n.agl_m : (typeof n.antenna_height_m === 'number' ? n.antenna_height_m : 2.0);
     const totalMsl = typeof n.altitude_msl_m === 'number' ? n.altitude_msl_m : (typeof n.z_m === 'number' ? n.z_m : (terrainMsl + agl));
@@ -3012,10 +3247,12 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
       <td style="text-align:left;font-family:var(--mono)">${n.node_id}</td>
       <td style="text-align:left;font-weight:600">${callsign}</td>
       <td style="text-align:left;font-family:var(--sans)">${role}</td>
+      <td title="${latDms}" style="font-family:var(--mono)">${latStr}</td>
+      <td title="${lonDms}" style="font-family:var(--mono)">${lonStr}</td>
       <td>${x.toFixed(0)}</td>
       <td>${y.toFixed(0)}</td>
-      <td>${terrainMsl.toFixed(1)}</td>
       <td>${agl.toFixed(1)}</td>
+      <td>${terrainMsl.toFixed(1)}</td>
       <td>${totalMsl.toFixed(1)}</td>
       <td style="text-align:center"><span class="${badge.badgeClass}" style="display:inline-block;padding:2px 6px;font-size:10px">${badge.badgeText}</span></td>
     `;
@@ -3292,12 +3529,47 @@ function updateDashboardDOM(frame) {
     setText('tbl-n4-status', 'No terminal selected');
   }
 
-  setText('tbl-p50-stat', 'Not instrumented');
-  setText('tbl-p50-tac', 'Not instrumented');
-  setText('tbl-p50-gain', 'Requires frame samples');
-  setText('tbl-p95-stat', 'Not instrumented');
-  setText('tbl-p95-tac', 'Not instrumented');
-  setText('tbl-p95-gain', 'Requires frame samples');
+  // Worker-authoritative rolling goodput statistics (M7.3: 200 superframes / 4 seconds)
+  const statP50 = frame.static_p50_bps ?? kpi.static_p50_bps;
+  const statP95 = frame.static_p95_bps ?? kpi.static_p95_bps;
+  const tacP50 = frame.tac_p50_bps ?? kpi.tac_p50_bps;
+  const tacP95 = frame.tac_p95_bps ?? kpi.tac_p95_bps;
+  const sampleCount = kpi.rolling_window_sample_count;
+
+  if (statP50 !== undefined || tacP50 !== undefined) {
+    const formatMbps = (bps, count) => {
+      if (bps === null || bps === undefined) {
+        return typeof count === 'number' && count < 20 ? `Warming up (${count}/200)` : '--';
+      }
+      const mbps = bps / 1e6;
+      if (typeof count === 'number' && count < 200) {
+        return `${mbps.toFixed(2)} Mbps (${count}/200)`;
+      }
+      return `${mbps.toFixed(2)} Mbps`;
+    };
+    const formatGain = (tBps, sBps) => {
+      if (tBps === null || sBps === null || tBps === undefined || sBps === undefined) {
+        return 'Warming up';
+      }
+      if (sBps <= 0) return tBps > 0 ? '+∞' : '1.00×';
+      const gain = tBps / sBps;
+      return `${gain >= 1 ? '+' : ''}${gain.toFixed(2)}×`;
+    };
+
+    setText('tbl-p50-stat', formatMbps(statP50, sampleCount));
+    setText('tbl-p50-tac', formatMbps(tacP50, sampleCount));
+    setText('tbl-p50-gain', formatGain(tacP50, statP50));
+    setText('tbl-p95-stat', formatMbps(statP95, sampleCount));
+    setText('tbl-p95-tac', formatMbps(tacP95, sampleCount));
+    setText('tbl-p95-gain', formatGain(tacP95, statP95));
+  } else {
+    setText('tbl-p50-stat', 'Not instrumented');
+    setText('tbl-p50-tac', 'Not instrumented');
+    setText('tbl-p50-gain', 'Requires frame samples');
+    setText('tbl-p95-stat', 'Not instrumented');
+    setText('tbl-p95-tac', 'Not instrumented');
+    setText('tbl-p95-gain', 'Requires frame samples');
+  }
 
   // Target Node Inspection
   const allocations = Array.isArray(frame.active_gantt_allocations) ? frame.active_gantt_allocations : [];
@@ -3339,9 +3611,7 @@ function updateDashboardDOM(frame) {
 
     // Tab 3 Link Budget
     if (!historyController.isInspecting) {
-      const b3 = $('fresnel-status-badge');
-      if (b3) { b3.textContent = badgeInfo.badgeText; b3.className = badgeInfo.badgeClass; }
-      setText('fresnel-node-label', `Node ${selNode.node_id} (${selNode.name || 'Terminal'})`);
+      setText('terrain-node-label', `Node ${selNode.node_id} (${selNode.name || 'Terminal'})`);
       if (lb) {
         setText('link-modcod-tag', lb.modcod_name || '--');
         setText('lb-slant', typeof lb.slant_range_km === 'number' ? `${lb.slant_range_km.toFixed(2)} km` : '--');
@@ -3395,9 +3665,7 @@ function updateDashboardDOM(frame) {
     setText('glance-snr', '--');
     setText('glance-rate', '--');
     if (!historyController.isInspecting) {
-      const b3 = $('fresnel-status-badge');
-      if (b3) { b3.textContent = unknownBadge.badgeText; b3.className = unknownBadge.badgeClass; }
-      setText('fresnel-node-label', 'No terminal selected');
+      setText('terrain-node-label', 'No terminal selected');
       setText('link-modcod-tag', '--');
       setText('lb-slant', '--');
       setText('lb-snr', '--');
@@ -3431,6 +3699,9 @@ function updateDashboardDOM(frame) {
 
     setText('tx-type-lbl', tx.active_type ? `Uploading ${tx.active_type}` : 'IDLE - Standby');
     setText('tx-bytes-lbl', `${((tx.delivered_bytes || 0) / 1e6).toFixed(2)} / ${((tx.total_bytes || 0) / 1e6).toFixed(2)} MB (${pct.toFixed(1)}%)`);
+    const rateMbps = tx.current_rate_mbps ? tx.current_rate_mbps.toFixed(2) : (tx.current_rate_bps ? (tx.current_rate_bps / 1e6).toFixed(2) : '0.00');
+    const etaText = tx.eta_status ? `ETA: ${tx.eta_status}` : (tx.eta_s !== null && tx.eta_s !== undefined ? `ETA: ${tx.eta_s.toFixed(1)}s` : 'ETA: --');
+    setText('tx-eta-lbl', status === 'TRANSMITTING' ? `${etaText} · ${rateMbps} Mbps` : etaText);
     setText('tx-msg-lbl', tx.status_message || (status === 'IDLE' ? 'Select terminal and inject traffic.' : ''));
   }
 }
@@ -3710,16 +3981,26 @@ function drawRadar() {
       };
     });
 
-    // Pass 1: Render unselected background links
+    // Pass 1: Render unselected background links (idle ambient baseline vs energized beam)
     ctx.save();
     nodeItems.forEach(item => {
       if (item.isSel) return;
       ctx.beginPath();
       ctx.moveTo(acnPos.x, acnPos.y);
       ctx.lineTo(item.nPos.x, item.nPos.y);
-      ctx.strokeStyle = item.style.strokeColor;
-      ctx.lineWidth = item.style.lineWidth;
-      ctx.setLineDash(item.style.lineDash);
+      if (item.node.is_transmitting) {
+        ctx.strokeStyle = item.classification.status === 'DEGRADED' ? 'rgba(245, 158, 11, 0.85)' : '#38bdf8';
+        ctx.lineWidth = 2.0;
+        ctx.setLineDash([]);
+      } else if (item.classification.status === 'CONNECTED') {
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([]);
+      } else {
+        ctx.strokeStyle = item.style.strokeColor;
+        ctx.lineWidth = item.style.lineWidth;
+        ctx.setLineDash(item.style.lineDash);
+      }
       ctx.stroke();
     });
     ctx.restore();
@@ -3736,6 +4017,111 @@ function drawRadar() {
       ctx.setLineDash(selectedItem.style.lineDash);
       ctx.stroke();
       ctx.restore();
+    }
+
+    // Pass 2.5: Feature 1 - TDMA-Slot-Synchronized Data Communication Layer
+    const isHistorical = typeof schedHistoryController !== 'undefined' && Boolean(schedHistoryController.isInspecting);
+    const histSchedRec = isHistorical ? schedHistoryController.getActiveHistoricalRecord() : null;
+
+    const nodeScreenPositions = new Map();
+    nodeItems.forEach(item => {
+      nodeScreenPositions.set(item.node.node_id, { x: item.nPos.x, y: item.nPos.y });
+    });
+
+    let snapshot = null;
+    if (histSchedRec) {
+      // Historical mode: build immutable snapshot strictly from the historical scheduler record
+      const histNodes = (histSchedRec.nodeBacklogs && histSchedRec.nodeBacklogs.length > 0)
+        ? histSchedRec.nodeBacklogs.map(bl => {
+            const item = nodeItems.find(it => it.node.node_id === bl.nodeId);
+            const isBlocked = Boolean(bl.obstacleBlocked);
+            const isOutage = Boolean(bl.linkOutage);
+            return {
+              nodeId: bl.nodeId,
+              isOperational: !isOutage && !isBlocked,
+              isBlocked,
+              isObstacleBlocked: isBlocked,
+              isOutage,
+              isDegraded: bl.snrDb !== undefined ? (bl.snrDb < 10.0 && bl.snrDb > 3.0) : false,
+              linkStatus: isBlocked ? 'BLOCKED_OBSTACLE' : (isOutage ? 'OUTAGE_DISCONNECTED' : 'CONNECTED'),
+              isSelected: item ? item.isSel : (histSchedRec.selectedNodeId === bl.nodeId),
+              isTransmitting: false,
+              isWastingAirtime: false,
+              queueBacklogBytes: bl.totalBacklogBytes,
+              transfer: null,
+            };
+          })
+        : nodeItems.map(item => ({
+            nodeId: item.node.node_id,
+            isOperational: item.classification.isOperational,
+            isBlocked: item.classification.isBlocked,
+            isObstacleBlocked: item.classification.status === 'BLOCKED_OBSTACLE',
+            isOutage: item.classification.isOutage,
+            isDegraded: item.classification.status === 'DEGRADED',
+            linkStatus: item.classification.status,
+            isSelected: item.isSel,
+            isTransmitting: false,
+            isWastingAirtime: false,
+            queueBacklogBytes: (item.node.queue_backlog_bytes ?? item.node.backlog_bytes ?? 0),
+            transfer: null,
+          }));
+
+      snapshot = createSuperframeSnapshot({
+        source: 'historical',
+        sessionId: dataCommVisualizer.getSessionId(),
+        frameIndex: histSchedRec.frameIndex,
+        simulationTimeS: histSchedRec.simulationTimeS,
+        schedulerMode: histSchedRec.schedulerMode,
+        allocations: histSchedRec.activeAllocations,
+        staticAllocations: histSchedRec.staticAllocations,
+        tacAllocations: histSchedRec.tacAllocations,
+        nodes: histNodes,
+        ctrlDurationMs: histSchedRec.ctrlDurationMs ?? 1.0,
+        dlDurationMs: histSchedRec.dlDurationMs ?? 3.0,
+        isBroadcastingDownlink: true,
+      });
+    } else if (latestTelemetry) {
+      // Live mode: build immutable snapshot from authoritative worker telemetry
+      const commNodes = nodeItems.map(item => ({
+        nodeId: item.node.node_id,
+        isOperational: item.classification.isOperational,
+        isBlocked: item.classification.isBlocked,
+        isObstacleBlocked: item.classification.status === 'BLOCKED_OBSTACLE',
+        isOutage: item.classification.isOutage,
+        isDegraded: item.classification.status === 'DEGRADED',
+        linkStatus: item.classification.status,
+        isSelected: item.isSel,
+        isTransmitting: Boolean(item.node.is_transmitting),
+        isWastingAirtime: Boolean(item.node.is_wasting_airtime),
+        queueBacklogBytes: (item.node.queue_backlog_bytes ?? item.node.backlog_bytes ?? 0),
+        transfer: item.node.transfer_state,
+      }));
+
+      snapshot = createSuperframeSnapshot({
+        source: 'live',
+        sessionId: dataCommVisualizer.getSessionId(),
+        frameIndex: latestTelemetry.frame_index ?? Math.round((latestTelemetry.sim_time_s || 0) / 0.02),
+        simulationTimeS: latestTelemetry.sim_time_s || 0,
+        schedulerMode: latestTelemetry.scheduler_mode || 'tac_tad',
+        stepRequestId: latestTelemetry.step_request_id,
+        allocations: latestTelemetry.active_gantt_allocations || [],
+        staticAllocations: latestTelemetry.static_gantt_allocations,
+        tacAllocations: latestTelemetry.tac_gantt_allocations,
+        nodes: commNodes,
+        ctrlDurationMs: latestTelemetry.downlink_telemetry?.ctrl_duration_ms ?? 1.0,
+        dlDurationMs: latestTelemetry.downlink_telemetry?.dl_duration_ms ?? 3.0,
+        isBroadcastingDownlink: Boolean(latestTelemetry.downlink_telemetry?.broadcast_active ?? true),
+      });
+    }
+
+    if (snapshot) {
+      dataCommVisualizer.render(ctx, {
+        snapshot,
+        acnScreenPos: { x: acnPos.x, y: acnPos.y },
+        nodeScreenPositions,
+        speed: latestTelemetry?.speed ?? 1.0,
+        isPaused: Boolean(latestTelemetry?.paused),
+      });
     }
 
     // Pass 3: Render ground terminal markers, halos, and collision-checked labels
@@ -3904,35 +4290,8 @@ function drawRadar() {
     ctx.fillText(`ACN-1 [${(acn.altitude_msl_m || 5000).toFixed(0)}m]`, acnPos.x + 13, acnPos.y);
     ctx.restore();
 
-    // ------------------------------------------------------------------
-    // Local Cartesian coordinate HUD. No geographic transform is configured.
-    // ------------------------------------------------------------------
-    const curWx = isMouseInsideRadar ? mouseWorldX : (panOffsetX_m);
-    const curWy = isMouseInsideRadar ? mouseWorldY : (panOffsetY_m);
-
-    const hudText = `LOCAL x ${curWx.toFixed(0)} m | y ${curWy.toFixed(0)} m`;
-
-    ctx.save();
-    ctx.font = `10px ${MONO}`;
-    const hudW = ctx.measureText(hudText).width + 16;
-    const hudH = 20;
-    const hudX = 10;
-    const hudY = h - hudH - 8;
-
-    ctx.fillStyle = 'rgba(15, 21, 34, 0.90)';
-    ctx.fillRect(hudX, hudY, hudW, hudH);
-    ctx.strokeStyle = '#1e2633';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(hudX, hudY, hudW, hudH);
-
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(hudX, hudY, 2, hudH);
-
-    ctx.fillStyle = '#8b9bb4';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(hudText, hudX + 8, hudY + hudH / 2);
-    ctx.restore();
+    // Note: Live geographic coordinates & terrain elevation HUD are rendered
+    // via the interactive HTML overlay (#radar-cursor-hud) for native crispness and DMS hover.
 
   } catch (err) {
     console.error('Error drawing radar canvas:', err);
@@ -4030,7 +4389,11 @@ radarCanvas.addEventListener('mousedown', (e) => {
 });
 
 radarCanvas.addEventListener('mouseenter', () => { isMouseInsideRadar = true; });
-radarCanvas.addEventListener('mouseleave', () => { isMouseInsideRadar = false; hoveredNodeId = null; });
+radarCanvas.addEventListener('mouseleave', () => {
+  isMouseInsideRadar = false;
+  hoveredNodeId = null;
+  updateRadarCursorReadout(0, 0, false);
+});
 
 window.addEventListener('mousemove', (e) => {
   const rect = radarCanvas.getBoundingClientRect();
@@ -4045,8 +4408,10 @@ window.addEventListener('mousemove', (e) => {
     const world = screenToWorld(px, py, w, h);
     mouseWorldX = world.x;
     mouseWorldY = world.y;
+    updateRadarCursorReadout(mouseWorldX, mouseWorldY, true);
   } else {
     isMouseInsideRadar = false;
+    updateRadarCursorReadout(0, 0, false);
   }
 
   if (!draggedEntity && !isPanning && insideRadar) {
@@ -4138,10 +4503,69 @@ function drawWaterfall() {
     const trackH = Math.max(34, Math.min(64, (h - padT - padB - gap) / 2));
     const yStatic = padT, yTac = padT + trackH + gap;
     const xOf = s => padL + (s / FP) * plotW;
+    const xOfMs = ms => padL + (ms / 20.0) * plotW;
     const sel = typeof selectedNodeId === 'number' ? selectedNodeId : -1;
-    const histSchedRec = schedHistoryController.isInspecting ? schedHistoryController.getActiveHistoricalRecord() : null;
-    const nodes = histSchedRec ? histSchedRec.nodeBacklogs : (latestTelemetry.nodes_telemetry || []);
-    const activeAllocations = histSchedRec ? histSchedRec.activeAllocations : (latestTelemetry.active_gantt_allocations || []);
+
+    // Fix 1: Unified Snapshot Identity & Gantt Synchronization
+    const isHistorical = typeof schedHistoryController !== 'undefined' && Boolean(schedHistoryController.isInspecting);
+    const histSchedRec = isHistorical ? schedHistoryController.getActiveHistoricalRecord() : null;
+    const activeSnap = dataCommVisualizer.getActiveSnapshot();
+
+    // Prefer the latched activeSnapshot when it matches the current inspection mode
+    const useSnap = activeSnap && (
+      (!isHistorical && activeSnap.source === 'live') ||
+      (isHistorical && histSchedRec && activeSnap.source === 'historical' && activeSnap.frameIndex === histSchedRec.frameIndex)
+    );
+
+    const schedMode = useSnap
+      ? useSnap.schedulerMode
+      : (histSchedRec ? histSchedRec.schedulerMode : (latestTelemetry?.scheduler_mode || 'tac_tad'));
+
+    const ctrlDurationMs = useSnap
+      ? useSnap.ctrlDurationMs
+      : (histSchedRec?.ctrlDurationMs ?? latestTelemetry?.downlink_telemetry?.ctrl_duration_ms ?? 1.0);
+
+    const dlDurationMs = useSnap
+      ? useSnap.dlDurationMs
+      : (histSchedRec?.dlDurationMs ?? latestTelemetry?.downlink_telemetry?.dl_duration_ms ?? 3.0);
+
+    const superframeDurationMs = useSnap ? useSnap.superframeDurationMs : 20.0;
+
+    const nodes = useSnap
+      ? useSnap.nodes
+      : (histSchedRec ? histSchedRec.nodeBacklogs : (latestTelemetry?.nodes_telemetry || []));
+
+    // Preserve BOTH tracks simultaneously
+    const staticAllocations = useSnap?.staticAllocations ?? (
+      histSchedRec?.staticAllocations || latestTelemetry?.static_gantt_allocations || (schedMode === 'static' ? (useSnap?.allocations || histSchedRec?.activeAllocations || latestTelemetry?.active_gantt_allocations || []) : [])
+    );
+
+    const tacAllocations = useSnap?.tacAllocations ?? (
+      histSchedRec?.tacAllocations || latestTelemetry?.tac_gantt_allocations || (schedMode !== 'static' ? (useSnap?.allocations || histSchedRec?.activeAllocations || latestTelemetry?.active_gantt_allocations || []) : [])
+    );
+
+    // Authoritative Shared Timeline Resolution
+    const staticTimeline = resolveSuperframeTimeline({
+      allocations: staticAllocations,
+      schedulerMode: 'static',
+      nodes,
+      ctrlDurationMs,
+      dlDurationMs,
+      superframeDurationMs,
+    });
+
+    const tacTimeline = resolveSuperframeTimeline({
+      allocations: tacAllocations,
+      schedulerMode: 'tac_tad',
+      nodes,
+      ctrlDurationMs,
+      dlDurationMs,
+      superframeDurationMs,
+    });
+
+    const activeTimeline = schedMode === 'static' ? staticTimeline : tacTimeline;
+    const subframeOffsetMs = dataCommVisualizer.getCurrentSubframeOffsetMs();
+    const activeSlot = activeTimeline.resolveAt(subframeOffsetMs);
 
     // Time grid
     g.font = `10px ${MONO}`; g.textAlign = 'center'; g.lineWidth = 1;
@@ -4161,65 +4585,219 @@ function drawWaterfall() {
     trackLabel('STATIC TDMA', 'fixed 16 slots', yStatic, '#e8ecef');
     trackLabel('TAC-TAD', 'dynamic slots', yTac, '#9db4ff');
 
-    // Static track
+    // ─────────────────────────────────────────────────────────────────────────
+    // 1. Static track (Authoritative segments from staticTimeline)
+    // ─────────────────────────────────────────────────────────────────────────
     gfxRRect(g, padL, yStatic, plotW, trackH, 4);
-    g.fillStyle = '#0e141b'; g.fill(); g.strokeStyle = '#2c3844'; g.stroke();
-    const slotW = plotW / 16;
-    for (let i = 0; i < 16; i++) {
-      const x = padL + i * slotW + 1.5, sw = slotW - 3, y = yStatic + 3, sh = trackH - 6;
-      const n = nodes.find(nd => (nd.node_id ?? nd.nodeId) === i);
-      const out = !!n && ((n.state_name ?? n.stateName) === 'HARD_SHADOW_CUTOFF' || n.linkOutage || n.link_outage);
-      gfxRRect(g, x, y, sw, sh, 3);
-      g.fillStyle = out ? 'rgba(255,112,112,0.2)' : 'rgba(120,140,160,0.16)'; g.fill();
-      if (out) {
-        g.save(); g.clip();
-        g.strokeStyle = 'rgba(255,112,112,0.55)'; g.lineWidth = 1;
-        for (let k = -sh; k < sw + sh; k += 6) { g.beginPath(); g.moveTo(x + k, y + sh); g.lineTo(x + k + sh, y); g.stroke(); }
-        g.restore();
+    g.fillStyle = '#0e141b'; g.fill(); g.strokeStyle = '#2c3844'; g.lineWidth = 1; g.stroke();
+
+    const staticUlSegments = staticTimeline.segments.filter(s => s.phase === 'UPLINK_SLOT');
+    if (staticUlSegments.length > 0) {
+      // Draw CTRL and DL broadcasts if present in static segments
+      const ctrlSeg = staticTimeline.segments.find(s => s.phase === 'CONTROL_BROADCAST');
+      if (ctrlSeg && ctrlSeg.durationMs > 0) {
+        const cx = xOfMs(ctrlSeg.startMs), cw = Math.max(1, (ctrlSeg.durationMs / 20.0) * plotW);
+        g.fillStyle = 'rgba(157,180,255,0.10)'; g.fillRect(cx, yStatic + 1, cw, trackH - 2);
+        g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
+        g.fillText('CTRL', cx + 1, yStatic - 5);
       }
-      gfxRRect(g, x, y, sw, sh, 3);
-      g.strokeStyle = i === sel ? '#9db4ff' : out ? '#ff7070' : 'rgba(120,140,160,0.35)';
-      g.lineWidth = i === sel ? 1.8 : 1; g.stroke();
-      if (slotW > 20) {
-        g.fillStyle = out ? '#ffb3b3' : '#9aa8b3'; g.font = `10px ${MONO}`; g.textAlign = 'center';
-        g.fillText(`S${i}`, x + sw / 2, y + sh / 2 + 3.5);
+      const dlSeg = staticTimeline.segments.find(s => s.phase === 'DOWNLINK_BROADCAST');
+      if (dlSeg && dlSeg.durationMs > 0) {
+        const dx = xOfMs(dlSeg.startMs), dw = Math.max(1, (dlSeg.durationMs / 20.0) * plotW);
+        g.fillStyle = 'rgba(157,180,255,0.18)'; g.fillRect(dx, yStatic + 1, dw, trackH - 2);
+        g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
+        g.fillText('DL', dx + 2, yStatic - 5);
+      }
+
+      // Fix 2: Render GUARD intervals in Static TDMA as subtle inter-slot spaces
+      const staticGuardSegments = staticTimeline.segments.filter(s => s.phase === 'GUARD' && s.durationMs >= 0.1);
+      staticGuardSegments.forEach(seg => {
+        const gx = xOfMs(seg.startMs), gw = Math.max(1, (seg.durationMs / 20.0) * plotW);
+        g.fillStyle = 'rgba(100, 116, 139, 0.08)';
+        g.fillRect(gx, yStatic + 3, gw, trackH - 6);
+      });
+
+      staticUlSegments.forEach(seg => {
+        const nid = seg.scheduledNodeId ?? -1;
+        const sx = xOfMs(seg.startMs) + 0.5, sw = Math.max(2, (seg.durationMs / 20.0) * plotW - 1);
+        const sy = yStatic + 3, sh = trackH - 6;
+        const out = Boolean(seg.isWastedAirtime);
+        const isActiveStatic = schedMode === 'static' && activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId === nid;
+
+        gfxRRect(g, sx, sy, sw, sh, 3);
+        g.fillStyle = out ? 'rgba(255,112,112,0.2)' : 'rgba(120,140,160,0.16)'; g.fill();
+        if (out) {
+          g.save(); g.clip();
+          g.strokeStyle = 'rgba(255,112,112,0.55)'; g.lineWidth = 1;
+          for (let k = -sh; k < sw + sh; k += 6) { g.beginPath(); g.moveTo(sx + k, sy + sh); g.lineTo(sx + k + sh, sy); g.stroke(); }
+          g.restore();
+        }
+        gfxRRect(g, sx, sy, sw, sh, 3);
+        g.strokeStyle = isActiveStatic ? '#38bdf8' : (nid === sel ? '#ffffff' : (out ? '#ff7070' : 'rgba(120,140,160,0.35)'));
+        g.lineWidth = isActiveStatic ? 2.0 : (nid === sel ? 1.8 : 1); g.stroke();
+        if (sw > 16) {
+          g.fillStyle = out ? '#ffb3b3' : (isActiveStatic ? '#38bdf8' : '#9aa8b3'); g.font = `10px ${MONO}`; g.textAlign = 'center';
+          g.fillText(`S${nid}`, sx + sw / 2, sy + sh / 2 + 3.5);
+        }
+      });
+    } else {
+      // Fallback 16 slots if no static allocations ingested yet
+      const slotW = plotW / 16;
+      for (let i = 0; i < 16; i++) {
+        const x = padL + i * slotW + 1.5, sw = slotW - 3, y = yStatic + 3, sh = trackH - 6;
+        const n = nodes.find(nd => (nd.node_id ?? nd.nodeId) === i);
+        const out = !!n && ((n.state_name ?? n.stateName) === 'HARD_SHADOW_CUTOFF' || n.linkOutage || n.link_outage);
+        gfxRRect(g, x, y, sw, sh, 3);
+        g.fillStyle = out ? 'rgba(255,112,112,0.2)' : 'rgba(120,140,160,0.16)'; g.fill();
+        if (out) {
+          g.save(); g.clip();
+          g.strokeStyle = 'rgba(255,112,112,0.55)'; g.lineWidth = 1;
+          for (let k = -sh; k < sw + sh; k += 6) { g.beginPath(); g.moveTo(x + k, y + sh); g.lineTo(x + k + sh, y); g.stroke(); }
+          g.restore();
+        }
+        gfxRRect(g, x, y, sw, sh, 3);
+        g.strokeStyle = i === sel ? '#ffffff' : out ? '#ff7070' : 'rgba(120,140,160,0.35)';
+        g.lineWidth = i === sel ? 1.8 : 1; g.stroke();
+        if (slotW > 20) {
+          g.fillStyle = out ? '#ffb3b3' : '#9aa8b3'; g.font = `10px ${MONO}`; g.textAlign = 'center';
+          g.fillText(`S${i}`, x + sw / 2, y + sh / 2 + 3.5);
+        }
       }
     }
 
-    // Tac-TAD track
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2. Tac-TAD track (Authoritative segments from tacTimeline)
+    // ─────────────────────────────────────────────────────────────────────────
     gfxRRect(g, padL, yTac, plotW, trackH, 4);
     g.fillStyle = '#0e141b'; g.fill(); g.strokeStyle = '#2c3844'; g.lineWidth = 1; g.stroke();
-    const ctrlW = (0.001 / FP) * plotW, dlW = (0.003 / FP) * plotW;
-    g.fillStyle = 'rgba(157,180,255,0.10)'; g.fillRect(padL + 1, yTac + 1, ctrlW, trackH - 2);
-    g.fillStyle = 'rgba(157,180,255,0.18)'; g.fillRect(padL + 1 + ctrlW, yTac + 1, dlW, trackH - 2);
-    g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
-    g.fillText('CTRL', padL + 1, yTac - 5); g.fillText('DL', padL + ctrlW + 4, yTac - 5);
 
-    activeAllocations.forEach(a => {
-      const nid = a.node_id ?? a.nodeId;
-      const startS = a.slot_start_s !== undefined ? (a.slot_start_s % FP) :
-        (a.slotStartS !== undefined ? (a.slotStartS % FP) :
-        ((a.start_ms ?? a.startMs ?? 0) / 1000));
-      const durS = a.duration_s !== undefined ? a.duration_s :
-        (a.durationS !== undefined ? a.durationS :
-        ((a.duration_ms ?? a.durationMs ?? 0) / 1000));
-      const ax = xOf(startS), aw = Math.max(2, (durS / FP) * plotW);
-      let col = '#10b981';
-      if (a.is_pre_occlusion_flush || a.isPreOcclusionFlush) col = '#f59e0b';
-      else if ((a.video_bytes ?? a.videoBytes ?? 0) > 0) col = '#f59e0b';
-      else if ((a.photo_bytes ?? a.photoBytes ?? 0) > 0) col = '#fb923c';
-      else if ((a.c2_bytes ?? a.c2Bytes ?? 0) > 0 || nid === 15) col = '#38bdf8';
+    const ctrlSeg = tacTimeline.segments.find(s => s.phase === 'CONTROL_BROADCAST');
+    if (ctrlSeg && ctrlSeg.durationMs > 0) {
+      const cx = xOfMs(ctrlSeg.startMs), cw = Math.max(1, (ctrlSeg.durationMs / 20.0) * plotW);
+      g.fillStyle = 'rgba(157,180,255,0.10)'; g.fillRect(cx, yTac + 1, cw, trackH - 2);
+      g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
+      g.fillText('CTRL', cx + 1, yTac - 5);
+    }
+    const dlSeg = tacTimeline.segments.find(s => s.phase === 'DOWNLINK_BROADCAST');
+    if (dlSeg && dlSeg.durationMs > 0) {
+      const dx = xOfMs(dlSeg.startMs), dw = Math.max(1, (dlSeg.durationMs / 20.0) * plotW);
+      g.fillStyle = 'rgba(157,180,255,0.18)'; g.fillRect(dx, yTac + 1, dw, trackH - 2);
+      g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
+      g.fillText('DL', dx + 2, yTac - 5);
+    }
+
+    const tacUlSegments = tacTimeline.segments.filter(s => s.phase === 'UPLINK_SLOT');
+    tacUlSegments.forEach(seg => {
+      const nid = seg.scheduledNodeId ?? -1;
+      const ax = xOfMs(seg.startMs), aw = Math.max(2, (seg.durationMs / 20.0) * plotW);
       const y = yTac + 3, sh = trackH - 6;
+      const isActiveTac = schedMode !== 'static' && activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId === nid;
+
+      let col = '#10b981';
+      if (seg.isPreOcclusionFlush) col = '#f59e0b';
+      else if (nid === 15) col = '#38bdf8';
+
       gfxRRect(g, ax, y, Math.max(1.5, aw - 1), sh, 3);
       const grad = g.createLinearGradient(0, y, 0, y + sh);
       grad.addColorStop(0, col); grad.addColorStop(1, col + 'aa');
       g.fillStyle = grad; g.fill();
-      if (nid === sel) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke(); }
+
+      if (isActiveTac) {
+        g.strokeStyle = '#ffffff'; g.lineWidth = 2.2; g.stroke();
+      } else if (nid === sel) {
+        g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke();
+      }
       if (aw > 20) {
         g.fillStyle = '#0b1015'; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
         g.fillText(`S${nid}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
       }
     });
+
+    // Fix 2: Render IDLE_RECLAIMED segments in Tac-TAD track
+    const tacReclaimedSegments = tacTimeline.segments.filter(s => s.phase === 'IDLE_RECLAIMED');
+    tacReclaimedSegments.forEach(seg => {
+      const rx = xOfMs(seg.startMs), rw = Math.max(2, (seg.durationMs / 20.0) * plotW - 1);
+      const ry = yTac + 3, rh = trackH - 6;
+      gfxRRect(g, rx, ry, rw, rh, 3);
+      g.fillStyle = 'rgba(16, 185, 129, 0.08)'; g.fill();
+      g.save(); g.clip();
+      g.strokeStyle = 'rgba(16, 185, 129, 0.22)'; g.lineWidth = 1;
+      for (let k = -rh; k < rw + rh; k += 8) {
+        g.beginPath(); g.moveTo(rx + k, ry + rh); g.lineTo(rx + k + rh, ry); g.stroke();
+      }
+      g.restore();
+      gfxRRect(g, rx, ry, rw, rh, 3);
+      g.strokeStyle = 'rgba(16, 185, 129, 0.35)'; g.lineWidth = 1;
+      g.stroke();
+      if (rw > 60) {
+        g.fillStyle = '#34d399'; g.font = `600 9px ${MONO}`; g.textAlign = 'center';
+        g.fillText('RECLAIMED AIRTIME', rx + rw / 2, ry + rh / 2 + 3);
+      } else if (rw > 28) {
+        g.fillStyle = '#34d399'; g.font = `600 8.5px ${MONO}`; g.textAlign = 'center';
+        g.fillText('RECLAIMED', rx + rw / 2, ry + rh / 2 + 3);
+      }
+    });
+
+    // Fix 3: Render CONFLICT intervals prominently on whichever track has overlaps
+    const renderTrackConflicts = (conflicts, yTrack) => {
+      conflicts.forEach(conf => {
+        const cx = xOfMs(conf.startMs);
+        const cw = Math.max(3, (Math.max(0, conf.endMs - conf.startMs) / 20.0) * plotW);
+        const cy = yTrack + 2, ch = trackH - 4;
+        g.save();
+        gfxRRect(g, cx, cy, cw, ch, 2);
+        g.fillStyle = 'rgba(239, 68, 68, 0.35)'; g.fill();
+        g.clip();
+        g.strokeStyle = '#ef4444'; g.lineWidth = 1.2;
+        for (let k = -ch; k < cw + ch; k += 5) {
+          g.beginPath(); g.moveTo(cx + k, cy + ch); g.lineTo(cx + k + ch, cy); g.stroke();
+        }
+        g.restore();
+        gfxRRect(g, cx, cy, cw, ch, 2);
+        g.strokeStyle = '#ef4444'; g.lineWidth = 1.5; g.stroke();
+        if (cw > 24) {
+          g.fillStyle = '#ff7070'; g.font = `bold 8.5px ${MONO}`; g.textAlign = 'center';
+          g.fillText('CONFLICT', cx + cw / 2, cy + ch / 2 + 3);
+        }
+      });
+    };
+    if (staticTimeline.conflictIntervals.length > 0) {
+      renderTrackConflicts(staticTimeline.conflictIntervals, yStatic);
+    }
+    if (tacTimeline.conflictIntervals.length > 0) {
+      renderTrackConflicts(tacTimeline.conflictIntervals, yTac);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 3. Synchronized Visual Playhead Line
+    // ─────────────────────────────────────────────────────────────────────────
+    if (Number.isFinite(subframeOffsetMs) && subframeOffsetMs >= 0 && subframeOffsetMs <= 20.0) {
+      const px = Math.round(xOfMs(subframeOffsetMs)) + 0.5;
+      const isConflict = activeSlot.phase === 'CONFLICT';
+      const playheadCol = isConflict ? '#ef4444' : '#38bdf8';
+      g.save();
+      g.strokeStyle = playheadCol;
+      g.lineWidth = isConflict ? 2.0 : 1.5;
+      g.beginPath();
+      g.moveTo(px, padT - 4);
+      g.lineTo(px, yTac + trackH + 4);
+      g.stroke();
+
+      g.fillStyle = playheadCol;
+      g.beginPath();
+      g.moveTo(px, padT - 3);
+      g.lineTo(px - 3.5, padT - 9);
+      g.lineTo(px + 3.5, padT - 9);
+      g.closePath();
+      g.fill();
+
+      g.font = `bold 9px ${MONO}`;
+      g.fillStyle = playheadCol;
+      g.textAlign = 'center';
+      const playheadText = isConflict ? `${subframeOffsetMs.toFixed(1)}ms [CONFLICT]` : `${subframeOffsetMs.toFixed(1)}ms`;
+      g.fillText(playheadText, px, padT - 11);
+      g.restore();
+    }
   } catch (err) {
     console.error('Error drawing waterfall canvas:', err);
   }
@@ -4227,182 +4805,201 @@ function drawWaterfall() {
 
 function drawFresnel() {
   try {
-    const cvs = fresnelCanvas;
-    if (!cvs) return;
-    const w = cvs.parentElement.clientWidth || 800;
-    const h = cvs.parentElement.clientHeight || 320;
-    if (w <= 0 || h <= 0) return;
-    const g = fresnelCtx;
-    g.clearRect(0, 0, w, h);
-
     const histRecord = historyController.getActiveHistoricalRecord();
     const f = histRecord ? null : latestTelemetry.selected_node_fresnel;
     const profile = histRecord ? histRecord.profile : (f && f.profile && f.profile.valid ? f.profile : null);
 
-    linkProfileViewport.syncProfile(profile);
+    const selNode = (latestTelemetry.nodes_telemetry || []).find(n => n.node_id === selectedNodeId);
+    const acnPos = latestTelemetry.acn_telemetry?.position_m ?? (profile ? profile.acnPositionMslM : null);
+    const nodePos = selNode
+      ? [selNode.x_m, selNode.y_m, (selNode.terrain_elevation_msl_m || 0) + (selNode.agl_m || 2)]
+      : (profile ? profile.groundNodePositionMslM : null);
 
-    const status = histRecord ? histRecord.obstruction : summarizeProfileStatus(profile, f);
+    // ─────────────────────────────────────────────────────────────────────────
+    // 1. TERRAIN PATH PROFILE PANEL
+    // ─────────────────────────────────────────────────────────────────────────
+    if (terrainCanvas && terrainCtx) {
+      const tw = terrainCanvas.parentElement.clientWidth || 800;
+      const th = terrainCanvas.parentElement.clientHeight || 320;
+      if (tw > 0 && th > 0) {
+        terrainCtx.clearRect(0, 0, tw, th);
+        const tLayout = { width: tw, height: th, padL: 60, padR: 24, padT: 28, padB: 34 };
 
-    let commStatus;
-    if (histRecord) {
-      const histInput = {
-        terrain_is_los: histRecord.obstruction.terrainIsLos,
-        obstacle_blocked: histRecord.obstruction.obstacleBlocked,
-        link_outage: histRecord.linkBudget.modcodName === 'LINK_OUTAGE' || histRecord.linkBudget.modcodName === 'OBSTACLE_BLOCKED' || histRecord.linkBudget.snrDb < -1.5,
-        is_outage: histRecord.linkBudget.modcodName === 'LINK_OUTAGE' || histRecord.linkBudget.modcodName === 'OBSTACLE_BLOCKED' || histRecord.linkBudget.snrDb < -1.5,
-        modcod_name: histRecord.linkBudget.modcodName,
-        diffraction_loss_db: histRecord.linkBudget.diffractionLossDb,
-        snr_db: histRecord.linkBudget.snrDb,
-        fresnel_clearance_m: histRecord.obstruction.minClearanceM,
-      };
-      commStatus = classifyLinkCommunicationStatus(histInput);
-    } else {
-      const selNode = (latestTelemetry.nodes_telemetry || []).find(n => n.node_id === selectedNodeId);
-      const obstacleState = obstacleEditor.obstructionSnapshotIsCurrent
-        ? obstacleEditor.obstructionSnapshot.find(item => item.node_id === selectedNodeId)
-        : null;
-      const lb = latestTelemetry.selected_link_budget || latestTelemetry.selected_node_fresnel?.link_budget;
-      const telemetryInput = lb
-        ? { ...selNode, ...lb, ...(obstacleState || {}) }
-        : (selNode ? { ...selNode, ...(obstacleState || {}) } : null);
-      commStatus = classifyLinkCommunicationStatus(telemetryInput);
-    }
+        terrainProfileViewport.syncProfile(profile);
+        terrainTopViewport.syncLink(nodePos, acnPos, { selectedNodeId, layout: tLayout });
 
-    const badgeInfo = getStatusBadgeInfo(commStatus.status);
-    const badge = $('fresnel-status-badge');
-    if (badge) {
-      badge.className = badgeInfo.badgeClass;
-      badge.textContent = badgeInfo.badgeText;
-    }
-    const obsBadge = $('profile-obstacle-badge');
-    if (obsBadge) {
-      obsBadge.className = status.obstacleBadgeClass;
-      obsBadge.textContent = status.obstacleStatusText;
-    }
-    const zoomBadge = $('profile-zoom-label');
-    if (zoomBadge) {
-      zoomBadge.textContent = `${linkProfileViewport.zoomFactor.toFixed(1)}×`;
-    }
+        const tNodeLabel = $('terrain-node-label');
+        if (tNodeLabel) {
+          tNodeLabel.textContent = histRecord
+            ? `${histRecord.nodeName} [Historical #${histRecord.frameIndex}]`
+            : `Node ${selectedNodeId} (${selNode?.name || 'Terminal'})`;
+        }
 
-    const layout = { width: w, height: h, padL: 60, padR: 24, padT: 28, padB: 34 };
-    renderLinkProfileViewport(g, layout, linkProfileViewport, profile, histRecord ? histRecord.profilePoints : (f ? f.profile_points : null));
+        const tZoomLabel = $('terrain-zoom-label');
+        if (tZoomLabel) {
+          const zf = terrainProfileViewMode === 'top' ? terrainTopViewport.zoomFactor : terrainProfileViewport.zoomFactor;
+          tZoomLabel.textContent = `${zf.toFixed(1)}×`;
+        }
+
+        const tClearBadge = $('terrain-clearance-badge');
+        if (tClearBadge) {
+          const clr = profile ? profile.terrainMinimumClearanceM : (histRecord ? histRecord.obstruction.minClearanceM : 0);
+          const isLos = profile ? profile.terrainIsLos : (histRecord ? histRecord.obstruction.terrainIsLos : true);
+          tClearBadge.className = isLos ? 'kpi-badge badge-emerald' : 'kpi-badge badge-crimson';
+          tClearBadge.textContent = isLos ? `CLEARANCE: +${clr.toFixed(0)}m` : `OCCLUSION: ${clr.toFixed(0)}m`;
+        }
+
+        const tCrestBadge = $('terrain-crest-badge');
+        if (tCrestBadge) {
+          let maxElev = 0;
+          if (profile && profile.samples) {
+            for (let i = 0; i < profile.samples.length; i++) {
+              if (profile.samples[i].terrainElevationMslM > maxElev) maxElev = profile.samples[i].terrainElevationMslM;
+            }
+          }
+          tCrestBadge.textContent = maxElev > 0 ? `PEAK: ${Math.round(maxElev)}m MSL` : 'PEAK: --';
+        }
+
+        const topViewOpts = {
+          hillshadeCanvas,
+          activeTerrainBounds,
+          acnTelemetry: latestTelemetry.acn_telemetry,
+          selectedNode: selNode,
+          obstacles: obstacleEditor.committed,
+        };
+
+        if (terrainProfileViewMode === 'top') {
+          renderTerrainTopView(terrainCtx, tLayout, terrainTopViewport, profile, topViewOpts);
+        } else {
+          renderTerrainProfileViewport(terrainCtx, tLayout, terrainProfileViewport, profile, histRecord ? histRecord.profilePoints : (f ? f.profile_points : null));
+        }
+      }
+    }
   } catch (err) {
-    console.error('Error drawing Fresnel canvas:', err);
+    console.error('Error drawing Path Profiles:', err);
   }
 }
 
-// Profile canvas interactive viewport listeners
-(function setupProfileCanvasInteractions() {
-  if (!fresnelCanvas) return;
-  fresnelCanvas.style.cursor = 'grab';
-  fresnelCanvas.tabIndex = 0;
-
-  function getFresnelLayout() {
-    const w = fresnelCanvas.parentElement.clientWidth || 800;
-    const h = fresnelCanvas.parentElement.clientHeight || 320;
-    return { width: w, height: h, padL: 60, padR: 24, padT: 28, padB: 34 };
-  }
-
-  let isPanningProfile = false;
-  let panStartX = 0;
-  let panStartY = 0;
-
-  fresnelCanvas.addEventListener('pointerdown', (e) => {
+// Path Profiles interactive viewport and view-mode controls
+(function setupPathProfilesInteractions() {
+  // ─────────────────────────────────────────────────────────────────────────
+  // View Mode Switching Handlers (Feature 6A)
+  // ─────────────────────────────────────────────────────────────────────────
+  $('btn-terrain-view-profile')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    isPanningProfile = true;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    fresnelCanvas.style.cursor = 'grabbing';
-    try { fresnelCanvas.setPointerCapture(e.pointerId); } catch (_) {}
-  });
-
-  fresnelCanvas.addEventListener('pointermove', (e) => {
-    e.stopPropagation();
-    if (!isPanningProfile) return;
-    const dx = e.clientX - panStartX;
-    const dy = e.clientY - panStartY;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    linkProfileViewport.pan(dx, dy, getFresnelLayout());
+    terrainProfileViewMode = 'profile';
+    $('btn-terrain-view-profile')?.classList.add('active');
+    $('btn-terrain-view-top')?.classList.remove('active');
     drawFresnel();
   });
 
-  const endPan = (e) => {
-    if (isPanningProfile) {
+  $('btn-terrain-view-top')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    terrainProfileViewMode = 'top';
+    $('btn-terrain-view-top')?.classList.add('active');
+    $('btn-terrain-view-profile')?.classList.remove('active');
+    drawFresnel();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Terrain Profile Controls & Pointer Listeners
+  // ─────────────────────────────────────────────────────────────────────────
+  if (terrainCanvas) {
+    terrainCanvas.style.cursor = 'grab';
+    terrainCanvas.tabIndex = 0;
+
+    function getTerrainLayout() {
+      const w = terrainCanvas.parentElement.clientWidth || 800;
+      const h = terrainCanvas.parentElement.clientHeight || 320;
+      return { width: w, height: h, padL: 60, padR: 24, padT: 28, padB: 34 };
+    }
+
+    let isPanningTerrain = false;
+    let panStartX = 0;
+    let panStartY = 0;
+
+    terrainCanvas.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      isPanningProfile = false;
-      fresnelCanvas.style.cursor = 'grab';
-      try { fresnelCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
-    }
-  };
-  fresnelCanvas.addEventListener('pointerup', endPan);
-  fresnelCanvas.addEventListener('pointercancel', endPan);
+      isPanningTerrain = true;
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      terrainCanvas.style.cursor = 'grabbing';
+      try { terrainCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+    });
 
-  fresnelCanvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = fresnelCanvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.15 : 0.87;
-    linkProfileViewport.zoomAt(factor, px, py, getFresnelLayout());
-    drawFresnel();
-  }, { passive: false });
+    terrainCanvas.addEventListener('pointermove', (e) => {
+      e.stopPropagation();
+      if (!isPanningTerrain) return;
+      const dx = e.clientX - panStartX;
+      const dy = e.clientY - panStartY;
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      if (terrainProfileViewMode === 'top') {
+        terrainTopViewport.pan(dx, dy, getTerrainLayout());
+      } else {
+        terrainProfileViewport.pan(dx, dy, getTerrainLayout());
+      }
+      drawFresnel();
+    });
 
-  fresnelCanvas.addEventListener('dblclick', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    linkProfileViewport.resetFit();
-    drawFresnel();
-  });
+    const endPanTerrain = (e) => {
+      if (isPanningTerrain) {
+        e.stopPropagation();
+        isPanningTerrain = false;
+        terrainCanvas.style.cursor = 'grab';
+        try { terrainCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
+    };
+    terrainCanvas.addEventListener('pointerup', endPanTerrain);
+    terrainCanvas.addEventListener('pointercancel', endPanTerrain);
 
-  fresnelCanvas.addEventListener('keydown', (e) => {
-    if (e.key === '+' || e.key === '=') {
-      e.preventDefault(); e.stopPropagation();
-      linkProfileViewport.zoom(1.25);
+    terrainCanvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = terrainCanvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      if (terrainProfileViewMode === 'top') {
+        terrainTopViewport.zoomAt(factor, px, py, getTerrainLayout());
+      } else {
+        terrainProfileViewport.zoomAt(factor, px, py, getTerrainLayout());
+      }
       drawFresnel();
-    } else if (e.key === '-' || e.key === '_') {
-      e.preventDefault(); e.stopPropagation();
-      linkProfileViewport.zoom(0.8);
-      drawFresnel();
-    } else if (e.key === '0' || e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'f') {
-      e.preventDefault(); e.stopPropagation();
-      linkProfileViewport.resetFit();
-      drawFresnel();
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault(); e.stopPropagation();
-      linkProfileViewport.pan(40, 0, getFresnelLayout());
-      drawFresnel();
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault(); e.stopPropagation();
-      linkProfileViewport.pan(-40, 0, getFresnelLayout());
-      drawFresnel();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault(); e.stopPropagation();
-      linkProfileViewport.pan(0, 30, getFresnelLayout());
-      drawFresnel();
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault(); e.stopPropagation();
-      linkProfileViewport.pan(0, -30, getFresnelLayout());
-      drawFresnel();
-    }
-  });
+    }, { passive: false });
 
-  $('btn-profile-zoom-in')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    linkProfileViewport.zoom(1.25);
-    drawFresnel();
-  });
-  $('btn-profile-zoom-out')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    linkProfileViewport.zoom(0.8);
-    drawFresnel();
-  });
-  $('btn-profile-reset-fit')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    linkProfileViewport.resetFit();
-    drawFresnel();
-  });
+    terrainCanvas.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (terrainProfileViewMode === 'top') {
+        terrainTopViewport.resetFit();
+      } else {
+        terrainProfileViewport.resetFit();
+      }
+      drawFresnel();
+    });
+
+    $('btn-terrain-zoom-in')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (terrainProfileViewMode === 'top') terrainTopViewport.zoom(1.25);
+      else terrainProfileViewport.zoom(1.25);
+      drawFresnel();
+    });
+
+    $('btn-terrain-zoom-out')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (terrainProfileViewMode === 'top') terrainTopViewport.zoom(0.8);
+      else terrainProfileViewport.zoom(0.8);
+      drawFresnel();
+    });
+
+    $('btn-terrain-reset-fit')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (terrainProfileViewMode === 'top') terrainTopViewport.resetFit();
+      else terrainProfileViewport.resetFit();
+      drawFresnel();
+    });
+  }
 })();
 
 /* ====================================================================
@@ -4520,7 +5117,7 @@ setTimeout(() => {
     const frame=firstText(['frame-counter','sim-frame','frame-display']);
     const mode=firstText(['scheduler-quick-toggle','scheduler-mode-label']);
     const snr=text('lb-snr');
-    const status=firstText(['term-state-pill','fresnel-status-badge']);
+    const status=firstText(['term-state-pill']);
     document.querySelectorAll('.analysis-context').forEach(panel=>{
       if (panel.getAttribute('data-context-view') === 'rf' && historyController.isInspecting) return;
       if (panel.getAttribute('data-context-view') === 'scheduler' && schedHistoryController.isInspecting) return;
@@ -4562,6 +5159,8 @@ setTimeout(() => {
           schedInspecting: schedHistoryController.isInspecting,
         });
         historyController.enterHistorical(targetFrame, sessionCoordinator.wasRunningBefore);
+        dataCommVisualizer.enterHistorical();
+        updateStepControlUI(false);
         if (shouldPauseWorker) {
           isPaused = true;
           sendCommand({ type: 'SIM_CONTROL', action: 'pause' });
@@ -4570,6 +5169,8 @@ setTimeout(() => {
         }
       } else {
         historyController.scrubTo(targetFrame);
+        dataCommVisualizer.enterHistorical();
+        updateStepControlUI(false);
       }
 
       syncHistoricalUIState();
@@ -4603,6 +5204,8 @@ setTimeout(() => {
           schedInspecting: schedHistoryController.isInspecting,
         });
         schedHistoryController.enterHistorical(targetFrame, sessionCoordinator.wasRunningBefore);
+        dataCommVisualizer.enterHistorical();
+        updateStepControlUI(false);
         if (shouldPauseWorker) {
           isPaused = true;
           sendCommand({ type: 'SIM_CONTROL', action: 'pause' });
@@ -4611,6 +5214,8 @@ setTimeout(() => {
         }
       } else {
         schedHistoryController.scrubTo(targetFrame);
+        dataCommVisualizer.enterHistorical();
+        updateStepControlUI(false);
       }
 
       syncSchedulerHistoricalUIState();
