@@ -78,9 +78,13 @@ function verifyWaypointLoop(): void {
   ]) {
     assert.throws(() => new WaypointTrajectoryEngine(new ACNFlightConfig({ trajectoryMode: 'waypoints', waypoints: bad })));
   }
-  assert.throws(() => new WaypointTrajectoryEngine(new ACNFlightConfig({ trajectoryMode: 'waypoints', loiterSpeedMps: 0, waypoints: [
+  assert.throws(() => new WaypointTrajectoryEngine(new ACNFlightConfig({ trajectoryMode: 'waypoints', loiterSpeedMps: -1, waypoints: [
     { xM: 0, yM: 0 }, { xM: 1, yM: 0 }, { xM: 0, yM: 1 },
   ] })));
+  const stationary = new WaypointTrajectoryEngine(new ACNFlightConfig({ trajectoryMode: 'waypoints', loiterSpeedMps: 0, waypoints: [
+    { xM: 0, yM: 0 }, { xM: 1, yM: 0 }, { xM: 0, yM: 1 },
+  ] }));
+  assert.equal(stationary.currentSpeedMps, 0, 'Stationary hold at 0 m/s supported in waypoints');
 }
 
 function measureRoute(waypoints: Array<{ xM: number; yM: number }>, label: string, samplesPerSegment = 512): { maxSpeedError: number; maxVelocityError: number; maxRouteDeviation: number; routeLength: number } {

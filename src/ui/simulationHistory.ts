@@ -55,6 +55,7 @@ export interface HistoricalFrameRecord {
   readonly linkBudget: HistoricalLinkBudgetSnapshot;
   /** Legacy compatibility coordinates: [along_dist_km, terrain_alt_m, los_alt_m, fresnel_radius_m]. */
   readonly profilePoints?: readonly [number, number, number, number][];
+  readonly groundNodeAglM?: number;
 }
 
 export interface HistorySpan {
@@ -132,6 +133,7 @@ export function createHistoricalRecordSnapshot(input: {
   obstruction: HistoricalObstructionSummary;
   linkBudget: HistoricalLinkBudgetSnapshot;
   profilePoints?: readonly [number, number, number, number][];
+  groundNodeAglM?: number;
 }): HistoricalFrameRecord {
   // Defensive copy of profile samples
   const clonedSamples: LinkProfileSample[] = Array.isArray(input.profile?.samples)
@@ -176,6 +178,7 @@ export function createHistoricalRecordSnapshot(input: {
     obstruction: Object.freeze({ ...input.obstruction }),
     linkBudget: Object.freeze({ ...input.linkBudget }),
     profilePoints: input.profilePoints ? Object.freeze(input.profilePoints.map(p => Object.freeze([...p]) as unknown as [number, number, number, number])) : undefined,
+    groundNodeAglM: input.groundNodeAglM,
   });
 
   return record;

@@ -83,6 +83,8 @@ export interface WorkerCommandResult {
     readonly orbit_a_m: number;
     readonly orbit_b_m: number;
     readonly orbit_rotation_deg: number;
+    readonly loiter_speed_mps?: number;
+    readonly acn_altitude_m?: number;
     readonly waypoints: readonly { readonly x_m: number; readonly y_m: number }[];
   };
   readonly obstacle_set?: readonly Obstacle[];
@@ -129,6 +131,7 @@ export interface SelectedLinkBudgetTelemetry {
   readonly obstacle_blocked: boolean;
   readonly terrain_is_los: boolean;
   readonly earth_bulge_m: number;
+  readonly channel_bandwidth_hz?: number;
   readonly is_coverage_complete?: boolean;
   readonly isCoverageComplete?: boolean;
   readonly coverage_note?: string;
@@ -1236,6 +1239,9 @@ export class SimulationWorkerManager {
         orbit_a_m: this.flightConfig.loiterRadiusAM,
         orbit_b_m: this.flightConfig.loiterRadiusBM,
         orbit_rotation_deg: this.flightConfig.loiterRotationDeg,
+        loiter_speed_mps: this.flightConfig.loiterSpeedMps,
+        current_speed_mps: this.trajectoryEngine.getCurrentSpeed(this.simTimeS),
+        acn_altitude_m: this.flightConfig.altitudeMslM,
         waypoints: this.flightConfig.waypoints.map(point => ({ x_m: point.xM, y_m: point.yM })),
       },
       scheduler_mode: this.schedulerMode,
@@ -1250,6 +1256,10 @@ export class SimulationWorkerManager {
         vel_x: vx,
         vel_y: vy,
         heading_rad: Math.atan2(vy, vx),
+        current_speed_mps: this.trajectoryEngine.getCurrentSpeed(this.simTimeS),
+        target_speed_mps: this.flightConfig.loiterSpeedMps,
+        acceleration_limit_mps2: this.flightConfig.accelerationLimitMps2,
+        deceleration_limit_mps2: this.flightConfig.decelerationLimitMps2,
         coverage_radius_m: this.flightConfig.coverageRadiusKm * 1000.0,
         coverage_radius_km: this.flightConfig.coverageRadiusKm,
         flight_path: this.computeFlightPath(64),
@@ -1331,6 +1341,7 @@ export class SimulationWorkerManager {
       obstacle_blocked: ls?.obstacleBlocked ?? false,
       terrain_is_los: obstruction?.isLos ?? true,
       earth_bulge_m: earthBulgeM,
+      channel_bandwidth_hz: this.rfConfig.channelBandwidthHz,
       is_coverage_complete: obstruction?.isCoverageComplete ?? true,
       isCoverageComplete: obstruction?.isCoverageComplete ?? true,
       coverage_note: obstruction?.coverageNote,
@@ -1444,6 +1455,7 @@ export class SimulationWorkerManager {
     this.lastReportTac = null;
     this.staticGoodputTracker.reset();
     this.tacGoodputTracker.reset();
+    this.trajectoryEngine.resetKinematics(this.flightConfig.loiterSpeedMps);
     this.linkStatuses.clear();
     this.predStates.clear();
     this.obstructionResults.clear();
@@ -1490,6 +1502,8 @@ export class SimulationWorkerManager {
           orbit_a_m: this.flightConfig.loiterRadiusAM,
           orbit_b_m: this.flightConfig.loiterRadiusBM,
           orbit_rotation_deg: this.flightConfig.loiterRotationDeg,
+          loiter_speed_mps: this.flightConfig.loiterSpeedMps,
+          acn_altitude_m: this.flightConfig.altitudeMslM,
           waypoints: this.flightConfig.waypoints.map(point => ({ x_m: point.xM, y_m: point.yM })),
         } } : {}),
         ...(type === 'OBSTACLES_REPLACE' ? { obstacle_set: this.terrainEngine.obstacleField.all } : {}),
@@ -1712,19 +1726,22 @@ export class SimulationWorkerManager {
       case 'CONFIG_UPDATE': {
         const p = (msg.params && typeof msg.params === 'object' && !Array.isArray(msg.params)) ? msg.params : msg;
         if (!p || typeof p !== 'object' || Array.isArray(p)) return reject('params must be an object.');
-        const numericKeys = ['carrier_freq_ghz', 'rain_rate_mmh', 'acn_altitude_m', 'orbit_a_m', 'orbit_b_m',
-          'orbit_rotation_deg', 'loiter_speed_mps', 'coverage_radius_km', 'center_x_m', 'center_y_m', 'node_id', 'agl_m'];
+        const numericKeys = ['carrier_freq_ghz', 'channel_bandwidth_mhz', 'rain_rate_mmh', 'acn_altitude_m', 'orbit_a_m', 'orbit_b_m',
+          'orbit_rotation_deg', 'loiter_speed_mps', 'acceleration_limit_mps2', 'deceleration_limit_mps2', 'coverage_radius_km', 'center_x_m', 'center_y_m', 'node_id', 'agl_m'];
         for (const key of numericKeys) {
           if (Object.prototype.hasOwnProperty.call(p, key) && !isFiniteNumber(p[key])) return reject(`${key} must be a finite number.`);
         }
         if (p.terrain_mode !== undefined && p.terrain_mode !== 'real' && p.terrain_mode !== 'synthetic') return reject('terrain_mode must be real or synthetic.');
         if (p.trajectory_mode !== undefined && p.trajectory_mode !== 'ellipse' && p.trajectory_mode !== 'waypoints') return reject('trajectory_mode must be ellipse or waypoints.');
         if (p.carrier_freq_ghz !== undefined && p.carrier_freq_ghz <= 0) return reject('carrier_freq_ghz must be greater than zero.');
+        if (p.channel_bandwidth_mhz !== undefined && (p.channel_bandwidth_mhz < 0.1 || p.channel_bandwidth_mhz > 50.0)) return reject('channel_bandwidth_mhz must be between 0.1 and 50.0 MHz.');
         if (p.rain_rate_mmh !== undefined && p.rain_rate_mmh < 0) return reject('rain_rate_mmh cannot be negative.');
         if (p.acn_altitude_m !== undefined && (p.acn_altitude_m <= 0 || p.acn_altitude_m > 100000)) return reject('acn_altitude_m must be in (0, 100000].');
         if (['orbit_a_m', 'orbit_b_m'].some(k => p[k] !== undefined && (p[k] <= 0 || p[k] > THEATER_HALF_M))) return reject('Orbit axes must be in (0, 600000] metres.');
         if (p.orbit_rotation_deg !== undefined && Math.abs(p.orbit_rotation_deg) > 360) return reject('orbit_rotation_deg must be within ±360 degrees.');
-        if (p.loiter_speed_mps !== undefined && (p.loiter_speed_mps <= 0 || p.loiter_speed_mps > 1000)) return reject('loiter_speed_mps must be in (0, 1000].');
+        if (p.loiter_speed_mps !== undefined && (p.loiter_speed_mps < 0 || p.loiter_speed_mps > 1000)) return reject('loiter_speed_mps must be in [0, 1000].');
+        if (p.acceleration_limit_mps2 !== undefined && (p.acceleration_limit_mps2 <= 0 || p.acceleration_limit_mps2 > 50)) return reject('acceleration_limit_mps2 must be in (0, 50].');
+        if (p.deceleration_limit_mps2 !== undefined && (p.deceleration_limit_mps2 <= 0 || p.deceleration_limit_mps2 > 50)) return reject('deceleration_limit_mps2 must be in (0, 50].');
         if (['center_x_m', 'center_y_m'].some(k => p[k] !== undefined && Math.abs(p[k]) > THEATER_HALF_M)) return reject('Orbit center coordinates must be within ±600000 metres.');
         if (p.coverage_radius_km !== undefined && (p.coverage_radius_km <= 0 || p.coverage_radius_km > 600)) return reject('coverage_radius_km must be in (0, 600].');
         const hasAgl = p.agl_m !== undefined || p.node_id !== undefined;
@@ -1753,7 +1770,7 @@ export class SimulationWorkerManager {
         }
         if (nextMode === 'waypoints' && (p.center_x_m !== undefined || p.center_y_m !== undefined)) return reject('center_x_m/center_y_m apply only to ellipse mode.');
 
-        const trajectoryKeys = ['acn_altitude_m', 'orbit_a_m', 'orbit_b_m', 'orbit_rotation_deg', 'loiter_speed_mps', 'center_x_m', 'center_y_m', 'trajectory_mode', 'waypoints'];
+        const trajectoryKeys = ['acn_altitude_m', 'orbit_a_m', 'orbit_b_m', 'orbit_rotation_deg', 'loiter_speed_mps', 'acceleration_limit_mps2', 'deceleration_limit_mps2', 'center_x_m', 'center_y_m', 'trajectory_mode', 'waypoints'];
         const changesTrajectory = trajectoryKeys.some(k => p[k] !== undefined);
         const changesTerrain = p.terrain_mode !== undefined;
         if (this.spatialLocked && (changesTrajectory || changesTerrain || hasAgl)) return locked();
@@ -1772,11 +1789,20 @@ export class SimulationWorkerManager {
               loiterRadiusBM: p.orbit_b_m ?? this.flightConfig.loiterRadiusBM,
               loiterRotationDeg: p.orbit_rotation_deg ?? this.flightConfig.loiterRotationDeg,
               loiterSpeedMps: p.loiter_speed_mps ?? this.flightConfig.loiterSpeedMps,
+              accelerationLimitMps2: p.acceleration_limit_mps2 ?? this.flightConfig.accelerationLimitMps2,
+              decelerationLimitMps2: p.deceleration_limit_mps2 ?? this.flightConfig.decelerationLimitMps2,
               centerXm: p.center_x_m ?? this.flightConfig.centerXm,
               centerYm: p.center_y_m ?? this.flightConfig.centerYm,
               coverageRadiusKm: p.coverage_radius_km ?? this.flightConfig.coverageRadiusKm,
             });
-            nextTrajectory = createACNTrajectory(nextFlightConfig);
+            const prevKinematics = this.trajectoryEngine.getKinematicsState();
+            nextTrajectory = createACNTrajectory(nextFlightConfig, prevKinematics);
+            if (p.loiter_speed_mps !== undefined) {
+              nextTrajectory.setTargetSpeed(p.loiter_speed_mps, this.simTimeS);
+            }
+            if (p.acceleration_limit_mps2 !== undefined || p.deceleration_limit_mps2 !== undefined) {
+              nextTrajectory.setLimits(p.acceleration_limit_mps2, p.deceleration_limit_mps2);
+            }
           } catch (error) {
             return reject(error instanceof Error ? error.message : 'Invalid trajectory configuration.');
           }
@@ -1788,12 +1814,13 @@ export class SimulationWorkerManager {
           this.resampleGroundNodeAltitudes();
         }
         if (p.carrier_freq_ghz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, carrierFrequencyHz: p.carrier_freq_ghz * 1e9 });
+        if (p.channel_bandwidth_mhz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, channelBandwidthHz: p.channel_bandwidth_mhz * 1e6 });
         if (p.rain_rate_mmh !== undefined) this.envConfig = new EnvironmentConfig({ ...this.envConfig, rainRateMmH: p.rain_rate_mmh });
         if (nextFlightConfig && nextTrajectory) {
           this.flightConfig = nextFlightConfig;
           this.trajectoryEngine = nextTrajectory;
         }
-        if (changesTrajectory || p.coverage_radius_km !== undefined || p.carrier_freq_ghz !== undefined || p.rain_rate_mmh !== undefined) {
+        if (changesTrajectory || p.coverage_radius_km !== undefined || p.carrier_freq_ghz !== undefined || p.channel_bandwidth_mhz !== undefined || p.rain_rate_mmh !== undefined) {
           this.lookaheadEngine = new PredictiveLookAheadEngine(
             this.terrainEngine, this.linkEngine, this.rfConfig, this.envConfig, this.flightConfig, this.trajectoryEngine
           );
@@ -1893,11 +1920,15 @@ export class SimulationWorkerManager {
       clearInterval(this.timerId);
     }
     const intervalMs = Math.max(4, Math.round(20.0 / this.speed));
-    this.timerId = setInterval(() => {
+    const timer = setInterval(() => {
       if (!this.isPaused) {
         this.tickSimulation();
       }
-    }, intervalMs) as unknown as number;
+    }, intervalMs);
+    if (typeof (timer as any)?.unref === 'function') {
+      (timer as any).unref();
+    }
+    this.timerId = timer as unknown as number;
   }
 }
 

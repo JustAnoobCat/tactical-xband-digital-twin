@@ -312,6 +312,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+<link rel="stylesheet" href="./frontend/c2-console-theme.css">
 </head>
 <body>
 
@@ -455,6 +456,28 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <option value="waypoints">Closed waypoint route</option>
             </select>
           </div>
+          <div style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,0.02)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <label for="traj-speed-mps" style="font-weight:600;color:var(--text);margin:0">Physical flight speed (m/s)</label>
+              <span style="font-size:11px;color:var(--muted)">Current: <b id="traj-current-speed" style="color:var(--cyan)">60.0 m/s</b></span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;align-items:center">
+              <input type="range" id="traj-speed-slider" min="0" max="300" step="1" value="60" aria-label="UAV physical flight speed slider">
+              <input type="number" id="traj-speed-mps" min="0" max="1000" step="1" value="60" aria-label="UAV physical flight speed input">
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px">
+              <span>0 m/s (Hover)</span>
+              <span>Nominal: 60 m/s</span>
+              <span>Max: 300 m/s</span>
+            </div>
+            <p style="font-size:10px;color:var(--muted);margin:4px 0 0;line-height:1.3">
+              <em>Physical flight speed controls actual UAV orbit progression (continuous kinematics with bounded acceleration/deceleration). Distinct from visual playback speed (0.1×–1.0×).</em>
+            </p>
+            <div style="margin-top:8px">
+              <label for="traj-altitude-msl">UAV altitude MSL (m)</label>
+              <input id="traj-altitude-msl" type="number" step="50" min="1000" max="15000" value="5000" aria-label="UAV altitude MSL">
+            </div>
+          </div>
           <div id="ellipse-editor">
             <div class="editor-grid">
               <label>Center X (m)<input id="traj-center-x" type="number" step="any"></label>
@@ -544,6 +567,15 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <select id="quickNodeSelect" onchange="onTargetNodeChange(this.value)" aria-label="Target terminal">
               <option value="4" selected>Node 4: S4 - Recon Patrol (Occlusion Target)</option>
             </select>
+            <div class="agl-control-wrap" style="margin:6px 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <label for="quick-node-agl-input" style="font-size:11.5px;color:var(--muted)">Antenna AGL (m)</label>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input type="number" id="quick-node-agl-input" min="0" max="1000" step="0.5" value="2.0"
+                       style="width:75px;padding:3px 6px;font-family:var(--mono);font-size:11.5px;background:#0f1522;border:1px solid #1e2633;color:#fff;border-radius:4px"
+                       onchange="onNodeAglChange(this.value)" aria-label="Antenna height above ground level">
+                <span id="quick-node-agl-feedback" class="muted" style="font-size:11px"></span>
+              </div>
+            </div>
             <div class="stats">
               <div class="stat"><span>Range</span><b id="glance-slant">--</b></div>
               <div class="stat"><span>Signal-to-noise</span><b id="glance-snr">--</b></div>
@@ -751,6 +783,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div class="seg" id="terrain-view-toggle" role="toolbar" aria-label="Terrain profile view mode">
               <button type="button" id="btn-terrain-view-profile" class="active" title="Terrain elevation cross-section profile">Profile</button>
               <button type="button" id="btn-terrain-view-top" title="Top-down terrain path corridor plan view">Top view</button>
+              <button type="button" id="btn-terrain-view-rf-top" title="Top-down RF link and Fresnel zone clearance view">RF top view</button>
             </div>
             <div class="seg" role="toolbar" aria-label="Terrain profile zoom controls">
               <button type="button" id="btn-terrain-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
@@ -789,9 +822,22 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="panel">
           <div class="panel-head"><span class="sec-title">Radio and weather settings</span><span class="badge-sub">applies live</span></div>
           <div class="slider"><div class="form-row"><span>Carrier frequency</span><b id="lbl-freq">8.0 GHz</b></div><input type="range" id="param-freq" min="7.0" max="12.0" step="0.1" value="8.0" oninput="onParamChange()" aria-label="Carrier frequency"></div>
+          <div class="slider"><div class="form-row"><span>Channel bandwidth</span><b id="lbl-bw">1.0 MHz</b></div><input type="range" id="param-bw" min="0.1" max="50.0" step="0.1" value="1.0" oninput="onBandwidthParamChange()" aria-label="Channel bandwidth"></div>
           <div class="slider"><div class="form-row"><span>Rain rate</span><b id="lbl-rain">0.0 mm/h</b></div><input type="range" id="param-rain" min="0" max="50" step="1" value="0" oninput="onParamChange()" aria-label="Rain rate"></div>
           <div class="slider"><div class="form-row"><span>Aircraft altitude (MSL)</span><b id="lbl-alt">5000 m</b></div><input type="range" id="param-alt" min="3000" max="8000" step="100" value="5000" oninput="onParamChange()" aria-label="Aircraft altitude"></div>
           <div class="slider"><div class="form-row"><span>Coverage radius</span><b id="lbl-cov">35 km</b></div><input type="range" id="param-cov" min="10" max="150" step="1" value="35" oninput="onCoverageParamChange()" aria-label="Coverage radius"></div>
+          <div class="slider" style="margin-top:10px">
+            <div class="form-row"><span>Target terminal AGL</span><b id="lbl-terrain-node-agl">2.0 m</b></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px">
+              <span class="muted" style="font-size:11px">Antenna above ground</span>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input type="number" id="terrain-node-agl-input" min="0" max="1000" step="0.5" value="2.0"
+                       style="width:75px;padding:3px 6px;font-family:var(--mono);font-size:11.5px;background:#0f1522;border:1px solid #1e2633;color:#fff;border-radius:4px"
+                       onchange="onNodeAglChange(this.value)" aria-label="Target terminal antenna height above ground level">
+                <span id="terrain-node-agl-feedback" class="muted" style="font-size:11px"></span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -810,6 +856,15 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <select id="termNodeSelect" onchange="onTargetNodeChange(this.value)" aria-label="Terminal">
             <option value="4" selected>Node 4: S4 - Recon Patrol (Occlusion Target)</option>
           </select>
+          <div class="agl-control-wrap" style="margin:8px 0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <label for="node-agl-input" style="font-size:11.5px;font-weight:600;color:var(--muted)">Antenna AGL (m)</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="number" id="node-agl-input" min="0" max="1000" step="0.5" value="2.0"
+                     style="width:80px;padding:3px 6px;font-family:var(--mono);font-size:11.5px;background:#0f1522;border:1px solid #1e2633;color:#fff;border-radius:4px"
+                     onchange="onNodeAglChange(this.value)" aria-label="Antenna height above ground level">
+              <span id="node-agl-feedback" class="muted" style="font-size:11px"></span>
+            </div>
+          </div>
           <div id="terminal-search-status" class="muted" aria-live="polite" style="font-size:11px;margin:6px 0 14px">Search all available terminals</div>
           <div class="q-track-wrap"><label>5QI 69 <span class="muted">C2</span></label><div class="track-bg"><div id="qbar-69" class="track-fill" style="background:#38bdf8;width:0%"></div></div><output id="qval-69">0.0 KB</output></div>
           <div class="q-track-wrap"><label>5QI 65 <span class="muted">Voice</span></label><div class="track-bg"><div id="qbar-65" class="track-fill" style="background:var(--ok);width:0%"></div></div><output id="qval-65">0.0 KB</output></div>
@@ -897,124 +952,303 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <p class="experiment-capture-caveat">Provenance limits: the current telemetry does not expose a verified random seed, all scenario parameters, or every internal per-frame event. Missing fields are explicitly recorded as unavailable; browser telemetry arrival is not assumed to equal every simulation frame. Do not treat exported observations as a controlled benchmark until run conditions and engine parity are verified.</p>
       </section>
       <header class="research-header">
-        <p class="research-kicker">TECHNICAL REPORT · DIGITAL TWIN · VERSION 1.0</p>
-        <h2>Terrain-Aware Dynamic TDMA Scheduling for an X-Band Air-to-Ground Network</h2>
-        <p class="research-subtitle">System architecture, propagation assumptions, scheduling design, verification plan, and benchmark provenance</p>
+        <p class="research-kicker">TECHNICAL REFERENCE · DIGITAL TWIN · TYPESCRIPT ENGINE</p>
+        <h2>X-Band Aerial Communication Digital Twin</h2>
+        <p class="research-subtitle">Architecture, simulation model, RF abstractions, adaptive scheduling, visualization, and verification</p>
         <div class="research-meta">
-          <span>Artifact: Tactical X-Band Network Digital Twin</span>
-          <span>Engine: TypeScript + WebWorker</span>
-          <span>Evidence status: mixed legacy / current-engine</span>
+          <span>Authoritative runtime: TypeScript WebWorker</span>
+          <span>Physical step: 20 ms / 50 Hz</span>
+          <span>Terrain: 512 × 512 regional model</span>
         </div>
       </header>
 
       <aside class="research-notice">
-        <strong>Evidence and scope statement.</strong> This is a research-prototype report, not a claim of operational qualification or formal standards compliance. Historical benchmark values below originate from the archived Python evaluation and must be reproduced against the current TypeScript engine before being described as current-engine results. Proposed tests are explicitly identified as planned work.
+        <strong>Scope and evidence.</strong> This is a simulation-backed digital-twin-style research platform, not a physically synchronized operational twin. The browser worker is authoritative for simulated state; the frontend visualizes published telemetry. The models are engineering abstractions and are not a claim of field validation, electromagnetic completeness, or formal standards compliance.
       </aside>
 
       <nav class="research-toc" aria-label="Report contents">
-        <a href="#report-abstract">Abstract</a><a href="#report-system">System model</a><a href="#report-physics">Propagation models</a><a href="#report-scheduler">Scheduling design</a><a href="#report-verification">Verification plan</a><a href="#report-results">Historical results</a><a href="#report-reproducibility">Reproducibility</a><a href="#report-limitations">Limitations</a>
+        <a href="#report-abstract">Overview</a><a href="#report-system">Architecture</a><a href="#report-engine">Simulation</a><a href="#report-trajectory">Flight</a><a href="#report-terrain">Terrain</a><a href="#report-rf">RF model</a><a href="#report-scheduler">TDMA</a><a href="#report-queues">Queues</a><a href="#report-visualization">Visualization</a><a href="#report-history">History</a><a href="#report-methodology">Methodology</a><a href="#report-standards">Standards</a><a href="#report-appendix">Mathematical appendix</a><a href="#report-config">Configuration</a><a href="#report-verification">Verification</a><a href="#report-limitations">Limitations</a>
       </nav>
 
       <section class="report-section" id="report-abstract">
-        <h3>1. Abstract and research objectives</h3>
-        <p>This project implements a browser-based digital twin for studying time-division multiple access (TDMA) scheduling between an aerial communication node (ACN) and geographically distributed ground terminals. Its primary research question is whether a terrain-aware dynamic scheduler can use predicted link state, traffic queues, and service priority to reduce airtime assigned to unavailable links while improving delivery relative to a static allocation baseline.</p>
-        <p>The current client-side architecture uses TypeScript modules and a dedicated WebWorker for simulation updates, while the user interface presents terrain, radio-link diagnostics, queue state, scheduler allocations, and comparative metrics. The model is a controlled simulation; results depend on its terrain representation, channel approximations, traffic assumptions, and scheduler implementation.</p>
-        <div class="report-callout"><strong>Primary comparison:</strong> Legacy Static TDMA baseline versus the project’s Terrain-Aware Dynamic Scheduler (Tac-TAD). Comparative claims require identical scenarios, seeds, traffic inputs, stopping rules, and metric definitions.</div>
+        <h3>1. Project overview</h3>
+        <p>The X-Band Digital Twin simulates an aerial communication node (ACN) serving sixteen registered ground nodes over a terrain-aware air-to-ground network. Ground nodes represent dismounted tactical terminals and a command-post class. Traffic is generated into QoS queues, links are evaluated from geometry and RF assumptions, and a TDMA scheduler allocates the shared uplink.</p>
+        <p>The platform is intended for controlled research demonstrations of terrain-induced outages, queue behavior, link adaptation, and adaptive airtime allocation. It demonstrates a browser-hosted simulation with telemetry, map views, scheduler diagnostics, path editing, and historical inspection. It does not ingest measured aircraft telemetry, synchronize with a live network, or establish operational performance.</p>
+        <div class="report-callout"><strong>Research comparison:</strong> <code>Legacy_Static_TDMA</code> assigns fixed equal uplink slots, while <code>Tac-TAD</code> adapts allocation using queue urgency, link state, and predictive terrain transitions. A fair comparison requires identical configuration, traffic, terrain, duration, and metric definitions.</div>
       </section>
 
       <section class="report-section" id="report-system">
-        <h3>2. System architecture and execution model</h3>
+        <h3>2. System architecture</h3>
+        <div class="formula-card">UI controls → Worker command → simulation state → telemetry message → UI renderers<br>                                                     ↘ terrain / schedule / history views</div>
         <table class="doc-table-clean"><thead><tr><th>Layer</th><th>Responsibility</th><th>Implementation evidence</th></tr></thead><tbody>
-          <tr><td>Simulation core</td><td>Configuration, terrain geometry, trajectory, propagation, queues, and slot scheduling.</td><td><code>src/core/*.ts</code></td></tr>
-          <tr><td>Worker runtime</td><td>Advances simulation state and publishes telemetry and terrain hillshade messages.</td><td><code>src/worker/simWorker.ts</code></td></tr>
-          <tr><td>Presentation layer</td><td>Renders map, scheduler waterfall, Fresnel profile, controls, and telemetry summaries.</td><td><code>index.html</code> and Canvas renderers</td></tr>
-          <tr><td>Verification artifacts</td><td>Targeted TypeScript checks, legacy Python tests, benchmark outputs, and scenario configuration.</td><td><code>src/tests/</code>, <code>tests/</code>, <code>benchmark_results/</code></td></tr>
+          <tr><td>Browser shell</td><td>Controls, navigation, panels, Canvas views, experiment capture, and telemetry summaries.</td><td><code>index.html</code></td></tr>
+          <tr><td>Simulation worker</td><td>Owns configuration, time progression, node state, terrain queries, link budgets, queues, and schedules.</td><td><code>src/worker/simWorker.ts</code></td></tr>
+          <tr><td>Core model</td><td>Trajectory, terrain/geodesy, obstacles, RF propagation, QoS queues, schedulers, and transfer metrics.</td><td><code>src/core/*.ts</code></td></tr>
+          <tr><td>UI modules</td><td>Map rendering, node inventory, data communication, path profile, and historical coordinators.</td><td><code>src/ui/*.ts</code></td></tr>
         </tbody></table>
-        <p>The worker is the intended authority for simulation state. UI components should consume the latest published frame and send explicit commands; they should not independently reimplement scheduling or physics. The frontend redesign preserves the worker and renderer while introducing a persistent map workspace and shared navigation.</p>
+        <p>The worker is the authority for simulated physics and scheduling. UI code sends explicit commands such as pause, resume, step, reset, and configuration updates; it consumes worker messages for rendering. Canvas drawing and historical inspection do not create an alternate physics state.</p>
+        <p>The physical simulation frame is <strong>0.020 s (50 Hz)</strong>. Playback speed changes the timer cadence used to request frames; it does not change the physical timestep. A STEP command advances one physical frame.</p>
       </section>
 
-      <section class="report-section" id="report-physics">
-        <h3>3. Propagation and geometry models</h3>
-        <h4>3.1 Three-dimensional slant range and propagation delay</h4>
-        <div class="formula-card">d₃D = √((xA − xT)² + (yA − yT)² + (zA − zT)²)<br>τprop = d₃D / c &nbsp;&nbsp; · &nbsp;&nbsp; TA ≈ 2 d₃D / c</div>
-        <p>Coordinates must use consistent units. Timing advance is a simplified round-trip propagation alignment relation; its implementation assumptions and compatibility with the chosen radio framing must be validated separately.</p>
-        <h4>3.2 Effective Earth curvature</h4>
-        <div class="formula-card">Re′ = k Re &nbsp;&nbsp; ; &nbsp;&nbsp; Δh ≈ d₁ d₂ / (2 Re′) &nbsp;&nbsp; ; &nbsp;&nbsp; k = 4/3 (assumed)</div>
-        <p>The effective-radius approximation models nominal tropospheric refraction. It is not a substitute for location- and time-dependent refractivity profiles. The implementation should document the geometry used for d₁ and d₂ and verify units at all boundaries.</p>
-        <h4>3.3 Fresnel clearance and knife-edge diffraction</h4>
-        <div class="formula-card">r₁ = √(λ d₁ d₂ / D) &nbsp;&nbsp; ; &nbsp;&nbsp; λ = c / fc<br>ν = h · √[(2/λ)(1/d₁ + 1/d₂)]<br>J(ν) = 6.9 + 20 log₁₀(√((ν − 0.1)² + 1) + ν − 0.1)</div>
-        <p>The sign convention for obstacle height h must be explicit in code and tests; a single dominant-obstacle model is an approximation for complex terrain. The project’s additional rounded-crest penalty is empirical and should be reported as a project assumption, not as a universal prescribed constant.</p>
-        <h4>3.4 Link budget</h4>
-        <p>Documented components include free-space path loss, diffraction, gaseous attenuation, rain attenuation, antenna gains, transmit power, receiver noise, SNR, and the selected modulation/coding abstraction. A validation suite should test each term independently and compare selected cases against independently computed reference values.</p>
+      <section class="report-section" id="report-engine">
+        <h3>3. Simulation engine</h3>
+        <p>At each 20 ms frame the worker advances simulation time, evaluates the ACN trajectory, updates ground-node and predictive terrain state, evaluates terrain and obstacle geometry, computes link status and bitrate, generates or services traffic, runs the selected scheduler, and publishes telemetry. The exact internal ordering is an implementation detail of <code>SimulationWorkerManager</code>; consumers must treat the published frame as the coherent observation boundary.</p>
+        <table class="doc-table-clean"><thead><tr><th>State family</th><th>Current behavior</th></tr></thead><tbody>
+          <tr><td>ACN</td><td>Position, velocity, heading, altitude, coverage radius, and trajectory mode are published from the trajectory engine.</td></tr>
+          <tr><td>Ground nodes</td><td>Sixteen registered IDs are maintained in local Cartesian coordinates with configured ground/AGL state.</td></tr>
+          <tr><td>Links</td><td>Slant geometry, terrain clearance, obstacle state, losses, SNR, MODCOD, bitrate, and outage classification are evaluated per node.</td></tr>
+          <tr><td>Network</td><td>Traffic queues evolve, packets are dequeued according to the schedule, and goodput/waste/drop counters are emitted.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section class="report-section" id="report-trajectory">
+        <h3>4. UAV flight and trajectory model</h3>
+        <p>Ellipse mode follows a rotated, arc-length-parameterized ellipse. Waypoint mode accepts a closed route (the last point connects to the first), validates the route, builds a cubic Hermite spline with shared bounded tangents, samples it at 512 samples per segment by default, and evaluates position by arc length. The route is therefore smooth and closed, but it is not a learned or aerodynamic flight controller.</p>
+        <ul>
+          <li><strong>Physical speed:</strong> the configured true-air-speed target in metres per second. The default is 60 m/s.</li>
+          <li><strong>Speed transitions:</strong> positive acceleration and deceleration limits bound changes when speed or mode changes.</li>
+          <li><strong>Stationary hold:</strong> a speed of 0 m/s freezes trajectory progress. This is a simulation hold and must not be interpreted as fixed-wing hovering.</li>
+          <li><strong>Playback speed:</strong> a UI timer multiplier that changes how quickly frames are requested, not the physical 20 ms step or the configured aircraft speed.</li>
+          <li><strong>Telemetry:</strong> position and velocity provide heading through the velocity vector; altitude is configured as MSL.</li>
+        </ul>
+      </section>
+
+      <section class="report-section" id="report-terrain">
+        <h3>5. Terrain and geographic model</h3>
+        <p>The real-terrain metadata describes a 512 × 512 point-registered Ladakh raster centered at 34.5°N, 76.5°E, spanning 33.5–35.5°N and 75.5–77.5°E. The local projection is equirectangular at the center latitude. The documented pixel scales are approximately 359.45 m in X and 434.17 m in Y; these are the source grid scales, not sub-metre terrain accuracy.</p>
+        <table class="doc-table-clean"><thead><tr><th>Quantity</th><th>Implementation value</th></tr></thead><tbody>
+          <tr><td>Local axes</td><td>X is east-west, Y is north-south, Z/elevation is metres above the terrain datum used by the loaded model.</td></tr>
+          <tr><td>Theater</td><td>Worker hillshade domain is 1,200 × 1,200 km (±600 km); real DEM metadata covers the documented geographic raster extent.</td></tr>
+          <tr><td>Curvature</td><td>Effective Earth radius uses <code>k = 4/3</code> and true radius 6,371,000 m.</td></tr>
+          <tr><td>Coverage</td><td>Terrain queries report incomplete/out-of-coverage paths explicitly; missing coverage is not silently treated as a measured elevation.</td></tr>
+          <tr><td>Obstruction</td><td>Sampled terrain clearance and Fresnel geometry produce diffraction/LOS state. This is geometric screening, not a full wave-propagation model.</td></tr>
+        </tbody></table>
+      </section>
+
+      <section class="report-section" id="report-rf">
+        <h3>6. RF propagation and link budget</h3>
+        <p>The implemented link budget is a deterministic engineering approximation. Received power sums transmit power and antenna gains, then subtracts free-space path loss, terrain diffraction, gaseous loss, rain loss, cable loss, and implementation margin. Thermal noise uses <code>kBTB × 10^(NF/10)</code>; SNR is received power minus noise in dB.</p>
+        <div class="formula-card">FSPL = 20 log₁₀(d) + 20 log₁₀(fc) + 20 log₁₀(4π/c)<br>Pnoise = kBT · B · 10^(NF/10)<br>SNR = Prx − Pnoise</div>
+        <p>At the default 8.0 GHz carrier and 1.0 MHz bandwidth, the model uses ITU-R-inspired simplified coefficients for clear-air gas attenuation and horizontal-polarization rain attenuation, with a 10 km rain-cell cap. A discrete eight-entry DVB-S2X / 3GPP Rel-17 NTN-inspired MODCOD table maps SNR to spectral efficiency; it is an abstraction, not a conformance implementation.</p>
+        <p>Obstacle intersections force outage classification but do not infer scattering or an additional electromagnetic attenuation term. Antenna patterns, multipath, interference, polarization mismatch, calibration error, and measured weather profiles are not represented.</p>
       </section>
 
       <section class="report-section" id="report-scheduler">
-        <h3>4. Scheduling, traffic, and service model</h3>
-        <p>The system models a nominal 20 ms superframe and 16 ground terminals. The documented traffic classes are 5QI 69 (C2/SOS), 65 (voice), 67 (video), and 70 (photo/data). Queue admission, class priority, packet expiry, and the scheduling policy jointly affect delivery metrics.</p>
-        <table class="doc-table-clean"><thead><tr><th>Policy/state</th><th>Intended behavior</th><th>Required verification</th></tr></thead><tbody>
-          <tr><td>Static TDMA</td><td>Baseline slot allocation with fixed sizing assumptions.</td><td>Slot arithmetic, guard-time accounting, total-frame conservation.</td></tr>
-          <tr><td>Normal LOS</td><td>Allocate based on eligible queued traffic and current link estimate.</td><td>Queue accounting, bitrate-to-duration consistency, priority ordering.</td></tr>
-          <tr><td>Pre-occlusion</td><td>Use predicted link transition to prioritize eligible traffic before obstruction.</td><td>Look-ahead timing, deadlines, no allocation beyond frame limits.</td></tr>
-          <tr><td>Hard shadow</td><td>Avoid allocating payload airtime to a modeled severed link.</td><td>Zero/near-zero outage allocation and correct reclamation accounting.</td></tr>
-          <tr><td>Re-emergence</td><td>Resume eligible queued traffic after link recovery.</td><td>Recovery transitions, queue integrity, starvation and fairness checks.</td></tr>
+        <h3>7. TDMA scheduling algorithms</h3>
+        <p>Each superframe contains a 1 ms control period, a dynamic 3–7 ms downlink window, and a nominal 16 ms uplink region. A 12 μs timing-advance guard and 200 μs minimum allocation constrain dynamic slots.</p>
+        <table class="doc-table-clean"><thead><tr><th>Scheduler</th><th>Decision behavior</th></tr></thead><tbody>
+          <tr><td>Static TDMA</td><td>Divides available uplink equally across registered nodes. It dequeues up to fixed-slot capacity even when a link is in outage, so payload may be counted as wasted on outage.</td></tr>
+          <tr><td>Tac-TAD</td><td>Deterministic heuristic scheduler. It scores urgency from QoS priority, backlog, head-of-line delay, current link quality, and predictive terrain state; it sizes allocations to eligible queued demand and reclaims severed-link airtime.</td></tr>
+          <tr><td>Pre-occlusion flush</td><td>Predictive look-ahead can prioritize evacuation of queued payload before a predicted hard shadow. This is a rule-based surge, not machine learning.</td></tr>
+          <tr><td>Output</td><td>Each allocation reports node, start, duration, timing advance, MODCOD, spectral efficiency, capacity, and whether it is a pre-occlusion flush.</td></tr>
         </tbody></table>
-        <p>Any use of terms such as “optimal,” “real-time,” “guaranteed,” or “standards-compliant” requires a formal definition and supporting evidence. The UI should expose decision rationale and the exact metric window behind each comparative KPI.</p>
+        <p>Tac-TAD is not a reinforcement-learning policy, neural network, trained model, or learned checkpoint. No training procedure or learned weights exist in the current implementation.</p>
+      </section>
+
+      <section class="report-section" id="report-queues">
+        <h3>8. Queue, packet, and metric model</h3>
+        <p>Each node uses bounded strict-priority queues for 5QI 69 Emergency C2, 65 MC PTT voice, 67 MC video, and 70 tactical photo. The default queue capacity is 400 packets with a 120-packet ceiling for 5QI 69. Lower-priority traffic is evicted first when the buffer is full; non-C2 packets are pruned when their packet delay budget expires.</p>
+        <p>Queue drops are not RF failures. Overflow drops occur at admission, delay drops occur at expiry/pruning, and outage waste counts payload dequeued by a schedule but not deliverable because the link is unavailable. Goodput counts only payload dequeued while the link is usable. The UI also reports backlog, scheduled airtime, utilization, and per-frame/cumulative drop counters.</p>
+      </section>
+
+      <section class="report-section" id="report-visualization">
+        <h3>9. Visualization and data communication</h3>
+        <p>The Overview keeps a live 2D map visible while workspace tabs expose scheduler, terrain/RF, terminal inventory, and documentation views. Main 2D Map, Terrain Top View, RF Top View, and 3D Terrain are presentation layers over worker telemetry; they do not calculate authoritative physics.</p>
+        <p>The communication view renders control/broadcast phases, uplink and downlink allocations, guard intervals, idle/reclaimed intervals, conflicts, and packet activity. A STEP request advances one physical frame, while the visual timeline may expand or annotate events for inspection. Live and historical data are kept separate so a scrubbed view does not overwrite the live simulation.</p>
+        <p>The flight-path editor validates closed waypoint routes before committing them to the worker. The obstacle editor supports cuboids, cones, and pyramids with spatial locking and bounded dimensions. Obstacles intersecting a path are treated as geometric blockers; this is not a complete scattering model.</p>
+      </section>
+
+      <section class="report-section" id="report-history">
+        <h3>10. History and replay semantics</h3>
+        <p>The UI maintains rolling telemetry and scheduler history for inspection, including a 3,000-frame / approximately 60-second timeline where configured. Historical scrubbing selects stored snapshots; it does not rewind and deterministically re-execute the worker. Returning to LIVE resumes the current worker observation stream. Therefore, history should be described as telemetry snapshot inspection, not full deterministic replay.</p>
+      </section>
+
+      <section class="report-section" id="report-config">
+        <h3>11. Configuration reference</h3>
+        <table class="doc-table-clean"><thead><tr><th>Parameter</th><th>Default</th><th>Unit / valid range</th><th>Effect</th></tr></thead><tbody>
+          <tr><td><code>trajectoryMode</code></td><td><code>ellipse</code></td><td>ellipse or waypoints</td><td>Worker configuration update; route validation applies in waypoint mode.</td></tr>
+          <tr><td><code>altitudeMslM</code></td><td>5,000</td><td>m; (0, 100,000]</td><td>ACN flight configuration; applied to subsequent trajectory state.</td></tr>
+          <tr><td><code>loiterSpeedMps</code></td><td>60</td><td>m/s; [0, 1,000]</td><td>Physical target speed; 0 enables stationary hold.</td></tr>
+          <tr><td><code>accelerationLimitMps2</code></td><td>5</td><td>m/s²; positive</td><td>Bounds speed increase.</td></tr>
+          <tr><td><code>decelerationLimitMps2</code></td><td>5</td><td>m/s²; positive</td><td>Bounds speed decrease.</td></tr>
+          <tr><td><code>channelBandwidthHz</code></td><td>1.0 MHz</td><td>Hz; 0.1–50 MHz</td><td>RF configuration; changes noise and PHY bitrate.</td></tr>
+          <tr><td><code>carrierFrequencyHz</code></td><td>8.0 GHz</td><td>Hz; positive</td><td>RF wavelength and FSPL input.</td></tr>
+          <tr><td><code>rainRateMmH</code></td><td>0</td><td>mm/h; non-negative model input</td><td>Environment configuration; rain path is capped at 10 km.</td></tr>
+          <tr><td><code>coverageRadiusKm</code></td><td>35</td><td>km</td><td>ACN radio-footprint visualization/configuration.</td></tr>
+          <tr><td>Playback speed</td><td>1×</td><td>0.1×, 0.5×, 1× UI choices</td><td>Timer presentation only; does not alter physical time step.</td></tr>
+        </tbody></table>
+        <p>Defaults and validation above are from <code>src/core/config.ts</code>. Scenario and spatial edits are sent through worker commands; the UI should be treated as the command surface, not as a second configuration authority.</p>
+      </section>
+
+      <section class="report-section" id="report-methodology">
+        <h3>12. Research methodology and experimental evaluation</h3>
+        <p>The intended evaluation is a paired, controlled comparison of <code>Legacy_Static_TDMA</code> and <code>Tac-TAD</code>. The two scheduler arms must receive the same initial terrain, ACN route and motion, node positions, traffic configuration, RF/environment parameters, simulation duration, and random inputs where randomness is introduced. Only the scheduler policy should differ. A single browser session is useful for exploration, but comparative claims should be generated from recorded run manifests and repeatable worker runs.</p>
+        <h4>12.1 Experimental procedure</h4>
+        <ol>
+          <li>Record the commit, runtime, host, scheduler policy, scenario, terrain asset/version, RF and weather parameters, trajectory, node inventory, traffic profile, duration, and seed or seed status.</li>
+          <li>Warm up both arms using the same initialization rule, then run each for the same number of 20 ms frames. Keep the physical frame count separate from wall-clock execution time.</li>
+          <li>Use paired scenarios: for each scenario identifier, run Static TDMA and Tac-TAD with identical inputs. Randomized scenario order may be used to reduce ordering effects, but the pairing must be retained.</li>
+          <li>Export raw observations before aggregation. Keep failed, incomplete, and excluded runs with an explicit reason rather than silently removing them.</li>
+          <li>Report results by scenario and in aggregate, with sample count, missing data, uncertainty, and the exact denominator for every percentage.</li>
+        </ol>
+        <h4>12.2 Primary and secondary metrics</h4>
+        <table class="doc-table-clean"><thead><tr><th>Metric</th><th>Definition and purpose</th></tr></thead><tbody>
+          <tr><td>Delivered goodput</td><td><code>totalBitsTransmitted</code> over the evaluation interval. This is payload dequeued while the link is usable, not theoretical PHY capacity.</td></tr>
+          <tr><td>Goodput distribution</td><td>Per-frame or defined-window throughput percentiles, such as P50 and P95, with the window and zero-value treatment stated.</td></tr>
+          <tr><td>Outage waste</td><td><code>totalBitsWastedOnOutage</code> and its explicitly defined denominator. This measures payload dequeued but not deliverable on an outage link.</td></tr>
+          <tr><td>Queue drops</td><td>Delay drops and overflow drops reported separately, both per-frame and cumulative. They must not be conflated with RF outage.</td></tr>
+          <tr><td>Backlog and delay</td><td>Total backlog bits plus packet sojourn/head-of-line delay by QoS class, including the relevant packet-delay budget.</td></tr>
+          <tr><td>Service and utilization</td><td>Scheduled uplink airtime, available airtime, unused/reclaimed airtime, allocation count, and utilization percentage.</td></tr>
+          <tr><td>QoS protection</td><td>Class-specific delivery, delay, and drop outcomes for 5QI 69, 65, 67, and 70; aggregate goodput alone can hide tactical-priority regressions.</td></tr>
+          <tr><td>Execution performance</td><td>Worker step-time percentiles, wall-clock throughput, memory, and UI frame timing measured separately from simulated network outcomes.</td></tr>
+        </tbody></table>
+        <h4>12.3 Statistical evaluation plan</h4>
+        <p>For each paired scenario, calculate the Tac-TAD minus Static difference (and the ratio only when the denominator is meaningful). Summarize paired differences with mean, median, standard deviation, interquartile range, and confidence intervals. Use a paired t-test only when the distribution and independence assumptions are defensible; otherwise use a paired Wilcoxon signed-rank test or a permutation/bootstrap interval over scenario-level paired differences. Report effect sizes alongside p-values, correct for multiple primary comparisons when several hypotheses are tested, and treat confidence intervals crossing zero as inconclusive rather than as evidence of equivalence.</p>
+        <p>Frames within one run are temporally correlated, so they must not be treated as independent experimental replicates. The recommended unit of inference is the paired scenario/run, with seeds or independently constructed scenarios as replicates. Pre-register primary metrics, exclusion rules, minimum run counts, and stopping criteria before inspecting comparative outcomes.</p>
+        <div class="report-callout"><strong>Interpretation rule:</strong> an observed Tac-TAD improvement is a result for the specified model and scenario distribution. It is not evidence of universal scheduler superiority, field performance, or real-time operational suitability.</div>
+      </section>
+
+      <section class="report-section" id="report-standards">
+        <h3>13. Industry standards and technical references</h3>
+        <p>The following register records standards and standards-inspired references visible in the current implementation. A reference indicates the model’s intended engineering basis; it does not mean the project is certified, fully conformant, or a complete implementation of the publication.</p>
+        <table class="doc-table-clean"><thead><tr><th>Reference</th><th>Use in this project</th><th>Implementation status</th></tr></thead><tbody>
+          <tr><td>ITU-R P.834</td><td>Effective Earth-radius/refraction geometry, using the configured <code>k = 4/3</code> approximation.</td><td>Implemented approximation; not a dynamic refractivity model.</td></tr>
+          <tr><td>ITU-R P.676</td><td>Clear-air gaseous attenuation coefficient used for the 8 GHz link model.</td><td>Implemented simplified coefficient; not a full spectral atmospheric calculation.</td></tr>
+          <tr><td>ITU-R P.838-3</td><td>Rain specific attenuation form with horizontal-polarization coefficients and a configured rain-cell path cap.</td><td>Implemented simplified rain model for the configured frequency/assumptions.</td></tr>
+          <tr><td>ITU-R P.526</td><td>Engineering basis for Fresnel clearance and knife-edge/dominant-obstacle diffraction language.</td><td>Project approximation; rounded-crest and terrain treatment are not a complete P.526 implementation.</td></tr>
+          <tr><td>3GPP 5QI / MCX QoS concepts</td><td>Queue profiles use project-mapped 5QI labels 69 (C2), 65 (voice), 67 (video), and 70 (photo), with priority and packet-delay-budget fields.</td><td>Project traffic model inspired by these concepts; not a complete 3GPP QoS or MCX protocol stack.</td></tr>
+          <tr><td>3GPP Release 17 NTN</td><td>Referenced with DVB-S2X in the discrete MODCOD naming and threshold abstraction.</td><td>Standards-inspired lookup table; no NTN waveform, protocol, satellite, or conformance implementation.</td></tr>
+          <tr><td>DVB-S2X</td><td>Names and spectral-efficiency tiers in the eight-entry MODCOD table used for SNR-to-bitrate mapping.</td><td>Engineering abstraction; not a DVB-S2X modem or link-level implementation.</td></tr>
+        </tbody></table>
+        <p>Free-space path loss, Friis geometry, thermal noise, queueing, TDMA framing, and Tac-TAD are project-defined engineering components. They should not be described as separate industry-standard implementations unless a source mapping and validation evidence are added.</p>
+      </section>
+
+      <section class="report-section" id="report-appendix">
+        <h3>Appendix A. Mathematical background and technical formulation</h3>
+        <p>This appendix records the mathematical formulations used by the active TypeScript/WebWorker implementation. It is an engineering traceability document, not a claim that the project implements every referenced standard in full. Equations marked <strong>established</strong> are common engineering identities; equations marked <strong>standard-based approximation</strong> follow the project’s documented interpretation of a reference; equations marked <strong>project-defined</strong> or <strong>heuristic</strong> describe local implementation behavior.</p>
+        <aside class="research-notice"><strong>Notation and units.</strong> Distances are in metres, time in seconds, frequency in hertz, speed in metres per second, power in dBm or watts as stated, and angles in radians unless degrees are explicitly shown. Every equation below has a unique appendix identifier and a source/function mapping.</aside>
+
+        <h4>A.1 Radio propagation and link geometry</h4>
+        <div class="formula-card">(A-1) &nbsp; d₂D = √(Δx² + Δy²), &nbsp;&nbsp; d₃D = √(Δx² + Δy² + Δz²)<br>         Δx = x<sub>A</sub> − x<sub>N</sub>, &nbsp; Δy = y<sub>A</sub> − y<sub>N</sub>, &nbsp; Δz = z<sub>A</sub> − z<sub>N</sub></div>
+        <p><strong>Variables:</strong> <code>(xA,yA,zA)</code> is the ACN position in m MSL/local Cartesian coordinates; <code>(xN,yN,zN)</code> is the node position; <code>Δx,Δy,Δz</code> are component differences; <code>d2D</code> is horizontal range and <code>d3D</code> is slant range, all in m. <strong>Interpretation:</strong> this is the separation used by propagation delay and FSPL. <strong>Source:</strong> established Euclidean geometry; <code>TerrainEngine.computeSlantGeometry</code> in <code>src/core/terrain.ts</code>. <strong>Limits:</strong> local Cartesian coordinates and endpoint heights are assumed; geodetic transformation and terrain datum errors are outside this equation.</p>
+        <div class="formula-card">(A-2) &nbsp; τ<sub>prop</sub> = d₃D / c, &nbsp;&nbsp; τ<sub>TA</sub> = 2τ<sub>prop</sub> = 2d₃D / c</div>
+        <p><strong>Variables:</strong> <code>τprop</code> is one-way propagation delay in s; <code>τTA,geom</code> is the geometry-derived two-way timing value in s; <code>c</code> is the configured speed of light in m/s. <strong>Interpretation:</strong> the terrain geometry telemetry computes a two-way propagation relation. Scheduler allocation records currently use a separate fixed <code>timingAdvanceS = 0.001 s</code> field and do not consume <code>τTA,geom</code>. <strong>Source:</strong> established propagation identity; <code>computeSlantGeometry</code>, plus fixed allocation field in both scheduler implementations. <strong>Limits:</strong> neither value is a complete MAC timing-advance procedure; clock, synchronization, and waveform processing delay are not modeled.</p>
+        <div class="formula-card">(A-3) &nbsp; φ = d₂D / R′<sub>e</sub>, &nbsp;&nbsp; e = atan2((R′<sub>e</sub> + z<sub>A</sub>)cosφ − (R′<sub>e</sub> + z<sub>N</sub>), (R′<sub>e</sub> + z<sub>A</sub>)sinφ)</div>
+        <p><strong>Variables:</strong> <code>R'e = kRe</code> is effective Earth radius in m; <code>φ</code> is central angle in rad; <code>e</code> is elevation angle, converted to degrees for telemetry. <strong>Interpretation:</strong> the implementation uses an effective-radius Earth geometry. <strong>Source:</strong> standard-based approximation associated with ITU-R P.834; <code>computeSlantGeometry</code> and <code>EnvironmentConfig.effectiveEarthRadiusM</code>. <strong>Limits:</strong> <code>k = 4/3</code> is fixed by default; no measured refractivity profile is used.</p>
+
+        <h4>A.2 Terrain obstruction, LOS/NLOS and Fresnel-zone analysis</h4>
+        <div class="formula-card">(A-4) &nbsp; s = d₁ / D, &nbsp; (x(s),y(s),z<sub>LOS</sub>(s)) = (x<sub>N</sub>,y<sub>N</sub>,z<sub>N</sub>) + s(Δx,Δy,Δz)</div>
+        <p><strong>Variables:</strong> <code>D = d3D</code>; <code>d1</code> is distance from node to a sampled path point; <code>d2 = D − d1</code>; <code>s</code> is the path fraction; <code>zLOS</code> is linearly interpolated endpoint height. <strong>Interpretation:</strong> the terrain engine samples this ray at a configured interval, normally 100 m. <strong>Source:</strong> project-defined path sampling in <code>TerrainEngine.evaluateTerrainObstruction</code>. <strong>Limits:</strong> finite sampling can miss sub-interval terrain features; out-of-coverage paths return invalid clearance rather than fabricated terrain.</p>
+        <div class="formula-card">(A-5) &nbsp; h<sub>clear</sub>(d₁) = z<sub>LOS</sub>(d₁) − [h<sub>DEM</sub>(d₁) + b<sub>Earth</sub>(d₁,d₂)]<br>         b<sub>Earth</sub>(d₁,d₂) = d₁d₂ / (2R′<sub>e</sub>)</div>
+        <p><strong>Variables:</strong> <code>hDEM</code> is sampled terrain elevation in m; <code>bEarth</code> is effective-Earth bulge in m; <code>hclear</code> is clearance in m. <strong>Interpretation:</strong> positive clearance is above the effective terrain/curvature surface. <strong>Source:</strong> project implementation in <code>TerrainEngine.computeEarthBulge</code> and <code>evaluateTerrainObstruction</code>, with effective-radius basis from ITU-R P.834. <strong>Limits:</strong> the parabolic bulge is an approximation and is not a full spherical ray-trace or refractivity solution.</p>
+        <div class="formula-card">(A-6) &nbsp; r₁(d₁,d₂) = √(λd₁d₂ / D), &nbsp;&nbsp; ρ = h<sub>clear</sub> / r₁</div>
+        <p><strong>Variables:</strong> <code>r1</code> is first Fresnel-zone radius in m; <code>λ = c/fc</code> is wavelength in m; <code>ρ</code> is normalized clearance. <strong>Interpretation:</strong> the engine retains the path sample with minimum normalized Fresnel clearance. <strong>Source:</strong> established Fresnel-zone relation; <code>evaluateTerrainObstruction</code>. <strong>Limits:</strong> only the first-zone scalar clearance is used; antenna patterns, phase, multipath, and partial-zone field integration are not modeled.</p>
+        <div class="formula-card">(A-7) &nbsp; LOS = (ρ ≥ 0.6) ∨ (0 &lt; ρ &lt; 0.6) with diffraction penalty; NLOS/outage geometry when ρ ≤ 0</div>
+        <p><strong>Variables:</strong> <code>ρ</code> is the minimum ratio in (A-6). <strong>Interpretation:</strong> the implementation preserves an <code>isLos</code> boolean for positive clearance, but assigns a nonzero diffraction loss when clearance is below 0.6 Fresnel radius; nonpositive clearance is treated as terrain obstruction. <strong>Source:</strong> project-defined threshold behavior in <code>evaluateTerrainObstruction</code> and <code>linkStatusClassifier.ts</code>. <strong>Limits:</strong> the threshold is not presented as a universal LOS standard.</p>
+
+        <h4>A.3 Knife-edge diffraction</h4>
+        <div class="formula-card">(A-8) &nbsp; ν = −h<sub>clear</sub> √[(2/λ)(1/d₁ + 1/d₂)]</div>
+        <p><strong>Variables:</strong> <code>ν</code> is the dimensionless knife-edge parameter; for the obstructed branch <code>hclear ≤ 0</code>, so the implemented sign convention yields a nonnegative obstruction parameter. <strong>Source:</strong> established knife-edge diffraction form, implemented in <code>evaluateTerrainObstruction</code>. <strong>Limits:</strong> sign conventions and the sampled dominant obstacle must not be generalized beyond this implementation.</p>
+        <div class="formula-card">(A-9) &nbsp; L<sub>KE</sub> = 6.9 + 20log₁₀(√[(ν − 0.1)² + 1] + ν − 0.1)<br>         L<sub>diff</sub> = L<sub>KE</sub> + 12 dB</div>
+        <p><strong>Variables:</strong> <code>LKE</code> and <code>Ldiff</code> are losses in dB; the fixed 12 dB term is the project’s rounded-crest/Fock penalty. <strong>Source:</strong> knife-edge expression associated with ITU-R P.526; the added 12 dB term is project-defined in <code>evaluateTerrainObstruction</code>. <strong>Limits:</strong> the project does not claim a complete P.526 implementation, multiple-edge diffraction, scattering, or validated rounded-crest calibration. The exact publication edition/equation mapping should be verified before formal citation.</p>
+
+        <h4>A.4 Atmospheric attenuation and RF link budget</h4>
+        <div class="formula-card">(A-10) &nbsp; FSPL = 20log₁₀(d₃D) + 20log₁₀(f<sub>c</sub>) + 20log₁₀(4π/c)</div>
+        <p><strong>Variables:</strong> <code>FSPL</code> is free-space path loss in dB; <code>d3D</code> is m; <code>fc</code> is Hz; <code>c</code> is m/s. <strong>Source:</strong> established Friis/free-space path-loss identity; <code>LinkBudgetEngine.computeFsplDb</code>. <strong>Limits:</strong> isotropic/free-space assumptions do not include terrain, multipath, antenna pattern, or interference; terrain diffraction is added separately.</p>
+        <div class="formula-card">(A-11) &nbsp; L<sub>gas</sub> = 0.012(d₃D / 1000) dB<br>         γ<sub>R</sub> = k<sub>H</sub>R<sup>αH</sup>, &nbsp; L<sub>rain</sub> = γ<sub>R</sub> min(d₃D/1000, ℓ<sub>rain</sub>)</div>
+        <p><strong>Variables:</strong> <code>Lgas</code> and <code>Lrain</code> are dB; <code>R</code> is rain rate in mm/h; <code>kH = 0.00411</code>, <code>αH = 1.39</code>; <code>ℓrain</code> is rain-cell length in km. <strong>Source:</strong> simplified ITU-R P.676/P.838-3-inspired terms in <code>computeGaseousAttenuationDb</code> and <code>computeRainAttenuationDb</code>. <strong>Limits:</strong> the coefficient is fixed for the configured 8 GHz/horizontal-polarization assumption; no full frequency-, elevation-, or weather-profile integration is performed.</p>
+        <div class="formula-card">(A-12) &nbsp; L<sub>total</sub> = L<sub>FSPL</sub> + L<sub>diff</sub> + L<sub>gas</sub> + L<sub>rain</sub> + L<sub>cable</sub> + M<sub>impl</sub><br>         P<sub>rx</sub> = P<sub>tx</sub> + G<sub>tx</sub> + G<sub>rx</sub> − L<sub>total</sub></div>
+        <p><strong>Variables:</strong> losses and margin are dB; <code>Ptx</code>/<code>Prx</code> are dBm; <code>Gtx</code>/<code>Grx</code> are dBi; <code>Lcable</code> and <code>Mimpl</code> are configured dB terms. <strong>Source:</strong> project link-budget summation in <code>LinkBudgetEngine.evaluateLink</code>. <strong>Limits:</strong> the receiver gain is represented by the ACN gain field and the model does not resolve directional patterns or link asymmetry beyond configured node transmitter parameters.</p>
+
+        <h4>A.5 Receiver noise, SNR and link adaptation</h4>
+        <div class="formula-card">(A-13) &nbsp; P<sub>noise,W</sub> = k<sub>B</sub>T B 10<sup>NF/10</sup>, &nbsp;&nbsp; P<sub>noise,dBm</sub> = 10log₁₀(1000P<sub>noise,W</sub>)<br>         SNR<sub>dB</sub> = P<sub>rx,dBm</sub> − P<sub>noise,dBm</sub></div>
+        <p><strong>Variables:</strong> <code>kB</code> is Boltzmann’s constant in J/K; <code>T</code> is temperature in K; <code>B</code> is bandwidth in Hz; <code>NF</code> is noise figure in dB; powers are W/dBm. <strong>Source:</strong> established thermal-noise relation and dBm conversion; <code>computeThermalNoiseFloorDbm</code> and <code>evaluateLink</code>. <strong>Limits:</strong> constant temperature and scalar noise figure are assumed; interference and implementation-specific receiver effects are represented only by configured margin.</p>
+        <div class="formula-card">(A-14) &nbsp; η(SNR) = η<sub>j</sub> for the highest threshold γ<sub>j</sub> ≤ SNR; &nbsp;&nbsp; R<sub>PHY</sub> = η(SNR)B</div>
+        <p><strong>Variables:</strong> <code>γj</code> is a MODCOD minimum-SNR threshold in dB; <code>ηj</code> is spectral efficiency in bit/s/Hz; <code>η</code> is selected efficiency; <code>RPHY</code> is nominal bitrate in bit/s. <strong>Source:</strong> threshold lookup and bitrate calculation in <code>selectModCod</code> and <code>evaluateLink</code>. <strong>Limits:</strong> this is link adaptation by table lookup, not a waveform, coding, HARQ, or modem simulation.</p>
+
+        <h4>A.6 MODCOD and PHY capacity</h4>
+        <p>The current table contains eight named tiers from <code>pi/2-BPSK 1/3</code> at −1.5 dB and 0.33 bit/s/Hz through <code>64-APSK 5/6</code> at 22 dB and 4.95 bit/s/Hz. If no threshold is met, the table returns <code>LINK_OUTAGE</code>, zero spectral efficiency, and zero bitrate. These names are DVB-S2X / 3GPP Rel-17 NTN-inspired labels, not a claim of standards-compliant PHY behavior.</p>
+        <div class="formula-card">(A-15) &nbsp; C<sub>slot</sub> = ⌊τ<sub>slot</sub>R<sub>PHY</sub>⌋ bits, &nbsp;&nbsp; B<sub>slot</sub> = ⌊C<sub>slot</sub>/8⌋ bytes</div>
+        <p><strong>Variables:</strong> <code>τslot</code> is scheduled payload duration in s; <code>Cslot</code> is integer slot capacity in bits; <code>Bslot</code> is dequeuing capacity in bytes. <strong>Source:</strong> <code>LegacyStaticScheduler.scheduleFrame</code> and <code>TacTadScheduler.scheduleFrame</code>. <strong>Limits:</strong> PHY capacity is an upper bound for the slot; actual delivered application goodput depends on queued bytes, packet fit, outage state, and scheduler service.</p>
+
+        <h4>A.7 TDMA framing and resource allocation</h4>
+        <div class="formula-card">(A-16) &nbsp; T<sub>UL,avail</sub> = T<sub>frame</sub> − T<sub>ctrl</sub> − T<sub>DL</sub><br>         T<sub>frame</sub>=0.020 s, T<sub>ctrl</sub>=0.001 s, T<sub>DL</sub>∈{0.003,0.005} s</div>
+        <p><strong>Variables:</strong> all terms are seconds; <code>TUL,avail</code> is available uplink time. <strong>Source:</strong> constants and scheduler arithmetic in <code>src/core/scheduler.ts</code>. <strong>Interpretation:</strong> the current rule selects 3 ms normally or 5 ms when downlink backlog exceeds 5,000 bytes; a 7 ms maximum constant exists but is not reached by the current rule. <strong>Limits:</strong> this is not a complete bidirectional MAC protocol.</p>
+        <div class="formula-card">(A-17) &nbsp; τ<sub>static</sub> = [T<sub>UL,nominal</sub> − Nτ<sub>guard</sub>] / N</div>
+        <p><strong>Variables:</strong> <code>N</code> is registered node count; <code>τguard = 12 μs</code>; <code>TUL,nominal = 16 ms</code>; <code>τstatic</code> is equal payload slot duration. <strong>Source:</strong> <code>LegacyStaticScheduler.scheduleFrame</code>. <strong>Limits:</strong> static service dequeues packets even when the link is unusable, which is intentionally measured as outage waste in this model.</p>
+        <div class="formula-card">(A-18) &nbsp; T<sub>used</sub> = Σ<sub>i∈alloc</sub>(τ<sub>i</sub> + τ<sub>guard</sub>), &nbsp;&nbsp; U<sub>UL</sub> = 100 T<sub>used</sub>/T<sub>UL,avail</sub></div>
+        <p><strong>Variables:</strong> <code>τi</code> is allocation duration; <code>Tused</code> is scheduled airtime including guards; <code>UUL</code> is utilization in percent. <strong>Source:</strong> both scheduler reports. <strong>Limits:</strong> utilization is airtime accounting, not application throughput or energy efficiency.</p>
+
+        <h4>A.8 Traffic generation and queueing theory</h4>
+        <div class="formula-card">(A-19) &nbsp; λ<sub>v</sub> = μ<sub>video,frame</sub>, &nbsp;&nbsp; K ~ Poisson(λ<sub>v</sub>)</div>
+        <p><strong>Variables:</strong> <code>λv</code> is configured mean video packets per frame; <code>K</code> is generated video packet count. <strong>Source:</strong> <code>GroundNodeTrafficSubsystem.poissonDraw</code> and <code>generateTraffic</code>. <strong>Limits:</strong> C2, voice, and photo generation follow deterministic interval/window/remaining-bytes rules; the Poisson process is per frame and is not a calibrated field traffic model.</p>
+        <div class="formula-card">(A-20) &nbsp; W<sub>p</sub>(t) = max(0,t − t<sub>arrival,p</sub>), &nbsp;&nbsp; t<sub>deadline,p</sub> = t<sub>arrival,p</sub> + PDB<sub>q</sub></div>
+        <p><strong>Variables:</strong> <code>Wp</code> is packet sojourn time in s; <code>tarrival</code> and <code>tdeadline</code> are packet timestamps; <code>PDBq</code> is the QoS profile delay budget. <strong>Source:</strong> <code>Packet</code>, <code>enqueuePacket</code>, <code>getHolDelayS</code>, and queue pruning in <code>src/core/queues.ts</code>. <strong>Limits:</strong> deadline pruning excludes 5QI 69 during the modeled shadow behavior; this is a project policy, not a universal QoS rule.</p>
+        <div class="formula-card">(A-21) &nbsp; Q<sub>bits</sub>(t+) = Q<sub>bits</sub>(t) + A<sub>bits</sub>(t) − D<sub>bits</sub>(t) − X<sub>overflow,bits</sub>(t) − X<sub>expiry,bits</sub>(t)</div>
+        <p><strong>Variables:</strong> all terms are bits; <code>Qbits</code> is queued backlog; <code>Abits</code> is admitted packet payload; <code>Dbits</code> is dequeued service; <code>Xoverflow,bits</code> and <code>Xexpiry,bits</code> are the sizes of evicted or expired packets. Separately, runtime counters <code>droppedOverflowCount</code> and <code>droppedDelayCount</code> count packets, not bits. <strong>Source:</strong> project-defined conservation summary of <code>FQCoDelQueue.enqueue</code>, <code>dequeue</code>, and <code>pruneExpiredPackets</code>. <strong>Limits:</strong> the compact equation hides per-class ordering, packet-size fit, buffer ceilings, and eviction priority.</p>
+
+        <h4>A.9 Tac-TAD and Static TDMA mathematical formulation</h4>
+        <div class="formula-card">(A-22) &nbsp; Ψ<sub>i</sub> = Φ<sub>evac,i</sub> · U<sub>i</sub> · (R<sub>i</sub>/max(1000,R̄<sub>i</sub>)) · max[1, log₂(1 + Q<sub>i</sub>/8000)]<br>         U<sub>i</sub> = Σ<sub>q∈active</sub> w<sub>q</sub> exp(min(8, HOL<sub>i,q</sub>/PDB<sub>q</sub>))</div>
+        <p><strong>Variables:</strong> <code>Ψi</code> is Tac-TAD’s project-defined ranking score; <code>Φevac</code> is predictive evacuation/re-emergence boost; <code>Ui</code> is QoS urgency; <code>wq</code> is configured class weight; <code>HOL</code> is head-of-line age; <code>PDB</code> is delay budget; <code>Ri</code> is instantaneous bitrate; <code>R̄i</code> is the moving average; <code>Qi</code> is backlog bits. <strong>Source:</strong> exact structure in <code>TacTadScheduler.scheduleFrame</code>. <strong>Limits:</strong> this is a deterministic heuristic composite, not a Lyapunov proof, trained policy, or optimization solution.</p>
+        <div class="formula-card">(A-23) &nbsp; τ<sub>req,i</sub> = Q<sub>i</sub>/R<sub>i</sub>, &nbsp;&nbsp; τ<sub>i</sub> = min(τ<sub>req,i</sub>, τ<sub>max,normal</sub>, T<sub>remaining</sub> − τ<sub>guard</sub>)</div>
+        <p><strong>Variables:</strong> <code>τreq</code> is requested service duration; <code>τi</code> is normal Tac-TAD allocation; <code>τmax,normal</code> is the scheduler’s configured normal cap; <code>Tremaining</code> is remaining uplink time. <strong>Source:</strong> exact-fit sizing in <code>TacTadScheduler.scheduleFrame</code>. <strong>Limits:</strong> a pre-occlusion flush changes the cap rule and can request at least the minimum slot; no global optimality or fairness guarantee follows.</p>
+        <div class="formula-card">(A-24) &nbsp; Φ<sub>evac</sub> = 1 + 5[(3 − t<sub>occ</sub>)/3]<sub>0..1</sub> min(1,Q<sub>i</sub>/20000), &nbsp; PRE_OCCLUSION_FLUSH<br>         Φ<sub>evac</sub> = 4, &nbsp; RE_EMERGENCE_BURST</div>
+        <p><strong>Variables:</strong> <code>tocc</code> is predicted time to occlusion in s; <code>[·]0..1</code> denotes the implementation’s nonnegative/clamped ratio; backlog is in bits. <strong>Source:</strong> project heuristic in <code>TacTadScheduler.scheduleFrame</code>. <strong>Limits:</strong> the warning horizon, factor 5, backlog scale, and re-emergence factor 4 are tuned constants; they require experimental sensitivity analysis.</p>
+
+        <h4>A.10 Simulation timestep, state evolution and telemetry</h4>
+        <div class="formula-card">(A-25) &nbsp; t<sub>n+1</sub> = t<sub>n</sub> + Δt, &nbsp;&nbsp; f<sub>n+1</sub> = f<sub>n</sub> + 1, &nbsp;&nbsp; Δt = 0.020 s = 1/50 s</div>
+        <p><strong>Variables:</strong> <code>tn</code> is simulated time; <code>fn</code> is frame index; <code>Δt</code> is the fixed physical timestep. <strong>Source:</strong> <code>SimulationWorkerManager.tickSimulation</code> and <code>FRAME_DT</code>. <strong>Interpretation:</strong> each tick refreshes obstruction state, generates/prunes traffic, runs both schedulers, accumulates metrics, and emits a telemetry frame. <strong>Limits:</strong> wall-clock timer interval and playback speed affect execution cadence only; they do not change <code>Δt</code>.</p>
+        <div class="formula-card">(A-26) &nbsp; y<sub>n</sub> = {t<sub>n</sub>, f<sub>n</sub>, p<sub>ACN</sub>, v<sub>ACN</sub>, L<sub>i</sub>, Q<sub>i</sub>, S<sub>i</sub>, M<sub>n</sub>}</div>
+        <p><strong>Variables:</strong> <code>yn</code> is the published telemetry observation; <code>pACN/vACN</code> are position/velocity; <code>Li</code> is link state; <code>Qi</code> is queue state; <code>Si</code> is schedule/report state; <code>Mn</code> is accumulated metrics. <strong>Source:</strong> <code>buildTelemetryFrame</code>. <strong>Limits:</strong> telemetry is a snapshot at a worker frame boundary; it is not an event-sourced log of every internal operation.</p>
+
+        <h4>A.11 Performance metrics and statistical evaluation</h4>
+        <div class="formula-card">(A-27) &nbsp; G = Σ bits<sub>delivered</sub> / T<sub>eval</sub>, &nbsp;&nbsp; W<sub>outage</sub> = Σ bits<sub>dequeued,outage</sub><br>         B<sub>final</sub> = bits<sub>backlog at final frame</sub>, &nbsp;&nbsp; D<sub>drop</sub> = D<sub>delay</sub> + D<sub>overflow</sub></div>
+        <p><strong>Variables:</strong> <code>G</code> is delivered goodput in bit/s; <code>Teval</code> is the stated evaluation interval; <code>Woutage</code> is outage-wasted payload bits; <code>Bfinal</code> is the final-frame backlog; <code>Ddrop</code> separates delay and overflow packet counts. <strong>Source:</strong> worker metric accumulation and <code>FrameScheduleReport</code>; <code>staticFinalBacklogBits</code> and <code>tacFinalBacklogBits</code> are overwritten each frame rather than accumulated. <strong>Limits:</strong> denominators and window boundaries must be reported; PHY capacity, scheduled service, dequeued payload, and delivered goodput are different quantities.</p>
+        <div class="formula-card">(A-28) &nbsp; Δ<sub>j</sub> = m<sub>Tac,j</sub> − m<sub>Static,j</sub>, &nbsp;&nbsp; CI<sub>α</sub>(Δ̄) = Δ̄ ± t<sub>1−α/2,n−1</sub>s<sub>Δ</sub>/√n</div>
+        <p><strong>Variables:</strong> <code>Δj</code> is a paired scenario difference; <code>m</code> is a metric; <code>n</code> is the number of independent paired scenario/run replicates; <code>sΔ</code> is the sample standard deviation; <code>CIα</code> is a confidence interval when the paired-t assumptions are reasonable. <strong>Source:</strong> project evaluation formulation described in the methodology section, not runtime code. <strong>Limits:</strong> use paired Wilcoxon or bootstrap/permutation alternatives when assumptions fail; do not treat correlated frames as independent replicates.</p>
+
+        <h4>A.12 Model assumptions, approximations and limitations</h4>
+        <table class="doc-table-clean"><thead><tr><th>Model area</th><th>Current assumption</th><th>Consequence</th><th>Source / status</th></tr></thead><tbody>
+          <tr><td>Coordinates</td><td>Local Cartesian X east, Y north, Z MSL/elevation.</td><td>Projection and datum errors are not propagated as uncertainty.</td><td><code>terrain.ts</code>; implemented project coordinate model.</td></tr>
+          <tr><td>Terrain</td><td>DEM samples plus effective Earth bulge and configured geometric obstacles.</td><td>Resolution, sampling interval, and coverage boundaries limit obstruction fidelity.</td><td><code>evaluateTerrainObstruction</code>; project approximation.</td></tr>
+          <tr><td>Propagation</td><td>FSPL, scalar gas/rain loss, dominant-obstacle diffraction, scalar noise.</td><td>No multipath, scattering, interference, antenna pattern, or measured channel calibration.</td><td><code>linkBudget.ts</code>, <code>terrain.ts</code>.</td></tr>
+          <tr><td>Adaptation</td><td>Discrete SNR threshold table maps directly to spectral efficiency.</td><td>No modem, coding, HARQ, packet error probability, or waveform timing model.</td><td><code>MODCOD_TABLE</code>; standards-inspired abstraction.</td></tr>
+          <tr><td>Scheduling</td><td>Static equal slots versus deterministic Tac-TAD heuristic.</td><td>No proof of optimality, universal fairness, or learned policy behavior.</td><td><code>scheduler.ts</code>; project-defined.</td></tr>
+          <tr><td>Replay</td><td>Rolling telemetry snapshots.</td><td>Historical scrubbing is not deterministic re-execution.</td><td><code>simulationHistory.ts</code> and coordinators.</td></tr>
+        </tbody></table>
+        <p><strong>Reference verification status:</strong> the implementation comments and project report identify ITU-R P.526, P.676, P.834, P.838-3, 3GPP 5QI/MCX concepts, 3GPP Release 17 NTN, and DVB-S2X as engineering references. The exact editions, clause numbers, and publication equation numbers have not been independently verified in this appendix; they should be checked against the official publications before a formal academic or compliance citation is issued. No claim of full ITU-R, 3GPP, or DVB-S2X compliance is made.</p>
       </section>
 
       <section class="report-section" id="report-verification">
-        <h3>5. Verification and validation plan</h3>
-        <p>The following matrix defines the minimum evidence expected before a research claim is promoted to a validated result. “Planned” means the test must be implemented or re-run; it does not indicate a passing result.</p>
-        <table class="doc-table-clean"><thead><tr><th>Test group</th><th>Acceptance evidence</th><th>Status in this report</th></tr></thead><tbody>
-          <tr><td>Physics unit tests</td><td>Known-value fixtures, dimensional checks, boundary and monotonicity tests.</td><td><span class="report-status">Existing targeted checks; full audit pending</span></td></tr>
-          <tr><td>Scheduler invariants</td><td>Slot-duration bounds, guard accounting, queue conservation, outage behavior.</td><td><span class="report-status">Existing targeted checks; full audit pending</span></td></tr>
-          <tr><td>Python ↔ TypeScript parity</td><td>Shared deterministic fixtures and documented numerical tolerances.</td><td><span class="report-status report-status-pending">Planned / not established</span></td></tr>
-          <tr><td>Monte Carlo evaluation</td><td>Multiple seeds, scenario distributions, confidence intervals, paired comparisons.</td><td><span class="report-status report-status-pending">Planned / re-run required</span></td></tr>
-          <tr><td>Frontend integration</td><td>Navigation, persistent map, panel resizing, command handling, telemetry consistency.</td><td><span class="report-status report-status-pending">Current UI change requires verification</span></td></tr>
-          <tr><td>Performance profiling</td><td>Worker step-time percentiles, main-thread frame timing, memory and long-run stability.</td><td><span class="report-status report-status-pending">Planned / measurement required</span></td></tr>
+        <h3>14. Testing and verification</h3>
+        <p>Verification is executable and source-based, not a substitute for field validation. The repository’s <code>npm test</code> command runs structural checks, typecheck, physics, scheduler, worker-state, trajectory, obstacle, historical, link-classification, Three.js foundation, geodesy, visualization, bandwidth, and integration checks. <code>npm run build</code> verifies the Vite production bundle; <code>git diff --check</code> checks patch whitespace.</p>
+        <table class="doc-table-clean"><thead><tr><th>Evidence area</th><th>Current coverage</th></tr></thead><tbody>
+          <tr><td>Trajectory</td><td>Ellipse compatibility, closed waypoint looping, speed/velocity continuity, geometry, and editor behavior.</td></tr>
+          <tr><td>RF and geometry</td><td>Link budget terms, bandwidth validation, geodesy, DEM mapping, coverage, hillshade bounds, and cursor readout.</td></tr>
+          <tr><td>Scheduling and traffic</td><td>Scheduler invariants, worker state, historical scheduler, queues, link classification, goodput and data communication.</td></tr>
+          <tr><td>Visualization</td><td>Terrain canvas, path-profile/top-view, node inventory, Three.js foundation/terrain/entities, and integration hardening.</td></tr>
         </tbody></table>
-      </section>
-
-      <section class="report-section" id="report-results">
-        <h3>6. Historical benchmark results (legacy Python engine)</h3>
-        <p>The values below are transcribed from <code>benchmark_results/BENCHMARK_DOSSIER.md</code> and <code>summary_metrics.csv</code>. They are historical archived results, not a verified statement about the current TypeScript engine. The source report records seed 42, 5,000 superframes, and 100 seconds of simulated time.</p>
-        <table class="doc-table-clean"><thead><tr><th>Metric</th><th>Static TDMA</th><th>Tac-TAD</th><th>Interpretation</th></tr></thead><tbody>
-          <tr><td>Delivered goodput</td><td>27.72 Mb</td><td>215.78 Mb</td><td>Reported 7.78× ratio; reproduce on current engine.</td></tr>
-          <tr><td>Goodput P50</td><td>0.13 Mbps</td><td>2.11 Mbps</td><td>Historical distribution statistic.</td></tr>
-          <tr><td>Goodput P95</td><td>0.96 Mbps</td><td>3.49 Mbps</td><td>Historical distribution statistic.</td></tr>
-          <tr><td>Concluded packet drop rate</td><td>52.68%</td><td>13.93%</td><td>Metric definition and denominator require parity check.</td></tr>
-          <tr><td>Hard-shadow allocation waste</td><td>6.31%</td><td>0.00%</td><td>Source defines this as payload slot allocation to severed links, not total protocol overhead.</td></tr>
-          <tr><td>Wall-clock duration</td><td colspan="2">289.76 s reported for 5,000 frames</td><td>17.3 frames/s is below the configured 50 Hz cadence; execution-time and throughput semantics need reconciliation.</td></tr>
-        </tbody></table>
-        <div class="report-callout report-callout-warning"><strong>Data-quality flag:</strong> the archived QoS table contains latency rows where a positive mean accompanies a zero P95 value. Those distributions must be audited before latency claims are used. Figures and tables should be regenerated from raw run outputs using one documented metric implementation.</div>
-      </section>
-
-      <section class="report-section" id="report-reproducibility">
-        <h3>7. Reproducibility protocol</h3>
-        <ol>
-          <li>Record the Git commit, dependency lockfile, runtime versions, host CPU/OS, and relevant hardware configuration.</li>
-          <li>Store a complete scenario configuration, terrain asset checksum, random seed, simulation duration, scheduler policy, and traffic profile.</li>
-          <li>Run Static TDMA and Tac-TAD on paired inputs; do not change scenario parameters between arms.</li>
-          <li>Save raw per-run metrics and event traces before aggregation. Retain failed runs and document exclusion rules.</li>
-          <li>Compute confidence intervals and distributions across seeds; report sample counts and uncertainty, not only a single favorable run.</li>
-          <li>Generate tables and figures programmatically from the saved outputs, then link each displayed result to its run manifest.</li>
-        </ol>
-        <p>Recommended deliverables are a machine-readable run manifest, raw metrics CSV/JSON, test log, benchmark report, figures, and a concise limitations statement.</p>
+        <p>Passing automated checks demonstrates implementation invariants for the tested cases. It does not establish real-world RF accuracy, operational readiness, or statistical superiority across scenarios.</p>
       </section>
 
       <section class="report-section" id="report-limitations">
-        <h3>8. Limitations and future work</h3>
+        <h3>15. Limitations and future research</h3>
+        <h4>Implemented capabilities</h4>
+        <ul><li>Browser TypeScript worker simulation at a 20 ms physical step.</li><li>Terrain-aware LOS/Fresnel/diffraction screening, configurable rain and gas terms, adaptive MODCOD abstraction, QoS queues, two TDMA policies, trajectory editing, obstacle geometry, map views, and telemetry history.</li></ul>
+        <h4>Simplifications and unresolved validation</h4>
         <ul>
-          <li>Terrain, weather, propagation, antenna, interference, and mobility models are abstractions; the simulation is not a substitute for field measurements.</li>
-          <li>A dominant-obstacle approximation may not capture multiple-edge diffraction, scattering, multipath, antenna pattern details, or time-varying channel effects.</li>
-          <li>Reported legacy Python benchmarks have not yet been established as equivalent TypeScript results.</li>
-          <li>Real-time suitability must be established through repeatable latency and stability measurements on a named target machine.</li>
-          <li>Formal claims about standards alignment require a clause-by-clause model mapping, not a reference to a standard name alone.</li>
+          <li>No measured field telemetry synchronization or calibrated end-to-end channel model is present.</li>
+          <li>Terrain diffraction uses bounded geometric approximations; multipath, scattering, antenna patterns, interference, and polarization effects are not simulated.</li>
+          <li>The MODCOD table is a discrete engineering abstraction and is not proof of DVB-S2X or 3GPP conformance.</li>
+          <li>History stores telemetry snapshots and does not provide deterministic re-execution from a complete event log.</li>
+          <li>Legacy Python artifacts and archived benchmark numbers are not current TypeScript results unless parity is independently demonstrated.</li>
         </ul>
-        <h4>Next experimental milestones</h4>
-        <ol><li>Establish a clean TypeScript build and executable test command.</li><li>Create cross-engine golden fixtures for physics, queues, and scheduling.</li><li>Run paired Monte Carlo scenarios with documented confidence intervals.</li><li>Profile the worker and UI under long-duration and terrain-stress workloads.</li><li>Replace historical figures with generated, versioned results after review.</li></ol>
+        <div class="report-callout report-callout-warning"><strong>Historical benchmark results (legacy Python engine):</strong> archived values are not a verified statement about the current TypeScript engine and must not be presented as current-worker measurements without a controlled <strong>Python ↔ TypeScript parity</strong> study. <strong>Data-quality flag:</strong> archived distributions require review before use in claims.</div>
+        <h4>Recommended research extensions</h4>
+        <ol><li>Calibrate propagation and antenna assumptions against measured link data.</li><li>Define cross-engine golden fixtures only where legacy parity is required.</li><li>Run paired multi-seed experiments with manifests, confidence intervals, and metric definitions.</li><li>Profile worker latency, UI frame time, memory, and long-duration stability on named hardware.</li><li>Extend the channel model with interference, weather profiles, and richer terrain/multipath treatment.</li></ol>
       </section>
 
-      <footer class="research-footer">Document status: evolving research artifact. All numerical results must retain provenance and be updated only from reproducible runs.</footer>
+      <footer class="research-footer">Document status: current implementation reference. Source files are authoritative; numerical claims require reproducible run provenance and should not be read as field-performance guarantees.</footer>
     </div>
   </section>
 
@@ -1126,7 +1360,22 @@ import { obstacleContainsPoint, obstacleFootprintPoints } from './src/core/obsta
 import { ObstacleEditorState, OBSTACLE_EDITOR_LIMITS, resolveSpatialCanvasTarget } from './src/ui/obstacleEditorState.ts';
 import { routeCommandResult } from './src/ui/commandResultRouter.ts';
 import { LinkProfileViewportState, renderTerrainProfileViewport, summarizeProfileStatus } from './src/ui/linkProfileViewport.ts';
-import { TopViewViewportState, renderTerrainTopView } from './src/ui/pathProfileTopView.ts';
+import {
+  TopViewViewportState,
+  renderTerrainTopView,
+  renderRfTopView,
+  syncCanvasDpr,
+  drawAircraftChevron,
+  drawTacticalTrajectory,
+  drawDraftTrajectory,
+  drawTacticalWaypoints,
+} from './src/ui/pathProfileTopView.ts';
+import { formatNodeGeodeticCoordinates, getNodeRole } from './src/ui/nodeInventory.ts';
+import {
+  validateNodeAgl,
+  checkAglEditEligibility,
+  buildAglConfigUpdateCommand,
+} from './src/ui/nodeAglController.ts';
 import {
   createHistoricalRecordSnapshot,
   SimulationHistoryBuffer,
@@ -1430,6 +1679,7 @@ function recordHistoricalFrame(frame) {
       rainLossDb: lb && typeof lb.rain_loss_db === 'number' ? Number(lb.rain_loss_db.toFixed(1)) : undefined,
     },
     profilePoints: f.profile_points,
+    groundNodeAglM: typeof selNode.agl_m === 'number' ? selNode.agl_m : (typeof selNode.antenna_height_m === 'number' ? selNode.antenna_height_m : 2.0),
   });
 
   historyBuffer.push(rec);
@@ -1576,6 +1826,7 @@ function syncHistoricalUIState() {
   setText('lb-rain', typeof rec.linkBudget.rainLossDb === 'number' ? `${rec.linkBudget.rainLossDb.toFixed(1)} dB` : '--');
 
   drawFresnel();
+  syncSelectedNodeAglUI();
 }
 
 function syncLiveUIState() {
@@ -1612,6 +1863,7 @@ function syncLiveUIState() {
   updateScrubberUI();
   updateDashboardDOM(latestTelemetry);
   drawFresnel();
+  syncSelectedNodeAglUI();
 }
 
 window.returnToLive = function() {
@@ -2259,6 +2511,7 @@ worker.onmessage = (event) => {
       updateSpatialLock: updateSpatialLockControl,
       setWorkerLabel: label => setText('worker-label', label),
     });
+    handleAglCommandResult(msg);
   }
 };
 
@@ -2272,6 +2525,7 @@ function updateSpatialLockControl(locked) {
   button.classList.toggle('active', locked);
   refreshTrajectoryEditor();
   refreshObstacleEditor();
+  syncSelectedNodeAglUI();
 }
 
 function renderHillshadeFromWorker(data, size, boundsKm, terrainMode, bounds) {
@@ -2319,7 +2573,9 @@ let currentTerrainResolution = 'native512';
 function handleNodeSelection(nodeId) {
   if (historyController.isInspecting) return;
   selectedNodeId = nodeId;
+  pendingAglUpdate = null;
   syncNodeDropdowns(selectedNodeId);
+  syncSelectedNodeAglUI();
   sendCommand({ type: 'SELECT_NODE', node_id: selectedNodeId });
   updateSchedulerScrubberUI();
   if (schedHistoryController.isInspecting) {
@@ -2506,6 +2762,16 @@ function setTrajectoryMessage(message, error = false) {
 function syncTrajectoryEditorFromWorker(config) {
   if (!config) return;
   committedTrajectoryMode = config.trajectory_mode;
+  if (typeof config.loiter_speed_mps === 'number' && Number.isFinite(config.loiter_speed_mps)) {
+    const spdInp = $('traj-speed-mps');
+    const spdSlider = $('traj-speed-slider');
+    if (spdInp && document.activeElement !== spdInp) spdInp.value = String(config.loiter_speed_mps);
+    if (spdSlider && document.activeElement !== spdSlider) spdSlider.value = String(Math.min(300, Math.max(0, config.loiter_speed_mps)));
+  }
+  if (typeof config.acn_altitude_m === 'number' && Number.isFinite(config.acn_altitude_m)) {
+    const altInp = $('traj-altitude-msl');
+    if (altInp && document.activeElement !== altInp) altInp.value = String(config.acn_altitude_m);
+  }
   const signature = JSON.stringify(config);
   if (signature === trajectoryConfigSignature) {
     if (pendingTrajectoryRequest !== null) {
@@ -2581,7 +2847,10 @@ function refreshTrajectoryEditor() {
   }
   const disabled = spatialLocked || pendingTrajectoryRequest !== null;
   root.disabled = disabled;
-  ['traj-center-x', 'traj-center-y', 'traj-axis-a', 'traj-axis-b', 'traj-rotation', 'traj-waypoint-x', 'traj-waypoint-y'].forEach(id => { $(id).disabled = disabled; });
+  ['traj-center-x', 'traj-center-y', 'traj-axis-a', 'traj-axis-b', 'traj-rotation', 'traj-waypoint-x', 'traj-waypoint-y', 'traj-speed-slider', 'traj-speed-mps', 'traj-altitude-msl'].forEach(id => {
+    const el = $(id);
+    if (el) el.disabled = disabled;
+  });
   $('trajectory-apply').disabled = disabled;
   $('trajectory-cancel').disabled = pendingTrajectoryRequest !== null;
   if (spatialLocked) {
@@ -2761,11 +3030,23 @@ function applyTrajectoryDraft() {
   if (error) { setTrajectoryMessage(error, true); return; }
   if (spatialLocked) { setTrajectoryMessage('Spatial lock is on. Unlock before applying.', true); return; }
   const draft = trajectoryEditor.preview;
+  const speed = parseFloat($('traj-speed-mps')?.value || '60');
+  const altitude = parseFloat($('traj-altitude-msl')?.value || '5000');
+  if (!Number.isFinite(speed) || speed < 0 || speed > 1000) {
+    setTrajectoryMessage('Physical speed must be between 0 and 1000 m/s.', true);
+    return;
+  }
+  if (!Number.isFinite(altitude) || altitude <= 0 || altitude > 100000) {
+    setTrajectoryMessage('UAV altitude must be between 1 and 100,000 m MSL.', true);
+    return;
+  }
   const params = draft.mode === 'ellipse' ? {
     trajectory_mode: 'ellipse', center_x_m: draft.centerXm, center_y_m: draft.centerYm,
     orbit_a_m: draft.radiusAM, orbit_b_m: draft.radiusBM, orbit_rotation_deg: draft.rotationDeg,
+    loiter_speed_mps: speed, acn_altitude_m: altitude,
   } : {
     trajectory_mode: 'waypoints', waypoints: draft.points.map(point => ({ x_m: point.xM, y_m: point.yM })),
+    loiter_speed_mps: speed, acn_altitude_m: altitude,
   };
   const requestId = `trajectory-${++trajectoryRequestSerial}`;
   pendingTrajectoryRequest = requestId;
@@ -2786,6 +3067,20 @@ function cancelTrajectoryDraft() {
 $('trajectory-mode').addEventListener('change', event => setTrajectoryDraftMode(event.target.value));
 ['traj-center-x', 'traj-center-y', 'traj-axis-a', 'traj-axis-b', 'traj-rotation'].forEach(id => $(id).addEventListener('input', editEllipseFromInputs));
 ['traj-waypoint-x', 'traj-waypoint-y'].forEach(id => $(id).addEventListener('input', editSelectedWaypointFromInputs));
+$('traj-speed-slider')?.addEventListener('input', e => {
+  const v = e.target.value;
+  if ($('traj-speed-mps')) $('traj-speed-mps').value = v;
+  setTrajectoryMessage(`Draft speed: ${Number(v).toFixed(1)} m/s. Apply to commit.`);
+});
+$('traj-speed-mps')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v) && $('traj-speed-slider')) $('traj-speed-slider').value = String(Math.min(300, Math.max(0, v)));
+  setTrajectoryMessage(`Draft speed: ${Number.isFinite(v) ? v.toFixed(1) : '--'} m/s. Apply to commit.`);
+});
+$('traj-altitude-msl')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  setTrajectoryMessage(`Draft altitude: ${Number.isFinite(v) ? v.toFixed(0) : '--'} m MSL. Apply to commit.`);
+});
 $('trajectory-add-point').addEventListener('click', () => {
   const draft = trajectoryEditor.preview;
   const count = draft.mode === 'waypoints' ? draft.points.length : 0;
@@ -2980,10 +3275,154 @@ window.onCoverageParamChange = function() {
   sendCommand({ type: 'CONFIG_UPDATE', params: { coverage_radius_km: km } });
 };
 
+window.onBandwidthParamChange = function() {
+  const bw = parseFloat($('param-bw').value);
+  if (!Number.isFinite(bw) || bw < 0.1 || bw > 50.0) return;
+  setText('lbl-bw', `${bw.toFixed(1)} MHz`);
+  sendCommand({ type: 'CONFIG_UPDATE', params: { channel_bandwidth_mhz: bw } });
+};
+
+/* ---------- Ground Node Antenna AGL Configuration (Feature 7) ---------- */
+let pendingAglUpdate = null;
+let aglFeedbackTimeout = null;
+
+function setAglFeedback(msg, isError = false) {
+  ['node-agl-feedback', 'quick-node-agl-feedback', 'terrain-node-agl-feedback'].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = isError ? 'var(--warn, #ef4444)' : 'var(--muted, #94a3b8)';
+  });
+  if (aglFeedbackTimeout) clearTimeout(aglFeedbackTimeout);
+  if (!isError && msg) {
+    aglFeedbackTimeout = setTimeout(() => {
+      ['node-agl-feedback', 'quick-node-agl-feedback', 'terrain-node-agl-feedback'].forEach(id => {
+        const el = $(id);
+        if (el && el.textContent === msg) el.textContent = '';
+      });
+    }, 2500);
+  }
+}
+
+function syncSelectedNodeAglUI() {
+  const isHistorical = Boolean(historyController?.isInspecting || schedHistoryController?.isInspecting);
+  const eligibility = checkAglEditEligibility({
+    spatialLocked: Boolean(spatialLocked),
+    isHistorical,
+    nodeId: selectedNodeId,
+  });
+  const disabled = !eligibility.canEdit;
+
+  let currentAgl = 2.0;
+  if (isHistorical) {
+    const rec = historyController?.getActiveHistoricalRecord();
+    if (rec && typeof rec.groundNodeAglM === 'number') {
+      currentAgl = rec.groundNodeAglM;
+    } else if (latestTelemetry?.nodes_telemetry) {
+      const node = latestTelemetry.nodes_telemetry.find(n => n.node_id === selectedNodeId);
+      if (node && typeof node.agl_m === 'number') currentAgl = node.agl_m;
+    }
+  } else if (latestTelemetry?.nodes_telemetry) {
+    const node = latestTelemetry.nodes_telemetry.find(n => n.node_id === selectedNodeId);
+    if (node && typeof node.agl_m === 'number') {
+      currentAgl = node.agl_m;
+    }
+  }
+
+  const aglFormatted = currentAgl.toFixed(1);
+  setText('lbl-terrain-node-agl', `${aglFormatted} m`);
+
+  const inputIds = ['node-agl-input', 'quick-node-agl-input', 'terrain-node-agl-input'];
+  inputIds.forEach(id => {
+    const inp = $(id);
+    if (!inp) return;
+    inp.disabled = disabled;
+    inp.title = eligibility.reason || 'Antenna height above ground level (0.0 to 1000.0 m, step 0.5 m)';
+
+    if (document.activeElement !== inp) {
+      inp.value = aglFormatted;
+    }
+  });
+}
+window.syncSelectedNodeAglUI = syncSelectedNodeAglUI;
+
+window.onNodeAglChange = function(val) {
+  let authAgl = 2.0;
+  if (latestTelemetry?.nodes_telemetry) {
+    const node = latestTelemetry.nodes_telemetry.find(n => n.node_id === selectedNodeId);
+    if (node && typeof node.agl_m === 'number') authAgl = node.agl_m;
+  }
+
+  const revertInputs = () => {
+    ['node-agl-input', 'quick-node-agl-input', 'terrain-node-agl-input'].forEach(id => {
+      const inp = $(id);
+      if (inp) inp.value = authAgl.toFixed(1);
+    });
+  };
+
+  const eligibility = checkAglEditEligibility({
+    spatialLocked: Boolean(spatialLocked),
+    isHistorical: Boolean(historyController?.isInspecting || schedHistoryController?.isInspecting),
+    nodeId: selectedNodeId,
+  });
+  if (!eligibility.canEdit) {
+    setAglFeedback(eligibility.reason || 'Editing not permitted', true);
+    revertInputs();
+    syncSelectedNodeAglUI();
+    return;
+  }
+
+  const validation = validateNodeAgl(val);
+  if (!validation.valid || typeof validation.value !== 'number') {
+    setAglFeedback(validation.reason || 'Invalid AGL value', true);
+    revertInputs();
+    syncSelectedNodeAglUI();
+    return;
+  }
+
+  const num = validation.value;
+  const reqId = 'agl_' + Date.now();
+  pendingAglUpdate = { nodeId: selectedNodeId, agl: num, reqId };
+  setAglFeedback('Updating AGL…', false);
+  sendCommand(buildAglConfigUpdateCommand(selectedNodeId, num, reqId));
+};
+
+function handleAglCommandResult(msg) {
+  if (!msg || msg.command_type !== 'CONFIG_UPDATE') return;
+  if (!pendingAglUpdate) return;
+  if (msg.request_id && msg.request_id !== pendingAglUpdate.reqId) return;
+
+  if (msg.accepted === false) {
+    setAglFeedback(`Worker rejected: ${msg.reason || 'Invalid AGL'}`, true);
+    pendingAglUpdate = null;
+    let authAgl = 2.0;
+    if (latestTelemetry?.nodes_telemetry) {
+      const node = latestTelemetry.nodes_telemetry.find(n => n.node_id === selectedNodeId);
+      if (node && typeof node.agl_m === 'number') authAgl = node.agl_m;
+    }
+    ['node-agl-input', 'quick-node-agl-input', 'terrain-node-agl-input'].forEach(id => {
+      const inp = $(id);
+      if (inp) inp.value = authAgl.toFixed(1);
+    });
+    syncSelectedNodeAglUI();
+  } else if (msg.accepted === true) {
+    setAglFeedback(`AGL updated: ${pendingAglUpdate.agl.toFixed(1)} m`, false);
+    ['node-agl-input', 'quick-node-agl-input', 'terrain-node-agl-input'].forEach(id => {
+      const inp = $(id);
+      if (inp && pendingAglUpdate) inp.value = pendingAglUpdate.agl.toFixed(1);
+    });
+    pendingAglUpdate = null;
+    syncSelectedNodeAglUI();
+  }
+}
+window.handleAglCommandResult = handleAglCommandResult;
+
 window.onTargetNodeChange = function(val) {
   if (historyController.isInspecting) return;
   selectedNodeId = parseInt(val, 10);
+  pendingAglUpdate = null;
   syncNodeDropdowns(selectedNodeId);
+  syncSelectedNodeAglUI();
   sendCommand({ type: 'SELECT_NODE', node_id: selectedNodeId });
   updateSchedulerScrubberUI();
   if (latestTelemetry && latestTelemetry.nodes_telemetry) {
@@ -3139,22 +3578,7 @@ function resizeCanvases() {
   const chart2 = $('sched-chart-backlog');
   [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2].forEach(cvs => {
     if (!cvs) return;
-    const container = cvs.parentElement;
-    if (!container) return;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = container.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-
-    const targetW = Math.floor(rect.width * dpr);
-    const targetH = Math.floor(rect.height * dpr);
-
-    if (cvs.width !== targetW || cvs.height !== targetH) {
-      cvs.width = targetW;
-      cvs.height = targetH;
-    }
-    const ctx = cvs.getContext('2d');
-    ctx.resetTransform();
-    ctx.scale(dpr, dpr);
+    syncCanvasDpr(cvs);
   });
   if (threeController) {
     threeController.handleResize();
@@ -3175,14 +3599,7 @@ if ('ResizeObserver' in window) {
 }
 
 /* ---------- Dashboard DOM Updates ---------- */
-function getNodeRole(nodeId) {
-  if (nodeId === 15) return 'Main Command Post (20W Dish)';
-  if (nodeId === 4) return 'Recon Patrol (Occlusion Target)';
-  if (nodeId === 1) return 'Squad Leader (Voice Lead)';
-  if (nodeId === 2) return 'Medic (Voice MC-PTT)';
-  if (nodeId === 3 || nodeId === 6 || nodeId === 9) return 'Scout (Tactical Video)';
-  return 'Soldier Terminal';
-}
+// Note: getNodeRole is imported from src/ui/nodeInventory.ts
 
 function formatDmsStr(deg, isLat) {
   if (!Number.isFinite(deg)) return '--';
@@ -3220,12 +3637,7 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
     const isSelected = n.node_id === selectedId;
     const x = typeof n.x_m === 'number' ? n.x_m : (n.position ? n.position[0] : 0);
     const y = typeof n.y_m === 'number' ? n.y_m : (n.position ? n.position[1] : 0);
-    const lat = typeof n.lat_deg === 'number' ? n.lat_deg : (34.5 + y / 110931.4506);
-    const lon = typeof n.lon_deg === 'number' ? n.lon_deg : (76.5 + x / 91839.9774);
-    const latStr = `${Math.abs(lat).toFixed(5)}°${lat >= 0 ? 'N' : 'S'}`;
-    const lonStr = `${Math.abs(lon).toFixed(5)}°${lon >= 0 ? 'E' : 'W'}`;
-    const latDms = formatDmsStr(lat, true);
-    const lonDms = formatDmsStr(lon, false);
+    const { latStr, lonStr, latDms, lonDms } = formatNodeGeodeticCoordinates(n.lat_deg, n.lon_deg);
 
     const terrainMsl = typeof n.terrain_elevation_msl_m === 'number' ? n.terrain_elevation_msl_m : 0;
     const agl = typeof n.agl_m === 'number' ? n.agl_m : (typeof n.antenna_height_m === 'number' ? n.antenna_height_m : 2.0);
@@ -3412,12 +3824,17 @@ function updateDashboardDOM(frame) {
   setText('clock-display', `T+${(frame.sim_time_s ?? 0).toFixed(1)}s`);
   setText('frame-display', `#${frame.frame_index ?? 0}`);
   if (frame.plain_english_narrative) setText('overview-narrative', frame.plain_english_narrative);
+  if (frame.acn_telemetry && typeof frame.acn_telemetry.current_speed_mps === 'number' && Number.isFinite(frame.acn_telemetry.current_speed_mps)) {
+    const curSpeed = frame.acn_telemetry.current_speed_mps;
+    setText('traj-current-speed', `${curSpeed.toFixed(1)} m/s${curSpeed < 0.05 ? ' (Hovering)' : ''}`);
+  }
   if (frame.nodes_telemetry) {
     populateDropdownsOnce(frame.nodes_telemetry);
     const search = $('terminal-search');
     const q = search ? search.value : '';
     if (search) window.filterTerminalOptions(q);
     renderTerminalInventory(frame.nodes_telemetry, selectedNodeId, q);
+    syncSelectedNodeAglUI();
   }
 
   const kpi = frame.comparative_kpi_dashboard || {};
@@ -3849,40 +4266,6 @@ function drawRadar() {
     ctx.fillStyle = 'rgba(56, 189, 248, 0.04)'; ctx.fill();
     ctx.restore();
 
-    // 6. Elliptical Flight Path
-    const fp = latestTelemetry.flight_path?.length ? latestTelemetry.flight_path : (acn.flight_path || []);
-    if (fp.length) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)'; ctx.lineWidth = 1.1; ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      fp.forEach((pt, i) => { const s = worldToScreen(pt[0], pt[1], w, h); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
-      ctx.closePath(); ctx.stroke();
-      ctx.restore();
-    }
-
-    const pathDraft = trajectoryEditor.preview;
-    if (pathDraft.mode === 'waypoints') {
-      if (trajectoryEditor.dirty && pathDraft.points.length > 1) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(243,181,74,.95)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 4]);
-        ctx.beginPath();
-        pathDraft.points.forEach((point, i) => {
-          const screen = worldToScreen(point.xM, point.yM, w, h);
-          i ? ctx.lineTo(screen.x, screen.y) : ctx.moveTo(screen.x, screen.y);
-        });
-        ctx.closePath(); ctx.stroke(); ctx.restore();
-      }
-      pathDraft.points.forEach((point, i) => {
-        const screen = worldToScreen(point.xM, point.yM, w, h);
-        ctx.save();
-        ctx.fillStyle = i === trajectoryEditor.selectedWaypoint ? '#f3b54a' : '#f8d487';
-        ctx.strokeStyle = '#17212b'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(screen.x, screen.y, i === trajectoryEditor.selectedWaypoint ? 7 : 5, 0, TAU);
-        ctx.fill(); ctx.stroke();
-        ctx.font = `9px ${MONO}`; ctx.fillStyle = '#fff'; ctx.fillText(String(i + 1), screen.x + 8, screen.y - 8);
-        ctx.restore();
-      });
-    }
 
     // Obstacles are rendered as plan-view footprints. Terrain draping and vertical
     // obstruction remain worker-owned; this overlay does not imply a 3D surface.
@@ -4124,6 +4507,69 @@ function drawRadar() {
       });
     }
 
+    // ------------------------------------------------------------------
+    // Authoritative simulation flight trajectory. It remains above links and
+    // data-communication layers so route state is readable without a glow.
+    // ------------------------------------------------------------------
+    const fp = (latestTelemetry.acn_telemetry?.flight_path && latestTelemetry.acn_telemetry.flight_path.length >= 3)
+      ? latestTelemetry.acn_telemetry.flight_path
+      : (latestTelemetry.flight_path && latestTelemetry.flight_path.length >= 3 ? latestTelemetry.flight_path : []);
+
+    if (fp.length >= 3) {
+      const screenFp = fp.map(pt => {
+        const s = worldToScreen(pt[0], pt[1], w, h);
+        return [s.x, s.y];
+      });
+      drawTacticalTrajectory(ctx, screenFp, {
+        isClosed: true,
+        acnScreenPos: { x: acnPos.x, y: acnPos.y },
+      });
+    }
+
+    // Unapplied Draft Trajectory (if dirty in trajectory editor)
+    const pathDraft = trajectoryEditor.preview;
+    if (trajectoryEditor.dirty) {
+      if (pathDraft.mode === 'waypoints' && pathDraft.points.length > 1) {
+        const screenDraft = pathDraft.points.map(pt => {
+          const s = worldToScreen(pt.xM, pt.yM, w, h);
+          return [s.x, s.y];
+        });
+        drawDraftTrajectory(ctx, screenDraft, pathDraft.points.length >= 3);
+      } else if (pathDraft.mode === 'ellipse') {
+        const a = pathDraft.radiusAM, b = pathDraft.radiusBM;
+        const phi = (pathDraft.rotationDeg * Math.PI) / 180.0;
+        const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
+        const screenDraft = [];
+        for (let i = 0; i < 64; i++) {
+          const theta = (2.0 * Math.PI * i) / 64;
+          const xr = a * Math.cos(theta), yr = b * Math.sin(theta);
+          const wx = pathDraft.centerXm + xr * cosPhi - yr * sinPhi;
+          const wy = pathDraft.centerYm + xr * sinPhi + yr * cosPhi;
+          const s = worldToScreen(wx, wy, w, h);
+          screenDraft.push([s.x, s.y]);
+        }
+        drawDraftTrajectory(ctx, screenDraft, true);
+      }
+    }
+
+    // Tactical Waypoints (if waypoints mode is active)
+    if (trajectoryEditor.activeMode === 'waypoints') {
+      const wpSource = trajectoryEditor.dirty
+        ? pathDraft.points
+        : (trajectoryEditor.committedActive.points?.length ? trajectoryEditor.committedActive.points : pathDraft.points);
+
+      const tacticalWps = wpSource.map((pt, i) => {
+        const s = worldToScreen(pt.xM, pt.yM, w, h);
+        return {
+          x: s.x,
+          y: s.y,
+          label: `WP${i + 1}`,
+          isSelected: i === trajectoryEditor.selectedWaypoint,
+        };
+      });
+      drawTacticalWaypoints(ctx, tacticalWps);
+    }
+
     // Pass 3: Render ground terminal markers, halos, and collision-checked labels
     nodeItems.forEach(item => {
       const { nPos, isSel, isMCP, isHovered, style, node } = item;
@@ -4275,19 +4721,24 @@ function drawRadar() {
       }
     }
 
-    // 8. ACN Aircraft Icon & Heading
-    ctx.save();
-    ctx.translate(acnPos.x, acnPos.y);
-    const heading = acn.heading_rad !== undefined ? acn.heading_rad : Math.atan2(vy, vx);
-    ctx.rotate(-heading + Math.PI / 2);
-    ctx.fillStyle = '#38bdf8';
-    ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(9, 7); ctx.lineTo(0, 3); ctx.lineTo(-9, 7); ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.restore();
+    // 8. ACN aircraft marker and heading
+    const headingDeg = acn.heading_deg ?? (((Math.atan2(vx, vy) * 180 / Math.PI) + 360) % 360);
+    drawAircraftChevron(ctx, acnPos.x, acnPos.y, headingDeg);
 
-    ctx.save(); ctx.font = `10px ${MONO}`; ctx.fillStyle = '#38bdf8';
-    ctx.fillText(`ACN-1 [${(acn.altitude_msl_m || 5000).toFixed(0)}m]`, acnPos.x + 13, acnPos.y);
+    const acnAltM = acn.altitude_msl_m ?? 5000;
+    const acnText = `ACN-1 [${Math.round(acnAltM)}m MSL] · HDG ${Math.round(headingDeg)}°`;
+    ctx.save();
+    ctx.font = `700 9.5px ${MONO}`;
+    const acnTw = ctx.measureText(acnText).width;
+    ctx.fillStyle = 'rgba(7, 13, 20, 0.85)';
+    ctx.fillRect(acnPos.x + 16, acnPos.y - 9, acnTw + 8, 17);
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+    ctx.lineWidth = 1.0;
+    ctx.strokeRect(acnPos.x + 16, acnPos.y - 9, acnTw + 8, 17);
+    ctx.fillStyle = '#00f0ff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(acnText, acnPos.x + 20, acnPos.y);
     ctx.restore();
 
     // Note: Live geographic coordinates & terrain elevation HUD are rendered
@@ -4819,9 +5270,10 @@ function drawFresnel() {
     // 1. TERRAIN PATH PROFILE PANEL
     // ─────────────────────────────────────────────────────────────────────────
     if (terrainCanvas && terrainCtx) {
-      const tw = terrainCanvas.parentElement.clientWidth || 800;
-      const th = terrainCanvas.parentElement.clientHeight || 320;
-      if (tw > 0 && th > 0) {
+      const syncResult = syncCanvasDpr(terrainCanvas, terrainCtx);
+      if (syncResult.isVisible) {
+        const tw = syncResult.cssWidth;
+        const th = syncResult.cssHeight;
         terrainCtx.clearRect(0, 0, tw, th);
         const tLayout = { width: tw, height: th, padL: 60, padR: 24, padT: 28, padB: 34 };
 
@@ -4837,7 +5289,7 @@ function drawFresnel() {
 
         const tZoomLabel = $('terrain-zoom-label');
         if (tZoomLabel) {
-          const zf = terrainProfileViewMode === 'top' ? terrainTopViewport.zoomFactor : terrainProfileViewport.zoomFactor;
+          const zf = (terrainProfileViewMode === 'top' || terrainProfileViewMode === 'rf-top') ? terrainTopViewport.zoomFactor : terrainProfileViewport.zoomFactor;
           tZoomLabel.textContent = `${zf.toFixed(1)}×`;
         }
 
@@ -4865,11 +5317,19 @@ function drawFresnel() {
           activeTerrainBounds,
           acnTelemetry: latestTelemetry.acn_telemetry,
           selectedNode: selNode,
+          allNodes: latestTelemetry.nodes_telemetry,
           obstacles: obstacleEditor.committed,
+          waypoints: latestTelemetry.scenario_config?.waypoints ?? (trajectoryEditor ? trajectoryEditor.preview.points : undefined),
+          trajectoryMode: latestTelemetry.scenario_config?.trajectory_mode ?? (trajectoryEditor ? trajectoryEditor.preview.mode : undefined),
         };
 
         if (terrainProfileViewMode === 'top') {
           renderTerrainTopView(terrainCtx, tLayout, terrainTopViewport, profile, topViewOpts);
+        } else if (terrainProfileViewMode === 'rf-top') {
+          const lb = histRecord ? histRecord.linkBudget : (f ? f.selected_link_budget : null);
+          const commStatus = classifyLinkCommunicationStatus(selNode);
+          const transferState = histRecord ? histRecord.transferState : (f ? f.transfer_telemetry : null);
+          renderRfTopView(terrainCtx, tLayout, terrainTopViewport, profile, lb, commStatus, transferState, topViewOpts);
         } else {
           renderTerrainProfileViewport(terrainCtx, tLayout, terrainProfileViewport, profile, histRecord ? histRecord.profilePoints : (f ? f.profile_points : null));
         }
@@ -4883,13 +5343,14 @@ function drawFresnel() {
 // Path Profiles interactive viewport and view-mode controls
 (function setupPathProfilesInteractions() {
   // ─────────────────────────────────────────────────────────────────────────
-  // View Mode Switching Handlers (Feature 6A)
+  // View Mode Switching Handlers (Feature 6A & 6A.1)
   // ─────────────────────────────────────────────────────────────────────────
   $('btn-terrain-view-profile')?.addEventListener('click', (e) => {
     e.stopPropagation();
     terrainProfileViewMode = 'profile';
     $('btn-terrain-view-profile')?.classList.add('active');
     $('btn-terrain-view-top')?.classList.remove('active');
+    $('btn-terrain-view-rf-top')?.classList.remove('active');
     drawFresnel();
   });
 
@@ -4898,6 +5359,16 @@ function drawFresnel() {
     terrainProfileViewMode = 'top';
     $('btn-terrain-view-top')?.classList.add('active');
     $('btn-terrain-view-profile')?.classList.remove('active');
+    $('btn-terrain-view-rf-top')?.classList.remove('active');
+    drawFresnel();
+  });
+
+  $('btn-terrain-view-rf-top')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    terrainProfileViewMode = 'rf-top';
+    $('btn-terrain-view-rf-top')?.classList.add('active');
+    $('btn-terrain-view-profile')?.classList.remove('active');
+    $('btn-terrain-view-top')?.classList.remove('active');
     drawFresnel();
   });
 
@@ -4934,7 +5405,7 @@ function drawFresnel() {
       const dy = e.clientY - panStartY;
       panStartX = e.clientX;
       panStartY = e.clientY;
-      if (terrainProfileViewMode === 'top') {
+      if (terrainProfileViewMode === 'top' || terrainProfileViewMode === 'rf-top') {
         terrainTopViewport.pan(dx, dy, getTerrainLayout());
       } else {
         terrainProfileViewport.pan(dx, dy, getTerrainLayout());
@@ -4960,7 +5431,7 @@ function drawFresnel() {
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.15 : 0.87;
-      if (terrainProfileViewMode === 'top') {
+      if (terrainProfileViewMode === 'top' || terrainProfileViewMode === 'rf-top') {
         terrainTopViewport.zoomAt(factor, px, py, getTerrainLayout());
       } else {
         terrainProfileViewport.zoomAt(factor, px, py, getTerrainLayout());
@@ -4971,7 +5442,7 @@ function drawFresnel() {
     terrainCanvas.addEventListener('dblclick', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (terrainProfileViewMode === 'top') {
+      if (terrainProfileViewMode === 'top' || terrainProfileViewMode === 'rf-top') {
         terrainTopViewport.resetFit();
       } else {
         terrainProfileViewport.resetFit();
@@ -4981,21 +5452,21 @@ function drawFresnel() {
 
     $('btn-terrain-zoom-in')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (terrainProfileViewMode === 'top') terrainTopViewport.zoom(1.25);
+      if (terrainProfileViewMode === 'top' || terrainProfileViewMode === 'rf-top') terrainTopViewport.zoom(1.25);
       else terrainProfileViewport.zoom(1.25);
       drawFresnel();
     });
 
     $('btn-terrain-zoom-out')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (terrainProfileViewMode === 'top') terrainTopViewport.zoom(0.8);
+      if (terrainProfileViewMode === 'top' || terrainProfileViewMode === 'rf-top') terrainTopViewport.zoom(0.8);
       else terrainProfileViewport.zoom(0.8);
       drawFresnel();
     });
 
     $('btn-terrain-reset-fit')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (terrainProfileViewMode === 'top') terrainTopViewport.resetFit();
+      if (terrainProfileViewMode === 'top' || terrainProfileViewMode === 'rf-top') terrainTopViewport.resetFit();
       else terrainProfileViewport.resetFit();
       drawFresnel();
     });

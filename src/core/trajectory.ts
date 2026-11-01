@@ -31,31 +31,220 @@ export interface PredictiveState {
   readonly obstacleBlocked?: boolean;
 }
 
+export interface TrajectoryKinematicsSnapshot {
+  readonly t0S: number;
+  readonly s0M: number;
+  readonly v0Mps: number;
+  readonly targetSpeedMps: number;
+  readonly accelLimitMps2: number;
+  readonly decelLimitMps2: number;
+}
+
 /** Position/velocity contract shared by the live simulation and look-ahead engine. */
 export interface ACNTrajectory {
   getAcnPosition(tS: number): [number, number, number];
   getAcnVelocity(tS: number): [number, number, number];
   getPathPoints(numPoints?: number): [number, number][];
+  readonly totalLengthM: number;
+  readonly currentSpeedMps: number;
+  readonly targetSpeedMps: number;
+  setTargetSpeed(targetSpeedMps: number, currentSimTimeS?: number): void;
+  setLimits(accelLimitMps2?: number, decelLimitMps2?: number): void;
+  getCurrentSpeed(tS: number): number;
+  resetKinematics(initialSpeedMps?: number): void;
+  getKinematicsState(): TrajectoryKinematicsSnapshot;
+  restoreKinematicsState(snapshot: TrajectoryKinematicsSnapshot): void;
 }
 
 /**
- * Constant-Airspeed Rotated Elliptical Kinematics Engine.
+ * Continuous speed-transition kinematics engine.
  *
- * Integrates arc-length parameterized orbit so tangential speed |v| = 60.0 m/s
- * remains invariant along the rotated ellipse.
+ * Implements bounded acceleration/deceleration speed transitions:
+ * v(t) ramps from v0 to targetSpeed at rates a_acc or a_dec.
+ * The analytic integral of v(t) yields displacement Delta s(t - t0) in O(1) time
+ * with exact position and velocity continuity at runtime speed changes and mode switches.
+ */
+export class TrajectoryKinematics {
+  private t0S: number = 0.0;
+  private s0M: number = 0.0;
+  private v0Mps: number = 60.0;
+  public targetSpeedMps: number = 60.0;
+  public accelLimitMps2: number = 5.0;
+  public decelLimitMps2: number = 5.0;
+
+  constructor(
+    initialSpeedMps: number = 60.0,
+    accelLimitMps2: number = 5.0,
+    decelLimitMps2: number = 5.0,
+    initialDistanceM: number = 0.0,
+    initialTimeS: number = 0.0
+  ) {
+    if (!Number.isFinite(initialSpeedMps) || initialSpeedMps < 0 || initialSpeedMps > 1000) {
+      throw new Error('Initial speed must be finite and in [0, 1000] m/s.');
+    }
+    if (!Number.isFinite(accelLimitMps2) || accelLimitMps2 <= 0) {
+      throw new Error('Acceleration limit must be a positive finite number.');
+    }
+    if (!Number.isFinite(decelLimitMps2) || decelLimitMps2 <= 0) {
+      throw new Error('Deceleration limit must be a positive finite number.');
+    }
+    if (!Number.isFinite(initialDistanceM)) {
+      throw new Error('Initial distance must be finite.');
+    }
+    if (!Number.isFinite(initialTimeS)) {
+      throw new Error('Initial time must be finite.');
+    }
+    this.v0Mps = initialSpeedMps;
+    this.targetSpeedMps = initialSpeedMps;
+    this.accelLimitMps2 = accelLimitMps2;
+    this.decelLimitMps2 = decelLimitMps2;
+    this.s0M = initialDistanceM;
+    this.t0S = initialTimeS;
+  }
+
+  public getSnapshot(): TrajectoryKinematicsSnapshot {
+    return {
+      t0S: this.t0S,
+      s0M: this.s0M,
+      v0Mps: this.v0Mps,
+      targetSpeedMps: this.targetSpeedMps,
+      accelLimitMps2: this.accelLimitMps2,
+      decelLimitMps2: this.decelLimitMps2,
+    };
+  }
+
+  public restoreSnapshot(snap: TrajectoryKinematicsSnapshot): void {
+    this.t0S = snap.t0S;
+    this.s0M = snap.s0M;
+    this.v0Mps = snap.v0Mps;
+    this.targetSpeedMps = snap.targetSpeedMps;
+    this.accelLimitMps2 = snap.accelLimitMps2;
+    this.decelLimitMps2 = snap.decelLimitMps2;
+  }
+
+  public setTargetSpeed(targetMps: number, currentSimTimeS: number = 0, totalLengthM: number = 1): void {
+    if (!Number.isFinite(targetMps) || targetMps < 0 || targetMps > 1000) {
+      throw new Error('Target speed must be finite and in [0, 1000] m/s.');
+    }
+    if (!Number.isFinite(currentSimTimeS)) {
+      throw new Error('Current simulation time must be finite.');
+    }
+    if (!Number.isFinite(totalLengthM) || totalLengthM <= 0) {
+      throw new Error('Trajectory total length must be a positive finite number.');
+    }
+    const curr = this.evaluateAtTime(currentSimTimeS, totalLengthM);
+    this.t0S = currentSimTimeS;
+    this.s0M = curr.distanceM;
+    this.v0Mps = curr.speedMps;
+    this.targetSpeedMps = targetMps;
+  }
+
+  public setLimits(accelLimitMps2?: number, decelLimitMps2?: number): void {
+    if (accelLimitMps2 !== undefined) {
+      if (!Number.isFinite(accelLimitMps2) || accelLimitMps2 <= 0) {
+        throw new Error('Acceleration limit must be a positive finite number.');
+      }
+      this.accelLimitMps2 = accelLimitMps2;
+    }
+    if (decelLimitMps2 !== undefined) {
+      if (!Number.isFinite(decelLimitMps2) || decelLimitMps2 <= 0) {
+        throw new Error('Deceleration limit must be a positive finite number.');
+      }
+      this.decelLimitMps2 = decelLimitMps2;
+    }
+  }
+
+  public reset(initialSpeedMps: number = 60.0): void {
+    if (!Number.isFinite(initialSpeedMps) || initialSpeedMps < 0 || initialSpeedMps > 1000) {
+      throw new Error('Initial speed must be finite and in [0, 1000] m/s.');
+    }
+    this.t0S = 0.0;
+    this.s0M = 0.0;
+    this.v0Mps = initialSpeedMps;
+    this.targetSpeedMps = initialSpeedMps;
+  }
+
+  public evaluateAtTime(tS: number, totalLengthM: number): { distanceM: number; speedMps: number } {
+    if (!Number.isFinite(tS)) {
+      throw new Error('Simulation time must be finite.');
+    }
+    if (!Number.isFinite(totalLengthM) || totalLengthM <= 0) {
+      throw new Error('Trajectory total length must be a positive finite number.');
+    }
+    const dt = tS - this.t0S;
+
+    if (dt >= 0) {
+      const v0 = this.v0Mps;
+      const vt = this.targetSpeedMps;
+
+      if (Math.abs(v0 - vt) < 1e-9) {
+        let dist = (this.s0M + vt * dt) % totalLengthM;
+        if (dist < 0) dist += totalLengthM;
+        return { distanceM: dist, speedMps: vt };
+      }
+
+      if (v0 < vt) {
+        const a = this.accelLimitMps2;
+        const tRamp = (vt - v0) / a;
+        if (dt <= tRamp) {
+          const speed = v0 + a * dt;
+          const deltaS = v0 * dt + 0.5 * a * dt * dt;
+          let dist = (this.s0M + deltaS) % totalLengthM;
+          if (dist < 0) dist += totalLengthM;
+          return { distanceM: dist, speedMps: speed };
+        } else {
+          const deltaSRamp = v0 * tRamp + 0.5 * a * tRamp * tRamp;
+          const deltaSConst = vt * (dt - tRamp);
+          let dist = (this.s0M + deltaSRamp + deltaSConst) % totalLengthM;
+          if (dist < 0) dist += totalLengthM;
+          return { distanceM: dist, speedMps: vt };
+        }
+      } else {
+        const d = this.decelLimitMps2;
+        const tRamp = (v0 - vt) / d;
+        if (dt <= tRamp) {
+          const speed = v0 - d * dt;
+          const deltaS = v0 * dt - 0.5 * d * dt * dt;
+          let dist = (this.s0M + deltaS) % totalLengthM;
+          if (dist < 0) dist += totalLengthM;
+          return { distanceM: dist, speedMps: speed };
+        } else {
+          const deltaSRamp = v0 * tRamp - 0.5 * d * tRamp * tRamp;
+          const deltaSConst = vt * (dt - tRamp);
+          let dist = (this.s0M + deltaSRamp + deltaSConst) % totalLengthM;
+          if (dist < 0) dist += totalLengthM;
+          return { distanceM: dist, speedMps: vt };
+        }
+      }
+    } else {
+      const v0 = this.v0Mps;
+      let dist = (this.s0M + v0 * dt) % totalLengthM;
+      if (dist < 0) dist += totalLengthM;
+      return { distanceM: dist, speedMps: v0 };
+    }
+  }
+}
+
+/**
+ * Constant-Airspeed & Bounded-Acceleration Rotated Elliptical Kinematics Engine.
+ *
+ * Integrates arc-length parameterized orbit with bounded acceleration/deceleration
+ * speed transitions and hover support.
  */
 export class ACNTrajectoryEngine implements ACNTrajectory {
   public readonly flightConfig: ACNFlightConfig;
   public readonly numLutSamples: number;
   public readonly orbitPeriodS: number;
+  public readonly totalLengthM: number;
 
   private readonly thetaLut: Float64Array;
   private readonly sLut: Float64Array;
   private readonly totalPerimeterM: number;
+  private readonly kinematics: TrajectoryKinematics;
 
   constructor(flightConfig: ACNFlightConfig, numLutSamples: number = 2048) {
-    if (!Number.isFinite(flightConfig.loiterSpeedMps) || flightConfig.loiterSpeedMps <= 0 || flightConfig.loiterSpeedMps > 1000) {
-      throw new Error('Trajectory speed must be finite and in (0, 1000] m/s.');
+    if (!Number.isFinite(flightConfig.loiterSpeedMps) || flightConfig.loiterSpeedMps < 0 || flightConfig.loiterSpeedMps > 1000) {
+      throw new Error('Trajectory speed must be finite and in [0, 1000] m/s.');
     }
     if (!Number.isFinite(flightConfig.altitudeMslM) || !Number.isFinite(flightConfig.centerXm) || !Number.isFinite(flightConfig.centerYm) ||
         !Number.isFinite(flightConfig.loiterRadiusAM) || !Number.isFinite(flightConfig.loiterRadiusBM) ||
@@ -94,24 +283,62 @@ export class ACNTrajectoryEngine implements ACNTrajectory {
     }
 
     this.totalPerimeterM = this.sLut[numLutSamples - 1];
-    this.orbitPeriodS = v0 > 0 ? this.totalPerimeterM / v0 : 1.0;
+    this.totalLengthM = this.totalPerimeterM;
+    this.orbitPeriodS = v0 > 0 ? this.totalPerimeterM / v0 : Number.POSITIVE_INFINITY;
+
+    this.kinematics = new TrajectoryKinematics(
+      v0,
+      flightConfig.accelerationLimitMps2,
+      flightConfig.decelerationLimitMps2
+    );
+  }
+
+  public get currentSpeedMps(): number {
+    return this.kinematics.evaluateAtTime(0, this.totalPerimeterM).speedMps;
+  }
+
+  public get targetSpeedMps(): number {
+    return this.kinematics.targetSpeedMps;
+  }
+
+  public getCurrentSpeed(tS: number): number {
+    return this.kinematics.evaluateAtTime(tS, this.totalPerimeterM).speedMps;
+  }
+
+  public setTargetSpeed(targetSpeedMps: number, currentSimTimeS: number = 0): void {
+    this.kinematics.setTargetSpeed(targetSpeedMps, currentSimTimeS, this.totalPerimeterM);
+  }
+
+  public setLimits(accelLimitMps2?: number, decelLimitMps2?: number): void {
+    this.kinematics.setLimits(accelLimitMps2, decelLimitMps2);
+  }
+
+  public resetKinematics(initialSpeedMps?: number): void {
+    this.kinematics.reset(initialSpeedMps ?? this.flightConfig.loiterSpeedMps);
+  }
+
+  public getKinematicsState(): TrajectoryKinematicsSnapshot {
+    return this.kinematics.getSnapshot();
+  }
+
+  public restoreKinematicsState(snapshot: TrajectoryKinematicsSnapshot): void {
+    this.kinematics.restoreSnapshot(snapshot);
   }
 
   /**
-   * Resolves eccentric angle theta at time tS using linear interpolation over arc-length LUT.
+   * Resolves eccentric angle theta at arc-length distance using linear interpolation over arc-length LUT.
    */
-  public getThetaAtTime(tS: number): number {
+  public getThetaAtDistance(dist: number): number {
     if (this.totalPerimeterM <= 0.0) return 0.0;
-    const v0 = this.flightConfig.loiterSpeedMps;
-    let dist = (v0 * tS) % this.totalPerimeterM;
-    if (dist < 0.0) dist += this.totalPerimeterM;
+    let s = dist % this.totalPerimeterM;
+    if (s < 0.0) s += this.totalPerimeterM;
 
     // Binary search over sLut
     let low = 0;
     let high = this.numLutSamples - 1;
     while (low <= high) {
       const mid = (low + high) >> 1;
-      if (this.sLut[mid] < dist) {
+      if (this.sLut[mid] < s) {
         low = mid + 1;
       } else {
         high = mid - 1;
@@ -121,9 +348,18 @@ export class ACNTrajectoryEngine implements ACNTrajectory {
     const idx = Math.max(1, Math.min(this.numLutSamples - 1, low));
     const s0 = this.sLut[idx - 1];
     const s1 = this.sLut[idx];
-    const frac = s1 > s0 ? (dist - s0) / (s1 - s0) : 0.0;
+    const frac = s1 > s0 ? (s - s0) / (s1 - s0) : 0.0;
 
     return this.thetaLut[idx - 1] + frac * (this.thetaLut[idx] - this.thetaLut[idx - 1]);
+  }
+
+  /**
+   * Resolves eccentric angle theta at time tS using current speed kinematics.
+   */
+  public getThetaAtTime(tS: number): number {
+    if (this.totalPerimeterM <= 0.0) return 0.0;
+    const { distanceM } = this.kinematics.evaluateAtTime(tS, this.totalPerimeterM);
+    return this.getThetaAtDistance(distanceM);
   }
 
   /**
@@ -153,12 +389,14 @@ export class ACNTrajectoryEngine implements ACNTrajectory {
 
   /**
    * Calculates tangent velocity vector [vx, vy, vz] (m/s).
-   * Exact magnitude sqrt(vx^2 + vy^2) equals loiterSpeedMps (60.0 m/s).
+   * Exact magnitude sqrt(vx^2 + vy^2) equals current speed m/s (0.0 m/s when hovering).
    */
   public getAcnVelocity(tS: number): [number, number, number] {
     const a = this.flightConfig.loiterRadiusAM;
     const b = this.flightConfig.loiterRadiusBM;
-    const v0 = this.flightConfig.loiterSpeedMps;
+    const speed = this.getCurrentSpeed(tS);
+    if (speed <= 1e-9) return [0.0, 0.0, 0.0];
+
     const phi = (this.flightConfig.loiterRotationDeg * Math.PI) / 180.0;
 
     const theta = this.getThetaAtTime(tS);
@@ -167,7 +405,7 @@ export class ACNTrajectoryEngine implements ACNTrajectory {
     );
     if (dsDtheta < 1e-9) return [0.0, 0.0, 0.0];
 
-    const dThetaDt = v0 / dsDtheta;
+    const dThetaDt = speed / dsDtheta;
     const vxRaw = -a * Math.sin(theta) * dThetaDt;
     const vyRaw = b * Math.cos(theta) * dThetaDt;
 
@@ -217,11 +455,12 @@ export class WaypointTrajectoryEngine implements ACNTrajectory {
 
   private readonly points: readonly ACNWaypoint[];
   private readonly samples: WaypointSample[] = [];
+  private readonly kinematics: TrajectoryKinematics;
 
   constructor(flightConfig: ACNFlightConfig, samplesPerSegment: number = 512) {
     if (flightConfig.trajectoryMode !== 'waypoints') throw new Error('Waypoint trajectory mode must be explicit.');
-    if (!Number.isFinite(flightConfig.loiterSpeedMps) || flightConfig.loiterSpeedMps <= 0 || flightConfig.loiterSpeedMps > 1000) {
-      throw new Error('Waypoint trajectory speed must be finite and in (0, 1000] m/s.');
+    if (!Number.isFinite(flightConfig.loiterSpeedMps) || flightConfig.loiterSpeedMps < 0 || flightConfig.loiterSpeedMps > 1000) {
+      throw new Error('Waypoint trajectory speed must be finite and in [0, 1000] m/s.');
     }
     if (!Number.isFinite(flightConfig.altitudeMslM)) throw new Error('ACN altitude must be finite.');
     const input = flightConfig.waypoints;
@@ -249,7 +488,45 @@ export class WaypointTrajectoryEngine implements ACNTrajectory {
     }
     if (!(distanceM > 1e-6) || !Number.isFinite(distanceM)) throw new Error('Waypoint loop is degenerate.');
     this.totalLengthM = distanceM;
-    this.orbitPeriodS = distanceM / flightConfig.loiterSpeedMps;
+    this.orbitPeriodS = flightConfig.loiterSpeedMps > 0 ? distanceM / flightConfig.loiterSpeedMps : Number.POSITIVE_INFINITY;
+
+    this.kinematics = new TrajectoryKinematics(
+      flightConfig.loiterSpeedMps,
+      flightConfig.accelerationLimitMps2,
+      flightConfig.decelerationLimitMps2
+    );
+  }
+
+  public get currentSpeedMps(): number {
+    return this.kinematics.evaluateAtTime(0, this.totalLengthM).speedMps;
+  }
+
+  public get targetSpeedMps(): number {
+    return this.kinematics.targetSpeedMps;
+  }
+
+  public getCurrentSpeed(tS: number): number {
+    return this.kinematics.evaluateAtTime(tS, this.totalLengthM).speedMps;
+  }
+
+  public setTargetSpeed(targetSpeedMps: number, currentSimTimeS: number = 0): void {
+    this.kinematics.setTargetSpeed(targetSpeedMps, currentSimTimeS, this.totalLengthM);
+  }
+
+  public setLimits(accelLimitMps2?: number, decelLimitMps2?: number): void {
+    this.kinematics.setLimits(accelLimitMps2, decelLimitMps2);
+  }
+
+  public resetKinematics(initialSpeedMps?: number): void {
+    this.kinematics.reset(initialSpeedMps ?? this.flightConfig.loiterSpeedMps);
+  }
+
+  public getKinematicsState(): TrajectoryKinematicsSnapshot {
+    return this.kinematics.getSnapshot();
+  }
+
+  public restoreKinematicsState(snapshot: TrajectoryKinematicsSnapshot): void {
+    this.kinematics.restoreSnapshot(snapshot);
   }
 
   private evaluateSegment(segment: number, u: number): [number, number] {
@@ -293,8 +570,7 @@ export class WaypointTrajectoryEngine implements ACNTrajectory {
 
   private distanceAtTime(tS: number): number {
     if (!Number.isFinite(tS)) throw new Error('Simulation time must be finite.');
-    const distance = (this.flightConfig.loiterSpeedMps * tS) % this.totalLengthM;
-    return distance < 0 ? distance + this.totalLengthM : distance;
+    return this.kinematics.evaluateAtTime(tS, this.totalLengthM).distanceM;
   }
 
   private pointAtDistance(distanceM: number): [number, number] {
@@ -318,6 +594,8 @@ export class WaypointTrajectoryEngine implements ACNTrajectory {
   }
 
   public getAcnVelocity(tS: number): [number, number, number] {
+    const speed = this.getCurrentSpeed(tS);
+    if (speed <= 1e-9) return [0, 0, 0];
     // Return the centered 20 ms position derivative used by the 50 Hz worker.
     // Its magnitude is deliberately not normalized: the arc-length table's
     // measured timing error must remain visible to link/telemetry consumers.
@@ -336,14 +614,18 @@ export class WaypointTrajectoryEngine implements ACNTrajectory {
   public getSegmentBoundaryTimesS(): number[] {
     return this.samples
       .filter(sample => sample.u === 0)
-      .map(sample => sample.distanceM / this.flightConfig.loiterSpeedMps);
+      .map(sample => this.flightConfig.loiterSpeedMps > 0 ? sample.distanceM / this.flightConfig.loiterSpeedMps : 0);
   }
 }
 
-export function createACNTrajectory(flightConfig: ACNFlightConfig): ACNTrajectory {
-  return flightConfig.trajectoryMode === 'waypoints'
+export function createACNTrajectory(flightConfig: ACNFlightConfig, previousState?: TrajectoryKinematicsSnapshot): ACNTrajectory {
+  const engine = flightConfig.trajectoryMode === 'waypoints'
     ? new WaypointTrajectoryEngine(flightConfig)
     : new ACNTrajectoryEngine(flightConfig);
+  if (previousState) {
+    engine.restoreKinematicsState(previousState);
+  }
+  return engine;
 }
 
 /**

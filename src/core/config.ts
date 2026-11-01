@@ -65,6 +65,13 @@ export class RFConfig implements IRFConfig {
     this.cableLossDb = init?.cableLossDb ?? 1.5; // RF feedline & connector loss
     this.speedOfLight = init?.speedOfLight ?? SPEED_OF_LIGHT;
     this.boltzmannConstant = init?.boltzmannConstant ?? BOLTZMANN_CONSTANT;
+
+    if (!Number.isFinite(this.channelBandwidthHz) || this.channelBandwidthHz < 0.1e6 || this.channelBandwidthHz > 50.0e6) {
+      throw new Error('channelBandwidthHz must be finite and in [0.1, 50.0] MHz.');
+    }
+    if (!Number.isFinite(this.carrierFrequencyHz) || this.carrierFrequencyHz <= 0) {
+      throw new Error('carrierFrequencyHz must be a positive finite number.');
+    }
   }
 
   /**
@@ -162,6 +169,8 @@ export interface IACNFlightConfig {
   readonly centerXm: number;
   readonly centerYm: number;
   readonly coverageRadiusKm: number;
+  readonly accelerationLimitMps2?: number;
+  readonly decelerationLimitMps2?: number;
 }
 
 export class ACNFlightConfig implements IACNFlightConfig {
@@ -175,6 +184,8 @@ export class ACNFlightConfig implements IACNFlightConfig {
   public readonly centerXm: number; // Orbit center X (m)
   public readonly centerYm: number; // Orbit center Y (m)
   public readonly coverageRadiusKm: number; // Radio footprint radius (km)
+  public readonly accelerationLimitMps2: number; // Max acceleration limit (m/s^2)
+  public readonly decelerationLimitMps2: number; // Max deceleration limit (m/s^2)
 
   constructor(init?: Partial<IACNFlightConfig>) {
     this.trajectoryMode = init?.trajectoryMode ?? 'ellipse';
@@ -187,6 +198,21 @@ export class ACNFlightConfig implements IACNFlightConfig {
     this.centerXm = init?.centerXm ?? 0.0;
     this.centerYm = init?.centerYm ?? 0.0;
     this.coverageRadiusKm = init?.coverageRadiusKm ?? 35.0;
+    this.accelerationLimitMps2 = init?.accelerationLimitMps2 ?? 5.0;
+    this.decelerationLimitMps2 = init?.decelerationLimitMps2 ?? 5.0;
+
+    if (!Number.isFinite(this.altitudeMslM) || this.altitudeMslM <= 0 || this.altitudeMslM > 100000) {
+      throw new Error('altitudeMslM must be finite and in (0, 100000] m.');
+    }
+    if (!Number.isFinite(this.loiterSpeedMps) || this.loiterSpeedMps < 0 || this.loiterSpeedMps > 1000) {
+      throw new Error('loiterSpeedMps must be finite and in [0, 1000] m/s.');
+    }
+    if (!Number.isFinite(this.accelerationLimitMps2) || this.accelerationLimitMps2 <= 0) {
+      throw new Error('accelerationLimitMps2 must be a positive finite number.');
+    }
+    if (!Number.isFinite(this.decelerationLimitMps2) || this.decelerationLimitMps2 <= 0) {
+      throw new Error('decelerationLimitMps2 must be a positive finite number.');
+    }
   }
 
   public get coverageRadiusM(): number {

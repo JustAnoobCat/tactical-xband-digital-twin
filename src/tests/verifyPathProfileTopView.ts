@@ -27,7 +27,12 @@ import {
   renderTerrainTopView,
   renderRfTopView,
   renderElevationLegend,
+  drawAircraftChevron,
+  drawTacticalTrajectory,
+  drawDraftTrajectory,
+  drawTacticalWaypoints,
   type TopViewRenderOptions,
+  type TacticalWaypointItem,
 } from '../ui/pathProfileTopView';
 import {
   LinkProfileViewportState,
@@ -45,7 +50,7 @@ import { SimulationWorkerManager } from '../worker/simWorker';
 
 // Mock Canvas 2D Rendering Context for Headless Test Verification
 class MockCanvasContext2D {
-  public drawCalls: Array<{ method: string; args: any[] }> = [];
+  public drawCalls: Array<{ method: string; args: any[]; strokeStyle?: any; lineWidth?: number }> = [];
   public textCalls: Array<{ text: string; x: number; y: number }> = [];
   public fillStyle: any = '#000000';
   public strokeStyle: any = '#000000';
@@ -99,7 +104,7 @@ class MockCanvasContext2D {
   }
 
   public stroke() {
-    this.drawCalls.push({ method: 'stroke', args: [] });
+    this.drawCalls.push({ method: 'stroke', strokeStyle: this.strokeStyle, lineWidth: this.lineWidth, args: [] });
   }
 
   public fill() {
@@ -604,12 +609,258 @@ function runPathProfileTopViewVerification(): void {
 
     // Verify CSS class fresnel-canvas-box is retained (required by verify-project and styling)
     assert.ok(htmlContent.includes('.fresnel-canvas-box'), '.fresnel-canvas-box CSS must be retained');
+    assert.ok(htmlContent.includes('id="btn-terrain-view-rf-top"'), 'btn-terrain-view-rf-top must be present in index.html');
 
     console.log('  -> PASS: Duplicate RF panel and elements cleanly removed from index.html while Terrain panel is 100% intact.');
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // [12/13] Obstacles, flight path, and ground nodes in Top Views
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\n[12/13] Verifying obstacle footprints, flight trajectory, and ground nodes in Top Views...');
+  {
+    const mockCanvas = { width: 512, height: 512, id: 'test-terrain-canvas' } as any;
+    const vp = new TopViewViewportState();
+    vp.syncLink(profilePristine.groundNodePositionMslM, profilePristine.acnPositionMslM, { layout: standardLayout, selectedNodeId: 4 });
+
+    const mockObstacle = {
+      id: 'OBS-ALPHA',
+      shape: 'cuboid' as const,
+      xM: 5000,
+      yM: 5000,
+      widthM: 1000,
+      lengthM: 1000,
+      heightM: 200,
+      rotationDeg: 0,
+    };
+
+    const mockNodes = [
+      { node_id: 1, x_m: -8000, y_m: -5000 },
+      { node_id: 2, x_m: 15000, y_m: -20000 },
+      { node_id: 4, x_m: 12000, y_m: 8000 },
+    ];
+
+    const mockFlightPath: [number, number][] = [
+      [20000, 0], [0, 10000], [-20000, 0], [0, -10000],
+    ];
+
+    const topOpts: TopViewRenderOptions = {
+      hillshadeCanvas: mockCanvas,
+      activeTerrainBounds: REAL_LADAKH_DEM_METADATA as any,
+      obstacles: [mockObstacle],
+      allNodes: mockNodes,
+      acnTelemetry: {
+        flight_path: mockFlightPath,
+      },
+      showElevationLegend: true,
+    };
+
+    const tCtx = new MockCanvasContext2D();
+    renderTerrainTopView(tCtx as any, standardLayout, vp, profilePristine, topOpts);
+
+    assert.ok(tCtx.textCalls.some(t => t.text.includes('OBS-ALPHA')), 'Obstacle label must be rendered in Terrain top view');
+    assert.ok(tCtx.textCalls.some(t => t.text.includes('S1')), 'Other ground nodes must be labeled in Terrain top view');
+
+    const rCtx = new MockCanvasContext2D();
+    const commStatus = classifyLinkCommunicationStatus({
+      terrain_is_los: true,
+      obstacle_blocked: false,
+      is_outage: false,
+      modcod_name: '64-APSK 5/6',
+      snr_db: 28.3,
+    });
+    renderRfTopView(
+      rCtx as any,
+      standardLayout,
+      vp,
+      profilePristine,
+      { snrDb: 28.3, bitrateBps: 4950000, modcodName: '64-APSK 5/6', isOutage: false },
+      commStatus,
+      { status: 'IDLE', activeType: null },
+      topOpts
+    );
+
+    assert.ok(rCtx.textCalls.some(t => t.text.includes('OBS-ALPHA')), 'Obstacle label must be rendered in RF top view');
+    assert.ok(rCtx.textCalls.some(t => t.text.includes('S1')), 'Other ground nodes must be labeled in RF top view');
+
+    console.log('  -> PASS: Obstacles, flight path, and ground nodes are cleanly rendered and aligned in both Top Views.');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // [13/13] Active payload transmission pulse rendering condition
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\n[13/13] Verifying active payload transmission condition in RF Top View...');
+  {
+    const mockCanvas = { width: 512, height: 512, id: 'test-terrain-canvas' } as any;
+    const vp = new TopViewViewportState();
+    vp.syncLink(profilePristine.groundNodePositionMslM, profilePristine.acnPositionMslM, { layout: standardLayout, selectedNodeId: 4 });
+
+    const commStatus = classifyLinkCommunicationStatus({
+      terrain_is_los: true,
+      obstacle_blocked: false,
+      is_outage: false,
+      modcod_name: '64-APSK 5/6',
+      snr_db: 28.3,
+    });
+
+    const rCtx = new MockCanvasContext2D();
+    renderRfTopView(
+      rCtx as any,
+      standardLayout,
+      vp,
+      profilePristine,
+      { snrDb: 28.3, bitrateBps: 4950000, modcodName: '64-APSK 5/6', isOutage: false },
+      commStatus,
+      { status: 'TRANSMITTING', activeType: 'PHOTO', deliveredBytes: 5000, totalBytes: 42000 },
+      { hillshadeCanvas: mockCanvas, activeTerrainBounds: REAL_LADAKH_DEM_METADATA as any }
+    );
+
+    // Look for arc calls corresponding to the 4 transmission pulses
+    const arcCalls = rCtx.drawCalls.filter(c => c.method === 'arc');
+    assert.ok(arcCalls.length >= 4, 'Active transmission must render pulses along the LOS ray');
+
+    console.log('  -> PASS: Payload transmission pulses render when link has line of sight and transmission is active.');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // [14/14] Enhanced UAV flight trajectory visibility, prominent aircraft marker & distinct waypoints
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\n[14/14] Verifying enhanced UAV flight trajectory visibility, prominent aircraft marker & waypoints...');
+  {
+    const mockCanvas = { width: 512, height: 512, id: 'test-terrain-canvas' } as any;
+    const vp = new TopViewViewportState();
+    vp.syncLink(profilePristine.groundNodePositionMslM, profilePristine.acnPositionMslM, { layout: standardLayout, selectedNodeId: 4 });
+
+    const mockFlightPath: [number, number][] = [
+      [20000, 0], [0, 10000], [-20000, 0], [0, -10000],
+    ];
+
+    const mockWaypoints = [
+      { xM: 10000, yM: 5000 },
+      { xM: -10000, yM: 5000 },
+      { xM: 0, yM: -8000 },
+    ];
+
+    const topOpts: TopViewRenderOptions = {
+      hillshadeCanvas: mockCanvas,
+      activeTerrainBounds: REAL_LADAKH_DEM_METADATA as any,
+      allNodes: [{ node_id: 1, x_m: -8000, y_m: -5000 }],
+      acnTelemetry: {
+        flight_path: mockFlightPath,
+        heading_deg: 135.0,
+      },
+      waypoints: mockWaypoints,
+      showElevationLegend: true,
+    };
+
+    // 1. Terrain Top View verification
+    const tCtx = new MockCanvasContext2D();
+    renderTerrainTopView(tCtx as any, standardLayout, vp, profilePristine, topOpts);
+
+    // Restrained route: narrow dark keyline followed by muted aviation cyan.
+    const tUnderlay = tCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('7, 13, 20'));
+    assert.ok(tUnderlay, 'Terrain Top View must draw a narrow dark route keyline');
+    const tCore = tCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#79c8d5');
+    assert.ok(tCore, 'Terrain Top View must draw the restrained aviation-cyan route');
+
+    // Aircraft marker heading label
+    assert.ok(tCtx.textCalls.some(t => t.text.includes('ACN') && t.text.includes('HDG')), 'ACN aircraft marker must render heading annotation');
+
+    // Waypoint markers vs Ground nodes distinction
+    assert.ok(tCtx.textCalls.some(t => t.text === 'WP1'), 'Waypoint 1 must be rendered with distinctive WP label');
+    assert.ok(tCtx.textCalls.some(t => t.text === 'WP2'), 'Waypoint 2 must be rendered with distinctive WP label');
+    assert.ok(tCtx.textCalls.some(t => t.text === 'S1'), 'Ground node S1 must be distinctly labeled');
+
+    // 2. RF Top View verification
+    const rCtx = new MockCanvasContext2D();
+    const commStatus = classifyLinkCommunicationStatus({
+      terrain_is_los: true,
+      obstacle_blocked: false,
+      is_outage: false,
+      modcod_name: '64-APSK 5/6',
+      snr_db: 28.3,
+    });
+    renderRfTopView(
+      rCtx as any,
+      standardLayout,
+      vp,
+      profilePristine,
+      { snrDb: 28.3, bitrateBps: 4950000, modcodName: '64-APSK 5/6', isOutage: false },
+      commStatus,
+      { status: 'IDLE', activeType: null },
+      topOpts
+    );
+
+    const rUnderlay = rCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('7, 13, 20'));
+    assert.ok(rUnderlay, 'RF Top View must draw a narrow dark route keyline');
+    const rCore = rCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#79c8d5');
+    assert.ok(rCore, 'RF Top View must draw the restrained aviation-cyan route');
+
+    assert.ok(rCtx.textCalls.some(t => t.text === 'WP1'), 'RF Top View must render WP1 waypoint label');
+    assert.ok(rCtx.textCalls.some(t => t.text.includes('ACN') && t.text.includes('HDG')), 'RF Top View must render ACN heading annotation');
+
+    console.log('  -> PASS: Restrained aviation route, heading marker & waypoints verified across both views.');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // [15/15] Reusable 2D Map Tactical Trajectory, Directional Chevrons & Waypoints
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\n[15/15] Verifying reusable 2D Map tactical trajectory, directional chevrons & waypoints...');
+  {
+    // 1. Tactical Trajectory multi-pass & directional chevrons
+    const cvsCtx = new MockCanvasContext2D();
+    const testPoints: [number, number][] = [
+      [100, 100], [300, 100], [300, 300], [100, 300]
+    ];
+    drawTacticalTrajectory(cvsCtx as any, testPoints, {
+      isClosed: true,
+      acnScreenPos: { x: 100, y: 100 }
+    });
+
+    const darkUnderlay = cvsCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('7, 13, 20'));
+    assert.ok(darkUnderlay, 'Must draw a narrow dark route keyline');
+    const coreStroke = cvsCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#79c8d5');
+    assert.ok(coreStroke, 'Must draw the muted aviation-cyan route');
+
+    const chevronUnderlays = cvsCtx.drawCalls.filter(c => c.method === 'stroke' && c.lineWidth === 3.2 && String(c.strokeStyle).includes('7, 13, 20'));
+    assert.ok(chevronUnderlays.length >= 1 && chevronUnderlays.length <= 8, 'Must render sparse directional markers');
+    const chevronCores = cvsCtx.drawCalls.filter(c => c.method === 'stroke' && c.lineWidth === 1.2 && c.strokeStyle === '#b9edf2');
+    assert.ok(chevronCores.length >= 1, 'Must render directional marker cores');
+
+    // 2. Draft Trajectory (unapplied route in dashed amber)
+    const draftCtx = new MockCanvasContext2D();
+    drawDraftTrajectory(draftCtx as any, testPoints, true);
+    const draftUnderlay = draftCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 5.0 && String(c.strokeStyle).includes('7, 13, 20'));
+    assert.ok(draftUnderlay, 'Draft trajectory must retain a dark contrast keyline');
+    const draftLine = draftCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#e5ad58');
+    assert.ok(draftLine, 'Draft trajectory must render a restrained amber dashed line');
+
+    // 3. Tactical Waypoints (WP1, WP2, WP3, WP4 with selected waypoint highlight)
+    const wpCtx = new MockCanvasContext2D();
+    const waypoints: TacticalWaypointItem[] = [
+      { x: 100, y: 100, label: 'WP1', isSelected: false },
+      { x: 200, y: 150, label: 'WP2', isSelected: true },
+      { x: 300, y: 200, label: 'WP3', isSelected: false },
+    ];
+    drawTacticalWaypoints(wpCtx as any, waypoints);
+    assert.ok(wpCtx.textCalls.some(t => t.text === 'WP1'), 'Must render WP1 callout badge');
+    assert.ok(wpCtx.textCalls.some(t => t.text === 'WP2'), 'Must render WP2 callout badge');
+    assert.ok(wpCtx.textCalls.some(t => t.text === 'WP3'), 'Must render WP3 callout badge');
+    // Selected waypoint accent (radius 11.0 arc)
+    const selArc = wpCtx.drawCalls.find(c => c.method === 'arc' && c.args[2] === 9.5);
+    assert.ok(selArc, 'Selected waypoint must render highlighted accent ring');
+
+    // 4. Tactical Aircraft Chevron
+    const acnCtx = new MockCanvasContext2D();
+    drawAircraftChevron(acnCtx as any, 250, 250, 90);
+    assert.ok(acnCtx.drawCalls.some(c => c.method === 'arc' && c.args[2] === 16), 'Aircraft must render a compact registration ring');
+    assert.ok(acnCtx.drawCalls.some(c => c.method === 'lineTo' && c.args[0] === 22.9), 'Aircraft must render a short forward heading vector');
+
+    console.log('  -> PASS: Reusable 2D Map tactical trajectory, tangent chevrons, draft styling, waypoints & aircraft chevron verified.');
+  }
+
   console.log('\n================================================================================');
-  console.log('  ALL 11 AUTHENTIC DEM TOP VIEW & UI CLEANUP VERIFICATION SUITES PASSED CLEANLY!');
+  console.log('  ALL 15 AUTHENTIC DEM TOP VIEW & VISIBILITY ENHANCEMENT SUITES PASSED CLEANLY!');
   console.log('================================================================================');
 }
 

@@ -17,6 +17,7 @@
  */
 
 import type { LinkProfile, LinkProfileSample } from '../core/linkProfile';
+import { obstacleFootprintPoints, type Obstacle } from '../core/obstacles';
 import type { ViewportLayout } from './linkProfileViewport';
 import { calcNiceStep } from './linkProfileViewport';
 import type { LinkCommunicationStatus, LinkStatusClassification } from '../core/linkStatusClassifier';
@@ -60,6 +61,8 @@ export interface TopViewRenderOptions {
     readonly vel_y?: number;
     readonly position_m?: readonly [number, number, number];
     readonly altitude_m?: number;
+    readonly flight_path?: readonly [number, number][];
+    readonly waypoints?: readonly any[];
   } | null;
   readonly selectedNode?: {
     readonly node_id?: number;
@@ -70,8 +73,11 @@ export interface TopViewRenderOptions {
     readonly terrain_elevation_msl_m?: number;
     readonly agl_m?: number;
   } | null;
+  readonly allNodes?: readonly any[];
   readonly obstacles?: readonly any[];
   readonly showElevationLegend?: boolean;
+  readonly waypoints?: readonly any[];
+  readonly trajectoryMode?: string;
 }
 
 export interface DemHillshadeRaster {
@@ -303,6 +309,69 @@ export class TopViewTerrainCache {
     }
     return null;
   }
+}
+
+/**
+ * Synchronizes canvas backing pixel dimensions to its CSS display dimensions and DPR.
+ * Uses idempotent setTransform(dpr, 0, 0, dpr, 0, 0) to prevent transform accumulation.
+ * Safely handles zero-sized or temporarily hidden containers.
+ */
+export function syncCanvasDpr(
+  canvas: HTMLCanvasElement,
+  ctx?: CanvasRenderingContext2D | null,
+  options?: {
+    dpr?: number;
+    cssWidth?: number;
+    cssHeight?: number;
+  }
+): {
+  cssWidth: number;
+  cssHeight: number;
+  dpr: number;
+  backingWidth: number;
+  backingHeight: number;
+  isVisible: boolean;
+} {
+  const dpr = options?.dpr ?? (typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1);
+  const container = canvas.parentElement;
+  const rect = container
+    ? container.getBoundingClientRect()
+    : (typeof canvas.getBoundingClientRect === 'function' ? canvas.getBoundingClientRect() : { width: 0, height: 0 });
+  const cssWidth = options?.cssWidth ?? (container && container.clientWidth > 0 ? container.clientWidth : (canvas.clientWidth > 0 ? canvas.clientWidth : rect.width));
+  const cssHeight = options?.cssHeight ?? (container && container.clientHeight > 0 ? container.clientHeight : (canvas.clientHeight > 0 ? canvas.clientHeight : rect.height));
+
+  if (!Number.isFinite(cssWidth) || !Number.isFinite(cssHeight) || cssWidth <= 0 || cssHeight <= 0) {
+    return {
+      cssWidth: 0,
+      cssHeight: 0,
+      dpr,
+      backingWidth: canvas.width,
+      backingHeight: canvas.height,
+      isVisible: false,
+    };
+  }
+
+  const targetW = Math.max(1, Math.round(cssWidth * dpr));
+  const targetH = Math.max(1, Math.round(cssHeight * dpr));
+
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
+
+  const context = ctx ?? canvas.getContext('2d');
+  if (context && typeof context.setTransform === 'function') {
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  return {
+    cssWidth,
+    cssHeight,
+    dpr,
+    backingWidth: targetW,
+    backingHeight: targetH,
+    isVisible: true,
+  };
 }
 
 /**
@@ -743,31 +812,81 @@ export function renderElevationLegend(
   ctx.restore();
 }
 
-function drawAircraftChevron(
+export function drawAircraftChevron(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   headingDeg: number,
-  size = 14
+  size = 11
 ): void {
   ctx.save();
   ctx.translate(cx, cy);
-  // Heading 0 is North (up, -Y in canvas)
+
+  // A small registration mark keeps the aircraft identifiable without creating
+  // a second map feature that competes with the route.
+  ctx.beginPath();
+  ctx.arc(0, 0, size + 5, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(126, 211, 224, 0.55)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Heading 0 is North (up, -Y in canvas). Canvas 0 rad points right (+X).
   const rad = ((headingDeg - 90) * Math.PI) / 180;
   ctx.rotate(rad);
 
-  ctx.fillStyle = '#38bdf8';
-  ctx.strokeStyle = '#0b1015';
-  ctx.lineWidth = 1.6;
+  // Short heading vector, intentionally separate from the route.
+  const noseX = size * 0.9;
+  const tipX = noseX + 13;
   ctx.beginPath();
-  // Delta aircraft shape pointing right (+X) before rotation
-  ctx.moveTo(size, 0);
-  ctx.lineTo(-size * 0.7, -size * 0.65);
-  ctx.lineTo(-size * 0.35, 0);
-  ctx.lineTo(-size * 0.7, size * 0.65);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(noseX, 0);
+  ctx.lineTo(tipX, 0);
+  ctx.strokeStyle = 'rgba(8, 15, 23, 0.9)';
+  ctx.lineWidth = 3;
   ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(noseX, 0);
+  ctx.lineTo(tipX, 0);
+  ctx.strokeStyle = '#7ed3e0';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(tipX - 4, -3);
+  ctx.lineTo(tipX, 0);
+  ctx.lineTo(tipX - 4, 3);
+  ctx.strokeStyle = '#7ed3e0';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  const drawDelta = (scale = 1.0) => {
+    const s = size * scale;
+    ctx.beginPath();
+    ctx.moveTo(s, 0);
+    ctx.lineTo(-s * 0.72, -s * 0.62);
+    ctx.lineTo(-s * 0.36, -s * 0.16);
+    ctx.lineTo(-s * 0.62, 0);
+    ctx.lineTo(-s * 0.36, s * 0.16);
+    ctx.lineTo(-s * 0.72, s * 0.62);
+    ctx.closePath();
+  };
+
+  drawDelta(1.08);
+  ctx.strokeStyle = 'rgba(7, 13, 20, 0.95)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  drawDelta(1.0);
+  ctx.fillStyle = '#b9edf2';
+  ctx.fill();
+  ctx.strokeStyle = '#15333d';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(size * 0.15, 0, 1.2, 0, Math.PI * 2);
+  ctx.fillStyle = '#163d49';
+  ctx.fill();
 
   ctx.restore();
 }
@@ -884,6 +1003,374 @@ function drawPlanViewGrid(
   ctx.fillText('N', compX, compY - 14);
 }
 
+function drawObstacleFootprints(
+  ctx: CanvasRenderingContext2D,
+  layout: ViewportLayout,
+  viewport: TopViewViewportState,
+  obstacles?: readonly any[],
+  highlightedIds?: readonly (string | number)[]
+): void {
+  if (!obstacles || obstacles.length === 0) return;
+  const highlightSet = new Set(highlightedIds ? highlightedIds.map(String) : []);
+
+  for (const obs of obstacles) {
+    if (!obs || typeof obs !== 'object' || !Number.isFinite(obs.xM) || !Number.isFinite(obs.yM)) continue;
+    let vertices: [number, number][];
+    try {
+      vertices = obstacleFootprintPoints(obs as Obstacle, 32);
+    } catch {
+      continue;
+    }
+    if (vertices.length < 3) continue;
+
+    const isHit = highlightSet.has(String(obs.id));
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i < vertices.length; i++) {
+      const px = viewport.xToCanvas(vertices[i][0], layout);
+      const py = viewport.yToCanvas(vertices[i][1], layout);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = isHit ? 'rgba(239, 68, 68, 0.40)' : 'rgba(249, 115, 22, 0.32)';
+    ctx.fill();
+    ctx.strokeStyle = isHit ? '#ef4444' : '#f97316';
+    ctx.lineWidth = isHit ? 2.0 : 1.4;
+    ctx.stroke();
+
+    const centerPx = viewport.xToCanvas(obs.xM, layout);
+    const centerPy = viewport.yToCanvas(obs.yM, layout);
+    ctx.font = '600 8.5px ui-monospace, monospace';
+    ctx.fillStyle = isHit ? '#fca5a5' : '#fed7aa';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${obs.id}`, centerPx, centerPy + 3);
+    ctx.restore();
+  }
+}
+
+export interface TacticalWaypointItem {
+  readonly x: number;
+  readonly y: number;
+  readonly label?: string;
+  readonly isSelected?: boolean;
+}
+
+export function drawTacticalTrajectory(
+  ctx: CanvasRenderingContext2D,
+  canvasPoints: readonly [number, number][],
+  options?: {
+    isClosed?: boolean;
+    skipChevrons?: boolean;
+    acnScreenPos?: { x: number; y: number };
+  }
+): void {
+  if (!canvasPoints || canvasPoints.length < 3) return;
+
+  const isClosed = options?.isClosed ?? true;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const buildPath = () => {
+    ctx.beginPath();
+    for (let i = 0; i < canvasPoints.length; i++) {
+      if (i === 0) ctx.moveTo(canvasPoints[i][0], canvasPoints[i][1]);
+      else ctx.lineTo(canvasPoints[i][0], canvasPoints[i][1]);
+    }
+    if (isClosed) {
+      ctx.closePath();
+    }
+  };
+
+  // A narrow dark keyline preserves contrast over both shaded and bright DEMs.
+  buildPath();
+  ctx.strokeStyle = 'rgba(7, 13, 20, 0.95)';
+  ctx.lineWidth = 3.5;
+  ctx.stroke();
+
+  // Muted aviation cyan reads as an instrument overlay rather than a glow.
+  buildPath();
+  ctx.strokeStyle = '#79c8d5';
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+
+  // Sparse, small directional ticks communicate travel direction without
+  // turning the route into a repeated pattern.
+  if (!options?.skipChevrons) {
+    const N = canvasPoints.length;
+    const segLengths: number[] = [];
+    const cumDist: number[] = [0];
+    let totalLen = 0;
+
+    const numSegments = isClosed ? N : N - 1;
+    for (let i = 0; i < numSegments; i++) {
+      const nextIdx = (i + 1) % N;
+      const dx = canvasPoints[nextIdx][0] - canvasPoints[i][0];
+      const dy = canvasPoints[nextIdx][1] - canvasPoints[i][1];
+      const dist = Math.hypot(dx, dy);
+      segLengths.push(dist);
+      totalLen += dist;
+      cumDist.push(totalLen);
+    }
+
+    // Only render chevrons if the path has sufficient screen size
+    if (totalLen >= 40) {
+      const targetSpacing = 180;
+      const count = Math.max(1, Math.min(8, Math.round(totalLen / targetSpacing)));
+      const spacing = totalLen / count;
+      const acnPos = options?.acnScreenPos;
+
+      for (let k = 0; k < count; k++) {
+        const targetD = (k + 0.5) * spacing;
+        let segIdx = 0;
+        while (segIdx < segLengths.length - 1 && cumDist[segIdx + 1] < targetD) {
+          segIdx++;
+        }
+        const segLen = segLengths[segIdx];
+        if (segLen < 1e-3) continue;
+
+        const u = (targetD - cumDist[segIdx]) / segLen;
+        const nextIdx = (segIdx + 1) % N;
+        const p0 = canvasPoints[segIdx];
+        const p1 = canvasPoints[nextIdx];
+
+        const cx = p0[0] + u * (p1[0] - p0[0]);
+        const cy = p0[1] + u * (p1[1] - p0[1]);
+
+        // If too close to the aircraft marker, skip this chevron to prevent overlapping
+        if (acnPos && Math.hypot(cx - acnPos.x, cy - acnPos.y) < 28) {
+          continue;
+        }
+
+        // Tangent vector
+        const tx = (p1[0] - p0[0]) / segLen;
+        const ty = (p1[1] - p0[1]) / segLen;
+        // Perpendicular normal vector
+        const nx = -ty;
+        const ny = tx;
+
+        const arrowLen = 5.5;
+        const arrowWing = 3.5;
+        const tipX = cx + 1.5 * tx;
+        const tipY = cy + 1.5 * ty;
+        const leftX = tipX - arrowLen * tx + arrowWing * nx;
+        const leftY = tipY - arrowLen * ty + arrowWing * ny;
+        const rightX = tipX - arrowLen * tx - arrowWing * nx;
+        const rightY = tipY - arrowLen * ty - arrowWing * ny;
+
+        ctx.beginPath();
+        ctx.moveTo(leftX, leftY);
+        ctx.lineTo(tipX, tipY);
+        ctx.lineTo(rightX, rightY);
+
+        ctx.strokeStyle = 'rgba(7, 13, 20, 0.9)';
+        ctx.lineWidth = 3.2;
+        ctx.stroke();
+
+        ctx.strokeStyle = '#b9edf2';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+export function drawDraftTrajectory(
+  ctx: CanvasRenderingContext2D,
+  canvasPoints: readonly [number, number][],
+  isClosed: boolean = true
+): void {
+  if (!canvasPoints || canvasPoints.length < 2) return;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const buildPath = () => {
+    ctx.beginPath();
+    for (let i = 0; i < canvasPoints.length; i++) {
+      if (i === 0) ctx.moveTo(canvasPoints[i][0], canvasPoints[i][1]);
+      else ctx.lineTo(canvasPoints[i][0], canvasPoints[i][1]);
+    }
+    if (isClosed && canvasPoints.length >= 3) {
+      ctx.closePath();
+    }
+  };
+
+  // Draft routes remain amber and dashed so unapplied edits are unambiguous.
+  buildPath();
+  ctx.strokeStyle = 'rgba(7, 13, 20, 0.85)';
+  ctx.lineWidth = 5.0;
+  ctx.setLineDash([]);
+  ctx.stroke();
+
+  buildPath();
+  ctx.strokeStyle = '#e5ad58';
+  ctx.lineWidth = 1.8;
+  ctx.setLineDash([6, 4]);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+export function drawTacticalWaypoints(
+  ctx: CanvasRenderingContext2D,
+  waypoints: readonly TacticalWaypointItem[]
+): void {
+  if (!waypoints || waypoints.length === 0) return;
+
+  for (let i = 0; i < waypoints.length; i++) {
+    const wp = waypoints[i];
+    if (!wp || !Number.isFinite(wp.x) || !Number.isFinite(wp.y)) continue;
+
+    ctx.save();
+
+    if (wp.isSelected) {
+      ctx.beginPath();
+      ctx.arc(wp.x, wp.y, 9.5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#f0c674';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.beginPath();
+    ctx.arc(wp.x, wp.y, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(7, 13, 20, 0.92)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(wp.x, wp.y, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = wp.isSelected ? 'rgba(229, 173, 88, 0.3)' : 'rgba(30, 41, 59, 0.9)';
+    ctx.fill();
+    ctx.strokeStyle = wp.isSelected ? '#f0c674' : '#d39a4a';
+    ctx.lineWidth = wp.isSelected ? 1.8 : 1.2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(wp.x, wp.y, 1.3, 0, Math.PI * 2);
+    ctx.fillStyle = '#f0c674';
+    ctx.fill();
+
+    const label = wp.label ?? `WP${i + 1}`;
+    ctx.font = '600 8px ui-monospace, monospace';
+    const tw = ctx.measureText(label).width;
+    const bx = wp.x + 9;
+    const by = wp.y - 7;
+
+    ctx.fillStyle = 'rgba(7, 13, 20, 0.78)';
+    ctx.fillRect(bx - 2, by - 7, tw + 5, 11);
+    ctx.strokeStyle = wp.isSelected ? '#f0c674' : 'rgba(211, 154, 74, 0.5)';
+    ctx.lineWidth = wp.isSelected ? 1 : 0.75;
+    ctx.strokeRect(bx - 2, by - 8, tw + 5, 13);
+
+    ctx.fillStyle = wp.isSelected ? '#fff7df' : '#e8c98f';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, bx + 1, by - 1.5);
+
+    ctx.restore();
+  }
+}
+
+function drawWaypoints(
+  ctx: CanvasRenderingContext2D,
+  layout: ViewportLayout,
+  viewport: TopViewViewportState,
+  waypoints: readonly any[]
+): void {
+  if (!waypoints || waypoints.length === 0) return;
+
+  const items: TacticalWaypointItem[] = [];
+  for (let i = 0; i < waypoints.length; i++) {
+    const wp = waypoints[i];
+    if (!wp) continue;
+    const x = typeof wp.xM === 'number' ? wp.xM : (typeof wp.x_m === 'number' ? wp.x_m : (Array.isArray(wp) ? wp[0] : NaN));
+    const y = typeof wp.yM === 'number' ? wp.yM : (typeof wp.y_m === 'number' ? wp.y_m : (Array.isArray(wp) ? wp[1] : NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+
+    items.push({
+      x: viewport.xToCanvas(x, layout),
+      y: viewport.yToCanvas(y, layout),
+      label: `WP${i + 1}`,
+    });
+  }
+
+  drawTacticalWaypoints(ctx, items);
+}
+
+function drawFlightTrajectory(
+  ctx: CanvasRenderingContext2D,
+  layout: ViewportLayout,
+  viewport: TopViewViewportState,
+  flightPath?: readonly [number, number][],
+  waypoints?: readonly any[],
+  acnPos?: readonly [number, number]
+): void {
+  if (!flightPath || flightPath.length < 3) return;
+
+  const canvasPoints: [number, number][] = [];
+  for (let i = 0; i < flightPath.length; i++) {
+    canvasPoints.push([
+      viewport.xToCanvas(flightPath[i][0], layout),
+      viewport.yToCanvas(flightPath[i][1], layout),
+    ]);
+  }
+
+  const acnScreenPos = acnPos
+    ? { x: viewport.xToCanvas(acnPos[0], layout), y: viewport.yToCanvas(acnPos[1], layout) }
+    : undefined;
+
+  drawTacticalTrajectory(ctx, canvasPoints, {
+    isClosed: true,
+    acnScreenPos,
+  });
+
+  const wpList = waypoints ?? [];
+  if (Array.isArray(wpList) && wpList.length > 0) {
+    drawWaypoints(ctx, layout, viewport, wpList);
+  }
+}
+
+function drawGroundNodes(
+  ctx: CanvasRenderingContext2D,
+  layout: ViewportLayout,
+  viewport: TopViewViewportState,
+  allNodes?: readonly any[],
+  selectedNodeId?: number
+): void {
+  if (!allNodes || allNodes.length === 0) return;
+  for (const node of allNodes) {
+    if (!node || typeof node !== 'object') continue;
+    if (node.node_id === selectedNodeId) continue;
+    const x = typeof node.x_m === 'number' ? node.x_m : (node.position ? node.position[0] : NaN);
+    const y = typeof node.y_m === 'number' ? node.y_m : (node.position ? node.position[1] : NaN);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+
+    const px = viewport.xToCanvas(x, layout);
+    const py = viewport.yToCanvas(y, layout);
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '8px ui-monospace, monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.fillText(`S${node.node_id}`, px, py - 5);
+    ctx.restore();
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TOP VIEW RENDERERS (TERRAIN & RF)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -893,10 +1380,10 @@ function drawPlanViewGrid(
  *
  * Displays:
  *  - Authentic Ladakh DEM relief & hypsometric elevation shading across surrounding terrain.
- *  - High-visibility path vector with distance markers and direction chevrons.
+ *  - Restrained route vector with sparse direction markers.
  *  - Identified terrain crests and ridge occlusion hazard points.
  *  - Obstacle footprints along the path.
- *  - Tactical ACN chevron with heading and Terminal diamond with elevation annotations.
+ *  - Compact heading-aware ACN symbol and Terminal diamond with elevation annotations.
  *  - Elevation legend.
  */
 export function renderTerrainTopView(
@@ -941,6 +1428,29 @@ export function renderTerrainTopView(
 
   // 2. Known Summits within the viewport
   drawKnownSummits(ctx, layout, viewport);
+
+  // 2b. Custom Obstacles footprint layer
+  drawObstacleFootprints(ctx, layout, viewport, options?.obstacles, profile.obstacleIntervals?.map(o => o.obstacleId));
+
+  // 2c. Flight Trajectory loop & Waypoints
+  const effectiveFlightPath = options?.acnTelemetry?.flight_path ?? (
+    Array.isArray(options?.waypoints) && options.waypoints.length >= 3
+      ? options.waypoints.map(wp => [
+          typeof wp.xM === 'number' ? wp.xM : (typeof wp.x_m === 'number' ? wp.x_m : (Array.isArray(wp) ? wp[0] : 0)),
+          typeof wp.yM === 'number' ? wp.yM : (typeof wp.y_m === 'number' ? wp.y_m : (Array.isArray(wp) ? wp[1] : 0)),
+        ] as [number, number])
+      : undefined
+  );
+  drawFlightTrajectory(
+    ctx,
+    layout,
+    viewport,
+    effectiveFlightPath,
+    options?.waypoints ?? options?.acnTelemetry?.waypoints
+  );
+
+  // 2d. Ground node positions
+  drawGroundNodes(ctx, layout, viewport, options?.allNodes, options?.selectedNode?.node_id ?? profile.selectedGroundNodeId);
 
   const node = profile.groundNodePositionMslM;
   const acn = profile.acnPositionMslM;
@@ -1102,14 +1612,21 @@ export function renderTerrainTopView(
   ctx.textAlign = 'left';
   ctx.fillText(`${profile.nodeName || 'Terminal'} [${Math.round(node[2])}m MSL]`, pNodeX + 9, pNodeY + 4);
 
-  // 9. ACN Tactical Marker (Chevron with Heading)
+  // 9. ACN Tactical Marker (Chevron with Heading & Glow)
   const acnHdg = options?.acnTelemetry?.heading_deg ?? (((Math.atan2(dx, dy) * 180 / Math.PI) + 360) % 360);
-  drawAircraftChevron(ctx, pAcnX, pAcnY, acnHdg, 13);
+  drawAircraftChevron(ctx, pAcnX, pAcnY, acnHdg);
 
+  const acnText = `ACN [${Math.round(acn[2])}m MSL] · HDG ${Math.round(acnHdg)}°`;
   ctx.font = '700 10.5px ui-monospace, monospace';
+  const acnTw = ctx.measureText(acnText).width;
+  ctx.fillStyle = 'rgba(7, 13, 20, 0.82)';
+  ctx.fillRect(pAcnX - 16 - acnTw - 6, pAcnY - 8, acnTw + 8, 16);
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+  ctx.lineWidth = 1.0;
+  ctx.strokeRect(pAcnX - 16 - acnTw - 6, pAcnY - 8, acnTw + 8, 16);
   ctx.fillStyle = '#38bdf8';
   ctx.textAlign = 'right';
-  ctx.fillText(`ACN [${Math.round(acn[2])}m MSL] · HDG ${Math.round(acnHdg)}°`, pAcnX - 12, pAcnY + 4);
+  ctx.fillText(acnText, pAcnX - 16, pAcnY + 4);
 
   // 10. Elevation Legend
   if (options?.showElevationLegend !== false) {
@@ -1190,6 +1707,29 @@ export function renderRfTopView(
 
   // 2. Known Summits within the viewport
   drawKnownSummits(ctx, layout, viewport);
+
+  // 2b. Custom Obstacles footprint layer
+  drawObstacleFootprints(ctx, layout, viewport, options?.obstacles, profile.obstacleIntervals?.map(o => o.obstacleId));
+
+  // 2c. Flight Trajectory loop & Waypoints
+  const effectiveFlightPath = options?.acnTelemetry?.flight_path ?? (
+    Array.isArray(options?.waypoints) && options.waypoints.length >= 3
+      ? options.waypoints.map(wp => [
+          typeof wp.xM === 'number' ? wp.xM : (typeof wp.x_m === 'number' ? wp.x_m : (Array.isArray(wp) ? wp[0] : 0)),
+          typeof wp.yM === 'number' ? wp.yM : (typeof wp.y_m === 'number' ? wp.y_m : (Array.isArray(wp) ? wp[1] : 0)),
+        ] as [number, number])
+      : undefined
+  );
+  drawFlightTrajectory(
+    ctx,
+    layout,
+    viewport,
+    effectiveFlightPath,
+    options?.waypoints ?? options?.acnTelemetry?.waypoints
+  );
+
+  // 2d. Ground node positions
+  drawGroundNodes(ctx, layout, viewport, options?.allNodes, options?.selectedNode?.node_id ?? profile.selectedGroundNodeId);
 
   const node = profile.groundNodePositionMslM;
   const acn = profile.acnPositionMslM;
@@ -1327,7 +1867,7 @@ export function renderRfTopView(
 
   // 7. Active Payload Transmission Distinction
   const isTxActive = transferState?.status === 'TRANSMITTING';
-  if (isTxActive && !profile.terrainIsLos && !profile.obstacleBlocked) {
+  if (isTxActive && profile.terrainIsLos && !profile.obstacleBlocked) {
     const numPulses = 4;
     for (let p = 0; p < numPulses; p++) {
       const pulseFrac = (0.2 + p * 0.22) % 1.0;
@@ -1350,14 +1890,21 @@ export function renderRfTopView(
   ctx.textAlign = 'left';
   ctx.fillText(profile.nodeName || 'Terminal', pNodeX + 9, pNodeY + 4);
 
-  // 9. ACN Tactical Marker (Chevron with Heading)
+  // 9. ACN Tactical Marker (Chevron with Heading & Glow)
   const acnHdg = options?.acnTelemetry?.heading_deg ?? (((Math.atan2(dx, dy) * 180 / Math.PI) + 360) % 360);
-  drawAircraftChevron(ctx, pAcnX, pAcnY, acnHdg, 13);
+  drawAircraftChevron(ctx, pAcnX, pAcnY, acnHdg);
 
+  const acnRfText = `ACN · HDG ${Math.round(acnHdg)}°`;
   ctx.font = '700 10.5px ui-monospace, monospace';
+  const acnRfTw = ctx.measureText(acnRfText).width;
+  ctx.fillStyle = 'rgba(7, 13, 20, 0.82)';
+  ctx.fillRect(pAcnX - 16 - acnRfTw - 6, pAcnY - 8, acnRfTw + 8, 16);
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+  ctx.lineWidth = 1.0;
+  ctx.strokeRect(pAcnX - 16 - acnRfTw - 6, pAcnY - 8, acnRfTw + 8, 16);
   ctx.fillStyle = '#38bdf8';
   ctx.textAlign = 'right';
-  ctx.fillText(`ACN · HDG ${Math.round(acnHdg)}°`, pAcnX - 12, pAcnY + 4);
+  ctx.fillText(acnRfText, pAcnX - 16, pAcnY + 4);
 
   // 10. Elevation Legend
   if (options?.showElevationLegend !== false) {
