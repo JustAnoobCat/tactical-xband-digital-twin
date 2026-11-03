@@ -31,3 +31,10 @@ __pycache__/
 *$py.class
 .pytest_cache/
 *.egg-info/
+
+# Benchmark & Verification Generated Artifacts
+benchmark_results/generated/*.json
+benchmark_results/generated/*.csv
+!benchmark_results/generated/typescript-benchmark-2026-10-27T06-51-55-930Z.*
+benchmark_results/generated/quarantine_superseded_m01/*.json
+benchmark_results/generated/quarantine_superseded_m01/*.csv

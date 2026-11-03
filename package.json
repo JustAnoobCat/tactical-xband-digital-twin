@@ -34,6 +34,7 @@
     "dev": "vite",
     "build": "vite build",
     "verify": "node scripts/verify-project.mjs",
+    "verify:all": "node scripts/run_all_verifications.mjs",
     "verify:physics": "vite-node src/tests/verifyPhysics.ts",
     "verify:scheduler": "vite-node src/tests/verifyScheduler.ts",
     "verify:worker": "vite-node src/tests/verifyWorkerState.ts",
@@ -41,8 +42,13 @@
     "verify:trajectory-editor": "vite-node src/tests/verifyTrajectoryEditor.ts",
     "verify:obstacles": "vite-node src/tests/verifyObstacles.ts",
     "verify:obstacle-editor": "vite-node src/tests/verifyObstacleEditor.ts",
-    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types node,vite/client src/core/geodesy.ts src/core/rollingGoodput.ts src/core/transferMetrics.ts src/ui/nodeInventory.ts src/ui/nodeAglController.ts src/ui/radarCursorReadout.ts src/ui/pathProfileTopView.ts src/ui/dataCommVisualization.ts src/worker/simWorker.ts src/ui/terrainMapRenderer.ts src/ui/three/index.ts src/ui/three/tacticalEntityManager.ts src/tests/verifyThreeFoundation.ts src/tests/verifyThreeTerrain.ts src/tests/verifyThreeEntities.ts src/tests/verifyPhysics.ts src/tests/verifyScheduler.ts src/tests/verifyWorkerState.ts src/tests/verifyTrajectoryModes.ts src/tests/verifyTrajectoryEditor.ts src/tests/verifyObstacles.ts src/tests/verifyObstacleEditor.ts src/tests/verifyProfileFreshness.ts src/tests/verifyProfileViewport.ts src/tests/verifyHistoricalProfile.ts src/tests/verifyHistoricalScheduler.ts src/tests/verifyHistoryTimeline60s.ts src/tests/verifyLinkClassifier.ts src/tests/verifyDemMapping.ts src/tests/verifyCoveragePropagation.ts src/tests/verifyHillshadeBounds.ts src/tests/verifyCanvasTerrain.ts src/tests/verifyGeodesy.ts src/tests/verifyCursorReadout.ts src/tests/verifySchedulerPercentiles.ts src/tests/verifyPathProfileTopView.ts src/tests/verifyNodeInventoryCoordinates.ts src/tests/verifyDataCommVisualization.ts src/tests/verifyPhysicalSpeed.ts src/tests/verifyRfBandwidth.ts src/tests/verifyIntegrationHardeningM63.ts src/tests/verifyNodeAglConfiguration.ts scripts/run_ts_benchmark.ts",
-    "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts"
+    "verify:node-registry": "vite-node src/tests/verifyNodeRegistryM1a.ts",
+    "verify:dynamic-nodes": "vite-node src/tests/verifyDynamicNodesM1b.ts",
+    "verify:determinism": "vite-node src/tests/verifyDeterminismTrace.ts",
+    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types node,vite/client src/core/geodesy.ts src/core/rollingGoodput.ts src/core/transferMetrics.ts src/core/nodeRegistry.ts src/ui/nodeInventory.ts src/ui/nodeAglController.ts src/ui/radarCursorReadout.ts src/ui/pathProfileTopView.ts src/ui/dataCommVisualization.ts src/worker/simWorker.ts src/ui/terrainMapRenderer.ts src/ui/three/index.ts src/ui/three/tacticalEntityManager.ts src/tests/verifyThreeFoundation.ts src/tests/verifyThreeTerrain.ts src/tests/verifyThreeEntities.ts src/tests/verifyPhysics.ts src/tests/verifyScheduler.ts src/tests/verifyWorkerState.ts src/tests/verifyTrajectoryModes.ts src/tests/verifyTrajectoryEditor.ts src/tests/verifyObstacles.ts src/tests/verifyObstacleEditor.ts src/tests/verifyProfileFreshness.ts src/tests/verifyProfileViewport.ts src/tests/verifyHistoricalProfile.ts src/tests/verifyHistoricalScheduler.ts src/tests/verifyHistoryTimeline60s.ts src/tests/verifyLinkClassifier.ts src/tests/verifyDemMapping.ts src/tests/verifyCoveragePropagation.ts src/tests/verifyHillshadeBounds.ts src/tests/verifyCanvasTerrain.ts src/tests/verifyGeodesy.ts src/tests/verifyCursorReadout.ts src/tests/verifySchedulerPercentiles.ts src/tests/verifyPathProfileTopView.ts src/tests/verifyNodeInventoryCoordinates.ts src/tests/verifyDataCommVisualization.ts src/tests/verifyPhysicalSpeed.ts src/tests/verifyRfBandwidth.ts src/tests/verifyIntegrationHardeningM63.ts src/tests/verifyNodeAglConfiguration.ts src/tests/verifyDeterminismTrace.ts src/tests/verifyNodeRegistryM1a.ts src/tests/verifyDynamicNodesM1b.ts scripts/run_ts_benchmark.ts",
+    "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts",
+    "benchmark:synthetic": "vite-node scripts/run_ts_benchmark.ts --terrain-mode synthetic",
+    "benchmark:real": "vite-node scripts/run_ts_benchmark.ts --terrain-mode real"
   },
   "keywords": [],
   "type": "module",

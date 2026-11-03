@@ -44,6 +44,15 @@ import {
 import { cartesianToGeodetic } from '../core/geodesy';
 import { RollingGoodputTracker } from '../core/rollingGoodput';
 import {
+  NodeRegistry,
+  createDefault16NodeRegistry,
+  GroundNodeEntity,
+  formatDeterministicNodeUuid,
+  MAX_ACTIVE_GROUND_NODES,
+  DEFAULT_ANTENNA_AGL_M,
+  NodeTrafficOptions,
+} from '../core/nodeRegistry';
+import {
   ActiveTransferTelemetry,
   calculateTransferEtaSeconds,
   calculateTransferRateBps,
@@ -76,6 +85,12 @@ export interface WorkerCommandResult {
   readonly reason?: string;
   readonly spatial_locked: boolean;
   readonly request_id?: string | number;
+  readonly node_id?: number;
+  readonly entity_id?: string;
+  readonly deleted_node_id?: number;
+  readonly source_node_id?: number;
+  readonly creation_sequence?: number;
+  readonly nodes_count?: number;
   readonly trajectory_config?: {
     readonly trajectory_mode: 'ellipse' | 'waypoints';
     readonly center_x_m: number;
@@ -303,6 +318,7 @@ export class SimulationWorkerManager {
   public spatialLocked: boolean = false;
   public spatialRevision: number = 0;
 
+  public nodeRegistry: NodeRegistry;
   public nodesStatic: GroundNodeTrafficSubsystem[] = [];
   public nodesTac: GroundNodeTrafficSubsystem[] = [];
   public linkStatuses: Map<number, LinkStatus> = new Map();
@@ -328,6 +344,7 @@ export class SimulationWorkerManager {
   public readonly tacGoodputTracker: RollingGoodputTracker = new RollingGoodputTracker(200);
 
   constructor(private readonly seedOffset: number = 0) {
+    this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
     this.rfConfig = new RFConfig();
     this.envConfig = new EnvironmentConfig();
     this.flightConfig = new ACNFlightConfig();
@@ -380,49 +397,32 @@ export class SimulationWorkerManager {
   }
 
   private initNodes(): void {
-    // 16 tactical nodes realistically dispersed in the valley corridor and foothills
-    const positions: [number, number][] = [
-      [-18000.0, -12000.0], // Node 0: Rifleman
-      [-8000.0, -5000.0],   // Node 1: Squad Leader
-      [15000.0, -20000.0],  // Node 2: Medic
-      [-25000.0, 18000.0],  // Node 3: Scout Alpha
-      [12000.0, 8000.0],    // Node 4: Recon Patrol (Occlusion Target)
-      [28000.0, 32000.0],   // Node 5: Rifleman
-      [-32000.0, -25000.0], // Node 6: Scout Bravo
-      [-12000.0, 24000.0],  // Node 7: Designated Marksman
-      [22000.0, 12000.0],   // Node 8: Support Gunner
-      [35000.0, -15000.0],  // Node 9: Scout Charlie
-      [42000.0, -28000.0],  // Node 10: Rifleman
-      [-40000.0, 5000.0],   // Node 11: Ammo Carrier
-      [8000.0, -14000.0],   // Node 12: Forward Observer
-      [18000.0, 22000.0],   // Node 13: RTL Relay
-      [-5000.0, 15000.0],   // Node 14: Rifleman
-      [-20000.0, -30000.0], // Node 15: Main Command Post (MCP 20W Dish)
-    ];
-
     this.nodesStatic = [];
     this.nodesTac = [];
 
-    for (const i of GROUND_NODE_IDS) {
-      const [x, y] = positions[i];
-      const z = this.terrainEngine.getElevation(x, y) + ANTENNA_HEIGHT_M;
-      const nodeType: NodeType = i === MCP_ID ? 'mcp' : 'soldier';
+    for (const entity of this.nodeRegistry.getAll()) {
+      const i = entity.identity.nodeId;
+      const [x, y] = entity.position;
+      const z = this.terrainEngine.getElevation(x, y) + entity.aglM;
 
-      const options = {
-        hasVoice: i === MCP_ID || i === 4 || i === 1 || i === 2,
-        voiceStartS: i === 4 ? 1.0 : 0.0,
-        voiceEndS: i === 4 ? 3.8 : 1e6,
-        hasVideo: i === MCP_ID || i === 3 || i === 6 || i === 9,
-        videoMeanPktsPerFrame: i === MCP_ID ? 2.5 : 0.8,
-        hasPhoto: i === 4,
-        photoTriggerTimeS: 1.8,
-        photoSizeBytes: 240000,
-      };
-
-      const staticNode = new GroundNodeTrafficSubsystem(i, nodeType, [x, y, z], 1000 + i + this.seedOffset, options);
-      const tacNode = new GroundNodeTrafficSubsystem(i, nodeType, [x, y, z], 1000 + i + this.seedOffset, options);
-      staticNode.aglM = ANTENNA_HEIGHT_M;
-      tacNode.aglM = ANTENNA_HEIGHT_M;
+      const staticNode = new GroundNodeTrafficSubsystem(
+        i,
+        entity.identity.role,
+        [x, y, z],
+        entity.seed,
+        entity.trafficOptions,
+        entity.identity
+      );
+      const tacNode = new GroundNodeTrafficSubsystem(
+        i,
+        entity.identity.role,
+        [x, y, z],
+        entity.seed,
+        entity.trafficOptions,
+        entity.identity
+      );
+      staticNode.aglM = entity.aglM;
+      tacNode.aglM = entity.aglM;
       this.nodesStatic.push(staticNode);
       this.nodesTac.push(tacNode);
     }
@@ -434,14 +434,22 @@ export class SimulationWorkerManager {
       for (const node of nodes) {
         const [x, y] = node.position;
         node.position = [x, y, this.terrainEngine.getElevation(x, y) + node.aglM];
+        this.nodeRegistry.updateSpatial(node.nodeId, x, y, node.aglM);
       }
     }
   }
 
+  public getNodeEntity(nodeIdOrEntityId: number | string): GroundNodeEntity | undefined {
+    if (typeof nodeIdOrEntityId === 'number') {
+      return this.nodeRegistry.getByNodeId(nodeIdOrEntityId);
+    }
+    return this.nodeRegistry.getByEntityId(nodeIdOrEntityId);
+  }
+
   private initTransfers(): void {
     this.nodeTransfers.clear();
-    for (let i = 0; i < NUM_NODES; i++) {
-      this.nodeTransfers.set(i, {
+    for (const nid of this.nodeRegistry.getNodeIds()) {
+      this.nodeTransfers.set(nid, {
         activeType: null,
         totalBytes: 0,
         deliveredBytes: 0,
@@ -717,7 +725,7 @@ export class SimulationWorkerManager {
     this.refreshObstructionState(acnPos, t);
 
     // 1. Generate traffic and prune queues
-    for (let i = 0; i < NUM_NODES; i++) {
+    for (let i = 0; i < this.nodesStatic.length; i++) {
       const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT);
       const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT);
       this.metrics.staticEnqueuedPkts += sPkts.length;
@@ -776,8 +784,10 @@ export class SimulationWorkerManager {
 
     // 4. Track Node 4 pre-shadow backlog
     const n4Pred = this.predStates.get(4);
-    const n4TacKb = this.nodesTac[4].queue.getTotalBacklogBytes() / 1024.0;
-    const n4StatKb = this.nodesStatic[4].queue.getTotalBacklogBytes() / 1024.0;
+    const node4Tac = this.nodesTac.find(n => n.nodeId === 4);
+    const node4Stat = this.nodesStatic.find(n => n.nodeId === 4);
+    const n4TacKb = node4Tac ? node4Tac.queue.getTotalBacklogBytes() / 1024.0 : 0.0;
+    const n4StatKb = node4Stat ? node4Stat.queue.getTotalBacklogBytes() / 1024.0 : 0.0;
 
     if (n4Pred?.currentState === NodeTerrainState.NORMAL_LOS || n4Pred?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
       this.metrics.node4PreShadowBacklogKb = n4TacKb;
@@ -802,26 +812,29 @@ export class SimulationWorkerManager {
     const nextLinks = new Map<number, LinkStatus>();
     const nextPredictions = new Map<number, PredictiveState>();
     const nextObstructions = new Map<number, TerrainObstruction>();
-    const nextShadow: boolean[] = [];
-    for (let i = 0; i < NUM_NODES; i++) {
+    const nextShadow = new Map<number, boolean>();
+    for (let i = 0; i < this.nodesTac.length; i++) {
       const node = this.nodesTac[i];
+      const nid = node.nodeId;
       const obstruction = this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
       const prediction = this.lookaheadEngine.evaluatePredictiveState(node.position, timeS);
       const [nx, ny, nz] = node.position;
       const slantM = Math.hypot(acnPos[0] - nx, acnPos[1] - ny, acnPos[2] - nz);
-      nextObstructions.set(i, obstruction);
-      nextPredictions.set(i, prediction);
-      nextLinks.set(i, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked));
+      nextObstructions.set(nid, obstruction);
+      nextPredictions.set(nid, prediction);
+      nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked));
       // Traffic-generation shadow is current geometry, independent of a predicted re-emergence label.
-      nextShadow[i] = !obstruction.isLos || obstruction.obstacleBlocked;
+      nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked);
     }
     // Publish staged results together so no caller can observe a partial node refresh.
     this.linkStatuses.clear(); for (const [id, value] of nextLinks) this.linkStatuses.set(id, value);
     this.predStates.clear(); for (const [id, value] of nextPredictions) this.predStates.set(id, value);
     this.obstructionResults.clear(); for (const [id, value] of nextObstructions) this.obstructionResults.set(id, value);
-    for (let i = 0; i < NUM_NODES; i++) {
-      this.nodesTac[i].isShadowed = nextShadow[i];
-      this.nodesStatic[i].isShadowed = nextShadow[i];
+    for (let i = 0; i < this.nodesTac.length; i++) {
+      const nid = this.nodesTac[i].nodeId;
+      const isShad = nextShadow.get(nid) ?? false;
+      this.nodesTac[i].isShadowed = isShad;
+      this.nodesStatic[i].isShadowed = isShad;
     }
   }
 
@@ -832,6 +845,8 @@ export class SimulationWorkerManager {
       const prediction = this.predStates.get(node.nodeId);
       return {
         node_id: node.nodeId,
+        entity_id: node.entityId,
+        creation_sequence: node.creationSequence,
         terrain_is_los: obstruction?.isLos ?? true,
         obstacle_blocked: obstruction?.obstacleBlocked ?? false,
         obstacle_intersections: obstruction?.obstacleIntersections.map(hit => ({ ...hit })) ?? [],
@@ -1000,7 +1015,9 @@ export class SimulationWorkerManager {
 
       return {
         node_id: node.nodeId,
-        name: node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`,
+        entity_id: node.entityId,
+        creation_sequence: node.creationSequence,
+        name: node.identity?.callsign ?? (node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`),
         node_type: node.nodeType,
         x_m: node.position[0],
         y_m: node.position[1],
@@ -1109,12 +1126,13 @@ export class SimulationWorkerManager {
       ? (this.lastReportTac?.totalBitsWastedOnOutage ?? 0)
       : (this.lastReportStatic?.totalBitsWastedOnOutage ?? 0);
 
-    const hasSel = typeof this.selectedNodeId === 'number';
-    const staticSelectedBacklogKb = hasSel && this.nodesStatic[this.selectedNodeId]
-      ? this.nodesStatic[this.selectedNodeId].queue.getTotalBacklogBytes() / 1024.0
+    const selStaticNode = this.nodesStatic.find(n => n.nodeId === this.selectedNodeId);
+    const selTacNode = this.nodesTac.find(n => n.nodeId === this.selectedNodeId);
+    const staticSelectedBacklogKb = selStaticNode
+      ? selStaticNode.queue.getTotalBacklogBytes() / 1024.0
       : null;
-    const tacSelectedBacklogKb = hasSel && this.nodesTac[this.selectedNodeId]
-      ? this.nodesTac[this.selectedNodeId].queue.getTotalBacklogBytes() / 1024.0
+    const tacSelectedBacklogKb = selTacNode
+      ? selTacNode.queue.getTotalBacklogBytes() / 1024.0
       : null;
 
     const kpi = {
@@ -1294,7 +1312,9 @@ export class SimulationWorkerManager {
   private getNode4Status(): string {
     const ps = this.predStates.get(4);
     if (!ps) return 'NOMINAL';
-    const kb = this.nodesTac[4].queue.getTotalBacklogBytes() / 1024.0;
+    const node4 = this.nodesTac.find((n) => n.nodeId === 4);
+    if (!node4) return 'NOMINAL';
+    const kb = node4.queue.getTotalBacklogBytes() / 1024.0;
     switch (ps.currentState) {
       case NodeTerrainState.NORMAL_LOS: return 'NOMINAL';
       case NodeTerrainState.PRE_OCCLUSION_FLUSH: return `EVACUATING ${kb.toFixed(1)} KB`;
@@ -1349,7 +1369,7 @@ export class SimulationWorkerManager {
     };
   }
 
-  private buildFresnelSlice(node: GroundNodeTrafficSubsystem, acnPos: [number, number, number]): {
+  private buildFresnelSlice(node: GroundNodeTrafficSubsystem | undefined, acnPos: [number, number, number]): {
     readonly profile: LinkProfile;
     readonly node_id: number;
     readonly node_name: string;
@@ -1368,6 +1388,75 @@ export class SimulationWorkerManager {
     readonly is_coverage_complete?: boolean;
     readonly coverage_note?: string;
   } {
+    if (!node) {
+      return {
+        profile: {
+          selectedGroundNodeId: -1,
+          nodeName: 'NONE',
+          frameIndex: this.frameIndex,
+          simulationTimeS: this.simTimeS,
+          groundNodePositionMslM: [0, 0, 0],
+          acnPositionMslM: acnPos,
+          horizontalGroundDistanceM: 0,
+          slantDistanceM: 0,
+          fresnelFraction: PROFILE_FRESNEL_FRACTION,
+          terrainIsLos: true,
+          terrainMinimumClearanceM: 0,
+          terrainCriticalFresnelRadiusM: 0,
+          diffractionLossDb: 0,
+          obstacleBlocked: false,
+          obstacleIntervals: [],
+          samples: [],
+          valid: false,
+          isCoverageComplete: false,
+          invalidReason: 'No ground nodes registered in scenario.',
+        },
+        node_id: -1,
+        node_name: 'NONE',
+        distance_km: 0,
+        clearance_m: 0,
+        status: 'NO_NODES_REGISTERED',
+        obstructed: false,
+        diffraction_loss_db: 0,
+        terrain_is_los: true,
+        obstacle_blocked: false,
+        obstacle_intersections: [],
+        state_name: NodeTerrainState.NORMAL_LOS,
+        profile_points: [],
+        link_budget: {
+          node_id: -1,
+          node_type: 'soldier',
+          slant_range_m: 0,
+          slant_range_km: 0,
+          fspl_db: 0,
+          diffraction_loss_db: 0,
+          gas_loss_db: 0,
+          rain_loss_db: 0,
+          cable_loss_db: 0,
+          implementation_margin_db: 0,
+          total_loss_db: 0,
+          tx_power_dbm: 0,
+          tx_gain_dbi: 0,
+          rx_gain_dbi: 0,
+          prx_dbm: 0,
+          pnoise_dbm: 0,
+          snr_db: -99.0,
+          modcod_name: 'LINK_OUTAGE',
+          spectral_efficiency_bps_hz: 0,
+          bitrate_bps: 0,
+          bitrate_mbps: 0,
+          is_outage: true,
+          obstacle_blocked: false,
+          terrain_is_los: true,
+          earth_bulge_m: 0,
+          is_coverage_complete: false,
+          coverage_note: 'No ground nodes registered in scenario.',
+        },
+        is_coverage_complete: false,
+        coverage_note: 'No ground nodes registered in scenario.',
+      };
+    }
+
     const obstruction = this.obstructionResults.get(node.nodeId)
       ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
     const linkProfile = buildLinkProfile({
@@ -1442,6 +1531,7 @@ export class SimulationWorkerManager {
    * scheduler adaptation state and per-run counters are not.
    */
   public resetSimulationState(): void {
+    this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
     this.initNodes();
     this.initTransfers();
     this.staticScheduler = new LegacyStaticScheduler();
@@ -1449,6 +1539,7 @@ export class SimulationWorkerManager {
     this.simTimeS = 0.0;
     this.frameIndex = 0;
     this.spatialRevision = 0;
+    this.selectedNodeId = 4;
     this.node4Frozen = false;
     this.activeStepRequestId = undefined;
     this.lastReportStatic = null;
@@ -1551,10 +1642,10 @@ export class SimulationWorkerManager {
         const nid = msg.node_id;
         const xm = msg.x_m;
         const ym = msg.y_m;
-        if (!Number.isInteger(nid) || nid < ACN_ID || nid >= NUM_NODES ||
+        if (!Number.isInteger(nid) || (nid !== ACN_ID && !this.nodeRegistry.hasNodeId(nid)) ||
             !isFiniteNumber(xm) || !isFiniteNumber(ym) ||
             Math.abs(xm) > THEATER_HALF_M || Math.abs(ym) > THEATER_HALF_M) {
-          return reject('NODE_MOVE requires node_id -1..15 and finite x_m/y_m within the terrain bounds (±600000 m).');
+          return reject('NODE_MOVE requires valid node_id and finite x_m/y_m within the terrain bounds (±600000 m).');
         }
         if (nid === ACN_ID) {
           const deltaX = xm - this.flightConfig.centerXm;
@@ -1573,10 +1664,13 @@ export class SimulationWorkerManager {
             this.terrainEngine, this.linkEngine, this.rfConfig, this.envConfig, next, trajectory
           );
         } else {
-          const staticNode = this.nodesStatic[nid], tacNode = this.nodesTac[nid];
+          const staticNode = this.nodesStatic.find(n => n.nodeId === nid);
+          const tacNode = this.nodesTac.find(n => n.nodeId === nid);
+          if (!staticNode || !tacNode) return reject(`Node ${nid} not found in active simulation.`);
           const terrainMsl = this.terrainEngine.getElevation(xm, ym);
           staticNode.position = [xm, ym, terrainMsl + staticNode.aglM];
           tacNode.position = [xm, ym, terrainMsl + tacNode.aglM];
+          this.nodeRegistry.updateSpatial(nid, xm, ym);
         }
         this.spatialRevision++;
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
@@ -1598,6 +1692,7 @@ export class SimulationWorkerManager {
           const terrainMsl = this.terrainEngine.getElevation(12000.0, 8000.0);
           this.nodesStatic[4].position = [12000.0, 8000.0, terrainMsl + this.nodesStatic[4].aglM];
           this.nodesTac[4].position = [12000.0, 8000.0, terrainMsl + this.nodesTac[4].aglM];
+          this.nodeRegistry.updateSpatial(4, 12000.0, 8000.0);
           this.selectedNodeId = 4;
           for (let k = 0; k < 30; k++) {
             this.nodesStatic[4].enqueuePacket(70, this.simTimeS, 1400);
@@ -1630,7 +1725,10 @@ export class SimulationWorkerManager {
 
       case 'INJECT_TRAFFIC': {
         const nid = msg.node_id === undefined ? this.selectedNodeId : msg.node_id;
-        if (!Number.isInteger(nid) || nid < 0 || nid >= NUM_NODES) return reject('node_id must identify a registered ground node.');
+        if (!Number.isInteger(nid) || !this.nodeRegistry.hasNodeId(nid)) return reject('node_id must identify a registered ground node.');
+        const staticNode = this.nodesStatic.find(n => n.nodeId === nid);
+        const tacNode = this.nodesTac.find(n => n.nodeId === nid);
+        if (!staticNode || !tacNode) return reject('node_id must identify an active ground node.');
         const ttype = String(msg.traffic_type ?? 'SOS').toUpperCase();
         let bytes = 2560;
         if (ttype.includes('PHOTO')) bytes = 2000000;
@@ -1645,8 +1743,8 @@ export class SimulationWorkerManager {
           startTimeS: this.simTimeS, ackTimeS: -1, lastQueueDrops: 0,
           lastUpdateSimTimeS: this.simTimeS, currentRateBps: 0, etaS: null, etaStatus: isBlocked ? 'BLOCKED (PAUSED)' : 'CALCULATING'
         });
-        this.nodesStatic[nid].injectTraffic(ttype, this.simTimeS);
-        this.nodesTac[nid].injectTraffic(ttype, this.simTimeS);
+        staticNode.injectTraffic(ttype, this.simTimeS);
+        tacNode.injectTraffic(ttype, this.simTimeS);
         return result(true);
       }
 
@@ -1745,7 +1843,7 @@ export class SimulationWorkerManager {
         if (['center_x_m', 'center_y_m'].some(k => p[k] !== undefined && Math.abs(p[k]) > THEATER_HALF_M)) return reject('Orbit center coordinates must be within ±600000 metres.');
         if (p.coverage_radius_km !== undefined && (p.coverage_radius_km <= 0 || p.coverage_radius_km > 600)) return reject('coverage_radius_km must be in (0, 600].');
         const hasAgl = p.agl_m !== undefined || p.node_id !== undefined;
-        if (hasAgl && (p.agl_m === undefined || !Number.isInteger(p.node_id) || p.node_id < 0 || p.node_id >= NUM_NODES)) return reject('AGL updates require a valid ground node_id and agl_m.');
+        if (hasAgl && (p.agl_m === undefined || !Number.isInteger(p.node_id) || !this.nodeRegistry.hasNodeId(p.node_id))) return reject('AGL updates require a valid ground node_id and agl_m.');
         if (p.agl_m !== undefined && (p.agl_m < MIN_GROUND_AGL_M || p.agl_m > MAX_GROUND_AGL_M)) return reject(`agl_m must be between ${MIN_GROUND_AGL_M} and ${MAX_GROUND_AGL_M} metres.`);
 
         const nextMode = p.trajectory_mode ?? this.flightConfig.trajectoryMode;
@@ -1827,11 +1925,16 @@ export class SimulationWorkerManager {
         }
         if (p.agl_m !== undefined) {
           const nid = p.node_id;
-          const terrainMsl = this.terrainEngine.getElevation(this.nodesTac[nid].position[0], this.nodesTac[nid].position[1]);
-          this.nodesStatic[nid].aglM = p.agl_m;
-          this.nodesTac[nid].aglM = p.agl_m;
-          this.nodesStatic[nid].position = [this.nodesStatic[nid].position[0], this.nodesStatic[nid].position[1], terrainMsl + p.agl_m];
-          this.nodesTac[nid].position = [this.nodesTac[nid].position[0], this.nodesTac[nid].position[1], terrainMsl + p.agl_m];
+          const staticNode = this.nodesStatic.find(n => n.nodeId === nid);
+          const tacNode = this.nodesTac.find(n => n.nodeId === nid);
+          if (staticNode && tacNode) {
+            const terrainMsl = this.terrainEngine.getElevation(tacNode.position[0], tacNode.position[1]);
+            staticNode.aglM = p.agl_m;
+            tacNode.aglM = p.agl_m;
+            staticNode.position = [staticNode.position[0], staticNode.position[1], terrainMsl + p.agl_m];
+            tacNode.position = [tacNode.position[0], tacNode.position[1], terrainMsl + p.agl_m];
+            this.nodeRegistry.updateAgl(nid, p.agl_m);
+          }
         }
         if (changesTerrain) this.initHillshade(512);
         if (changesTrajectory || changesTerrain || p.agl_m !== undefined) {
@@ -1870,20 +1973,307 @@ export class SimulationWorkerManager {
         return result(true);
 
       case 'SELECT_NODE':
-        if (!Number.isInteger(msg.node_id) || msg.node_id < 0 || msg.node_id >= NUM_NODES) return reject('node_id must identify a registered ground node.');
+        if (!Number.isInteger(msg.node_id) || !this.nodeRegistry.hasNodeId(msg.node_id)) return reject('node_id must identify a registered ground node.');
         this.selectedNodeId = msg.node_id;
         this.emitProfileFrame();
         return result(true);
 
       case 'CLEAR_TRANSFER': {
         const nid = msg.node_id === undefined ? this.selectedNodeId : msg.node_id;
-        if (!Number.isInteger(nid) || nid < 0 || nid >= NUM_NODES) return reject('node_id must identify a registered ground node.');
+        if (!Number.isInteger(nid) || !this.nodeRegistry.hasNodeId(nid)) return reject('node_id must identify a registered ground node.');
         this.nodeTransfers.set(nid, {
           activeType: null, totalBytes: 0, deliveredBytes: 0, prevDeliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
           status: 'IDLE', statusMessage: '', startTimeS: -1, ackTimeS: -1, lastQueueDrops: 0,
           lastUpdateSimTimeS: -1, currentRateBps: 0, etaS: null, etaStatus: 'STANDBY'
         });
         return result(true);
+      }
+
+      case 'NODE_ADD': {
+        if (this.spatialLocked) return locked();
+        if (this.nodeRegistry.size >= MAX_ACTIVE_GROUND_NODES) {
+          return reject(`Maximum active ground-node capacity (${MAX_ACTIVE_GROUND_NODES}) reached.`);
+        }
+        const xm = msg.x_m !== undefined ? msg.x_m : 0.0;
+        const ym = msg.y_m !== undefined ? msg.y_m : 0.0;
+        const aglM = msg.agl_m !== undefined ? msg.agl_m : DEFAULT_ANTENNA_AGL_M;
+        if (!isFiniteNumber(xm) || !isFiniteNumber(ym) || Math.abs(xm) > THEATER_HALF_M || Math.abs(ym) > THEATER_HALF_M) {
+          return reject('NODE_ADD requires finite x_m and y_m coordinates within theater bounds (±600000 m).');
+        }
+        if (!isFiniteNumber(aglM) || aglM < MIN_GROUND_AGL_M || aglM > MAX_GROUND_AGL_M) {
+          return reject(`NODE_ADD requires agl_m between ${MIN_GROUND_AGL_M} and ${MAX_GROUND_AGL_M} metres.`);
+        }
+        if (msg.role !== undefined && msg.role !== 'soldier' && msg.role !== 'mcp') {
+          return reject("role must be 'soldier' or 'mcp'.");
+        }
+        if (msg.callsign !== undefined && (typeof msg.callsign !== 'string' || msg.callsign.trim().length === 0)) {
+          return reject('callsign must be a non-empty string.');
+        }
+
+        const role: NodeType = msg.role ?? 'soldier';
+        const entity = this.nodeRegistry.createDynamicNode({
+          callsign: msg.callsign ? msg.callsign.trim() : undefined,
+          role,
+          position: [xm, ym],
+          aglM,
+          trafficOptions: msg.traffic_options,
+          colorHex: msg.color_hex,
+        });
+
+        const nid = entity.identity.nodeId;
+        const terrainMsl = this.terrainEngine.getElevation(xm, ym);
+        const z = terrainMsl + aglM;
+
+        const staticNode = new GroundNodeTrafficSubsystem(
+          nid,
+          role,
+          [xm, ym, z],
+          entity.seed,
+          entity.trafficOptions,
+          entity.identity
+        );
+        const tacNode = new GroundNodeTrafficSubsystem(
+          nid,
+          role,
+          [xm, ym, z],
+          entity.seed,
+          entity.trafficOptions,
+          entity.identity
+        );
+        staticNode.aglM = aglM;
+        tacNode.aglM = aglM;
+        this.nodesStatic.push(staticNode);
+        this.nodesTac.push(tacNode);
+
+        this.nodeTransfers.set(nid, {
+          activeType: null, totalBytes: 0, deliveredBytes: 0, prevDeliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
+          status: 'IDLE', statusMessage: '', startTimeS: -1, ackTimeS: -1, lastQueueDrops: 0,
+          lastUpdateSimTimeS: -1, currentRateBps: 0, etaS: null, etaStatus: 'STANDBY'
+        });
+
+        if (this.selectedNodeId < 0 || !this.nodeRegistry.hasNodeId(this.selectedNodeId)) {
+          this.selectedNodeId = nid;
+        }
+
+        this.spatialRevision++;
+        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.emitProfileFrame();
+
+        const res: WorkerCommandResult = {
+          type: 'COMMAND_RESULT',
+          command_type: 'NODE_ADD',
+          accepted: true,
+          node_id: nid,
+          entity_id: entity.identity.entityId,
+          creation_sequence: entity.identity.creationSequence,
+          nodes_count: this.nodeRegistry.size,
+          spatial_locked: this.spatialLocked,
+          request_id: msg.request_id,
+        };
+        this.emitHostMessage(res);
+        return res;
+      }
+
+      case 'NODE_DELETE': {
+        if (this.spatialLocked) return locked();
+        const nid = msg.node_id;
+        if (!Number.isInteger(nid) || !this.nodeRegistry.hasNodeId(nid)) {
+          return reject('node_id must identify an active registered ground node.');
+        }
+
+        this.nodeRegistry.unregister(nid);
+        this.nodesStatic = this.nodesStatic.filter(n => n.nodeId !== nid);
+        this.nodesTac = this.nodesTac.filter(n => n.nodeId !== nid);
+
+        this.staticScheduler.evictNode(nid);
+        this.tacScheduler.evictNode(nid);
+
+        this.linkStatuses.delete(nid);
+        this.predStates.delete(nid);
+        this.obstructionResults.delete(nid);
+        this.nodeTransfers.delete(nid);
+
+        if (this.selectedNodeId === nid) {
+          if (this.nodesTac.length > 0) {
+            this.selectedNodeId = this.nodesTac[0].nodeId;
+          } else {
+            this.selectedNodeId = -1;
+          }
+        }
+
+        this.spatialRevision++;
+        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.emitProfileFrame();
+
+        const res: WorkerCommandResult = {
+          type: 'COMMAND_RESULT',
+          command_type: 'NODE_DELETE',
+          accepted: true,
+          node_id: nid,
+          deleted_node_id: nid,
+          nodes_count: this.nodeRegistry.size,
+          spatial_locked: this.spatialLocked,
+          request_id: msg.request_id,
+        };
+        this.emitHostMessage(res);
+        return res;
+      }
+
+      case 'NODE_DUPLICATE': {
+        if (this.spatialLocked) return locked();
+        if (this.nodeRegistry.size >= MAX_ACTIVE_GROUND_NODES) {
+          return reject(`Maximum active ground-node capacity (${MAX_ACTIVE_GROUND_NODES}) reached.`);
+        }
+        const srcId = msg.source_node_id;
+        if (!Number.isInteger(srcId) || !this.nodeRegistry.hasNodeId(srcId)) {
+          return reject('source_node_id must identify an active registered ground node.');
+        }
+        const src = this.nodeRegistry.getByNodeId(srcId);
+        if (!src) return reject('Source node entity could not be retrieved.');
+
+        const dx = isFiniteNumber(msg.offset_x_m) ? msg.offset_x_m : 500.0;
+        const dy = isFiniteNumber(msg.offset_y_m) ? msg.offset_y_m : 500.0;
+        const newX = src.position[0] + dx;
+        const newY = src.position[1] + dy;
+
+        if (Math.abs(newX) > THEATER_HALF_M || Math.abs(newY) > THEATER_HALF_M) {
+          return reject('Duplicated node coordinates fall outside theater bounds (±600000 m).');
+        }
+
+        const callsign = msg.callsign && typeof msg.callsign === 'string' && msg.callsign.trim().length > 0
+          ? msg.callsign.trim()
+          : `${src.identity.callsign}_copy`;
+
+        const entity = this.nodeRegistry.createDynamicNode({
+          callsign,
+          role: src.identity.role,
+          position: [newX, newY],
+          aglM: src.aglM,
+          trafficOptions: { ...src.trafficOptions },
+          colorHex: src.identity.colorHex,
+        });
+
+        const nid = entity.identity.nodeId;
+        const terrainMsl = this.terrainEngine.getElevation(newX, newY);
+        const z = terrainMsl + src.aglM;
+
+        const staticNode = new GroundNodeTrafficSubsystem(
+          nid,
+          entity.identity.role,
+          [newX, newY, z],
+          entity.seed,
+          entity.trafficOptions,
+          entity.identity
+        );
+        const tacNode = new GroundNodeTrafficSubsystem(
+          nid,
+          entity.identity.role,
+          [newX, newY, z],
+          entity.seed,
+          entity.trafficOptions,
+          entity.identity
+        );
+        staticNode.aglM = src.aglM;
+        tacNode.aglM = src.aglM;
+        this.nodesStatic.push(staticNode);
+        this.nodesTac.push(tacNode);
+
+        this.nodeTransfers.set(nid, {
+          activeType: null, totalBytes: 0, deliveredBytes: 0, prevDeliveredBytes: 0, droppedBytes: 0, droppedPackets: 0,
+          status: 'IDLE', statusMessage: '', startTimeS: -1, ackTimeS: -1, lastQueueDrops: 0,
+          lastUpdateSimTimeS: -1, currentRateBps: 0, etaS: null, etaStatus: 'STANDBY'
+        });
+
+        this.spatialRevision++;
+        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.emitProfileFrame();
+
+        const res: WorkerCommandResult = {
+          type: 'COMMAND_RESULT',
+          command_type: 'NODE_DUPLICATE',
+          accepted: true,
+          node_id: nid,
+          entity_id: entity.identity.entityId,
+          source_node_id: srcId,
+          creation_sequence: entity.identity.creationSequence,
+          nodes_count: this.nodeRegistry.size,
+          spatial_locked: this.spatialLocked,
+          request_id: msg.request_id,
+        };
+        this.emitHostMessage(res);
+        return res;
+      }
+
+      case 'NODE_UPDATE': {
+        const nid = msg.node_id;
+        if (!Number.isInteger(nid) || !this.nodeRegistry.hasNodeId(nid)) {
+          return reject('node_id must identify an active registered ground node.');
+        }
+
+        const changesSpatial = msg.x_m !== undefined || msg.y_m !== undefined || msg.agl_m !== undefined;
+        if (this.spatialLocked && changesSpatial) return locked();
+
+        const staticNode = this.nodesStatic.find(n => n.nodeId === nid);
+        const tacNode = this.nodesTac.find(n => n.nodeId === nid);
+        const entity = this.nodeRegistry.getByNodeId(nid);
+        if (!staticNode || !tacNode || !entity) return reject('Target node was not found.');
+
+        if (msg.x_m !== undefined && (!isFiniteNumber(msg.x_m) || Math.abs(msg.x_m) > THEATER_HALF_M)) {
+          return reject('x_m must be a finite number within theater bounds (±600000 m).');
+        }
+        if (msg.y_m !== undefined && (!isFiniteNumber(msg.y_m) || Math.abs(msg.y_m) > THEATER_HALF_M)) {
+          return reject('y_m must be a finite number within theater bounds (±600000 m).');
+        }
+        if (msg.agl_m !== undefined && (!isFiniteNumber(msg.agl_m) || msg.agl_m < MIN_GROUND_AGL_M || msg.agl_m > MAX_GROUND_AGL_M)) {
+          return reject(`agl_m must be between ${MIN_GROUND_AGL_M} and ${MAX_GROUND_AGL_M} metres.`);
+        }
+        if (msg.role !== undefined && msg.role !== 'soldier' && msg.role !== 'mcp') {
+          return reject("role must be 'soldier' or 'mcp'.");
+        }
+        if (msg.callsign !== undefined && (typeof msg.callsign !== 'string' || msg.callsign.trim().length === 0)) {
+          return reject('callsign must be a non-empty string.');
+        }
+
+        const nextX = msg.x_m !== undefined ? msg.x_m : staticNode.position[0];
+        const nextY = msg.y_m !== undefined ? msg.y_m : staticNode.position[1];
+        const nextAgl = msg.agl_m !== undefined ? msg.agl_m : staticNode.aglM;
+        const nextTerrainMsl = this.terrainEngine.getElevation(nextX, nextY);
+        const nextZ = nextTerrainMsl + nextAgl;
+
+        staticNode.position = [nextX, nextY, nextZ];
+        tacNode.position = [nextX, nextY, nextZ];
+        staticNode.aglM = nextAgl;
+        tacNode.aglM = nextAgl;
+
+        if (msg.role !== undefined) {
+          staticNode.nodeType = msg.role;
+          tacNode.nodeType = msg.role;
+        }
+
+        this.nodeRegistry.updateEntity(nid, {
+          position: [nextX, nextY],
+          aglM: nextAgl,
+          role: msg.role,
+          callsign: msg.callsign ? msg.callsign.trim() : undefined,
+          trafficOptions: msg.traffic_options,
+        });
+
+        if (changesSpatial) {
+          this.spatialRevision++;
+        }
+        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.emitProfileFrame();
+
+        const res: WorkerCommandResult = {
+          type: 'COMMAND_RESULT',
+          command_type: 'NODE_UPDATE',
+          accepted: true,
+          node_id: nid,
+          spatial_locked: this.spatialLocked,
+          request_id: msg.request_id,
+        };
+        this.emitHostMessage(res);
+        return res;
       }
       default:
         return reject(`Unsupported command type '${type}'.`);

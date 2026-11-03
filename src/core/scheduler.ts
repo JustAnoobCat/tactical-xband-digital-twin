@@ -105,6 +105,7 @@ export interface BaseScheduler {
     predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
     dlBacklogBytes?: number
   ): FrameScheduleReport;
+  evictNode?(nodeId: number): void;
 }
 
 /**
@@ -118,6 +119,10 @@ export class LegacyStaticScheduler implements BaseScheduler {
   public readonly schedulerName: string = 'Legacy_Static_TDMA';
   private readonly previousDropCounts = new Map<number, { delay: number; overflow: number }>();
 
+  public evictNode(nodeId: number): void {
+    this.previousDropCounts.delete(nodeId);
+  }
+
   public scheduleFrame(
     frameIndex: number,
     currentSimTimeS: number,
@@ -128,6 +133,28 @@ export class LegacyStaticScheduler implements BaseScheduler {
   ): FrameScheduleReport {
     const numNodes = nodes.length;
     const tUlAvailable = T_FRAME_S - T_CTRL_S - T_DL_MIN_S;
+
+    if (numNodes === 0) {
+      return {
+        frameIndex,
+        timestampS: currentSimTimeS,
+        schedulerName: this.schedulerName,
+        allocations: [],
+        totalUlScheduledS: 0,
+        totalUlAvailableS: tUlAvailable,
+        totalUlUnusedS: tUlAvailable,
+        totalUlUtilizationPct: 0,
+        totalPayloadBitsDequeued: 0,
+        totalBitsTransmitted: 0,
+        totalBitsWastedOnOutage: 0,
+        packetsDroppedDelay: 0,
+        packetsDroppedOverflow: 0,
+        packetsDroppedDelayThisFrame: 0,
+        packetsDroppedOverflowThisFrame: 0,
+        totalBacklogBits: 0,
+      };
+    }
+
     const tauSlot = (tUlAvailable - numNodes * TAU_GUARD_S) / numNodes;
 
     const allocations: SlotAllocation[] = [];
@@ -233,6 +260,11 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
     this.tauMaxNormalS = tauMaxNormalS;
   }
 
+  public evictNode(nodeId: number): void {
+    this.previousDropCounts.delete(nodeId);
+    this.rAvg.delete(nodeId);
+  }
+
   public scheduleFrame(
     frameIndex: number,
     currentSimTimeS: number,
@@ -243,6 +275,27 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
   ): FrameScheduleReport {
     const tDl = dlBacklogBytes > 5000 ? Math.min(T_DL_MAX_S, T_DL_MIN_S + 0.002) : T_DL_MIN_S;
     const tUlAvailable = T_FRAME_S - T_CTRL_S - tDl;
+
+    if (nodes.length === 0) {
+      return {
+        frameIndex,
+        timestampS: currentSimTimeS,
+        schedulerName: this.schedulerName,
+        allocations: [],
+        totalUlScheduledS: 0,
+        totalUlAvailableS: tUlAvailable,
+        totalUlUnusedS: tUlAvailable,
+        totalUlUtilizationPct: 0,
+        totalPayloadBitsDequeued: 0,
+        totalBitsTransmitted: 0,
+        totalBitsWastedOnOutage: 0,
+        packetsDroppedDelay: 0,
+        packetsDroppedOverflow: 0,
+        packetsDroppedDelayThisFrame: 0,
+        packetsDroppedOverflowThisFrame: 0,
+        totalBacklogBits: 0,
+      };
+    }
 
     const getLink = (id: number): LinkStatus | undefined =>
       linkStatuses instanceof Map

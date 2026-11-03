@@ -413,6 +413,7 @@ export class TacticalEntityManager {
   // Communication Links (16 links)
   private linkLines: THREE.Line[] = [];
   private linkGeometries: THREE.BufferGeometry[] = [];
+  private linkMap: Map<number, { line: THREE.Line; geo: THREE.BufferGeometry }> = new Map();
   private materialPool: Map<string, THREE.Material> = new Map();
 
   // Pre-baked Canvas Textures
@@ -988,7 +989,186 @@ export class TacticalEntityManager {
 
       this.linkLines.push(line);
       this.linkGeometries.push(geo);
+      this.linkMap.set(i, { line, geo });
     }
+  }
+
+  public getOrCreateLink(nodeId: number): { line: THREE.Line; geo: THREE.BufferGeometry } {
+    let link = this.linkMap.get(nodeId);
+    if (!link) {
+      const initialMat = this.materialPool.get('normal_CONNECTED')!;
+      const positions = new Float32Array(6);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+      const line = new THREE.Line(geo, initialMat);
+      line.name = `linkLine_${nodeId}`;
+      this.linksGroup.add(line);
+
+      this.linkLines.push(line);
+      this.linkGeometries.push(geo);
+      link = { line, geo };
+      this.linkMap.set(nodeId, link);
+    }
+    return link;
+  }
+
+  public getOrCreateNodeItem(nodeId: number, isMcp: boolean = false, callsign?: string): GroundNodeItem {
+    let item = this.nodeItems.find(it => it.nodeId === nodeId);
+    if (item) return item;
+
+    const anchorLift = isMcp
+      ? TACTICAL_MARKER_TARGET_PIXELS.mcpAnchorLiftM
+      : TACTICAL_MARKER_TARGET_PIXELS.soldierAnchorLiftM;
+
+    const nodeGroup = new THREE.Group();
+    nodeGroup.name = `nodeGroup_${nodeId}`;
+
+    const pMcp = ASSUMED_PHYSICAL_DIMENSIONS.mcpTerminal;
+    const pSol = ASSUMED_PHYSICAL_DIMENSIONS.soldierTerminal;
+    const mcpDishGeo = new THREE.CylinderGeometry(pMcp.dishDiameterM * 0.5, pMcp.dishDiameterM * 0.5, 0.4, 16);
+    mcpDishGeo.rotateX(Math.PI / 4);
+    mcpDishGeo.translate(0, 0, pMcp.mastHeightM);
+
+    const mcpShelterGeo = new THREE.BoxGeometry(pMcp.shelterLengthM, pMcp.shelterWidthM, pMcp.shelterHeightM);
+    mcpShelterGeo.translate(0, 0, pMcp.shelterHeightM * 0.5);
+
+    const soldierTripodGeo = new THREE.ConeGeometry(pSol.tripodBaseRadiusM, pSol.mastHeightM, 6);
+    soldierTripodGeo.rotateX(Math.PI / 2);
+    soldierTripodGeo.translate(0, 0, pSol.mastHeightM * 0.5);
+
+    const visualGroup = new THREE.Group();
+    visualGroup.name = `nodeVisual_${nodeId}`;
+
+    const nodeMat = new THREE.MeshStandardMaterial({
+      color: isMcp ? 0x38bdf8 : 0x10b981,
+      roughness: 0.3,
+      metalness: 0.7,
+      emissive: isMcp ? 0x0284c7 : 0x059669,
+      emissiveIntensity: 0.4,
+    });
+
+    const markerMesh = isMcp
+      ? new THREE.Mesh(mcpDishGeo, nodeMat)
+      : new THREE.Mesh(soldierTripodGeo, nodeMat);
+    markerMesh.name = `nodeMesh_${nodeId}`;
+    markerMesh.userData = { nodeId };
+    visualGroup.add(markerMesh);
+
+    if (isMcp) {
+      const shelterMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+      const shelterMesh = new THREE.Mesh(mcpShelterGeo, shelterMat);
+      shelterMesh.userData = { nodeId };
+      visualGroup.add(shelterMesh);
+    }
+    visualGroup.userData = { nodeId };
+    nodeGroup.add(visualGroup);
+
+    const plumbMat = new THREE.LineBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.6,
+      depthTest: true,
+    });
+    const plumbPoints = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, anchorLift),
+    ];
+    const plumbGeo = new THREE.BufferGeometry().setFromPoints(plumbPoints);
+    const markerPlumbLine = new THREE.Line(plumbGeo, plumbMat);
+    markerPlumbLine.name = `nodePlumb_${nodeId}`;
+    nodeGroup.add(markerPlumbLine);
+
+    const markerAnchorGroup = new THREE.Group();
+    markerAnchorGroup.name = `markerAnchor_${nodeId}`;
+    markerAnchorGroup.position.set(0, 0, anchorLift);
+    nodeGroup.add(markerAnchorGroup);
+
+    const markerMat = new THREE.SpriteMaterial({
+      map: isMcp ? this.mcpMarkerTexture : this.soldierMarkerTexture,
+      sizeAttenuation: false,
+      depthTest: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1.0,
+      polygonOffsetUnits: -4.0,
+      transparent: true,
+      opacity: 1.0,
+      color: isMcp ? 0xffffff : 0x10b981,
+    });
+    const markerSprite = new THREE.Sprite(markerMat);
+    markerSprite.name = `markerSprite_${nodeId}`;
+    markerSprite.scale.set(0.025, 0.025, 1);
+    markerSprite.userData = { nodeId };
+    markerAnchorGroup.add(markerSprite);
+
+    const reticleMat = new THREE.SpriteMaterial({
+      map: this.reticleTexture,
+      sizeAttenuation: false,
+      depthTest: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2.0,
+      polygonOffsetUnits: -6.0,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const selectionReticle = new THREE.Sprite(reticleMat);
+    selectionReticle.name = `selectionReticle_${nodeId}`;
+    selectionReticle.userData = {};
+    selectionReticle.scale.set(0.04, 0.04, 1);
+    selectionReticle.visible = nodeId === this.selectedNodeId;
+    markerAnchorGroup.add(selectionReticle);
+
+    const callsignLabel = callsign || (isMcp ? 'MCP' : `S${nodeId}`);
+    let cTex = this.callsignTextures.get(callsignLabel);
+    if (!cTex) {
+      cTex = createCallsignTexture(callsignLabel, isMcp ? '#38bdf8' : '#10b981');
+      this.callsignTextures.set(callsignLabel, cTex);
+    }
+    const callsignMat = new THREE.SpriteMaterial({
+      map: cTex,
+      sizeAttenuation: false,
+      depthTest: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1.5,
+      polygonOffsetUnits: -5.0,
+      transparent: true,
+      opacity: 1.0,
+    });
+    const callsignSprite = new THREE.Sprite(callsignMat);
+    callsignSprite.name = `callsignSprite_${nodeId}`;
+    callsignSprite.userData = {};
+    callsignSprite.scale.set(0.07, 0.025, 1);
+    callsignSprite.position.set(0, 0, isMcp ? 8.0 : 6.0);
+    markerAnchorGroup.add(callsignSprite);
+
+    const unmappedIndicator = this.buildUnmappedIndicator(nodeId);
+    unmappedIndicator.visible = false;
+    nodeGroup.add(unmappedIndicator);
+
+    this.groundNodesGroup.add(nodeGroup);
+
+    item = {
+      nodeId,
+      isMcp,
+      group: nodeGroup,
+      visualGroup,
+      markerMesh,
+      markerAnchorGroup,
+      markerSprite,
+      markerPlumbLine,
+      selectionReticle,
+      unmappedIndicator,
+      callsignSprite,
+      hitTarget: markerSprite,
+      lastZ: 0,
+      isMapped: true,
+      status: 'CONNECTED',
+    };
+    this.nodeItems.push(item);
+    return item;
   }
 
   /**
@@ -1054,9 +1234,29 @@ export class TacticalEntityManager {
     const acnPos = this.acnGroup.position;
 
     if (Array.isArray(nodes)) {
-      for (let i = 0; i < Math.min(nodes.length, 16); i++) {
+      const activeIds = new Set(nodes.map(n => n.node_id));
+
+      // Hide all items that are no longer active in telemetry
+      for (const item of this.nodeItems) {
+        if (!activeIds.has(item.nodeId)) {
+          item.group.visible = false;
+          item.visualGroup.visible = false;
+          item.markerAnchorGroup.visible = false;
+          item.markerSprite.visible = false;
+          item.markerPlumbLine.visible = false;
+          item.callsignSprite.visible = false;
+          item.selectionReticle.visible = false;
+          item.unmappedIndicator.visible = false;
+          const link = this.linkMap.get(item.nodeId);
+          if (link) link.line.visible = false;
+        }
+      }
+
+      for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
-        const item = this.nodeItems[i];
+        const isMcp = node.node_type === 'mcp';
+        const item = this.getOrCreateNodeItem(node.node_id, isMcp, node.name);
+        item.group.visible = true;
         const isSel = node.node_id === this.selectedNodeId;
 
         // Check genuine DEM mapping
@@ -1068,7 +1268,7 @@ export class TacticalEntityManager {
         item.isMapped = isMapped;
         item.selectionReticle.visible = isSel && isMapped;
 
-        const linkGeo = this.linkGeometries[i];
+        const { line: linkLine, geo: linkGeo } = this.getOrCreateLink(node.node_id);
         const linkPos = linkGeo.getAttribute('position') as THREE.BufferAttribute;
         linkPos.setXYZ(0, acnPos.x, acnPos.y, acnPos.z);
 
@@ -1082,7 +1282,7 @@ export class TacticalEntityManager {
           item.lastZ = node.z_m;
 
           // Restore communication link and position at true ground coordinates
-          this.linkLines[i].visible = true;
+          linkLine.visible = true;
           linkPos.setXYZ(1, node.x_m, node.y_m, node.z_m);
         } else {
           // Unmapped Node: preserve known X/Y, NEVER fabricate ground Z
@@ -1096,7 +1296,7 @@ export class TacticalEntityManager {
           item.unmappedIndicator.visible = true;
 
           // Communication link is completely hidden for unmapped nodes (no fabricated endpoint)
-          this.linkLines[i].visible = false;
+          linkLine.visible = false;
         }
         linkPos.needsUpdate = true;
 
@@ -1118,10 +1318,10 @@ export class TacticalEntityManager {
         // Update link material from pre-allocated pool
         const matKey = `${isSel ? 'selected' : 'normal'}_${classification.status}`;
         const targetMat = this.materialPool.get(matKey) || this.materialPool.get('normal_UNKNOWN')!;
-        if (this.linkLines[i].material !== targetMat) {
-          this.linkLines[i].material = targetMat;
+        if (linkLine.material !== targetMat) {
+          linkLine.material = targetMat;
         }
-        this.linkLines[i].computeLineDistances();
+        linkLine.computeLineDistances();
       }
     }
 
@@ -1729,5 +1929,6 @@ export class TacticalEntityManager {
     this.nodeItems.length = 0;
     this.linkLines.length = 0;
     this.linkGeometries.length = 0;
+    this.linkMap.clear();
   }
 }

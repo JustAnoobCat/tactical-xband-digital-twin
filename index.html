@@ -898,13 +898,52 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="panel-head">
           <div>
             <span class="sec-title">Ground terminal inventory</span>
-            <span class="badge-sub">16 active nodes · WGS-84 &amp; Local Cartesian</span>
+            <span id="inventory-nodes-count" class="badge-sub">16 active nodes · WGS-84 &amp; Local Cartesian</span>
           </div>
           <span id="inventory-selected-pill" class="kpi-badge badge-cyan">Selected: Node 4</span>
         </div>
         <p class="muted" style="font-size:11.5px;margin-bottom:10px">
           Coordinate reference: Local Cartesian theater projection (X/Y metres relative to DEM center 34.5°N, 76.5°E) with calibrated WGS-84 Local Equirectangular mapping (standard parallel 34.5°N; 1° lat = 110,931.5 m, 1° lon = 91,840.0 m). Hover over Lat/Lon for DMS format. Click any row to select the terminal.
         </p>
+        <div class="inventory-actions-bar" style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+          <button id="btn-node-add" class="btn" style="padding:4px 10px;font-size:11.5px">+ Add Node</button>
+          <button id="btn-node-duplicate" class="btn" style="padding:4px 10px;font-size:11.5px">Duplicate Selected</button>
+          <button id="btn-node-delete" class="btn btn-danger" style="padding:4px 10px;font-size:11.5px">Delete Selected</button>
+          <button id="btn-node-edit" class="btn" style="padding:4px 10px;font-size:11.5px">Edit Selected</button>
+        </div>
+        <div id="node-inventory-feedback" style="display:none;padding:6px 10px;margin-bottom:10px;border-radius:4px;font-size:11.5px"></div>
+        <div id="node-editor-form" style="display:none;background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:12px;margin-bottom:12px">
+          <div style="font-weight:600;font-size:12px;margin-bottom:8px" id="node-editor-title">Configure Node</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Callsign</label>
+              <input type="text" id="node-input-callsign" placeholder="e.g. S16" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Tactical Role</label>
+              <select id="node-input-role" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px">
+                <option value="soldier">Soldier Terminal</option>
+                <option value="mcp">Main Command Post (MCP)</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Coord X (m)</label>
+              <input type="number" id="node-input-x" value="0" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Coord Y (m)</label>
+              <input type="number" id="node-input-y" value="0" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Antenna AGL (m)</label>
+              <input type="number" id="node-input-agl" value="2.0" step="0.5" min="0" max="1000" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button id="btn-node-submit" class="btn btn-primary" style="padding:4px 12px;font-size:11.5px">Save Node</button>
+            <button id="btn-node-cancel" class="btn" style="padding:4px 12px;font-size:11.5px">Cancel</button>
+          </div>
+        </div>
         <div class="table-scroll">
           <table class="data-table" id="terminal-inventory-table">
             <thead>
@@ -1370,7 +1409,17 @@ import {
   drawDraftTrajectory,
   drawTacticalWaypoints,
 } from './src/ui/pathProfileTopView.ts';
-import { formatNodeGeodeticCoordinates, getNodeRole } from './src/ui/nodeInventory.ts';
+import {
+  formatNodeGeodeticCoordinates,
+  getNodeRole,
+  buildNodeAddCommand,
+  buildNodeDeleteCommand,
+  buildNodeDuplicateCommand,
+  buildNodeUpdateCommand,
+  validateNodeCoordinates,
+  validateNodeAglHeight,
+  validateNodeCallsign,
+} from './src/ui/nodeInventory.ts';
 import {
   validateNodeAgl,
   checkAglEditEligibility,
@@ -2512,6 +2561,7 @@ worker.onmessage = (event) => {
       setWorkerLabel: label => setText('worker-label', label),
     });
     handleAglCommandResult(msg);
+    handleNodeCommandResult(msg);
   }
 };
 
@@ -3417,6 +3467,176 @@ function handleAglCommandResult(msg) {
 }
 window.handleAglCommandResult = handleAglCommandResult;
 
+let nodeEditorMode = 'add';
+let nodeEditorTargetId = -1;
+
+function showNodeFeedback(text, isError = false) {
+  const el = $('node-inventory-feedback');
+  if (!el) return;
+  el.textContent = text;
+  el.style.display = 'block';
+  el.style.background = isError ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)';
+  el.style.border = isError ? '1px solid var(--bad)' : '1px solid var(--ok)';
+  el.style.color = isError ? 'var(--bad)' : 'var(--ok)';
+  setTimeout(() => {
+    if (el) el.style.display = 'none';
+  }, 5000);
+}
+
+function handleNodeCommandResult(msg) {
+  if (!msg || typeof msg !== 'object') return;
+  const types = ['NODE_ADD', 'NODE_DELETE', 'NODE_DUPLICATE', 'NODE_UPDATE'];
+  if (!types.includes(msg.command_type)) return;
+
+  if (msg.accepted) {
+    const act = msg.command_type.replace('NODE_', '').toLowerCase();
+    const id = msg.node_id ?? msg.deleted_node_id;
+    showNodeFeedback(`Terminal ${id} successfully ${act}ed.`);
+    const form = $('node-editor-form');
+    if (form) form.style.display = 'none';
+  } else {
+    showNodeFeedback(`Operation failed: ${msg.reason || 'Worker rejected the command.'}`, true);
+  }
+}
+window.handleNodeCommandResult = handleNodeCommandResult;
+
+function initNodeInventoryToolbar() {
+  const btnAdd = $('btn-node-add');
+  const btnDup = $('btn-node-duplicate');
+  const btnDel = $('btn-node-delete');
+  const btnEdit = $('btn-node-edit');
+  const form = $('node-editor-form');
+  const btnSubmit = $('btn-node-submit');
+  const btnCancel = $('btn-node-cancel');
+
+  if (btnAdd) {
+    btnAdd.onclick = () => {
+      if (spatialLocked) {
+        showNodeFeedback('Cannot add nodes while Spatial Lock is active.', true);
+        return;
+      }
+      nodeEditorMode = 'add';
+      nodeEditorTargetId = -1;
+      const title = $('node-editor-title');
+      if (title) title.textContent = 'Add New Ground Terminal';
+      const inputCallsign = $('node-input-callsign');
+      if (inputCallsign) inputCallsign.value = '';
+      const inputRole = $('node-input-role');
+      if (inputRole) inputRole.value = 'soldier';
+      const inputX = $('node-input-x');
+      if (inputX) inputX.value = '0';
+      const inputY = $('node-input-y');
+      if (inputY) inputY.value = '0';
+      const inputAgl = $('node-input-agl');
+      if (inputAgl) inputAgl.value = '2.0';
+      if (form) form.style.display = 'block';
+    };
+  }
+
+  if (btnDup) {
+    btnDup.onclick = () => {
+      if (spatialLocked) {
+        showNodeFeedback('Cannot duplicate nodes while Spatial Lock is active.', true);
+        return;
+      }
+      if (typeof selectedNodeId !== 'number' || selectedNodeId < 0) {
+        showNodeFeedback('No terminal currently selected to duplicate.', true);
+        return;
+      }
+      sendCommand(buildNodeDuplicateCommand(selectedNodeId));
+    };
+  }
+
+  if (btnDel) {
+    btnDel.onclick = () => {
+      if (spatialLocked) {
+        showNodeFeedback('Cannot delete nodes while Spatial Lock is active.', true);
+        return;
+      }
+      if (typeof selectedNodeId !== 'number' || selectedNodeId < 0) {
+        showNodeFeedback('No terminal currently selected to delete.', true);
+        return;
+      }
+      sendCommand(buildNodeDeleteCommand(selectedNodeId));
+    };
+  }
+
+  if (btnEdit) {
+    btnEdit.onclick = () => {
+      if (spatialLocked) {
+        showNodeFeedback('Cannot edit nodes while Spatial Lock is active.', true);
+        return;
+      }
+      if (typeof selectedNodeId !== 'number' || selectedNodeId < 0) {
+        showNodeFeedback('No terminal currently selected to edit.', true);
+        return;
+      }
+      const nodes = latestTelemetry?.nodes_telemetry || [];
+      const node = nodes.find(n => n.node_id === selectedNodeId);
+      if (!node) {
+        showNodeFeedback('Selected terminal not found in telemetry.', true);
+        return;
+      }
+      nodeEditorMode = 'edit';
+      nodeEditorTargetId = selectedNodeId;
+      const title = $('node-editor-title');
+      if (title) title.textContent = `Edit Terminal ${selectedNodeId}`;
+      const inputCallsign = $('node-input-callsign');
+      if (inputCallsign) inputCallsign.value = node.name || `S${node.node_id}`;
+      const inputRole = $('node-input-role');
+      if (inputRole) inputRole.value = node.node_type === 'mcp' ? 'mcp' : 'soldier';
+      const inputX = $('node-input-x');
+      if (inputX) inputX.value = String(node.x_m ?? 0);
+      const inputY = $('node-input-y');
+      if (inputY) inputY.value = String(node.y_m ?? 0);
+      const inputAgl = $('node-input-agl');
+      if (inputAgl) inputAgl.value = String(node.agl_m ?? 2.0);
+      if (form) form.style.display = 'block';
+    };
+  }
+
+  if (btnCancel) {
+    btnCancel.onclick = () => {
+      if (form) form.style.display = 'none';
+    };
+  }
+
+  if (btnSubmit) {
+    btnSubmit.onclick = () => {
+      const callsign = $('node-input-callsign')?.value?.trim();
+      const role = $('node-input-role')?.value === 'mcp' ? 'mcp' : 'soldier';
+      const xM = Number($('node-input-x')?.value);
+      const yM = Number($('node-input-y')?.value);
+      const aglM = Number($('node-input-agl')?.value);
+
+      const coordVal = validateNodeCoordinates(xM, yM);
+      if (!coordVal.valid) {
+        showNodeFeedback(coordVal.error || 'Invalid coordinates.', true);
+        return;
+      }
+      const aglVal = validateNodeAglHeight(aglM);
+      if (!aglVal.valid) {
+        showNodeFeedback(aglVal.error || 'Invalid AGL.', true);
+        return;
+      }
+      if (callsign) {
+        const csVal = validateNodeCallsign(callsign);
+        if (!csVal.valid) {
+          showNodeFeedback(csVal.error || 'Invalid callsign.', true);
+          return;
+        }
+      }
+
+      if (nodeEditorMode === 'add') {
+        sendCommand(buildNodeAddCommand({ xM, yM, aglM, callsign: callsign || undefined, role }));
+      } else {
+        sendCommand(buildNodeUpdateCommand(nodeEditorTargetId, { xM, yM, aglM, callsign: callsign || undefined, role }));
+      }
+    };
+  }
+}
+window.initNodeInventoryToolbar = initNodeInventoryToolbar;
+
 window.onTargetNodeChange = function(val) {
   if (historyController.isInspecting) return;
   selectedNodeId = parseInt(val, 10);
@@ -3616,16 +3836,23 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
   const tbody = $('terminal-inventory-tbody');
   if (!tbody || !Array.isArray(nodes)) return;
 
+  const countBadge = $('inventory-nodes-count');
+  if (countBadge) {
+    countBadge.textContent = `${nodes.length} active node${nodes.length === 1 ? '' : 's'} · WGS-84 & Local Cartesian`;
+  }
+
   const pill = $('inventory-selected-pill');
   if (pill) {
-    pill.textContent = `Selected: Node ${selectedId}`;
+    pill.textContent = selectedId >= 0 ? `Selected: Node ${selectedId}` : 'No Node Selected';
   }
+
+  populateDropdownsOnce(nodes);
 
   const q = String(query || '').trim().toLowerCase();
   const rows = [];
 
   for (const n of nodes) {
-    const role = getNodeRole(n.node_id);
+    const role = getNodeRole(n.node_id, n.node_type);
     const callsign = n.name || `S${n.node_id}`;
     if (q) {
       const match = String(n.node_id).includes(q) ||
@@ -3677,17 +3904,23 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
 function populateDropdownsOnce(nodes) {
   ['quickNodeSelect', 'termNodeSelect'].forEach(id => {
     const sel = $(id);
-    if (!sel || sel.dataset.populated === 'true' || !nodes || !nodes.length) return;
+    if (!sel || !Array.isArray(nodes)) return;
+    const key = nodes.map(n => n.node_id).join(',');
+    if (sel.dataset.lastKey === key && sel.children.length === nodes.length) return;
+    sel.dataset.lastKey = key;
     sel.innerHTML = '';
     nodes.forEach(n => {
-      const role = getNodeRole(n.node_id);
+      const role = getNodeRole(n.node_id, n.node_type);
       const opt = document.createElement('option');
       opt.value = n.node_id;
       opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id} - ${role}`;
       sel.appendChild(opt);
     });
-    sel.value = selectedNodeId;
-    sel.dataset.populated = 'true';
+    if (nodes.some(n => n.node_id === selectedNodeId)) {
+      sel.value = selectedNodeId;
+    } else if (nodes.length > 0) {
+      sel.value = nodes[0].node_id;
+    }
   });
 }
 
@@ -3816,7 +4049,13 @@ function initializeExperimentCapture() {
   });
   experimentUpdateControls();
 }
-document.addEventListener('DOMContentLoaded', initializeExperimentCapture);
+document.addEventListener('DOMContentLoaded', () => {
+  initializeExperimentCapture();
+  initNodeInventoryToolbar();
+});
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  initNodeInventoryToolbar();
+}
 
 function updateDashboardDOM(frame) {
   if (!frame) return;
@@ -4982,9 +5221,7 @@ function drawWaterfall() {
 
     const superframeDurationMs = useSnap ? useSnap.superframeDurationMs : 20.0;
 
-    const nodes = useSnap
-      ? useSnap.nodes
-      : (histSchedRec ? histSchedRec.nodeBacklogs : (latestTelemetry?.nodes_telemetry || []));
+    const nodes = (useSnap?.nodes ?? (histSchedRec ? histSchedRec.nodeBacklogs : (latestTelemetry?.nodes_telemetry || []))) || [];
 
     // Preserve BOTH tracks simultaneously
     const staticAllocations = useSnap?.staticAllocations ?? (

@@ -11,6 +11,7 @@
 
 import { NodeType } from './config';
 import { Position3D } from './terrain';
+import { NodeIdentity, NodeTrafficOptions, formatDeterministicNodeUuid } from './nodeRegistry';
 
 export class Packet {
   constructor(
@@ -244,7 +245,10 @@ export class GroundNodeTrafficSubsystem {
   private static globalPacketCounter: number = 0;
 
   public readonly nodeId: number;
-  public readonly nodeType: NodeType;
+  public readonly creationSequence: number;
+  public readonly entityId: string;
+  public readonly identity: NodeIdentity;
+  public nodeType: NodeType;
   public position: Position3D;
   /** Configured antenna height above local terrain, in metres (0–1000 m). */
   public aglM: number = 2.0;
@@ -273,21 +277,24 @@ export class GroundNodeTrafficSubsystem {
     nodeType: NodeType,
     position: Position3D,
     seed: number = 42,
-    options?: {
-      hasVoice?: boolean;
-      voiceStartS?: number;
-      voiceEndS?: number;
-      hasVideo?: boolean;
-      videoMeanPktsPerFrame?: number;
-      hasPhoto?: boolean;
-      photoTriggerTimeS?: number;
-      photoSizeBytes?: number;
-    }
+    options?: NodeTrafficOptions,
+    identity?: NodeIdentity,
   ) {
     this.nodeId = nodeId;
     this.nodeType = nodeType;
     this.position = position;
     this.queue = new FQCoDelQueue(400, 120);
+
+    const defaultCallsign = nodeId === 15 ? 'MCP' : `S${nodeId}`;
+    this.identity = identity ?? {
+      entityId: formatDeterministicNodeUuid(nodeId),
+      nodeId,
+      creationSequence: nodeId,
+      callsign: defaultCallsign,
+      role: nodeType,
+    };
+    this.entityId = this.identity.entityId;
+    this.creationSequence = this.identity.creationSequence;
 
     this.hasVoice = options?.hasVoice ?? false;
     this.voiceStartS = options?.voiceStartS ?? 0.0;
