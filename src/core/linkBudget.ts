@@ -142,7 +142,8 @@ export class LinkBudgetEngine {
     diffractionLossDb: number,
     rf: RFConfig,
     env: EnvironmentConfig,
-    obstacleBlocked: boolean = false
+    obstacleBlocked: boolean = false,
+    customTxPowerDbm?: number
   ): LinkStatus {
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM);
@@ -160,7 +161,8 @@ export class LinkBudgetEngine {
       implementationMarginDb;
 
     // Transceiver parameters
-    const { txPowerDbm, antennaGainDbi } = rf.getTransmitterParams(nodeType);
+    const { txPowerDbm: defaultTxPowerDbm, antennaGainDbi } = rf.getTransmitterParams(nodeType);
+    const txPowerDbm = customTxPowerDbm !== undefined && Number.isFinite(customTxPowerDbm) ? customTxPowerDbm : defaultTxPowerDbm;
     const rxGainDbi = rf.acnAntennaGainDbi;
 
     // Received signal power at ACN LNA input

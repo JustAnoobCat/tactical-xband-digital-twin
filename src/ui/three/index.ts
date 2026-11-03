@@ -33,6 +33,14 @@ export interface ThreeStageController {
   getMetrics(): ThreeSceneMetrics;
   handleResize(width?: number, height?: number): void;
   resetCamera(preset?: CameraPresetConfig): void;
+  centerOnBounds(bounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    minElevationM?: number;
+    maxElevationM?: number;
+  }): void;
   getControls(): OrbitControls | null;
   dispose(): void;
 }
@@ -57,6 +65,7 @@ export function createThreeStageController(config: ThreeRendererConfig): ThreeSt
     getMetrics: () => sceneManager.getMetrics(),
     handleResize: (w?: number, h?: number) => sceneManager.handleResize(w, h),
     resetCamera: (preset?: CameraPresetConfig) => sceneManager.resetCamera(preset),
+    centerOnBounds: (bounds) => sceneManager.centerOnBounds(bounds),
     getControls: () => sceneManager.getControls(),
     dispose: () => sceneManager.dispose(),
   };

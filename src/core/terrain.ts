@@ -71,6 +71,14 @@ export interface DemGeographicMetadata {
   readonly halfHeightM: number;
   readonly groundResolutionXM: number;
   readonly groundResolutionYM: number;
+  readonly minX?: number;
+  readonly maxX?: number;
+  readonly minY?: number;
+  readonly maxY?: number;
+  readonly tileName?: string;
+  readonly minElevationM?: number;
+  readonly maxElevationM?: number;
+  readonly voidCount?: number;
 }
 
 export const REAL_LADAKH_DEM_METADATA: DemGeographicMetadata = Object.freeze({
@@ -86,6 +94,11 @@ export const REAL_LADAKH_DEM_METADATA: DemGeographicMetadata = Object.freeze({
   halfHeightM: 110931.4506,
   groundResolutionXM: (2.0 * 91839.9774) / 511.0, // 359.4519663405088 m/pixel
   groundResolutionYM: (2.0 * 110931.4506) / 511.0, // 434.1739749510763 m/pixel
+  minX: -91839.9774,
+  maxX: 91839.9774,
+  minY: -110931.4506,
+  maxY: 110931.4506,
+  tileName: 'LADAKH',
 });
 
 export interface DemPixelCoord {
@@ -112,6 +125,7 @@ export interface TerrainBoundsTelemetry {
   readonly halfWidthM: number;
   readonly halfHeightM: number;
   readonly terrainMode: 'real' | 'synthetic';
+  readonly tileName?: string;
 }
 
 // ----------------------------------------------------------------------------
@@ -290,6 +304,7 @@ export class TerrainEngine {
   public terrainMode: 'real' | 'synthetic';
   public hasRealDem: boolean = false;
   public realDemGrid: Float32Array | null = null;
+  public demMetadata: DemGeographicMetadata = REAL_LADAKH_DEM_METADATA;
   private readonly customElevationFn?: (xM: number, yM: number) => number;
   /** Canonical committed obstacle state shared by live links, prediction and profiles. */
   public readonly obstacleField = new ObstacleField();
@@ -373,8 +388,9 @@ const candidateUrls = url
     return false;
   }
 
-  public loadCustomDem(data: Float32Array | ArrayBuffer): boolean {
+  public loadCustomDem(data: Float32Array | ArrayBuffer, metadata?: DemGeographicMetadata): boolean {
     this.realDemGrid = data instanceof Float32Array ? data : new Float32Array(data);
+    this.demMetadata = metadata ? Object.freeze({ ...metadata }) : REAL_LADAKH_DEM_METADATA;
     this.hasRealDem = true;
     this.terrainMode = 'real';
     return true;
@@ -386,33 +402,45 @@ const candidateUrls = url
 
   /**
    * Evaluates whether local Cartesian coordinates (xM, yM) in metres fall inside
-   * the genuine geographic coverage of the real Ladakh satellite DEM raster.
+   * the genuine geographic coverage of the active real DEM raster.
    */
   public isWithinDemCoverage(xM: number, yM: number): boolean {
-    const meta = REAL_LADAKH_DEM_METADATA;
+    const meta = this.demMetadata;
+    const minX = meta.minX ?? -meta.halfWidthM;
+    const maxX = meta.maxX ?? meta.halfWidthM;
+    const minY = meta.minY ?? -meta.halfHeightM;
+    const maxY = meta.maxY ?? meta.halfHeightM;
     return (
       Number.isFinite(xM) &&
       Number.isFinite(yM) &&
-      Math.abs(xM) <= meta.halfWidthM &&
-      Math.abs(yM) <= meta.halfHeightM
+      xM >= minX &&
+      xM <= maxX &&
+      yM >= minY &&
+      yM <= maxY
     );
   }
 
   /**
    * Maps local Cartesian coordinates (metres East/North from origin 34.5°N, 76.5°E)
-   * to continuous floating-point column and row indices in the 512x512 DEM raster.
+   * to continuous floating-point column and row indices in the DEM raster.
    *
    * Point registration:
-   *   col 0 = West bound (-halfWidthM, 75.5°E)
-   *   col 511 = East bound (+halfWidthM, 77.5°E)
-   *   row 0 = North bound (+halfHeightM, 35.5°N)
-   *   row 511 = South bound (-halfHeightM, 33.5°N)
+   *   col 0 = West bound (minX, minLonDeg)
+   *   col N-1 = East bound (maxX, maxLonDeg)
+   *   row 0 = North bound (maxY, maxLatDeg)
+   *   row N-1 = South bound (minY, minLatDeg)
    */
   public worldToDemPixel(xM: number, yM: number): DemPixelCoord {
-    const meta = REAL_LADAKH_DEM_METADATA;
+    const meta = this.demMetadata;
     const isInside = this.isWithinDemCoverage(xM, yM);
-    const u = (xM + meta.halfWidthM) / (2.0 * meta.halfWidthM);
-    const v = (meta.halfHeightM - yM) / (2.0 * meta.halfHeightM);
+    const minX = meta.minX ?? -meta.halfWidthM;
+    const maxX = meta.maxX ?? meta.halfWidthM;
+    const minY = meta.minY ?? -meta.halfHeightM;
+    const maxY = meta.maxY ?? meta.halfHeightM;
+    const spanX = maxX - minX;
+    const spanY = maxY - minY;
+    const u = spanX > 0 ? (xM - minX) / spanX : 0;
+    const v = spanY > 0 ? (maxY - yM) / spanY : 0;
     const col = u * (meta.rasterWidth - 1);
     const row = v * (meta.rasterHeight - 1);
     return { col, row, isInside };
@@ -423,11 +451,15 @@ const candidateUrls = url
    * coordinates (metres from origin). Exact inverse of worldToDemPixel.
    */
   public demPixelToWorld(col: number, row: number): { xM: number; yM: number } {
-    const meta = REAL_LADAKH_DEM_METADATA;
-    const u = col / (meta.rasterWidth - 1);
-    const v = row / (meta.rasterHeight - 1);
-    const xM = -meta.halfWidthM + u * (2.0 * meta.halfWidthM);
-    const yM = meta.halfHeightM - v * (2.0 * meta.halfHeightM);
+    const meta = this.demMetadata;
+    const minX = meta.minX ?? -meta.halfWidthM;
+    const maxX = meta.maxX ?? meta.halfWidthM;
+    const minY = meta.minY ?? -meta.halfHeightM;
+    const maxY = meta.maxY ?? meta.halfHeightM;
+    const u = meta.rasterWidth > 1 ? col / (meta.rasterWidth - 1) : 0;
+    const v = meta.rasterHeight > 1 ? row / (meta.rasterHeight - 1) : 0;
+    const xM = minX + u * (maxX - minX);
+    const yM = maxY - v * (maxY - minY);
     return { xM, yM };
   }
 
@@ -466,12 +498,16 @@ const candidateUrls = url
    */
   public getTerrainBoundsTelemetry(): TerrainBoundsTelemetry {
     if (this.terrainMode === 'real') {
-      const meta = REAL_LADAKH_DEM_METADATA;
+      const meta = this.demMetadata;
+      const minX = meta.minX ?? -meta.halfWidthM;
+      const maxX = meta.maxX ?? meta.halfWidthM;
+      const minY = meta.minY ?? -meta.halfHeightM;
+      const maxY = meta.maxY ?? meta.halfHeightM;
       return {
-        minX: -meta.halfWidthM,
-        maxX: meta.halfWidthM,
-        minY: -meta.halfHeightM,
-        maxY: meta.halfHeightM,
+        minX,
+        maxX,
+        minY,
+        maxY,
         rasterWidth: meta.rasterWidth,
         rasterHeight: meta.rasterHeight,
         groundResolutionXM: meta.groundResolutionXM,
@@ -480,6 +516,7 @@ const candidateUrls = url
         halfWidthM: meta.halfWidthM,
         halfHeightM: meta.halfHeightM,
         terrainMode: 'real',
+        tileName: meta.tileName,
       };
     } else {
       const extent = this.theaterExtentM;
@@ -542,15 +579,17 @@ const candidateUrls = url
   }
 
   /**
-   * Bilinear interpolation across authentic 512x512 real DEM raster.
+   * Bilinear interpolation across authentic real DEM raster.
    * Maps local Cartesian coordinates (xM, yM) to continuous pixel coordinates
-   * within genuine DEM geographic coverage [-halfWidthM, +halfWidthM] x [-halfHeightM, +halfHeightM].
+   * within genuine DEM geographic coverage.
    *
    * Point-registered (gridline-registered):
-   *   col 0..511 across 511 intervals (359.452 m/px)
-   *   row 0..511 across 511 intervals (434.174 m/px), row 0 is North.
+   *   col 0..N-1 across N-1 intervals
+   *   row 0..N-1 across N-1 intervals, row 0 is North.
    *
-   * Returns Number.NaN if coordinates fall outside genuine DEM coverage or are non-finite.
+   * Handles void samples (-32768 or NaN) by performing normalized weighted interpolation
+   * across valid surrounding corners. Returns Number.NaN if coordinates fall outside
+   * genuine DEM coverage or all surrounding pixels are void.
    */
   public interpolateDemGrid(grid: Float32Array, xM: number, yM: number): number {
     const px = this.worldToDemPixel(xM, yM);
@@ -558,7 +597,7 @@ const candidateUrls = url
       return Number.NaN;
     }
 
-    const meta = REAL_LADAKH_DEM_METADATA;
+    const meta = this.demMetadata;
     const width = meta.rasterWidth;
     const height = meta.rasterHeight;
 
@@ -578,10 +617,36 @@ const candidateUrls = url
     const v10 = grid[r1 * width + c0];
     const v11 = grid[r1 * width + c1];
 
-    const top = v00 * (1.0 - fc) + v01 * fc;
-    const bot = v10 * (1.0 - fc) + v11 * fc;
+    const isValid00 = Number.isFinite(v00) && v00 !== -32768;
+    const isValid01 = Number.isFinite(v01) && v01 !== -32768;
+    const isValid10 = Number.isFinite(v10) && v10 !== -32768;
+    const isValid11 = Number.isFinite(v11) && v11 !== -32768;
 
-    return top * (1.0 - fr) + bot * fr;
+    if (isValid00 && isValid01 && isValid10 && isValid11) {
+      const top = v00 * (1.0 - fc) + v01 * fc;
+      const bot = v10 * (1.0 - fc) + v11 * fc;
+      return top * (1.0 - fr) + bot * fr;
+    }
+
+    // Normalized weighted interpolation across valid surrounding pixels
+    let totalWeight = 0.0;
+    let weightedSum = 0.0;
+
+    const w00 = (1.0 - fc) * (1.0 - fr);
+    const w01 = fc * (1.0 - fr);
+    const w10 = (1.0 - fc) * fr;
+    const w11 = fc * fr;
+
+    if (isValid00) { totalWeight += w00; weightedSum += w00 * v00; }
+    if (isValid01) { totalWeight += w01; weightedSum += w01 * v01; }
+    if (isValid10) { totalWeight += w10; weightedSum += w10 * v10; }
+    if (isValid11) { totalWeight += w11; weightedSum += w11 * v11; }
+
+    if (totalWeight > 1e-6) {
+      return weightedSum / totalWeight;
+    }
+
+    return Number.NaN;
   }
 
   /**

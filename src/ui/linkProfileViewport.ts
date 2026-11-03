@@ -471,10 +471,15 @@ export function renderLinkProfileViewport(
   ctx.clip();
 
   // Draw typed profile or fallback
-  if (samples) {
+  if (samples && samples.length > 0) {
     drawTypedProfileContent(ctx, layout, viewport, profile!, samples, options);
-  } else if (legacyPoints) {
+  } else if (legacyPoints && legacyPoints.length > 0) {
     drawLegacyProfileContent(ctx, layout, viewport, legacyPoints);
+  } else {
+    ctx.font = '12px ui-monospace, monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'center';
+    ctx.fillText('NO GROUND TERMINAL SELECTED · ACN RELAY STANDBY', padL + plotW / 2, padT + plotH / 2);
   }
 
   ctx.restore();

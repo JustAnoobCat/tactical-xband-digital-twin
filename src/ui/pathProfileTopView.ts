@@ -392,6 +392,7 @@ export class TopViewViewportState {
   private userModified: boolean = false;
   private lastSelectedNodeId: number | null = null;
   private lastAcnPos: [number, number] | null = null;
+  private pinnedTerrainBounds: { minX: number; maxX: number; minY: number; maxY: number } | null = null;
 
   constructor() {
     this.resetToDefaults();
@@ -409,6 +410,7 @@ export class TopViewViewportState {
     this.userModified = false;
     this.lastSelectedNodeId = null;
     this.lastAcnPos = null;
+    this.pinnedTerrainBounds = null;
   }
 
   public get bounds(): TopViewBounds {
@@ -433,6 +435,15 @@ export class TopViewViewportState {
     return this.userModified;
   }
 
+  public get pinnedBounds(): { minX: number; maxX: number; minY: number; maxY: number } | null {
+    return this.pinnedTerrainBounds ? { ...this.pinnedTerrainBounds } : null;
+  }
+
+  public clearPinnedBounds(): void {
+    this.pinnedTerrainBounds = null;
+    this.userModified = false;
+  }
+
   public get zoomFactor(): number {
     const fitSpanX = Math.max(1, this.fitMaxXM - this.fitMinXM);
     const currSpanX = Math.max(1, this.maxXM - this.minXM);
@@ -442,12 +453,19 @@ export class TopViewViewportState {
   /**
    * Synchronizes viewport bounds to the active link endpoints.
    * Preserves 1:1 aspect ratio to avoid spatial distortion.
+   * If pinnedTerrainBounds is active, prevents ACN/terminal endpoints from
+   * overriding the authoritative terrain tile framing.
    */
   public syncLink(
     nodePos: readonly [number, number, number] | null,
     acnPos: readonly [number, number, number] | null,
     options?: { forceReset?: boolean; selectedNodeId?: number; layout?: ViewportLayout }
   ): boolean {
+    if (this.pinnedTerrainBounds) {
+      // Pinned terrain framing is active: do not allow ACN/ground node link to override terrain
+      return false;
+    }
+
     if (!nodePos || !acnPos || !Number.isFinite(nodePos[0]) || !Number.isFinite(acnPos[0])) {
       return false;
     }
@@ -519,7 +537,67 @@ export class TopViewViewportState {
     this.maxXM = this.fitMaxXM;
     this.minYM = this.fitMinYM;
     this.maxYM = this.fitMaxYM;
-    this.userModified = false;
+    this.userModified = this.pinnedTerrainBounds !== null;
+  }
+
+  public fitToBounds(
+    bounds: { minX: number; maxX: number; minY: number; maxY: number },
+    layout?: ViewportLayout,
+    paddingFraction = 0.08
+  ): void {
+    if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.maxX) ||
+        !Number.isFinite(bounds.minY) || !Number.isFinite(bounds.maxY)) return;
+
+    this.pinnedTerrainBounds = {
+      minX: bounds.minX,
+      maxX: bounds.maxX,
+      minY: bounds.minY,
+      maxY: bounds.maxY,
+    };
+
+    const spanX = Math.max(1, bounds.maxX - bounds.minX);
+    const spanY = Math.max(1, bounds.maxY - bounds.minY);
+    const padX = spanX * paddingFraction;
+    const padY = spanY * paddingFraction;
+
+    let fitMinX = bounds.minX - padX;
+    let fitMaxX = bounds.maxX + padX;
+    let fitMinY = bounds.minY - padY;
+    let fitMaxY = bounds.maxY + padY;
+
+    if (layout && layout.width > 0 && layout.height > 0) {
+      const plotW = Math.max(1, layout.width - layout.padL - layout.padR);
+      const plotH = Math.max(1, layout.height - layout.padT - layout.padB);
+      const aspectLayout = plotW / plotH;
+
+      const currentSpanX = fitMaxX - fitMinX;
+      const currentSpanY = fitMaxY - fitMinY;
+      const aspectSpan = currentSpanX / currentSpanY;
+
+      if (aspectSpan < aspectLayout) {
+        // Expand X to match layout aspect
+        const targetSpanX = currentSpanY * aspectLayout;
+        const midX = (fitMinX + fitMaxX) / 2;
+        fitMinX = midX - targetSpanX / 2;
+        fitMaxX = midX + targetSpanX / 2;
+      } else {
+        // Expand Y to match layout aspect
+        const targetSpanY = currentSpanX / aspectLayout;
+        const midY = (fitMinY + fitMaxY) / 2;
+        fitMinY = midY - targetSpanY / 2;
+        fitMaxY = midY + targetSpanY / 2;
+      }
+    }
+
+    this.minXM = fitMinX;
+    this.maxXM = fitMaxX;
+    this.minYM = fitMinY;
+    this.maxYM = fitMaxY;
+    this.fitMinXM = fitMinX;
+    this.fitMaxXM = fitMaxX;
+    this.fitMinYM = fitMinY;
+    this.fitMaxYM = fitMaxY;
+    this.userModified = true;
   }
 
   public zoom(factor: number, centerFractionX = 0.5, centerFractionY = 0.5): void {
@@ -1410,7 +1488,7 @@ export function renderTerrainTopView(
     ctx.fillStyle = '#7d8c99';
     ctx.font = '12px ui-monospace, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Waiting for terrain profile data…', w / 2, h / 2);
+    ctx.fillText(profile && profile.invalidReason === 'NO_NODES_REGISTERED' ? 'ACN RELAY ONLY · NO GROUND TERMINALS CONNECTED' : 'Waiting for terrain profile data…', w / 2, h / 2);
     return;
   }
 
@@ -1689,7 +1767,7 @@ export function renderRfTopView(
     ctx.fillStyle = '#7d8c99';
     ctx.font = '12px ui-monospace, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('Waiting for RF link profile data…', w / 2, h / 2);
+    ctx.fillText(profile && profile.invalidReason === 'NO_NODES_REGISTERED' ? 'ACN RELAY ONLY · NO GROUND TERMINALS CONNECTED' : 'Waiting for RF link profile data…', w / 2, h / 2);
     return;
   }
 

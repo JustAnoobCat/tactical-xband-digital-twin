@@ -381,6 +381,51 @@ export class ThreeSceneManager {
     }
   }
 
+  /**
+   * Centers the 3D camera and OrbitControls target on specific terrain bounds.
+   */
+  public centerOnBounds(bounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    minElevationM?: number;
+    maxElevationM?: number;
+  }): void {
+    const cx = (bounds.minX + bounds.maxX) / 2;
+    const cy = (bounds.minY + bounds.maxY) / 2;
+    const spanX = Math.max(1000, bounds.maxX - bounds.minX);
+    const spanY = Math.max(1000, bounds.maxY - bounds.minY);
+    const midElev = ((bounds.minElevationM ?? 0) + (bounds.maxElevationM ?? 5000)) / 2;
+
+    const aspect = Math.max(0.1, this.camera.aspect || 1.0);
+    const fovRad = (this.camera.fov * Math.PI) / 180;
+    const tanHalfFov = Math.tan(fovRad / 2);
+
+    // Calculate view distance to comfortably fit both X and Y with 20% margin
+    const distForY = (spanY * 0.6) / tanHalfFov;
+    const distForX = (spanX * 0.6) / (tanHalfFov * aspect);
+    const viewDist = Math.max(distForX, distForY, 25000);
+
+    // Position camera south of center at ~30 deg pitch
+    const pitchRad = (30 * Math.PI) / 180;
+    const distY = Math.max(20000, viewDist * Math.sin(pitchRad));
+    const distZ = Math.max(30000, viewDist * Math.cos(pitchRad));
+
+    const target = new THREE.Vector3(cx, midElev, -cy);
+    const position = new THREE.Vector3(cx, midElev + distY, -cy + distZ);
+
+    this.camera.position.copy(position);
+    this.camera.lookAt(target);
+    if (this.controls) {
+      this.controls.target.copy(target);
+      this.controls.update();
+    }
+    if (this.viewMode === '3d' && !this.isRunning && !this.isContextLost) {
+      this.render();
+    }
+  }
+
   public handlePointerClick(ndcX: number, ndcY: number): number | null {
     this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
     const targets = this.tacticalEntityManager.getSelectableObjects();

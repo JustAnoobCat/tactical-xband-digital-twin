@@ -117,15 +117,69 @@ export function validateNodeCallsign(callsign: unknown): NodeValidationResult {
   return { valid: true };
 }
 
+export function validateNodeTxPower(txPowerDbm: unknown): NodeValidationResult {
+  if (typeof txPowerDbm !== 'number' || !Number.isFinite(txPowerDbm) || txPowerDbm < 10.0 || txPowerDbm > 50.0) {
+    return { valid: false, error: 'Transmit power must be between 10.0 and 50.0 dBm.' };
+  }
+  return { valid: true };
+}
+
+export function validateNodeBatteryCapacity(mah: unknown): NodeValidationResult {
+  if (typeof mah !== 'number' || !Number.isFinite(mah) || mah < 100.0 || mah > 500000.0) {
+    return { valid: false, error: 'Battery capacity must be between 100.0 and 500,000.0 mAh.' };
+  }
+  return { valid: true };
+}
+
+export function validateNodeBatteryLevel(pct: unknown): NodeValidationResult {
+  if (typeof pct !== 'number' || !Number.isFinite(pct) || pct < 0.0 || pct > 100.0) {
+    return { valid: false, error: 'Battery level must be between 0.0 and 100.0%.' };
+  }
+  return { valid: true };
+}
+
+export function validateNodeTacticalPriority(priority: unknown): NodeValidationResult {
+  if (typeof priority !== 'number' || !Number.isFinite(priority) || priority < 0.1 || priority > 5.0) {
+    return { valid: false, error: 'Tactical priority must be between 0.1 and 5.0.' };
+  }
+  return { valid: true };
+}
+
+export function validateNodeColorHex(colorHex: unknown): NodeValidationResult {
+  if (typeof colorHex !== 'string' || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(colorHex.trim())) {
+    return { valid: false, error: 'Node colour must be a valid hex code (e.g. #38bdf8).' };
+  }
+  return { valid: true };
+}
+
 export function buildNodeAddCommand(params: {
   xM?: number;
   yM?: number;
   aglM?: number;
   callsign?: string;
   role?: 'soldier' | 'mcp';
+  colorHex?: string;
+  txPowerDbm?: number;
+  batteryCapacityMah?: number;
+  batteryLevelPct?: number;
+  tacticalPriority?: number;
   trafficOptions?: any;
   requestId?: string | number;
-}): { type: 'NODE_ADD'; x_m: number; y_m: number; agl_m: number; callsign?: string; role?: 'soldier' | 'mcp'; traffic_options?: any; request_id?: string | number } {
+}): {
+  type: 'NODE_ADD';
+  x_m: number;
+  y_m: number;
+  agl_m: number;
+  callsign?: string;
+  role?: 'soldier' | 'mcp';
+  color_hex?: string;
+  tx_power_dbm?: number;
+  battery_capacity_mah?: number;
+  battery_level_pct?: number;
+  tactical_priority?: number;
+  traffic_options?: any;
+  request_id?: string | number;
+} {
   return {
     type: 'NODE_ADD',
     x_m: params.xM ?? 0.0,
@@ -133,6 +187,11 @@ export function buildNodeAddCommand(params: {
     agl_m: params.aglM ?? 2.0,
     callsign: params.callsign ? params.callsign.trim() : undefined,
     role: params.role ?? 'soldier',
+    color_hex: params.colorHex ? params.colorHex.trim() : undefined,
+    tx_power_dbm: params.txPowerDbm,
+    battery_capacity_mah: params.batteryCapacityMah,
+    battery_level_pct: params.batteryLevelPct,
+    tactical_priority: params.tacticalPriority,
     traffic_options: params.trafficOptions,
     request_id: params.requestId,
   };
@@ -168,9 +227,29 @@ export function buildNodeUpdateCommand(nodeId: number, updates: {
   aglM?: number;
   callsign?: string;
   role?: 'soldier' | 'mcp';
+  colorHex?: string;
+  txPowerDbm?: number;
+  batteryCapacityMah?: number;
+  batteryLevelPct?: number;
+  tacticalPriority?: number;
   trafficOptions?: any;
   requestId?: string | number;
-}): { type: 'NODE_UPDATE'; node_id: number; x_m?: number; y_m?: number; agl_m?: number; callsign?: string; role?: 'soldier' | 'mcp'; traffic_options?: any; request_id?: string | number } {
+}): {
+  type: 'NODE_UPDATE';
+  node_id: number;
+  x_m?: number;
+  y_m?: number;
+  agl_m?: number;
+  callsign?: string;
+  role?: 'soldier' | 'mcp';
+  color_hex?: string;
+  tx_power_dbm?: number;
+  battery_capacity_mah?: number;
+  battery_level_pct?: number;
+  tactical_priority?: number;
+  traffic_options?: any;
+  request_id?: string | number;
+} {
   return {
     type: 'NODE_UPDATE',
     node_id: nodeId,
@@ -179,6 +258,11 @@ export function buildNodeUpdateCommand(nodeId: number, updates: {
     agl_m: updates.aglM,
     callsign: updates.callsign ? updates.callsign.trim() : undefined,
     role: updates.role,
+    color_hex: updates.colorHex ? updates.colorHex.trim() : undefined,
+    tx_power_dbm: updates.txPowerDbm,
+    battery_capacity_mah: updates.batteryCapacityMah,
+    battery_level_pct: updates.batteryLevelPct,
+    tactical_priority: updates.tacticalPriority,
     traffic_options: updates.trafficOptions,
     request_id: updates.requestId,
   };

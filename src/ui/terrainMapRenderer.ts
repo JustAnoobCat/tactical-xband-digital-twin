@@ -233,7 +233,8 @@ export function computeDemBoundaryGeometry(
   const title = 'SATELLITE DEM COVERAGE';
   const rasterW = bounds?.rasterWidth ?? REAL_LADAKH_DEM_METADATA.rasterWidth;
   const rasterH = bounds?.rasterHeight ?? REAL_LADAKH_DEM_METADATA.rasterHeight;
-  const subtitle = `LADAKH (${rasterW}×${rasterH})`;
+  const tileLabel = bounds?.tileName ?? 'LADAKH';
+  const subtitle = `${tileLabel} (${rasterW}×${rasterH})`;
 
   const badgeW = 148;
   const badgeH = 26;

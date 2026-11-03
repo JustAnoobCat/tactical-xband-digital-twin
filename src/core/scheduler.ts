@@ -182,8 +182,9 @@ export class LegacyStaticScheduler implements BaseScheduler {
       const ls = getLink(node.nodeId);
       const ps = getPred(node.nodeId);
 
-      const rate = ls && ls.bitrateBps > 0 ? ls.bitrateBps : 4.95e6;
-      const capBits = Math.floor(tauSlot * rate);
+      const isDepleted = node.batteryLevelPct <= 0 || node.isDepleted;
+      const rate = (!isDepleted && ls && ls.bitrateBps > 0) ? ls.bitrateBps : (isDepleted ? 0 : 4.95e6);
+      const capBits = isDepleted ? 0 : Math.floor(tauSlot * rate);
       const capBytes = Math.floor(capBits / 8);
 
       allocations.push({
@@ -191,8 +192,8 @@ export class LegacyStaticScheduler implements BaseScheduler {
         slotStartS,
         durationS: tauSlot,
         timingAdvanceS: 0.001,
-        modcodName: ls?.modcodName ?? 'LINK_OUTAGE',
-        spectralEfficiency: ls?.spectralEfficiency ?? 0.0,
+        modcodName: isDepleted ? 'DEPLETED_OUTAGE' : (ls?.modcodName ?? 'LINK_OUTAGE'),
+        spectralEfficiency: isDepleted ? 0.0 : (ls?.spectralEfficiency ?? 0.0),
         capacityBits: capBits,
         isPreOcclusionFlush: false,
       });
@@ -200,17 +201,19 @@ export class LegacyStaticScheduler implements BaseScheduler {
       usedTimeS += tauSlot + TAU_GUARD_S;
       slotStartS += tauSlot + TAU_GUARD_S;
 
-      const served = node.queue.dequeue(capBytes, currentSimTimeS);
-      let bitsServed = 0;
-      for (let p = 0; p < served.length; p++) {
-        bitsServed += served[p].sizeBits;
-      }
+      if (!isDepleted) {
+        const served = node.queue.dequeue(capBytes, currentSimTimeS);
+        let bitsServed = 0;
+        for (let p = 0; p < served.length; p++) {
+          bitsServed += served[p].sizeBits;
+        }
 
-      totalPayloadBitsDequeued += bitsServed;
-      if (ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF || ls?.isOutage) {
-        totalBitsWasted += bitsServed;
-      } else {
-        totalBitsTx += bitsServed;
+        totalPayloadBitsDequeued += bitsServed;
+        if (ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF || ls?.isOutage) {
+          totalBitsWasted += bitsServed;
+        } else {
+          totalBitsTx += bitsServed;
+        }
       }
     }
 
@@ -321,6 +324,10 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
         continue; // Do not dequeue payload or allocate airtime to an unusable link.
       }
 
+      if (node.batteryLevelPct <= 0 || node.isDepleted) {
+        continue; // Depleted battery cannot transmit.
+      }
+
       if (
         node.queue.getTotalBacklogBits() === 0 &&
         ps?.currentState !== NodeTerrainState.PRE_OCCLUSION_FLUSH
@@ -372,7 +379,8 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
         phiEvac = 4.0;
       }
 
-      const psi = phiEvac * urgency * pfTerm * backlogUtility;
+      const priorityMultiplier = Math.max(0.1, Math.min(5.0, node.tacticalPriority ?? 1.0));
+      const psi = phiEvac * urgency * pfTerm * backlogUtility * priorityMultiplier;
       ranked.push({ psi, node });
     }
 

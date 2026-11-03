@@ -2,12 +2,16 @@
   "name": "tactical-x-band-air-to-ground-network",
   "version": "1.0.0",
   "description": "TypeScript WebWorker digital twin for X-band air-to-ground TDMA research and simulation.",
-  "main": "index.js",
-  "directories": {
-    "test": "tests"
-  },
+  "main": "electron/main.cjs",
   "scripts": {
-    "test": "node scripts/verify-project.mjs && npm run typecheck && npm run verify:physics && npm run verify:scheduler && npm run verify:worker && npm run verify:trajectory && npm run verify:trajectory-editor && npm run verify:obstacles && npm run verify:obstacle-editor && npm run verify:profile-freshness && npm run verify:profile-viewport && npm run verify:history && npm run verify:history-scheduler && npm run verify:history-timeline && npm run verify:link-classifier && npm run verify:three-foundation && npm run verify:three-terrain && npm run verify:three-entities && npm run verify:geodesy && npm run verify:cursor-readout && npm run verify:scheduler-percentiles && npm run verify:path-profile-top-view && npm run verify:node-inventory && npm run verify:data-comm && npm run verify:physical-speed && npm run verify:rf-bandwidth && npm run verify:integration-hardening && npm run verify:node-agl",
+    "test": "node scripts/verify-project.mjs && npm run typecheck && npm run verify:physics && npm run verify:scheduler && npm run verify:worker && npm run verify:trajectory && npm run verify:trajectory-editor && npm run verify:obstacles && npm run verify:obstacle-editor && npm run verify:profile-freshness && npm run verify:profile-viewport && npm run verify:history && npm run verify:history-scheduler && npm run verify:history-timeline && npm run verify:link-classifier && npm run verify:three-foundation && npm run verify:three-terrain && npm run verify:three-entities && npm run verify:geodesy && npm run verify:cursor-readout && npm run verify:scheduler-percentiles && npm run verify:path-profile-top-view && npm run verify:node-inventory && npm run verify:data-comm && npm run verify:physical-speed && npm run verify:rf-bandwidth && npm run verify:integration-hardening && npm run verify:node-agl && npm run verify:acn-only && npm run verify:per-node-config && npm run verify:hgt-terrain && npm run verify:hgt-mosaic && npm run verify:single-hgt-centering && npm run verify:network-dashboard && npm run verify:network-traffic && npm run verify:speed-controller",
+    "verify:speed-controller": "vite-node src/tests/verifySimulationSpeedController.ts",
+    "verify:network-traffic": "vite-node src/tests/verifyNetworkTrafficInventory.ts",
+    "verify:single-hgt-centering": "vite-node src/tests/verifySingleHgtCentering.ts",
+    "verify:network-dashboard": "vite-node src/tests/verifyNetworkPerformanceDashboard.ts",
+    "verify:hgt-mosaic": "vite-node src/tests/verifyHgtMosaic.ts",
+    "verify:hgt-terrain": "vite-node src/tests/verifyHgtTerrain.ts",
+    "verify:per-node-config": "vite-node src/tests/verifyPerNodeConfiguration.ts",
     "verify:node-agl": "vite-node src/tests/verifyNodeAglConfiguration.ts",
     "verify:integration-hardening": "vite-node src/tests/verifyIntegrationHardeningM63.ts",
     "verify:physical-speed": "vite-node src/tests/verifyPhysicalSpeed.ts",
@@ -33,6 +37,9 @@
     "verify:history-scheduler": "vite-node src/tests/verifyHistoricalScheduler.ts",
     "dev": "vite",
     "build": "vite build",
+    "build:electron": "vite build --base ./",
+    "package:win": "npm run build:electron && electron-builder --win nsis --x64",
+    "package:win:check": "npm run package:win && node scripts/verify-windows-package.mjs",
     "verify": "node scripts/verify-project.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "verify:physics": "vite-node src/tests/verifyPhysics.ts",
@@ -44,8 +51,9 @@
     "verify:obstacle-editor": "vite-node src/tests/verifyObstacleEditor.ts",
     "verify:node-registry": "vite-node src/tests/verifyNodeRegistryM1a.ts",
     "verify:dynamic-nodes": "vite-node src/tests/verifyDynamicNodesM1b.ts",
+    "verify:acn-only": "vite-node src/tests/verifyAcnOnlyAndRename.ts",
     "verify:determinism": "vite-node src/tests/verifyDeterminismTrace.ts",
-    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types node,vite/client src/core/geodesy.ts src/core/rollingGoodput.ts src/core/transferMetrics.ts src/core/nodeRegistry.ts src/ui/nodeInventory.ts src/ui/nodeAglController.ts src/ui/radarCursorReadout.ts src/ui/pathProfileTopView.ts src/ui/dataCommVisualization.ts src/worker/simWorker.ts src/ui/terrainMapRenderer.ts src/ui/three/index.ts src/ui/three/tacticalEntityManager.ts src/tests/verifyThreeFoundation.ts src/tests/verifyThreeTerrain.ts src/tests/verifyThreeEntities.ts src/tests/verifyPhysics.ts src/tests/verifyScheduler.ts src/tests/verifyWorkerState.ts src/tests/verifyTrajectoryModes.ts src/tests/verifyTrajectoryEditor.ts src/tests/verifyObstacles.ts src/tests/verifyObstacleEditor.ts src/tests/verifyProfileFreshness.ts src/tests/verifyProfileViewport.ts src/tests/verifyHistoricalProfile.ts src/tests/verifyHistoricalScheduler.ts src/tests/verifyHistoryTimeline60s.ts src/tests/verifyLinkClassifier.ts src/tests/verifyDemMapping.ts src/tests/verifyCoveragePropagation.ts src/tests/verifyHillshadeBounds.ts src/tests/verifyCanvasTerrain.ts src/tests/verifyGeodesy.ts src/tests/verifyCursorReadout.ts src/tests/verifySchedulerPercentiles.ts src/tests/verifyPathProfileTopView.ts src/tests/verifyNodeInventoryCoordinates.ts src/tests/verifyDataCommVisualization.ts src/tests/verifyPhysicalSpeed.ts src/tests/verifyRfBandwidth.ts src/tests/verifyIntegrationHardeningM63.ts src/tests/verifyNodeAglConfiguration.ts src/tests/verifyDeterminismTrace.ts src/tests/verifyNodeRegistryM1a.ts src/tests/verifyDynamicNodesM1b.ts scripts/run_ts_benchmark.ts",
+    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types node,vite/client src/core/geodesy.ts src/core/rollingGoodput.ts src/core/transferMetrics.ts src/core/nodeRegistry.ts src/core/hgtParser.ts src/core/hgtMosaic.ts src/ui/nodeInventory.ts src/ui/nodeAglController.ts src/ui/radarCursorReadout.ts src/ui/pathProfileTopView.ts src/ui/dataCommVisualization.ts src/ui/networkPerformanceDashboard.ts src/ui/networkTrafficInventory.ts src/worker/simWorker.ts src/ui/terrainMapRenderer.ts src/ui/three/index.ts src/ui/three/tacticalEntityManager.ts src/tests/verifySimulationSpeedController.ts src/tests/verifyNetworkPerformanceDashboard.ts src/tests/verifyNetworkTrafficInventory.ts src/tests/verifyThreeFoundation.ts src/tests/verifyThreeTerrain.ts src/tests/verifyThreeEntities.ts src/tests/verifyPhysics.ts src/tests/verifyScheduler.ts src/tests/verifyWorkerState.ts src/tests/verifyTrajectoryModes.ts src/tests/verifyTrajectoryEditor.ts src/tests/verifyObstacles.ts src/tests/verifyObstacleEditor.ts src/tests/verifyProfileFreshness.ts src/tests/verifyProfileViewport.ts src/tests/verifyHistoricalProfile.ts src/tests/verifyHistoricalScheduler.ts src/tests/verifyHistoryTimeline60s.ts src/tests/verifyLinkClassifier.ts src/tests/verifyDemMapping.ts src/tests/verifyCoveragePropagation.ts src/tests/verifyHillshadeBounds.ts src/tests/verifyCanvasTerrain.ts src/tests/verifyGeodesy.ts src/tests/verifyCursorReadout.ts src/tests/verifySchedulerPercentiles.ts src/tests/verifyPathProfileTopView.ts src/tests/verifyNodeInventoryCoordinates.ts src/tests/verifyDataCommVisualization.ts src/tests/verifyPhysicalSpeed.ts src/tests/verifyRfBandwidth.ts src/tests/verifyIntegrationHardeningM63.ts src/tests/verifyNodeAglConfiguration.ts src/tests/verifyDeterminismTrace.ts src/tests/verifyNodeRegistryM1a.ts src/tests/verifyDynamicNodesM1b.ts src/tests/verifyAcnOnlyAndRename.ts src/tests/verifyPerNodeConfiguration.ts src/tests/verifyHgtTerrain.ts src/tests/verifyHgtMosaic.ts src/tests/verifySingleHgtCentering.ts scripts/run_ts_benchmark.ts",
     "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts",
     "benchmark:synthetic": "vite-node scripts/run_ts_benchmark.ts --terrain-mode synthetic",
     "benchmark:real": "vite-node scripts/run_ts_benchmark.ts --terrain-mode real"
@@ -53,13 +61,45 @@
   "keywords": [],
   "type": "module",
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@types/node": "^26.6.5",
     "@types/three": "^0.186.0",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vite-node": "^6.0.0"
   },
   "dependencies": {
+    "maplibre-gl": "^6.16.0",
     "three": "^0.187.0"
+  },
+  "build": {
+    "appId": "com.tacticalxband.digitaltwin",
+    "productName": "Tactical X-Band Air-to-Ground Network",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }

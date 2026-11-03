@@ -82,6 +82,7 @@ export interface GroundNodeItem {
   readonly selectionReticle: THREE.Sprite;  // Screen-space corner-bracket reticle
   readonly unmappedIndicator: THREE.Group;  // Schematic indicator for out-of-coverage
   readonly callsignSprite: THREE.Sprite;    // Screen-space callsign badge
+  currentCallsign?: string;                 // Active callsign badge text
   hitTarget: THREE.Object3D;                // Active selection target (markerSprite or visual model)
   lastZ: number;
   isMapped: boolean;
@@ -1162,6 +1163,7 @@ export class TacticalEntityManager {
       selectionReticle,
       unmappedIndicator,
       callsignSprite,
+      currentCallsign: callsignLabel,
       hitTarget: markerSprite,
       lastZ: 0,
       isMapped: true,
@@ -1256,6 +1258,19 @@ export class TacticalEntityManager {
         const node = nodes[i];
         const isMcp = node.node_type === 'mcp';
         const item = this.getOrCreateNodeItem(node.node_id, isMcp, node.name);
+        const targetCallsign = node.name || (isMcp ? 'MCP' : `S${node.node_id}`);
+        const nodeColorHex = node.color_hex || (isMcp ? '#38bdf8' : '#10b981');
+        const callsignKey = `${targetCallsign}_${nodeColorHex}`;
+        if (item.currentCallsign !== callsignKey) {
+          item.currentCallsign = callsignKey;
+          let cTex = this.callsignTextures.get(callsignKey);
+          if (!cTex) {
+            cTex = createCallsignTexture(targetCallsign, nodeColorHex);
+            this.callsignTextures.set(callsignKey, cTex);
+          }
+          item.callsignSprite.material.map = cTex;
+          item.callsignSprite.material.needsUpdate = true;
+        }
         item.group.visible = true;
         const isSel = node.node_id === this.selectedNodeId;
 
@@ -1306,7 +1321,8 @@ export class TacticalEntityManager {
         const style = MAP_LINK_STYLES[classification.status] || MAP_LINK_STYLES.UNKNOWN;
 
         // Update node marker colors
-        const nodeHex = this.parseCssColor(style.nodeColor);
+        const customHex = node.color_hex ? this.parseCssColor(node.color_hex) : null;
+        const nodeHex = customHex !== null ? customHex : this.parseCssColor(style.nodeColor);
         if (item.markerMesh.material instanceof THREE.MeshStandardMaterial) {
           item.markerMesh.material.color.setHex(nodeHex);
           item.markerMesh.material.emissive.setHex(nodeHex);

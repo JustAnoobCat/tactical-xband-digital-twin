@@ -43,6 +43,7 @@ import {
 } from '../core/terrain';
 import { cartesianToGeodetic } from '../core/geodesy';
 import { RollingGoodputTracker } from '../core/rollingGoodput';
+import { RegistrationLifecycle } from '../core/registration';
 import {
   NodeRegistry,
   createDefault16NodeRegistry,
@@ -311,10 +312,12 @@ export class SimulationWorkerManager {
   public simTimeS: number = 0.0;
   public frameIndex: number = 0;
   public speed: number = 1.0;
+  public achievedSpeed: number = 1.0;
   public isPaused: boolean = false;
   public activeStepRequestId: number | undefined = undefined;
   public schedulerMode: string = 'tac_tad';
-  public selectedNodeId: number = 4;
+  public selectedNodeId: number = -1;
+  public currentScenarioPreset: 'ACN_ONLY' | '16_NODES' = 'ACN_ONLY';
   public spatialLocked: boolean = false;
   public spatialRevision: number = 0;
 
@@ -325,6 +328,7 @@ export class SimulationWorkerManager {
   public predStates: Map<number, PredictiveState> = new Map();
   public obstructionResults: Map<number, TerrainObstruction> = new Map();
   public nodeTransfers: Map<number, NodeTransferState> = new Map();
+  public readonly registrationLifecycle = new RegistrationLifecycle(500);
 
   public metrics: RunningMetrics;
   public hillshadeGrid: number[][] = [];
@@ -333,6 +337,10 @@ export class SimulationWorkerManager {
   private cachedSynthHillshade: { grid: number[][]; size: number } | null = null;
 
   private timerId: number | null = null;
+  private simDebtMs: number = 0.0;
+  private lastTickRealMs: number = 0.0;
+  private lastSpeedMeasureTime: number = 0.0;
+  private lastSpeedMeasureSimTime: number = 0.0;
   private node4Frozen: boolean = false;
   private lastReportStatic: FrameScheduleReport | null = null;
   private lastReportTac: FrameScheduleReport | null = null;
@@ -343,8 +351,21 @@ export class SimulationWorkerManager {
   public readonly staticGoodputTracker: RollingGoodputTracker = new RollingGoodputTracker(200);
   public readonly tacGoodputTracker: RollingGoodputTracker = new RollingGoodputTracker(200);
 
-  constructor(private readonly seedOffset: number = 0) {
-    this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
+  constructor(
+    private readonly seedOffset: number = 0,
+    initialScenarioPreset?: 'ACN_ONLY' | '16_NODES'
+  ) {
+    const isWorkerRuntime = typeof self !== 'undefined' && typeof document === 'undefined';
+    this.currentScenarioPreset = initialScenarioPreset ?? (isWorkerRuntime ? 'ACN_ONLY' : '16_NODES');
+
+    if (this.currentScenarioPreset === '16_NODES') {
+      this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
+      this.selectedNodeId = 4;
+      for (const id of GROUND_NODE_IDS) this.registrationLifecycle.add(id, this.simTimeS);
+    } else {
+      this.nodeRegistry = new NodeRegistry(this.seedOffset);
+      this.selectedNodeId = -1;
+    }
     this.rfConfig = new RFConfig();
     this.envConfig = new EnvironmentConfig();
     this.flightConfig = new ACNFlightConfig();
@@ -423,6 +444,16 @@ export class SimulationWorkerManager {
       );
       staticNode.aglM = entity.aglM;
       tacNode.aglM = entity.aglM;
+      staticNode.txPowerDbm = entity.txPowerDbm;
+      tacNode.txPowerDbm = entity.txPowerDbm;
+      staticNode.batteryCapacityMah = entity.batteryCapacityMah ?? (entity.identity.role === 'mcp' ? 20000 : 5000);
+      tacNode.batteryCapacityMah = entity.batteryCapacityMah ?? (entity.identity.role === 'mcp' ? 20000 : 5000);
+      staticNode.batteryLevelPct = entity.batteryLevelPct ?? 100.0;
+      tacNode.batteryLevelPct = entity.batteryLevelPct ?? 100.0;
+      staticNode.tacticalPriority = entity.tacticalPriority ?? 1.0;
+      tacNode.tacticalPriority = entity.tacticalPriority ?? 1.0;
+      staticNode.isDepleted = (entity.batteryLevelPct ?? 100.0) <= 0;
+      tacNode.isDepleted = (entity.batteryLevelPct ?? 100.0) <= 0;
       this.nodesStatic.push(staticNode);
       this.nodesTac.push(tacNode);
     }
@@ -433,7 +464,11 @@ export class SimulationWorkerManager {
     for (const nodes of [this.nodesStatic, this.nodesTac]) {
       for (const node of nodes) {
         const [x, y] = node.position;
-        node.position = [x, y, this.terrainEngine.getElevation(x, y) + node.aglM];
+        const elev = this.terrainEngine.getElevation(x, y);
+        const groundMsl = Number.isFinite(elev)
+          ? elev
+          : (Number.isFinite(node.position[2]) ? node.position[2] - node.aglM : 3500);
+        node.position = [x, y, groundMsl + node.aglM];
         this.nodeRegistry.updateSpatial(node.nodeId, x, y, node.aglM);
       }
     }
@@ -517,9 +552,9 @@ export class SimulationWorkerManager {
       }
     }
 
-    const meta = REAL_LADAKH_DEM_METADATA;
-    const stepX = isReal ? (meta.halfWidthM * 2.0) / (size - 1) : (THEATER_HALF_M * 2.0) / (size - 1);
-    const stepY = isReal ? (meta.halfHeightM * 2.0) / (size - 1) : (THEATER_HALF_M * 2.0) / (size - 1);
+    const meta = this.terrainEngine.demMetadata ?? REAL_LADAKH_DEM_METADATA;
+    const stepX = isReal ? (bounds.maxX - bounds.minX) / (size - 1) : (THEATER_HALF_M * 2.0) / (size - 1);
+    const stepY = isReal ? (bounds.maxY - bounds.minY) / (size - 1) : (THEATER_HALF_M * 2.0) / (size - 1);
 
     // Northwest Sun Illumination: Azimuth 315°, Altitude 45°
     const lx = -0.5;
@@ -528,9 +563,9 @@ export class SimulationWorkerManager {
 
     // 1. Pre-sample continuous elevations across genuine coverage domain
     const elevMatrix: Float32Array[] = [];
-    if (isReal && size === meta.rasterWidth && meta.rasterHeight === 512) {
+    if (isReal && size === meta.rasterWidth && meta.rasterHeight === 512 && this.terrainEngine.realDemGrid && this.terrainEngine.realDemGrid.length === size * size) {
       // Direct access from point-registered satellite DEM raster (zero interpolation overhead)
-      const realGrid = this.terrainEngine.realDemGrid!;
+      const realGrid = this.terrainEngine.realDemGrid;
       for (let r = 0; r < size; r++) {
         const row = new Float32Array(size);
         const offset = r * size;
@@ -541,11 +576,12 @@ export class SimulationWorkerManager {
       }
     } else if (isReal) {
       for (let r = 0; r < size; r++) {
-        const y = meta.halfHeightM - r * stepY;
+        const y = bounds.maxY - r * stepY;
         const row = new Float32Array(size);
         for (let c = 0; c < size; c++) {
-          const x = -meta.halfWidthM + c * stepX;
-          row[c] = this.terrainEngine.getElevation(x, y);
+          const x = bounds.minX + c * stepX;
+          const val = this.terrainEngine.getElevation(x, y);
+          row[c] = Number.isFinite(val) ? val : (meta.minElevationM ?? 0);
         }
         elevMatrix.push(row);
       }
@@ -714,7 +750,7 @@ export class SimulationWorkerManager {
     });
   }
 
-  public tickSimulation(): void {
+  public tickSimulation(emitTelemetry: boolean = true): void {
     this.simTimeS += FRAME_DT;
     this.frameIndex += 1;
     const t = this.simTimeS;
@@ -799,12 +835,43 @@ export class SimulationWorkerManager {
       this.node4Frozen = true;
     }
 
+    // 4.5. Deterministic Node Battery & Energy Drain Model
+    const activeReport = this.schedulerMode === 'tac_tad' ? reportTac : reportStatic;
+    for (let i = 0; i < this.nodesTac.length; i++) {
+      const nodeTac = this.nodesTac[i];
+      const nodeStat = this.nodesStatic[i];
+      const nid = nodeTac.nodeId;
+      const isMcp = nodeTac.nodeType === 'mcp';
+      const iIdleMa = isMcp ? 400.0 : 150.0;
+      const pTxDbm = nodeTac.txPowerDbm ?? (isMcp ? 43.0 : 36.0);
+      const pRfWatts = Math.pow(10.0, (pTxDbm - 30.0) / 10.0);
+      const iTxRfMa = (pRfWatts / (0.35 * 12.0)) * 1000.0;
+      const iTxTotalMa = iIdleMa + iTxRfMa;
+
+      const alloc = activeReport.allocations.find((a) => a.nodeId === nid);
+      const tTxS = alloc && alloc.durationS > 0 && !nodeTac.isDepleted ? alloc.durationS : 0.0;
+      const tIdleS = Math.max(0.0, FRAME_DT - tTxS);
+      const drainedMah = (iIdleMa * tIdleS + iTxTotalMa * tTxS) / 3600.0;
+      const capacityMah = Math.max(100.0, nodeTac.batteryCapacityMah || (isMcp ? 20000.0 : 5000.0));
+      const deltaPct = (drainedMah / capacityMah) * 100.0;
+      const nextLevelPct = Math.max(0.0, Math.min(100.0, nodeTac.batteryLevelPct - deltaPct));
+
+      nodeTac.batteryLevelPct = nextLevelPct;
+      nodeStat.batteryLevelPct = nextLevelPct;
+      const depleted = nextLevelPct <= 0.0;
+      nodeTac.isDepleted = depleted;
+      nodeStat.isDepleted = depleted;
+      this.nodeRegistry.updateBatteryLevel(nid, nextLevelPct);
+    }
+
     // 5. Active Transfer Machine
     this.updateTransferStateMachine();
 
     // 6. Dispatch frame to main UI thread
-    const frame = this.buildTelemetryFrame(acnPos);
-    this.emitHostMessage({ type: 'TELEMETRY_FRAME', frame });
+    if (emitTelemetry) {
+      const frame = this.buildTelemetryFrame(acnPos);
+      this.emitHostMessage({ type: 'TELEMETRY_FRAME', frame });
+    }
   }
 
   /** Recompute spatial decisions only; does not advance time or run traffic/schedulers. */
@@ -822,7 +889,7 @@ export class SimulationWorkerManager {
       const slantM = Math.hypot(acnPos[0] - nx, acnPos[1] - ny, acnPos[2] - nz);
       nextObstructions.set(nid, obstruction);
       nextPredictions.set(nid, prediction);
-      nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked));
+      nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm));
       // Traffic-generation shadow is current geometry, independent of a predicted re-emergence label.
       nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked);
     }
@@ -968,7 +1035,7 @@ export class SimulationWorkerManager {
       const geo = cartesianToGeodetic(nx, ny);
       const slantM = Math.hypot(acnPos[0] - nx, acnPos[1] - ny, acnPos[2] - nz);
       const ls = this.linkStatuses.get(node.nodeId)
-        ?? this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked);
+        ?? this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm);
       const ps = this.predStates.get(node.nodeId);
       const q = node.queue;
 
@@ -1013,11 +1080,15 @@ export class SimulationWorkerManager {
         eta_status: transEta.etaStatus,
       } : null;
 
+      const regEntity = this.nodeRegistry.getByNodeId(node.nodeId);
+      const registration = this.registrationLifecycle.get(node.nodeId);
+      const callsign = regEntity?.identity.callsign ?? node.identity?.callsign ?? (node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`);
+
       return {
         node_id: node.nodeId,
         entity_id: node.entityId,
         creation_sequence: node.creationSequence,
-        name: node.identity?.callsign ?? (node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`),
+        name: callsign,
         node_type: node.nodeType,
         x_m: node.position[0],
         y_m: node.position[1],
@@ -1059,6 +1130,17 @@ export class SimulationWorkerManager {
         allocated_slot_ms: (alloc?.durationS ?? 0) * 1000.0,
         allocated_capacity_bits: alloc?.capacityBits ?? 0,
         transfer_state: transState,
+        color_hex: regEntity?.identity.colorHex ?? node.identity?.colorHex ?? (node.nodeType === 'mcp' ? '#f59e0b' : '#38bdf8'),
+        tx_power_dbm: node.txPowerDbm ?? (node.nodeType === 'mcp' ? 43.0 : 36.0),
+        battery_capacity_mah: node.batteryCapacityMah ?? (node.nodeType === 'mcp' ? 20000 : 5000),
+        battery_level_pct: Number((node.batteryLevelPct ?? 100.0).toFixed(1)),
+        tactical_priority: node.tacticalPriority ?? 1.0,
+        is_depleted: node.batteryLevelPct <= 0 || node.isDepleted,
+        registration_state: registration.state,
+        registration_start_time_s: registration.start_time_s,
+        registration_completion_time_s: registration.completion_time_s,
+        registration_elapsed_s: registration.start_time_s === null ? null : Math.max(0, this.simTimeS - registration.start_time_s),
+        communication_eligible: registration.state === 'REGISTERED',
       };
     });
   }
@@ -1087,7 +1169,9 @@ export class SimulationWorkerManager {
       }
     }
 
-    let narrative = 'NOMINAL PATROL: All terminals in clear Line-of-Sight. ACN coverage bubble tracking along elliptical orbit at FL500 (5,000m).';
+    let narrative = activeNodes.length === 0
+      ? 'ACN RELAY STANDBY: Operational loiter orbit active. Zero ground terminals currently deployed. Ready for dynamic terminal deployment.'
+      : 'NOMINAL PATROL: All terminals in clear Line-of-Sight. ACN coverage bubble tracking along elliptical orbit at FL500 (5,000m).';
     if (flushNode) {
       narrative = `LOOK-AHEAD EVENT: S${flushNode.node.nodeId} predicted to enter mountain shadow in ${flushNode.ps.timeToOcclusionS.toFixed(1)}s. Tac-TAD expanded its slot to evacuate queue backlog before cutoff.`;
     } else if (cutoffNode) {
@@ -1246,6 +1330,8 @@ export class SimulationWorkerManager {
       frame_index: this.frameIndex,
       sim_time_s: this.simTimeS,
       speed: this.speed,
+      target_speed: this.speed,
+      achieved_speed: this.isPaused ? 0.0 : (this.achievedSpeed > 0 ? this.achievedSpeed : this.speed),
       paused: this.isPaused,
       step_request_id: this.activeStepRequestId,
       spatial_locked: this.spatialLocked,
@@ -1283,6 +1369,7 @@ export class SimulationWorkerManager {
         flight_path: this.computeFlightPath(64),
       },
       nodes_telemetry: nodesTel,
+      registration_telemetry: { nodes: this.registrationLifecycle.active(), events: this.registrationLifecycle.events() },
       active_gantt_allocations: allocations,
       static_gantt_allocations: (this.lastReportStatic?.allocations ?? []).map(mapAlloc),
       tac_gantt_allocations: (this.lastReportTac?.allocations ?? []).map(mapAlloc),
@@ -1459,9 +1546,11 @@ export class SimulationWorkerManager {
 
     const obstruction = this.obstructionResults.get(node.nodeId)
       ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
+    const regEntity = this.nodeRegistry.getByNodeId(node.nodeId);
+    const resolvedName = regEntity?.identity.callsign ?? node.identity?.callsign ?? (node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`);
     const linkProfile = buildLinkProfile({
       selectedGroundNodeId: node.nodeId,
-      nodeName: node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`,
+      nodeName: resolvedName,
       frameIndex: this.frameIndex,
       simulationTimeS: this.simTimeS,
       groundNodePositionMslM: node.position,
@@ -1491,7 +1580,7 @@ export class SimulationWorkerManager {
     }
 
     const ls = this.linkStatuses.get(node.nodeId)
-      ?? this.linkEngine.evaluateLink(node.nodeType, linkProfile.slantDistanceM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked);
+      ?? this.linkEngine.evaluateLink(node.nodeType, linkProfile.slantDistanceM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm);
     const ps = this.predStates.get(node.nodeId);
     const linkBudget = this.buildSelectedLinkBudget(node, ls, obstruction);
 
@@ -1500,7 +1589,7 @@ export class SimulationWorkerManager {
     return {
       profile: linkProfile,
       node_id: node.nodeId,
-      node_name: node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`,
+      node_name: resolvedName,
       distance_km: linkProfile.slantDistanceM / 1000.0,
       clearance_m: isCoverageComplete
         ? (Number.isFinite(minClearanceM) ? minClearanceM : obstruction.minClearanceM)
@@ -1531,15 +1620,32 @@ export class SimulationWorkerManager {
    * scheduler adaptation state and per-run counters are not.
    */
   public resetSimulationState(): void {
-    this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
+    this.speed = 1.0;
+    this.achievedSpeed = 1.0;
+    this.simDebtMs = 0.0;
+    this.lastSpeedMeasureTime = 0.0;
+    this.lastSpeedMeasureSimTime = 0.0;
+    if (this.timerId !== null) {
+      this.restartTimer();
+    }
+    this.registrationLifecycle.clear();
+    if (this.currentScenarioPreset === '16_NODES') {
+      this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
+      this.selectedNodeId = 4;
+    } else {
+      this.nodeRegistry = new NodeRegistry(this.seedOffset);
+      this.selectedNodeId = -1;
+    }
     this.initNodes();
     this.initTransfers();
     this.staticScheduler = new LegacyStaticScheduler();
     this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
     this.simTimeS = 0.0;
+    if (this.currentScenarioPreset === '16_NODES') {
+      for (const id of GROUND_NODE_IDS) this.registrationLifecycle.add(id, this.simTimeS);
+    }
     this.frameIndex = 0;
     this.spatialRevision = 0;
-    this.selectedNodeId = 4;
     this.node4Frozen = false;
     this.activeStepRequestId = undefined;
     this.lastReportStatic = null;
@@ -1685,8 +1791,55 @@ export class SimulationWorkerManager {
         const isAmbush = pid === 'PRESET_AMBUSH';
         const isMonsoon = pid === 'PRESET_MONSOON';
         const isReset = pid === 'PRESET_RESET';
-        if (!isOcclusion && !isAmbush && !isMonsoon && !isReset) return reject('Unknown preset.');
-        if (this.spatialLocked && (isOcclusion || isReset)) return locked();
+        const isAcnOnly = pid === 'PRESET_ACN_ONLY' || pid === 'PRESET_ZERO_NODES';
+        const is16Nodes = pid === 'PRESET_16_NODES' || pid === 'PRESET_CANONICAL_16' || pid === 'PRESET_DEFAULT';
+        if (!isOcclusion && !isAmbush && !isMonsoon && !isReset && !isAcnOnly && !is16Nodes) return reject('Unknown preset.');
+        if (this.spatialLocked && (isOcclusion || isReset || isAcnOnly || is16Nodes)) return locked();
+
+        if (isAcnOnly) {
+          this.currentScenarioPreset = 'ACN_ONLY';
+          this.registrationLifecycle.clear();
+          this.nodeRegistry = new NodeRegistry(this.seedOffset);
+          this.initNodes();
+          this.initTransfers();
+          this.staticScheduler = new LegacyStaticScheduler();
+          this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
+          this.selectedNodeId = -1;
+          this.spatialRevision++;
+          this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+          this.emitProfileFrame();
+          return result(true);
+        }
+
+        if (is16Nodes) {
+          this.currentScenarioPreset = '16_NODES';
+          this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
+          this.registrationLifecycle.clear();
+          for (const id of GROUND_NODE_IDS) this.registrationLifecycle.add(id, this.simTimeS);
+          this.initNodes();
+          this.initTransfers();
+          this.staticScheduler = new LegacyStaticScheduler();
+          this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
+          this.selectedNodeId = 4;
+          this.resampleGroundNodeAltitudes();
+          this.spatialRevision++;
+          this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+          this.emitProfileFrame();
+          return result(true);
+        }
+
+        if (isOcclusion || isAmbush) {
+          if (this.nodeRegistry.size === 0) {
+            this.currentScenarioPreset = '16_NODES';
+            this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
+            this.registrationLifecycle.clear();
+            for (const id of GROUND_NODE_IDS) this.registrationLifecycle.add(id, this.simTimeS);
+            this.initNodes();
+            this.initTransfers();
+            this.resampleGroundNodeAltitudes();
+          }
+        }
+
         if (isOcclusion) {
           this.spatialRevision++;
           const terrainMsl = this.terrainEngine.getElevation(12000.0, 8000.0);
@@ -1720,6 +1873,7 @@ export class SimulationWorkerManager {
         } else {
           this.resetSimulationState();
         }
+        this.emitProfileFrame();
         return result(true);
       }
 
@@ -1757,6 +1911,43 @@ export class SimulationWorkerManager {
         return result(true);
       }
 
+      case 'LOAD_CUSTOM_DEM': {
+        if (this.spatialLocked) return locked();
+        const elevations = msg.elevations;
+        const metadata = msg.metadata;
+        if (!elevations || (!(elevations instanceof Float32Array) && !(elevations.buffer instanceof ArrayBuffer))) {
+          return reject('elevations must be Float32Array or ArrayBuffer.');
+        }
+
+        const success = this.terrainEngine.loadCustomDem(elevations, metadata);
+        if (!success) {
+          return reject('Failed to load custom DEM into terrain engine.');
+        }
+
+        this.cachedRealHillshade = null;
+        this.resampleGroundNodeAltitudes();
+        this.spatialRevision++;
+        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.initHillshade(512);
+
+        const bounds = this.terrainEngine.getTerrainBoundsTelemetry();
+        this.emitHostMessage({
+          type: 'TERRAIN_BOUNDS_READY',
+          request_id: msg.request_id,
+          bounds,
+        });
+        this.emitHostMessage({
+          type: 'CUSTOM_DEM_LOADED',
+          request_id: msg.request_id,
+          tile_name: metadata?.tileName ?? 'custom',
+          resolution: metadata?.rasterWidth ?? 512,
+          bounds,
+        });
+
+        this.emitProfileFrame();
+        return result(true);
+      }
+
       case 'GET_HILLSHADE':
         this.initHillshade(512);
         return result(true);
@@ -1780,16 +1971,18 @@ export class SimulationWorkerManager {
         let minElev = Number.POSITIVE_INFINITY;
         let maxElev = Number.NEGATIVE_INFINITY;
 
-        if (isReal && this.terrainEngine.realDemGrid) {
-          // CRITICAL: Clone authoritative realDemGrid so it is NEVER detached or mutated in the worker
+        if (isReal && this.terrainEngine.realDemGrid && this.terrainEngine.realDemGrid.length === gridSize * gridSize) {
+          // Direct 512x512 copy
           transferGrid.set(this.terrainEngine.realDemGrid);
           for (let i = 0; i < transferGrid.length; i++) {
             const v = transferGrid[i];
-            if (v < minElev) minElev = v;
-            if (v > maxElev) maxElev = v;
+            if (Number.isFinite(v)) {
+              if (v < minElev) minElev = v;
+              if (v > maxElev) maxElev = v;
+            }
           }
         } else {
-          // Synthetic procedural mode: sample 512x512 matrix over bounds
+          // Synthetic procedural mode or custom resolution DEM: sample 512x512 matrix over bounds
           const stepX = (bounds.maxX - bounds.minX) / 511.0;
           const stepY = (bounds.maxY - bounds.minY) / 511.0;
           for (let r = 0; r < gridSize; r++) {
@@ -1797,9 +1990,10 @@ export class SimulationWorkerManager {
             for (let c = 0; c < gridSize; c++) {
               const xM = bounds.minX + c * stepX; // Col 0 is West (-X)
               const v = this.terrainEngine.getElevation(xM, yM);
-              transferGrid[r * gridSize + c] = v;
-              if (v < minElev) minElev = v;
-              if (v > maxElev) maxElev = v;
+              const val = Number.isFinite(v) ? v : 0;
+              transferGrid[r * gridSize + c] = val;
+              if (val < minElev) minElev = val;
+              if (val > maxElev) maxElev = val;
             }
           }
         }
@@ -1949,9 +2143,18 @@ export class SimulationWorkerManager {
         const act = typeof msg.action === 'string' ? msg.action.toLowerCase() : '';
         if (!['pause', 'resume', 'step', 'reset'].includes(act)) return reject('action must be pause, resume, step, or reset.');
         if (act === 'reset' && this.spatialLocked) return locked();
-        if (act === 'pause') this.isPaused = true;
-        else if (act === 'resume') this.isPaused = false;
-        else if (act === 'step') {
+        if (act === 'pause') {
+          this.isPaused = true;
+          this.achievedSpeed = 0.0;
+        } else if (act === 'resume') {
+          this.isPaused = false;
+          this.simDebtMs = 0.0;
+          this.lastTickRealMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+          this.lastSpeedMeasureTime = 0.0;
+          this.lastSpeedMeasureSimTime = this.simTimeS;
+        } else if (act === 'step') {
           this.isPaused = true;
           this.activeStepRequestId = typeof msg.step_request_id === 'number' ? msg.step_request_id : undefined;
           this.tickSimulation();
@@ -1962,7 +2165,7 @@ export class SimulationWorkerManager {
       }
 
       case 'SET_SPEED':
-        if (!isFiniteNumber(msg.speed) || msg.speed < 0.05 || msg.speed > 10) return reject('speed must be finite and between 0.05 and 10.');
+        if (!isFiniteNumber(msg.speed) || msg.speed < 0.1 || msg.speed > 10) return reject('speed must be finite and between 0.1 and 10.');
         this.speed = msg.speed;
         this.restartTimer();
         return result(true);
@@ -1973,6 +2176,11 @@ export class SimulationWorkerManager {
         return result(true);
 
       case 'SELECT_NODE':
+        if (msg.node_id === -1) {
+          this.selectedNodeId = -1;
+          this.emitProfileFrame();
+          return result(true);
+        }
         if (!Number.isInteger(msg.node_id) || !this.nodeRegistry.hasNodeId(msg.node_id)) return reject('node_id must identify a registered ground node.');
         this.selectedNodeId = msg.node_id;
         this.emitProfileFrame();
@@ -2009,6 +2217,21 @@ export class SimulationWorkerManager {
         if (msg.callsign !== undefined && (typeof msg.callsign !== 'string' || msg.callsign.trim().length === 0)) {
           return reject('callsign must be a non-empty string.');
         }
+        if (msg.tx_power_dbm !== undefined && (!isFiniteNumber(msg.tx_power_dbm) || msg.tx_power_dbm < 10.0 || msg.tx_power_dbm > 50.0)) {
+          return reject('tx_power_dbm must be a finite number between 10.0 and 50.0 dBm.');
+        }
+        if (msg.battery_capacity_mah !== undefined && (!isFiniteNumber(msg.battery_capacity_mah) || msg.battery_capacity_mah < 100.0 || msg.battery_capacity_mah > 500000.0)) {
+          return reject('battery_capacity_mah must be a finite number between 100.0 and 500000.0 mAh.');
+        }
+        if (msg.battery_level_pct !== undefined && (!isFiniteNumber(msg.battery_level_pct) || msg.battery_level_pct < 0.0 || msg.battery_level_pct > 100.0)) {
+          return reject('battery_level_pct must be a finite number between 0.0 and 100.0 percent.');
+        }
+        if (msg.tactical_priority !== undefined && (!isFiniteNumber(msg.tactical_priority) || msg.tactical_priority < 0.1 || msg.tactical_priority > 5.0)) {
+          return reject('tactical_priority must be a finite number between 0.1 and 5.0.');
+        }
+        if (msg.color_hex !== undefined && (typeof msg.color_hex !== 'string' || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(msg.color_hex.trim()))) {
+          return reject('color_hex must be a valid hex color code (e.g. #38bdf8).');
+        }
 
         const role: NodeType = msg.role ?? 'soldier';
         const entity = this.nodeRegistry.createDynamicNode({
@@ -2017,10 +2240,15 @@ export class SimulationWorkerManager {
           position: [xm, ym],
           aglM,
           trafficOptions: msg.traffic_options,
-          colorHex: msg.color_hex,
+          colorHex: msg.color_hex ? msg.color_hex.trim() : undefined,
+          txPowerDbm: msg.tx_power_dbm,
+          batteryCapacityMah: msg.battery_capacity_mah,
+          batteryLevelPct: msg.battery_level_pct,
+          tacticalPriority: msg.tactical_priority,
         });
 
         const nid = entity.identity.nodeId;
+        this.registrationLifecycle.add(nid, this.simTimeS);
         const terrainMsl = this.terrainEngine.getElevation(xm, ym);
         const z = terrainMsl + aglM;
 
@@ -2042,6 +2270,16 @@ export class SimulationWorkerManager {
         );
         staticNode.aglM = aglM;
         tacNode.aglM = aglM;
+        staticNode.txPowerDbm = entity.txPowerDbm;
+        tacNode.txPowerDbm = entity.txPowerDbm;
+        staticNode.batteryCapacityMah = entity.batteryCapacityMah ?? (entity.identity.role === 'mcp' ? 20000 : 5000);
+        tacNode.batteryCapacityMah = entity.batteryCapacityMah ?? (entity.identity.role === 'mcp' ? 20000 : 5000);
+        staticNode.batteryLevelPct = entity.batteryLevelPct ?? 100.0;
+        tacNode.batteryLevelPct = entity.batteryLevelPct ?? 100.0;
+        staticNode.tacticalPriority = entity.tacticalPriority ?? 1.0;
+        tacNode.tacticalPriority = entity.tacticalPriority ?? 1.0;
+        staticNode.isDepleted = (entity.batteryLevelPct ?? 100.0) <= 0;
+        tacNode.isDepleted = (entity.batteryLevelPct ?? 100.0) <= 0;
         this.nodesStatic.push(staticNode);
         this.nodesTac.push(tacNode);
 
@@ -2082,6 +2320,7 @@ export class SimulationWorkerManager {
         }
 
         this.nodeRegistry.unregister(nid);
+        this.registrationLifecycle.remove(nid, this.simTimeS);
         this.nodesStatic = this.nodesStatic.filter(n => n.nodeId !== nid);
         this.nodesTac = this.nodesTac.filter(n => n.nodeId !== nid);
 
@@ -2154,6 +2393,7 @@ export class SimulationWorkerManager {
         });
 
         const nid = entity.identity.nodeId;
+        this.registrationLifecycle.add(nid, this.simTimeS);
         const terrainMsl = this.terrainEngine.getElevation(newX, newY);
         const z = terrainMsl + src.aglM;
 
@@ -2233,6 +2473,21 @@ export class SimulationWorkerManager {
         if (msg.callsign !== undefined && (typeof msg.callsign !== 'string' || msg.callsign.trim().length === 0)) {
           return reject('callsign must be a non-empty string.');
         }
+        if (msg.tx_power_dbm !== undefined && (!isFiniteNumber(msg.tx_power_dbm) || msg.tx_power_dbm < 10.0 || msg.tx_power_dbm > 50.0)) {
+          return reject('tx_power_dbm must be a finite number between 10.0 and 50.0 dBm.');
+        }
+        if (msg.battery_capacity_mah !== undefined && (!isFiniteNumber(msg.battery_capacity_mah) || msg.battery_capacity_mah < 100.0 || msg.battery_capacity_mah > 500000.0)) {
+          return reject('battery_capacity_mah must be a finite number between 100.0 and 500000.0 mAh.');
+        }
+        if (msg.battery_level_pct !== undefined && (!isFiniteNumber(msg.battery_level_pct) || msg.battery_level_pct < 0.0 || msg.battery_level_pct > 100.0)) {
+          return reject('battery_level_pct must be a finite number between 0.0 and 100.0 percent.');
+        }
+        if (msg.tactical_priority !== undefined && (!isFiniteNumber(msg.tactical_priority) || msg.tactical_priority < 0.1 || msg.tactical_priority > 5.0)) {
+          return reject('tactical_priority must be a finite number between 0.1 and 5.0.');
+        }
+        if (msg.color_hex !== undefined && (typeof msg.color_hex !== 'string' || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(msg.color_hex.trim()))) {
+          return reject('color_hex must be a valid hex color code (e.g. #38bdf8).');
+        }
 
         const nextX = msg.x_m !== undefined ? msg.x_m : staticNode.position[0];
         const nextY = msg.y_m !== undefined ? msg.y_m : staticNode.position[1];
@@ -2249,6 +2504,24 @@ export class SimulationWorkerManager {
           staticNode.nodeType = msg.role;
           tacNode.nodeType = msg.role;
         }
+        if (msg.tx_power_dbm !== undefined) {
+          staticNode.txPowerDbm = msg.tx_power_dbm;
+          tacNode.txPowerDbm = msg.tx_power_dbm;
+        }
+        if (msg.battery_capacity_mah !== undefined) {
+          staticNode.batteryCapacityMah = msg.battery_capacity_mah;
+          tacNode.batteryCapacityMah = msg.battery_capacity_mah;
+        }
+        if (msg.battery_level_pct !== undefined) {
+          staticNode.batteryLevelPct = msg.battery_level_pct;
+          tacNode.batteryLevelPct = msg.battery_level_pct;
+          staticNode.isDepleted = msg.battery_level_pct <= 0;
+          tacNode.isDepleted = msg.battery_level_pct <= 0;
+        }
+        if (msg.tactical_priority !== undefined) {
+          staticNode.tacticalPriority = msg.tactical_priority;
+          tacNode.tacticalPriority = msg.tactical_priority;
+        }
 
         this.nodeRegistry.updateEntity(nid, {
           position: [nextX, nextY],
@@ -2256,7 +2529,18 @@ export class SimulationWorkerManager {
           role: msg.role,
           callsign: msg.callsign ? msg.callsign.trim() : undefined,
           trafficOptions: msg.traffic_options,
+          colorHex: msg.color_hex ? msg.color_hex.trim() : undefined,
+          txPowerDbm: msg.tx_power_dbm,
+          batteryCapacityMah: msg.battery_capacity_mah,
+          batteryLevelPct: msg.battery_level_pct,
+          tacticalPriority: msg.tactical_priority,
         });
+
+        const updatedEntity = this.nodeRegistry.getByNodeId(nid);
+        if (updatedEntity) {
+          (staticNode as any).identity = updatedEntity.identity;
+          (tacNode as any).identity = updatedEntity.identity;
+        }
 
         if (changesSpatial) {
           this.spatialRevision++;
@@ -2308,24 +2592,91 @@ export class SimulationWorkerManager {
   private restartTimer(): void {
     if (this.timerId !== null) {
       clearInterval(this.timerId);
+      this.timerId = null;
     }
-    const intervalMs = Math.max(4, Math.round(20.0 / this.speed));
+    const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    this.lastTickRealMs = now;
+    this.simDebtMs = 0;
+
+    // For speed <= 1.0: pace by adjusting timer interval (e.g. 0.1x -> 200ms, 0.5x -> 40ms, 1.0x -> 20ms)
+    // For speed > 1.0: keep timer interval at a reliable 20ms (50 Hz) and batch multiple 20ms steps per tick
+    const intervalMs = this.speed <= 1.0
+      ? Math.max(20, Math.round(20.0 / this.speed))
+      : 20;
+
     const timer = setInterval(() => {
-      if (!this.isPaused) {
-        this.tickSimulation();
+      if (this.isPaused) {
+        this.lastTickRealMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+          ? performance.now()
+          : Date.now();
+        this.simDebtMs = 0;
+        return;
       }
+
+      const tickNow = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      const elapsedRealMs = Math.min(250, Math.max(0, tickNow - this.lastTickRealMs));
+      this.lastTickRealMs = tickNow;
+
+      // Accumulate simulated milliseconds debt
+      this.simDebtMs += elapsedRealMs * this.speed;
+
+      // Bound max steps in a single batch to prevent spiral-of-death on heavy CPU stalls
+      const maxStepsPerBatch = Math.max(1, Math.min(25, Math.ceil(this.speed * 2.5)));
+      let stepsRun = 0;
+
+      // Run 20 ms simulation steps while we have accumulated simulation debt
+      while (this.simDebtMs >= 20.0 && stepsRun < maxStepsPerBatch) {
+        stepsRun++;
+        this.simDebtMs -= 20.0;
+        // In a batch, only emit telemetry on the final step to keep main thread UI responsive
+        const isFinalStep = (this.simDebtMs < 20.0 || stepsRun >= maxStepsPerBatch);
+        this.tickSimulation(isFinalStep);
+      }
+
+      // If debt still exceeds 50ms after batching, drain excess debt to avoid runaway catchup lag
+      if (this.simDebtMs > 50.0) {
+        this.simDebtMs = 50.0;
+      }
+
+      // Track achieved speed over rolling ~400ms window
+      this.updateAchievedSpeedMeasurement(tickNow);
     }, intervalMs);
+
     if (typeof (timer as any)?.unref === 'function') {
       (timer as any).unref();
     }
     this.timerId = timer as unknown as number;
+  }
+
+  private updateAchievedSpeedMeasurement(wallNow: number): void {
+    if (this.lastSpeedMeasureTime <= 0) {
+      this.lastSpeedMeasureTime = wallNow;
+      this.lastSpeedMeasureSimTime = this.simTimeS;
+      return;
+    }
+    const wallElapsedMs = wallNow - this.lastSpeedMeasureTime;
+    if (wallElapsedMs >= 400) {
+      const realElapsedS = wallElapsedMs / 1000.0;
+      const simElapsedS = this.simTimeS - this.lastSpeedMeasureSimTime;
+      if (this.isPaused) {
+        this.achievedSpeed = 0.0;
+      } else if (realElapsedS > 0) {
+        this.achievedSpeed = Math.round((simElapsedS / realElapsedS) * 100) / 100;
+      }
+      this.lastSpeedMeasureTime = wallNow;
+      this.lastSpeedMeasureSimTime = this.simTimeS;
+    }
   }
 }
 
 // Instantiate only when executed inside a browser worker. Importing this module
 // from Node must not start timers or require Worker globals.
 if (typeof self !== 'undefined' && typeof document === 'undefined') {
-  const simWorker = new SimulationWorkerManager();
+  const simWorker = new SimulationWorkerManager(0, 'ACN_ONLY');
   void simWorker.start();
   self.onmessage = (event: MessageEvent) => {
     simWorker.handleMessage(event.data);

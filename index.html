@@ -41,8 +41,6 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
 .seg .btn-danger{color:#ffb3b3}
 .sep{width:1px;height:14px;background:var(--line2);margin:0 2px}
 .clock{display:flex;align-items:baseline;gap:8px;font:600 13px var(--mono);color:var(--accent)}
-.conn-status{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--bad)}.dot.online{background:var(--ok)}
 
 /* shell + navigation rail */
 .shell{flex:1;min-height:0;display:flex}
@@ -51,10 +49,28 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radiu
 .nav-tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .nav-tab:hover{background:var(--raised);color:var(--text)}
 .nav-tab.active{background:var(--raised);color:var(--accent);border-color:var(--line2);font-weight:600}
+.network-layout>*{max-width:none}
+.network-layout .lede{max-width:80ch}
+.network-dashboard-grid{display:grid;grid-template-columns:minmax(280px,340px) minmax(0,1fr);gap:16px;align-items:start;width:100%}
+.network-dashboard-controls{display:flex;flex-direction:column;gap:10px}
+.network-dashboard-controls select[multiple]{min-height:140px}
+.network-metrics-toggles{display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:var(--ink);border:1px solid var(--line);border-radius:6px}
+.network-metrics-toggles label{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer}
+.network-control-actions{display:flex;gap:8px;flex-wrap:wrap}
+.network-control-actions .btn{flex:1 1 calc(50% - 4px);min-width:120px;text-align:center;padding:6px 10px}
+.network-chart-grid{display:flex;flex-direction:column;gap:16px;min-width:0;width:100%}
+.network-chart-card{min-width:0;width:100%;background:#0b1015;border:1px solid var(--line);border-radius:7px;padding:12px 14px;display:flex;flex-direction:column}
+.network-chart-card canvas{display:block;width:100%;height:clamp(300px,44vh,460px)}
+.network-chart-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;font-weight:600;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.network-chart-head span{color:var(--text)}
+#network-individual-value,#network-aggregate-value{font:500 11.5px var(--mono);color:var(--accent);max-width:100%;overflow-wrap:anywhere}
+.network-chart-status{font-size:11px;color:var(--muted);min-height:16px}
+.registration-summary{display:grid;grid-template-columns:repeat(5,minmax(90px,1fr));gap:8px;margin:12px 0}.registration-summary .panel{display:flex;flex-direction:column;padding:10px}.registration-summary b{font:600 18px var(--mono);color:var(--accent)}.registration-summary span{font-size:11px;color:var(--muted)}
+@media(max-width:960px){.network-dashboard-grid{grid-template-columns:1fr}}
 
 /* persistent map + detail workspace */
 .main-viewport{flex:1;min-width:0;min-height:0;display:grid;grid-template-columns:var(--map-width,44%) 8px minmax(0,1fr);overflow:hidden}
-.persistent-map-panel{min-width:260px;min-height:0;display:flex;flex-direction:column;background:#0b1015;overflow:hidden}
+.persistent-map-panel{container-type:inline-size;min-width:260px;min-height:0;display:flex;flex-direction:column;background:#0b1015;overflow:hidden}
 .persistent-map-mount{flex:1;min-height:0;min-width:0;display:flex}
 .persistent-map-mount .radar-stage{flex:1;min-width:0;min-height:0}
 .map-resize-handle{position:relative;cursor:col-resize;background:var(--surface);border-left:1px solid var(--line);border-right:1px solid var(--line);touch-action:none}
@@ -65,13 +81,47 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 .tab-content{position:absolute;inset:0;display:none;min-width:0;min-height:0}
 .tab-content.active{display:flex;flex-direction:column}
 
-.radar-stage{display:flex;flex-direction:column;background:#0b1015;position:relative}
+.radar-stage{display:flex;flex-direction:column;background:#0b1015;position:relative;height:100%}
+.radar-stage-body{flex:1;min-height:0;min-width:0;display:flex;flex-direction:row;position:relative;overflow:hidden}
 .stage-toolbar{flex:none;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface);border-bottom:1px solid var(--line)}
 .stage-title{font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:8px}
 .tool-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.tool-label{font-size:11px;color:var(--faint)}
 .radar-canvas-container,.waterfall-canvas-container,.fresnel-canvas-box{position:relative;width:100%;overflow:hidden;background:#0b1015}
-.radar-canvas-container{flex:1 1 0;min-height:0}
+.radar-canvas-container{flex:1 1 0;min-height:0;min-width:0}
 .radar-canvas-container canvas,.waterfall-canvas-container canvas,.fresnel-canvas-box canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
+.terrain-toolbox-panel{position:absolute;top:10px;left:10px;z-index:5;display:flex;flex-direction:column;gap:6px;max-width:min(270px,calc(100% - 20px));padding:8px;background:rgba(9,13,22,.92);border:1px solid rgba(56,189,248,.35);border-radius:5px;box-shadow:0 6px 18px rgba(0,0,0,.28);font-size:10px;color:#cbd5e1;pointer-events:auto}
+.terrain-toolbox-panel.is-collapsed{display:none!important}
+.terrain-toolbox-toggle-btn{position:absolute;top:10px;left:10px;z-index:5;display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:rgba(18,22,28,.88);border:1px solid var(--line);border-left:2px solid var(--accent);border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:600;color:#cbd5e1;box-shadow:0 4px 12px rgba(0,0,0,.35);backdrop-filter:blur(4px);cursor:pointer;pointer-events:auto;transition:all .15s ease}
+.terrain-toolbox-toggle-btn:hover{background:var(--raised);border-color:var(--accent);color:#fff}
+.terrain-toolbox-toggle-btn.is-hidden{display:none!important}
+.btn-close-toolbox{margin-left:auto;background:transparent;border:1px solid transparent;color:var(--muted);font-size:14px;line-height:1;padding:1px 5px!important;border-radius:3px;cursor:pointer}
+.btn-close-toolbox:hover{background:var(--raised);color:var(--text);border-color:var(--line)}
+.terrain-toolbox-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.terrain-toolbox-row button{font-size:10px;padding:3px 6px}
+.terrain-toolbox-status{color:#94a3b8;line-height:1.35}
+.terrain-toolbox-list{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto}
+.terrain-toolbox-region{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.terrain-toolbox-region input[type=color]{width:20px;height:18px;padding:0;border:0;background:transparent}
+.terrain-toolbox-region button{padding:2px 5px}
+.maplibre-stage{position:absolute;inset:0;display:none;background:#0b1015}
+.maplibre-status{position:absolute;left:10px;bottom:10px;z-index:3;padding:5px 8px;border:1px solid rgba(56,189,248,.35);border-radius:4px;background:rgba(9,13,22,.88);color:#cbd5e1;font:10px var(--mono);pointer-events:none}
+.maplibre-info{position:absolute;left:10px;top:10px;z-index:3;max-width:290px;padding:7px 9px;border:1px solid rgba(56,189,248,.35);border-radius:4px;background:rgba(9,13,22,.9);color:#e2e8f0;font:10px/1.45 var(--mono);pointer-events:none;white-space:pre-line}
+.map-node-tooltip{position:absolute;z-index:7;display:none;min-width:230px;max-width:min(300px,calc(100% - 16px));padding:8px 10px;background:rgba(9,13,22,.96);border:1px solid var(--line2);border-left:3px solid var(--accent);border-radius:5px;color:var(--text);font:10px/1.5 var(--mono);box-shadow:0 8px 24px rgba(0,0,0,.38);pointer-events:none;white-space:normal}
+.map-node-tooltip .tip-title{font-weight:700;color:#e2e8f0;margin-bottom:3px}.map-node-tooltip .tip-row{color:#aebcc9}.map-node-tooltip .tip-row b{color:#e2e8f0;font-weight:500}
+.map-node-details{flex:none;width:270px;max-width:100%;background:rgba(9,13,22,.96);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto;padding:10px 12px;z-index:5;color:var(--text)}
+.map-node-details.is-empty,.map-node-details.is-closed{display:none!important}
+.map-node-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.btn-close-inspector{background:transparent;border:1px solid transparent;color:var(--muted);font-size:16px;cursor:pointer;padding:1px 6px;border-radius:4px;line-height:1}
+.btn-close-inspector:hover{background:var(--raised);color:var(--text);border-color:var(--line)}
+.map-node-details h3{font-size:12px;margin-bottom:2px}.map-node-details .detail-sub{font:10px var(--mono);color:var(--muted);margin-bottom:8px}.map-node-details .detail-grid{display:grid;grid-template-columns:1fr auto;gap:3px 8px;font:10px/1.4 var(--mono)}.map-node-details .detail-grid span:nth-child(odd){color:var(--muted)}.map-node-actions{display:flex;gap:4px;flex-wrap:wrap;margin-top:9px}.map-node-actions button{font-size:10px;padding:4px 7px}.map-node-empty{color:var(--muted);font-size:10px}
+@container (max-width: 580px){
+  .radar-stage-body{flex-direction:column}
+  .map-node-details{width:100%;max-height:200px;border-left:none;border-top:1px solid var(--line)}
+}
+@media (max-width: 1100px){
+  .radar-stage-body{flex-direction:column}
+  .map-node-details{width:100%;max-height:200px;border-left:none;border-top:1px solid var(--line)}
+}
 
 /* Map legend */
 .map-legend {
@@ -108,27 +158,34 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 /* Radar Cursor Geographic Readout HUD (M7.2) */
 .radar-cursor-hud {
   position: absolute;
-  bottom: 10px;
-  left: 10px;
-  z-index: 3;
+  bottom: 8px;
+  left: 8px;
+  z-index: 4;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 5px 10px;
-  background: rgba(11, 16, 21, 0.92);
-  border: 1px solid var(--line2);
-  border-left: 3px solid #38bdf8;
+  gap: 8px;
+  padding: 3px 8px;
+  background: rgba(11, 16, 21, 0.68);
+  border: 1px solid rgba(61, 77, 92, 0.5);
+  border-left: 2px solid var(--accent);
   border-radius: 4px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.35;
   color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   user-select: none;
   pointer-events: auto;
-  max-width: calc(100% - 20px);
+  max-width: calc(100% - 16px);
   white-space: nowrap;
   overflow-x: auto;
+  transition: opacity 0.2s ease;
+}
+.radar-cursor-hud.is-idle {
+  opacity: 0;
+  pointer-events: none;
 }
 @media (max-width: 720px) {
   .radar-cursor-hud {
@@ -302,7 +359,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 .upload-status-box{margin-top:12px;padding:8px 12px;border-radius:5px;font:12px var(--mono)}
 .status-loading{background:rgba(157,180,255,.1);color:var(--accent)}.status-success{background:rgba(79,209,161,.1);color:var(--ok)}.status-error{background:rgba(255,112,112,.1);color:var(--bad)}
 
-@media(max-width:1100px){.brand small,.conn-status span:last-child{display:none}}
+@media(max-width:1100px){.brand small{display:none}}
 @media(max-width:860px){
   .shell{flex-direction:column-reverse}
   .rail{width:auto;flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:4px}.nav-tab{flex:1;padding:6px 2px;font-size:10px}
@@ -311,6 +368,206 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   .stats{grid-template-columns:1fr}.q-track-wrap{grid-template-columns:90px 1fr 80px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ============================================================
+   AEROSPACE WORKSPACE & LAYOUT ENHANCEMENTS (M8.0 REDESIGN)
+   ============================================================ */
+
+/* Full horizontal space utilization for detail workspaces */
+.scheduler-layout > *,
+.terrain-layout > *,
+.terminal-layout > *,
+.overview-sidebar > *,
+#tab-registration .pane > * {
+  max-width: none;
+}
+
+/* Overview Sidebar layout and responsive cards */
+.overview-sidebar {
+  padding: 16px 22px 36px;
+}
+.overview-sidebar .sec {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.overview-sidebar .run-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.overview-sidebar .run-row button {
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: 5px;
+}
+.overview-sidebar .run-row .primary {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Topbar Aerospace Console styling */
+.topbar {
+  min-height: 48px;
+  padding: 4px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#btn-spatial-lock {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border-radius: 5px;
+  transition: all 0.15s ease;
+}
+#btn-spatial-lock.active {
+  background: rgba(213, 173, 121, 0.18);
+  border-color: var(--warn);
+  color: #f6d8a8;
+}
+
+/* Terminal inventory table enhancements */
+#terminal-inventory-table {
+  width: 100%;
+}
+#terminal-inventory-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 2;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 10px;
+}
+#terminal-inventory-table td {
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+.inventory-actions-bar button {
+  font-size: 11px;
+  padding: 5px 12px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+/* Scheduler & Timeline refinements */
+.timeline-scrubber-panel {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.timeline-scrubber-controls {
+  padding-bottom: 4px;
+}
+.sched-chart-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Terrain & RF facts alignment */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 4px 20px;
+}
+.form-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 11.5px;
+}
+.form-row span {
+  color: var(--muted);
+}
+.form-row b {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+/* Selected node inspector */
+.map-node-details {
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.45);
+}
+.map-node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.map-node-details .detail-grid span:nth-child(even) {
+  font-family: var(--mono);
+  text-align: right;
+  color: var(--text);
+}
+.map-node-details .detail-grid span:nth-child(odd) {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.map-node-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.map-node-actions button {
+  font-size: 10.5px;
+  padding: 4px 8px;
+  font-weight: 500;
+}
+
+/* Responsive accommodations for 1280x800 and 1024x768 */
+@media (max-width: 1280px) {
+  .topbar {
+    padding: 4px 10px;
+    gap: 8px;
+  }
+  .brand b {
+    font-size: 12.5px;
+  }
+  .rail {
+    width: 76px;
+  }
+  .nav-tab {
+    padding: 9px 2px;
+    font-size: 9.5px;
+  }
+  .nav-tab svg {
+    width: 18px;
+    height: 18px;
+  }
+  .pane {
+    padding: 14px 16px 28px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .topbar .seg[aria-label="Interface help"] {
+    display: none;
+  }
+  .rail {
+    width: 68px;
+    padding: 8px 3px;
+  }
+  .nav-tab {
+    font-size: 9px;
+    padding: 8px 1px;
+    gap: 3px;
+  }
+  .nav-tab svg {
+    width: 16px;
+    height: 16px;
+  }
+}
 </style>
 <link rel="stylesheet" href="./frontend/c2-console-theme.css">
 </head>
@@ -322,15 +579,24 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <button id="btn-pause" onclick="togglePause()" title="Pause or resume (Space)">PAUSE</button>
     <button id="btn-step" onclick="stepSim()" title="Advance one 20 ms frame (.)">STEP ⏭</button>
     <span class="sep"></span>
-    <button id="spd-01" onclick="setSpeed(0.1)">0.1×</button>
-    <button id="spd-05" onclick="setSpeed(0.5)">0.5×</button>
-    <button id="spd-10" class="active" onclick="setSpeed(1.0)">1×</button>
+    <div class="sim-speed-ctrl" role="group" aria-label="Simulation speed controller">
+      <span id="sim-speed-readout" class="sim-speed-readout" title="Selected simulation target speed">1.0×</span>
+      <span id="sim-achieved-readout" class="sim-speed-achieved" title="Achieved simulation rate" style="display:none;"></span>
+      <input type="range" id="sim-speed-slider" class="sim-speed-slider" min="0.1" max="10" step="0.05" value="1.0" aria-label="Simulation speed slider" title="Adjust simulation speed (0.1× – 10×)" oninput="onSpeedSliderInput(this.value)">
+      <input type="number" id="sim-speed-input" class="sim-speed-input" min="0.1" max="10" step="0.05" value="1.0" aria-label="Simulation speed numeric entry" title="Direct speed multiplier (0.1× – 10×)" onchange="onSpeedNumInput(this.value)" oninput="onSpeedNumInput(this.value)">
+      <div class="sim-speed-presets" role="group" aria-label="Speed presets">
+        <button type="button" id="spd-05" class="spd-preset-btn" onclick="setSpeed(0.5)" title="0.5× speed">0.5×</button>
+        <button type="button" id="spd-10" class="spd-preset-btn active" onclick="setSpeed(1.0)" title="1× speed (real-time)">1×</button>
+        <button type="button" id="spd-20" class="spd-preset-btn" onclick="setSpeed(2.0)" title="2× speed">2×</button>
+        <button type="button" id="spd-50" class="spd-preset-btn" onclick="setSpeed(5.0)" title="5× speed">5×</button>
+        <button type="button" id="spd-100" class="spd-preset-btn" onclick="setSpeed(10.0)" title="10× speed">10×</button>
+      </div>
+    </div>
     <span class="sep"></span>
     <button class="btn-danger" onclick="resetSim()" title="Restart the simulation">RESET</button>
   </div>
   <div class="clock"><span id="clock-display">T+00:00.0s</span><span id="frame-display" class="muted">#0</span></div>
   <button id="btn-spatial-lock" type="button" aria-pressed="false" onclick="toggleSpatialLock()" title="Prevent spatial scenario edits in the simulation worker">Spatial lock: OFF</button>
-  <div class="conn-status"><span id="worker-indicator" class="dot online"></span><span id="worker-label">Worker 50 Hz</span></div>
   <div class="seg" role="group" aria-label="Interface help">
     <button id="btn-expert" type="button" aria-pressed="false" title="Open every collapsed section">Expert view</button>
     <button id="btn-help" type="button" title="Show the quick tour">Help</button>
@@ -341,9 +607,11 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 <nav class="rail" role="tablist" aria-label="Workspaces">
   <button class="nav-tab active" id="tab-btn-overview" onclick="switchMainTab('tab-overview')" title="Overview (1)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Overview</button>
   <button class="nav-tab" id="tab-btn-scheduler" onclick="switchMainTab('tab-scheduler')" title="Scheduler (2)"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h13"/></svg>Scheduler</button>
-  <button class="nav-tab" id="tab-btn-terrain" onclick="switchMainTab('tab-terrain')" title="Terrain &amp; RF (3)"><svg viewBox="0 0 24 24"><path d="M3 19l6-10 4 6 3-4 5 8z"/></svg>Terrain &amp; RF</button>
-  <button class="nav-tab" id="tab-btn-terminal" onclick="switchMainTab('tab-terminal')" title="Terminals (4)"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Terminals</button>
-  <button class="nav-tab" id="tab-btn-doc" onclick="switchMainTab('tab-doc')" title="Research &amp; Docs (5)"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7"/></svg>Research &amp; Docs</button>
+  <button class="nav-tab" id="tab-btn-network" onclick="switchMainTab('tab-network')" title="Network Performance (3)"><svg viewBox="0 0 24 24"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2"/></svg>Network<br>Performance</button>
+  <button class="nav-tab" id="tab-btn-registration" onclick="switchMainTab('tab-registration')" title="Registration"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>Registration</button>
+  <button class="nav-tab" id="tab-btn-terrain" onclick="switchMainTab('tab-terrain')" title="Terrain &amp; RF (4)"><svg viewBox="0 0 24 24"><path d="M3 19l6-10 4 6 3-4 5 8z"/></svg>Terrain &amp; RF</button>
+  <button class="nav-tab" id="tab-btn-terminal" onclick="switchMainTab('tab-terminal')" title="Terminals (5)"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Terminals</button>
+  <button class="nav-tab" id="tab-btn-doc" onclick="switchMainTab('tab-doc')" title="Research &amp; Docs (6)"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7"/></svg>Research &amp; Docs</button>
 </nav>
 
 <main class="main-viewport" id="main-workspace" style="--map-width:44%">
@@ -364,6 +632,11 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div class="seg" id="view-mode-toggle">
               <button id="btnView2D" class="active" onclick="setStageViewMode('2d')" title="2D Tactical Radar Map">2D Map</button>
               <button id="btnView3D" onclick="setStageViewMode('3d')" title="3D Tactical Terrain View">3D Terrain</button>
+            </div>
+            <span class="tool-label">Map</span>
+            <div class="seg" id="map-mode-toggle">
+              <button id="btnMapRadar" class="active" type="button" title="Existing radar terrain map">Radar</button>
+              <button id="btnMapLibre" type="button" title="Geographic MapLibre map">MapLibre</button>
             </div>
             <span class="tool-label" id="label-mesh-res" style="display:none">Mesh</span>
             <div class="seg" id="mesh-res-toggle" style="display:none">
@@ -387,9 +660,42 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             </div>
           </div>
         </div>
+        <div class="radar-stage-body">
         <div class="radar-canvas-container" id="radar-container" style="cursor:grab">
           <canvas id="radar-canvas" aria-label="Live terrain and ground terminal network map"></canvas>
-          <div id="radar-cursor-hud" class="radar-cursor-hud" aria-label="Geographic cursor coordinates and terrain elevation" title="Move cursor over map to inspect coordinates">
+          <div id="maplibre-stage" class="maplibre-stage" aria-label="Geographic MapLibre simulation map">
+            <div id="maplibre-map" style="position:absolute;inset:0"></div>
+            <div id="maplibre-info" class="maplibre-info">Click ACN or a ground node for telemetry.</div>
+            <div id="maplibre-status" class="maplibre-status">MapLibre map is not initialized.</div>
+          </div>
+          <div id="map-node-tooltip" class="map-node-tooltip" role="tooltip" aria-live="polite"></div>
+        <button id="terrain-toolbox-toggle-btn" class="terrain-toolbox-toggle-btn" type="button" title="Terrain Toolbox" aria-label="Terrain Toolbox" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+          <span>Terrain Toolbox</span>
+        </button>
+        <div id="terrain-toolbox-panel" class="terrain-toolbox-panel is-collapsed" aria-label="Terrain toolbox">
+          <div class="terrain-toolbox-row">
+            <strong>Terrain Toolbox</strong>
+            <button id="terrain-fit-btn" type="button" title="Fit active terrain bounds">Best-fit</button>
+            <button id="terrain-zoom-out-btn" type="button" title="Zoom out">−</button>
+            <button id="terrain-zoom-in-btn" type="button" title="Zoom in">+</button>
+            <button id="terrain-toolbox-close-btn" class="btn-close-toolbox" type="button" title="Collapse Terrain Toolbox" aria-label="Collapse Terrain Toolbox">×</button>
+          </div>
+          <div class="terrain-toolbox-row">
+            <button id="terrain-measure-btn" type="button">Measure distance</button>
+            <button id="terrain-measure-clear-btn" type="button">Clear measure</button>
+          </div>
+          <div class="terrain-toolbox-row">
+            <button id="terrain-region-btn" type="button">Draw region</button>
+            <button id="terrain-region-finish-btn" type="button" disabled>Finish</button>
+            <button id="terrain-region-cancel-btn" type="button" disabled>Cancel</button>
+          </div>
+          <div id="terrain-toolbox-status" class="terrain-toolbox-status">Tools ready. Coordinates remain geographic.</div>
+          <div id="terrain-toolbox-regions" class="terrain-toolbox-list" aria-label="Drawn regions"></div>
+        </div>
+        <div id="radar-cursor-hud" class="radar-cursor-hud is-idle" aria-label="Geographic cursor coordinates and terrain elevation" title="Move cursor over map to inspect coordinates">
             <span style="color:#64748b;display:inline-flex;align-items:center;gap:6px;"><span style="width:6px;height:6px;border-radius:50%;background:#475569;"></span>CURSOR: OUTSIDE RADAR MAP</span>
           </div>
           <div id="three-stage-container" class="three-stage-container" style="display:none;position:absolute;inset:0;width:100%;height:100%;overflow:hidden;z-index:2;" aria-hidden="true">
@@ -413,6 +719,16 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <span style="color:#f8fafc">◂◂ Downlink (DL: ACN → Node)</span>
             <span style="color:#38bdf8"><b>TX / RX</b> Active</span>
           </div>
+        </div>
+        <aside id="map-node-details" class="map-node-details is-empty" aria-label="Selected ground node details">
+          <div class="map-node-header">
+            <span class="sec-title">Selected Node</span>
+            <button type="button" class="btn-close-inspector" id="btn-close-node-details" title="Close inspector" aria-label="Close inspector">×</button>
+          </div>
+          <div id="map-node-detail-content" class="map-node-empty">No ground node selected. Select a marker or choose a terminal from Node Inventory.</div>
+          <div class="map-node-actions"><button type="button" data-map-action="edit">Edit / rename</button><button type="button" data-map-action="move">Move on map</button><button type="button" data-map-action="focus">Focus</button><button type="button" data-map-action="performance">Performance</button><button type="button" data-map-action="delete" class="btn-danger">Delete</button></div>
+          <div id="map-node-action-status" class="detail-sub" aria-live="polite"></div>
+        </aside>
         </div>
         <div class="situation-strip"><strong>What's happening</strong><span id="overview-narrative">Simulation active on dedicated WebWorker thread. Evaluating 50 Hz multi-class telemetry...</span></div>
       </div>
@@ -440,6 +756,8 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div class="sec-sub">Pick a situation to simulate. The mode switch changes which scheduler drives the map.</div>
           <div class="run-row">
             <button class="primary" onclick="runKargilScenario()">Run Kargil corridor transit</button>
+            <button onclick="loadPreset('PRESET_16_NODES')">16-Node Patrol</button>
+            <button onclick="loadPreset('PRESET_ACN_ONLY')">ACN Only (0 Nodes)</button>
             <button onclick="loadPreset('PRESET_AMBUSH')">Platoon ambush</button>
             <button onclick="loadPreset('PRESET_MONSOON')">Monsoon, 35 mm/h</button>
             <button onclick="loadPreset('PRESET_RESET')">Reset theater</button>
@@ -738,6 +1056,61 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     </div>
   </section>
 
+  <!-- ===== NETWORK PERFORMANCE ===== -->
+  <section class="tab-content" id="tab-network">
+    <div class="analysis-context" data-context-view="network"><div><span class="context-kicker">Live</span></div><div class="context-meta"><span>Simulation <b data-context-time>--</b></span><span>Frame <b data-context-frame>--</b></span></div></div>
+    <div class="pane network-layout">
+      <div class="pane-head"><h2>Network Performance Dashboard</h2></div>
+      <p class="lede">Compare authoritative link quality, achieved delivery rate, and successfully delivered payload over simulation time. Invalid or disconnected links are excluded from link-quality aggregates.</p>
+      <div class="network-dashboard-grid">
+        <div class="panel network-dashboard-controls">
+          <div class="panel-head"><span class="sec-title">Dashboard view</span><span id="network-dashboard-state" class="kpi-badge badge-emerald">LIVE</span></div>
+          <label>View
+            <select id="network-view-mode" aria-label="Network dashboard view">
+              <option value="individual">Individual nodes</option>
+              <option value="aggregate">Combined network</option>
+            </select>
+          </label>
+          <label>Nodes to compare
+            <select id="network-node-select" multiple aria-label="Nodes to compare"></select>
+          </label>
+          <div class="network-metrics-toggles" aria-label="Toggle metrics">
+            <label><input type="checkbox" id="network-show-snr" checked> Link quality (SNR)</label>
+            <label><input type="checkbox" id="network-show-rate" checked> Achieved data rate</label>
+            <label><input type="checkbox" id="network-show-transferred" checked> Data transferred</label>
+          </div>
+          <label>Time range
+            <select id="network-time-range" aria-label="Network chart time range">
+              <option value="10">Last 10 seconds</option>
+              <option value="30" selected>Last 30 seconds</option>
+              <option value="60">Last 60 seconds</option>
+            </select>
+          </label>
+          <div class="network-control-actions">
+            <button type="button" id="network-pause" class="btn">Pause graph updates</button>
+            <button type="button" id="network-clear" class="btn">Clear history</button>
+          </div>
+          <div id="network-dashboard-empty" class="network-chart-status">Waiting for ground-node telemetry…</div>
+          <p class="inspector-footnote">SNR average is the arithmetic mean of valid connected nodes; minimum SNR is shown separately. Rate uses delivered payload rate, not link capacity. Transferred data is accumulated from positive worker-reported delivered-byte deltas.</p>
+        </div>
+        <div class="network-chart-grid">
+          <div class="network-chart-card" id="network-individual-card"><div class="network-chart-head"><span>Selected node history</span><b id="network-individual-value">--</b></div><canvas id="network-individual-chart" aria-label="Per-node network performance chart"></canvas></div>
+          <div class="network-chart-card" id="network-aggregate-card" style="display:none"><div class="network-chart-head"><span>Combined network history</span><b id="network-aggregate-value">--</b></div><canvas id="network-aggregate-chart" aria-label="Aggregate network performance chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab-content" id="tab-registration">
+    <div class="analysis-context"><div><span class="context-kicker">Live · Worker state</span></div><div class="context-meta"><span>Simulation <b id="registration-sim-time">--</b></span></div></div>
+    <div class="pane"><div class="pane-head"><h2>Ground Node Registration</h2></div>
+      <p class="lede">Association is an explicit simulation abstraction: the ACN accepts requests immediately when a node is created. RF link validity and data transmission remain separate.</p>
+      <div class="registration-summary" id="registration-summary"></div>
+      <div class="panel table-card"><div class="panel-head"><span class="sec-title">Node lifecycle</span></div><div class="table-scroll"><table class="data-table" id="registration-table"><thead><tr><th>Node</th><th>State</th><th>Requested</th><th>Completed</th><th>Elapsed</th><th>RF link</th><th>Communication eligible</th></tr></thead><tbody></tbody></table></div><div id="registration-empty" class="network-chart-status">No ground nodes. Add a node to begin registration.</div></div>
+      <div class="panel table-card" style="margin-top:12px"><div class="panel-head"><span class="sec-title">Recent lifecycle events · simulation time</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Time</th><th>Node</th><th>Event</th></tr></thead><tbody id="registration-events"></tbody></table></div></div>
+    </div>
+  </section>
+
   <!-- ===== TERRAIN & RF ===== -->
   <section class="tab-content" id="tab-terrain">
     <div class="analysis-context" data-context-view="rf"><div><span class="context-kicker">Live</span></div><div class="context-meta"><span>Target <b data-context-node>Syncing…</b></span><span>Simulation <b data-context-time>--</b></span><span>Frame <b data-context-frame>--</b></span><span>Link <b data-context-link>--</b></span></div></div>
@@ -848,7 +1221,18 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <div class="analysis-context" data-context-view="terminal"><div><span class="context-kicker">Live</span></div><div class="context-meta"><span>Target <b data-context-node>Syncing…</b></span><span>Simulation <b data-context-time>--</b></span><span>Frame <b data-context-frame>--</b></span><span>Link <b data-context-link>--</b></span></div></div>
     <div class="pane terminal-layout">
       <div class="pane-head"><h2>Terminals</h2></div>
-      <p class="lede">Choose a terminal, see what is waiting in its queues, and inject traffic to watch it travel, get blocked, or arrive.</p>
+      <p class="lede">Choose a terminal, inspect queues, monitor communication flows, and track authoritative data transfer statistics across the aerial constellation.</p>
+      <div class="terminal-subnav-bar">
+        <button id="btn-subtab-inventory" class="btn active" type="button" onclick="switchTerminalSubtab('inventory')">
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" style="vertical-align:middle;margin-right:5px;"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+          Terminal Inventory &amp; Queues
+        </button>
+        <button id="btn-subtab-traffic" class="btn" type="button" onclick="switchTerminalSubtab('traffic')">
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" style="vertical-align:middle;margin-right:5px;"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Network Traffic &amp; Flow Inventory
+        </button>
+      </div>
+      <div id="terminal-subtab-view-inventory" class="terminal-subtab-view">
       <div class="cols">
         <div class="panel">
           <div class="panel-head"><span class="sec-title">Queues and traffic</span><span id="term-state-pill" class="kpi-badge badge-neutral">UNKNOWN</span></div>
@@ -938,6 +1322,26 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <label style="display:block;font-size:11px;color:var(--muted)">Antenna AGL (m)</label>
               <input type="number" id="node-input-agl" value="2.0" step="0.5" min="0" max="1000" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
             </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Tx Power (dBm)</label>
+              <input type="number" id="node-input-tx-power" value="36.0" step="0.5" min="10" max="50" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Battery Cap (mAh)</label>
+              <input type="number" id="node-input-battery-capacity" value="5000" step="500" min="100" max="500000" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Battery Level (%)</label>
+              <input type="number" id="node-input-battery-level" value="100" step="1" min="0" max="100" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Tactical Priority</label>
+              <input type="number" id="node-input-priority" value="1.0" step="0.1" min="0.1" max="5.0" style="width:100%;padding:4px 6px;font-size:12px;background:var(--bg);border:1px solid var(--line);color:inherit;border-radius:4px" />
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted)">Node Colour</label>
+              <input type="color" id="node-input-color" value="#38bdf8" style="width:100%;height:29px;padding:1px 2px;background:var(--bg);border:1px solid var(--line);border-radius:4px;cursor:pointer" />
+            </div>
           </div>
           <div style="display:flex;gap:8px">
             <button id="btn-node-submit" class="btn btn-primary" style="padding:4px 12px;font-size:11.5px">Save Node</button>
@@ -951,6 +1355,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <th>ID</th>
                 <th>Callsign</th>
                 <th>Tactical role</th>
+                <th>Tx Pwr</th>
+                <th>Battery</th>
+                <th>Priority</th>
                 <th>Latitude</th>
                 <th>Longitude</th>
                 <th>Coord X (m)</th>
@@ -965,6 +1372,218 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <!-- Dynamically populated from authoritative nodes_telemetry -->
             </tbody>
           </table>
+        </div>
+      </div>
+      </div> <!-- end terminal-subtab-view-inventory -->
+
+      <!-- NETWORK TRAFFIC INVENTORY VIEW -->
+      <div id="terminal-subtab-view-traffic" class="terminal-subtab-view" style="display:none">
+        <!-- 1. Combined Network Summary -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <span class="sec-title">Network Aggregate Traffic Summary</span>
+              <span class="badge-sub">Live simulation data transfer metrics</span>
+            </div>
+            <span class="kpi-badge badge-cyan" id="traffic-agg-phase">TDMA SUPERFRAME ACTIVE</span>
+          </div>
+          <div class="traffic-summary-grid">
+            <div class="traffic-stat-card">
+              <span>Total Data Sent</span>
+              <b id="traffic-agg-tx">0.00 KB</b>
+              <small>Transmitted payload</small>
+            </div>
+            <div class="traffic-stat-card">
+              <span>Total Data Received</span>
+              <b id="traffic-agg-rx">0.00 KB</b>
+              <small>Delivered payload</small>
+            </div>
+            <div class="traffic-stat-card">
+              <span>Uplink Throughput</span>
+              <b id="traffic-agg-ul-rate">0.00 Mbps</b>
+              <small>Achieved goodput</small>
+            </div>
+            <div class="traffic-stat-card">
+              <span>Downlink Throughput</span>
+              <b id="traffic-agg-dl-rate">0.00 Mbps</b>
+              <small>Broadcast throughput</small>
+            </div>
+            <div class="traffic-stat-card">
+              <span>Active Comms Links</span>
+              <b id="traffic-agg-links">0 / 0</b>
+              <small>In Line-of-Sight</small>
+            </div>
+            <div class="traffic-stat-card">
+              <span>Deliveries</span>
+              <b id="traffic-agg-deliveries">0</b>
+              <small>Completed transfers</small>
+            </div>
+            <div class="traffic-stat-card">
+              <span>Packets Lost</span>
+              <b id="traffic-agg-lost">0</b>
+              <small>Queue / shadow drops</small>
+            </div>
+            <div class="traffic-stat-card">
+              <span>Network SNR (Avg/Min)</span>
+              <b id="traffic-agg-snr">—</b>
+              <small id="traffic-agg-min-snr">Min: —</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Per-Node Traffic Summary & Flow Visualization -->
+        <div class="cols">
+          <!-- Per-Node Summary -->
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <span class="sec-title">Per-Node Traffic Summary</span>
+                <span id="traffic-node-role-badge" class="badge-sub">Recon Patrol (Occlusion Target)</span>
+              </div>
+              <span id="traffic-node-status-badge" class="kpi-badge badge-neutral">UNKNOWN</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+              <label for="traffic-node-select" style="font-size:11.5px;color:var(--muted);font-weight:600">Select Node:</label>
+              <select id="traffic-node-select" onchange="onTrafficNodeSelectChange(this.value)" style="flex:1;min-width:160px;padding:4px 8px;font-size:11.5px;background:var(--ink);border:1px solid var(--line);color:var(--text);border-radius:4px">
+                <option value="4" selected>Node 4: S4</option>
+              </select>
+            </div>
+            <div class="traffic-node-grid">
+              <div class="traffic-stat-card">
+                <span>Transmitted Data</span>
+                <b id="traffic-node-tx">0.00 KB</b>
+                <small>Uplink payload</small>
+              </div>
+              <div class="traffic-stat-card">
+                <span>Received Data</span>
+                <b id="traffic-node-rx">0.00 KB</b>
+                <small>Downlink payload</small>
+              </div>
+              <div class="traffic-stat-card">
+                <span>Upload Rate</span>
+                <b id="traffic-node-ul-rate">0.00 Mbps</b>
+                <small>Achieved uplink</small>
+              </div>
+              <div class="traffic-stat-card">
+                <span>Download Rate</span>
+                <b id="traffic-node-dl-rate">0.00 Mbps</b>
+                <small>Achieved downlink</small>
+              </div>
+              <div class="traffic-stat-card">
+                <span>Completed Deliveries</span>
+                <b id="traffic-node-deliveries">0</b>
+                <small>ACK acknowledged</small>
+              </div>
+              <div class="traffic-stat-card">
+                <span>Link Quality (SNR)</span>
+                <b id="traffic-node-snr">—</b>
+                <small id="traffic-node-modcod">MODCOD: —</small>
+              </div>
+              <div class="traffic-stat-card">
+                <span>Comms Availability</span>
+                <b id="traffic-node-availability">100.0%</b>
+                <small>Link uptime</small>
+              </div>
+              <div class="traffic-stat-card">
+                <span>Active Comms Link</span>
+                <b id="traffic-node-links">1</b>
+                <small>Channels online</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Flow Visualization Card -->
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <span class="sec-title">Communication Flow Architecture</span>
+                <span class="badge-sub">Ground Node → ACN Relay → Ground Terminals</span>
+              </div>
+              <span id="traffic-flow-mode-badge" class="kpi-badge badge-neutral">STANDBY</span>
+            </div>
+            <div class="traffic-flow-diagram">
+              <div class="traffic-flow-node" id="flow-node-source">
+                <strong id="flow-node-source-title">Node 4 [S4]</strong>
+                <small id="flow-node-source-role">Recon Patrol</small>
+                <span id="flow-node-source-rate" class="direction-badge uplink">UL: 0.00 Mbps</span>
+              </div>
+              <div class="traffic-flow-link">
+                <span class="traffic-flow-label" id="flow-uplink-label">▸▸ Uplink (UL)</span>
+                <div class="traffic-flow-line is-active" id="flow-uplink-line"></div>
+                <span class="traffic-flow-label" id="flow-uplink-snr">SNR: —</span>
+              </div>
+              <div class="traffic-flow-node" id="flow-node-relay">
+                <strong>ACN Relay</strong>
+                <small>FL500 Orbit</small>
+                <span class="kpi-badge badge-cyan" id="flow-acn-role">RX / TX RELAY</span>
+              </div>
+              <div class="traffic-flow-link">
+                <span class="traffic-flow-label" id="flow-downlink-label">◂◂ Downlink (DL)</span>
+                <div class="traffic-flow-line is-active" id="flow-downlink-line"></div>
+                <span class="traffic-flow-label" id="flow-downlink-status">3.0 ms Broadcast</span>
+              </div>
+              <div class="traffic-flow-node" id="flow-node-dest">
+                <strong>Ground Terminals</strong>
+                <small id="flow-dest-count">16 Registered</small>
+                <span class="direction-badge downlink">DL: Broadcast</span>
+              </div>
+            </div>
+            <div id="traffic-flow-narrative" class="muted" style="font-size:11.5px;line-height:1.5">
+              Ground terminal transmits queued QoS payload uplink to ACN Relay during scheduled TDMA slot. ACN coordinates synchronization and broadcasts downlink subframe to all ground terminals within line of sight.
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Network Traffic Inventory Table -->
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-head">
+            <div>
+              <span class="sec-title">Communication Flow &amp; Data Transfer Inventory</span>
+              <span id="traffic-table-count" class="badge-sub">17 active communication flows</span>
+            </div>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin-bottom:10px">
+            Detailed communication flows between ACN Airborne Relay and ground nodes. Displays verified transmitted/delivered payload, data rate, link quality, and packet statistics derived from authoritative simulation worker telemetry.
+          </p>
+          <div class="traffic-filters-bar">
+            <input id="traffic-search-input" type="search" placeholder="Search flows by node ID, callsign, role, or destination…" aria-label="Search traffic flows" oninput="onTrafficFilterChange()">
+            <select id="traffic-direction-filter" aria-label="Filter by direction" onchange="onTrafficFilterChange()">
+              <option value="all">All Directions</option>
+              <option value="Uplink">Uplink Only (Node → ACN)</option>
+              <option value="Downlink">Downlink Only (ACN → Nodes)</option>
+            </select>
+            <select id="traffic-status-filter" aria-label="Filter by link status" onchange="onTrafficFilterChange()">
+              <option value="all">All Link Statuses</option>
+              <option value="CONNECTED">Connected</option>
+              <option value="DEGRADED">Degraded</option>
+              <option value="BLOCKED">Blocked (Terrain / Obstacle)</option>
+              <option value="OUTAGE">Outage</option>
+            </select>
+            <button type="button" class="btn" onclick="resetTrafficFilters()">Reset Filters</button>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="network-traffic-table">
+              <thead>
+                <tr>
+                  <th onclick="sortTrafficTable('fromName')">From</th>
+                  <th onclick="sortTrafficTable('dataSentBytes')">Data Sent</th>
+                  <th onclick="sortTrafficTable('toName')">To</th>
+                  <th onclick="sortTrafficTable('dataReceivedBytes')">Data Received</th>
+                  <th onclick="sortTrafficTable('direction')">Direction</th>
+                  <th onclick="sortTrafficTable('dataRateMbps')">Data Rate</th>
+                  <th onclick="sortTrafficTable('snrDb')">SNR</th>
+                  <th onclick="sortTrafficTable('linkStatus')">Link Status</th>
+                  <th onclick="sortTrafficTable('packetsSent')">Packets Sent</th>
+                  <th onclick="sortTrafficTable('packetsReceived')">Packets Received</th>
+                  <th onclick="sortTrafficTable('packetsLost')">Packets Lost</th>
+                  <th onclick="sortTrafficTable('lastActivitySimTimeS')">Last Activity</th>
+                </tr>
+              </thead>
+              <tbody id="network-traffic-tbody">
+                <!-- Dynamically populated from authoritative NetworkTrafficTracker -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -1297,15 +1916,20 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
 <div id="upload-modal" class="modal-backdrop" hidden>
   <div class="modal-card" role="dialog" aria-modal="true" aria-label="Upload custom terrain">
-    <div class="modal-header"><h3>Upload custom terrain (DEM)</h3><button class="modal-close-btn" onclick="closeUploadModal()" aria-label="Close">&times;</button></div>
+    <div class="modal-header"><h3>Upload custom terrain (DEM / SRTM)</h3><button class="modal-close-btn" onclick="closeUploadModal()" aria-label="Close">&times;</button></div>
     <div class="modal-body">
       <div id="dropzone" class="dropzone" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDropFile(event)">
-        <input type="file" id="terrainFileInput" accept=".png,.jpg,.jpeg,.csv" style="display:none" onchange="onFileSelected(this.files[0])">
-        <div class="drop-text">Drop a terrain heightmap here (.png or .jpg)</div>
-        <div class="drop-sub">Image heightmaps scale automatically to 2500–6000 m MSL</div>
-        <button type="button" onclick="document.getElementById('terrainFileInput').click()" style="margin-top:12px">Browse files</button>
+        <input type="file" id="terrainFileInput" accept=".hgt,.png,.jpg,.jpeg,.bin" style="display:none" onchange="onFileSelected(this.files[0])">
+        <input type="file" id="terrainFolderInput" webkitdirectory directory multiple style="display:none" onchange="onFolderSelected(this.files)">
+        <div class="drop-text">Drop an SRTM (.hgt) file, heightmap (.png/.jpg), or folder here</div>
+        <div class="drop-sub">Single files or multi-tile folder with neighbour stitching & patch streaming</div>
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+          <button type="button" onclick="document.getElementById('terrainFileInput').click()">Browse single file</button>
+          <button type="button" class="btn-primary" onclick="document.getElementById('terrainFolderInput').click()" style="background:#2563eb;color:#fff;border:none">Select HGT folder…</button>
+        </div>
       </div>
       <div id="upload-status" class="upload-status-box" style="display:none"></div>
+      <div id="folder-patch-controls" style="display:none;margin-top:12px;padding:12px;background:rgba(15,23,42,0.85);border:1px solid #334155;border-radius:6px;font-size:12px"></div>
     </div>
   </div>
 </div>
@@ -1366,7 +1990,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     return ev}
   const NW=window.Worker,setter=Object.getOwnPropertyDescriptor(NW.prototype,'onmessage').set;
   window.Worker=class extends NW{
-    constructor(...a){super(...a);window.__xbandWorker=this;let h=null;const self=this;
+    constructor(...a){super(...a);const source=String(a[0]||'');if(!source.includes('simWorker'))return;window.__xbandWorker=this;let h=null;const self=this;
       Object.defineProperty(this,'onmessage',{configurable:true,get:()=>h,set(fn){h=fn;setter.call(self,fn?ev=>fn.call(self,enhance(ev)):null)}})}};
 })();
 
@@ -1380,12 +2004,12 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   $('btn-help')?.addEventListener('click',()=>{window.switchMainTab('tab-overview');welcome.hidden=false;welcome.scrollIntoView({block:'nearest'})});
   const ex=$('btn-expert');
   ex?.addEventListener('click',()=>{const on=ex.classList.toggle('active');ex.setAttribute('aria-pressed',String(on));document.querySelectorAll('details[data-adv]').forEach(d=>d.open=on)});
-  const tabs=['overview','scheduler','terrain','terminal','doc'];
+  const tabs=['overview','scheduler','network','terrain','terminal','doc'];
   document.addEventListener('keydown',e=>{
     if(e.ctrlKey||e.metaKey||e.altKey) return;
     if(e.key==='Escape') return window.closeUploadModal&&window.closeUploadModal();
     if(e.target.closest&&e.target.closest('input,select,textarea,button,[contenteditable]')) return;
-    if(/^[1-5]$/.test(e.key)) window.switchMainTab('tab-'+tabs[e.key-1]);
+    if(/^[1-6]$/.test(e.key)) window.switchMainTab('tab-'+tabs[e.key-1]);
     else if(e.key===' '){e.preventDefault();window.togglePause()}
     else if(e.key==='.') window.stepSim();
   });
@@ -1393,6 +2017,20 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 </script>
 
 <script type="module">
+import { parseHgtBuffer, decodeHgtBuffer } from './src/core/hgtParser.ts';
+import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl';
+import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import {
+  buildTileCatalog,
+  clusterNeighbouringTiles,
+  selectActivePatch,
+  stitchHgtTiles,
+  DecodedTileCache,
+  DEFAULT_MAX_ACTIVE_TILES,
+  DEFAULT_LRU_CACHE_CAPACITY,
+} from './src/core/hgtMosaic.ts';
+import { REAL_LADAKH_DEM_METADATA } from './src/core/terrain.ts';
 import { MAX_ACN_WAYPOINTS } from './src/core/config.ts';
 import { parseEditorNumber, TrajectoryEditorState } from './src/ui/trajectoryEditorState.ts';
 import { obstacleContainsPoint, obstacleFootprintPoints } from './src/core/obstacles.ts';
@@ -1419,6 +2057,11 @@ import {
   validateNodeCoordinates,
   validateNodeAglHeight,
   validateNodeCallsign,
+  validateNodeTxPower,
+  validateNodeBatteryCapacity,
+  validateNodeBatteryLevel,
+  validateNodeTacticalPriority,
+  validateNodeColorHex,
 } from './src/ui/nodeInventory.ts';
 import {
   validateNodeAgl,
@@ -1445,6 +2088,7 @@ import {
   renderDemCoverageBoundary,
 } from './src/ui/terrainMapRenderer.ts';
 import { TerrainEngine } from './src/core/terrain.ts';
+import { cartesianToGeodetic, geodeticToCartesian } from './src/core/geodesy.ts';
 import {
   computeRadarCursorReadout,
   renderCursorHudHtml,
@@ -1456,9 +2100,228 @@ import {
   resolveSuperframeTimeline,
   resolveActiveTdmaSlotState,
 } from './src/ui/dataCommVisualization.ts';
+import {
+  NetworkPerformanceHistory,
+  aggregateNetworkSample,
+} from './src/ui/networkPerformanceDashboard.ts';
+import {
+  NetworkTrafficTracker,
+  formatTrafficBytes,
+  formatTrafficRate,
+  formatTrafficSimTime,
+  formatTrafficSnr,
+  getTrafficStatusBadge,
+} from './src/ui/networkTrafficInventory.ts';
 
 const dataCommVisualizer = new DataCommVisualizer();
+const networkPerformanceHistory = new NetworkPerformanceHistory(600, 5);
+let networkGraphUpdatesEnabled = true;
+let networkNodeNames = new Map();
+let networkNodeOptionsSignature = '';
+let networkLastRenderTime = 0;
 
+function networkCanvasContext(id) {
+  const canvas = $(id);
+  if (!canvas) return null;
+  const rect = canvas.getBoundingClientRect();
+  const ratio = Math.max(1, window.devicePixelRatio || 1);
+  const width = Math.max(280, Math.round(rect.width || canvas.parentElement?.clientWidth || 640));
+  const height = Math.max(220, Math.round(rect.height || 360));
+  if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+  }
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  return { ctx, width, height };
+}
+
+function networkDrawMetric(ctx, values, label, unit, colorFor, yOffset, height, width, minOverride = null, maxOverride = null) {
+  const left = 68, right = 16, top = yOffset + 22, bottom = yOffset + height - 14;
+  const plotWidth = Math.max(20, width - left - right);
+  const finiteValues = values.flatMap(item => item.values.filter(Number.isFinite));
+  let min = minOverride ?? (finiteValues.length ? Math.min(...finiteValues) : 0);
+  let max = maxOverride ?? (finiteValues.length ? Math.max(...finiteValues) : 1);
+  if (max <= min) { const pad = Math.max(1, Math.abs(max) * 0.05); min -= pad; max += pad; }
+
+  if (yOffset > 0) {
+    ctx.strokeStyle = '#1a2430';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left, yOffset);
+    ctx.lineTo(width - right, yOffset);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '600 11px system-ui, -apple-system, sans-serif';
+  ctx.fillText(label, 6, yOffset + 13);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.fillText(`${max.toFixed(1)} ${unit}`, 6, top + 3);
+  ctx.fillText(`${min.toFixed(1)} ${unit}`, 6, bottom + 1);
+
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(width - right, top);
+  ctx.lineTo(width - right, bottom);
+  ctx.lineTo(left, bottom);
+  ctx.closePath();
+  ctx.stroke();
+
+  const mid = (top + bottom) / 2;
+  ctx.strokeStyle = '#16202c';
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  ctx.moveTo(left, mid);
+  ctx.lineTo(width - right, mid);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  for (const series of values) {
+    ctx.strokeStyle = colorFor(series.key);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let started = false;
+    series.values.forEach((value, index) => {
+      if (!Number.isFinite(value)) { started = false; return; }
+      const x = left + (series.values.length <= 1 ? 0 : (index / (series.values.length - 1)) * plotWidth);
+      const y = bottom - ((value - min) / (max - min)) * (bottom - top);
+      if (!started) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      started = true;
+    });
+    ctx.stroke();
+  }
+}
+
+function networkVisibleSamples() {
+  const samples = networkPerformanceHistory.getSamples();
+  const range = Number($('network-time-range')?.value || 30);
+  const newest = samples.length ? samples[samples.length - 1].simulationTimeS : 0;
+  return samples.filter(sample => sample.simulationTimeS >= newest - range);
+}
+
+function drawNetworkCharts() {
+  const samples = networkVisibleSamples();
+  const selected = new Set(Array.from($('network-node-select')?.selectedOptions || []).map(option => Number(option.value)));
+  const individualCard = $('network-individual-card');
+  const aggregateCard = $('network-aggregate-card');
+  const mode = $('network-view-mode')?.value || 'individual';
+  if (individualCard) individualCard.style.display = mode === 'individual' ? '' : 'none';
+  if (aggregateCard) aggregateCard.style.display = mode === 'aggregate' ? '' : 'none';
+  const empty = $('network-dashboard-empty');
+  if (empty) empty.textContent = samples.length && selected.size ? `${selected.size} node${selected.size === 1 ? '' : 's'} selected · ${samples.length} samples` : 'Select one or more ground nodes to compare performance.';
+
+  const individualCanvas = networkCanvasContext('network-individual-chart');
+  if (individualCanvas && mode === 'individual') {
+    const ids = [...selected];
+    const colors = ['#38bdf8', '#10b981', '#f59e0b', '#f472b6', '#a78bfa', '#fb923c'];
+    const make = key => ids.map((id, index) => ({
+      key: id,
+      values: samples.map(sample => {
+        const node = sample.nodes.find(item => item.nodeId === id);
+        if (!node) return NaN;
+        if (key === 'snr') return node.linkValid ? (node.snrDb ?? NaN) : NaN;
+        if (key === 'rate') return node.rateMbps;
+        return node.transferredMb;
+      }),
+    }));
+    individualCanvas.ctx.clearRect(0, 0, individualCanvas.width, individualCanvas.height);
+    individualCanvas.ctx.fillStyle = '#0b1015'; individualCanvas.ctx.fillRect(0, 0, individualCanvas.width, individualCanvas.height);
+    const enabled = [
+      [$('network-show-snr')?.checked, 'snr', 'SNR', 'dB'],
+      [$('network-show-rate')?.checked, 'rate', 'Rate', 'Mbps'],
+      [$('network-show-transferred')?.checked, 'transferred', 'Transferred', 'MB'],
+    ].filter(item => item[0]);
+    const rowHeight = enabled.length ? individualCanvas.height / enabled.length : individualCanvas.height;
+    enabled.forEach((item, index) => networkDrawMetric(individualCanvas.ctx, make(item[1]), item[2], item[3], id => colors[ids.indexOf(id) % colors.length], index * rowHeight, rowHeight, individualCanvas.width));
+    const legend = ids.map((id, index) => `${networkNodeNames.get(id) || `Node ${id}`} (${colors[index % colors.length]})`).join(' · ');
+    setText('network-individual-value', legend || 'No nodes selected');
+  }
+
+  const aggregateCanvas = networkCanvasContext('network-aggregate-chart');
+  if (aggregateCanvas && mode === 'aggregate') {
+    const aggregates = samples.map(aggregateNetworkSample);
+    aggregateCanvas.ctx.clearRect(0, 0, aggregateCanvas.width, aggregateCanvas.height);
+    aggregateCanvas.ctx.fillStyle = '#0b1015'; aggregateCanvas.ctx.fillRect(0, 0, aggregateCanvas.width, aggregateCanvas.height);
+    const enabled = [
+      [$('network-show-snr')?.checked, 'snr', 'SNR avg / min', 'dB'],
+      [$('network-show-rate')?.checked, 'rate', 'Total rate', 'Mbps'],
+      [$('network-show-transferred')?.checked, 'transferred', 'Total transferred', 'MB'],
+    ].filter(item => item[0]);
+    const rowHeight = enabled.length ? aggregateCanvas.height / enabled.length : aggregateCanvas.height;
+    enabled.forEach((item, index) => {
+      const series = item[1] === 'snr'
+        ? [{ key: 'avg', values: aggregates.map(value => value.averageSnrDb ?? NaN) }, { key: 'min', values: aggregates.map(value => value.minimumSnrDb ?? NaN) }]
+        : [{ key: item[1], values: aggregates.map(value => item[1] === 'rate' ? value.totalRateMbps : value.totalTransferredMb) }];
+      networkDrawMetric(aggregateCanvas.ctx, series, item[2], item[3], key => key === 'min' ? '#ef4444' : '#38bdf8', index * rowHeight, rowHeight, aggregateCanvas.width);
+    });
+    const last = aggregates[aggregates.length - 1];
+    setText('network-aggregate-value', last ? `${last.validLinkCount} valid links · ${last.totalRateMbps.toFixed(2)} Mbps` : 'No network samples');
+  }
+}
+
+function updateNetworkNodeOptions(nodes) {
+  const select = $('network-node-select');
+  if (!select) return;
+  const signature = nodes.map(node => `${node.node_id}:${node.name || ''}:${node.link_outage === false ? 'up' : 'down'}`).join('|');
+  if (signature === networkNodeOptionsSignature) return;
+  networkNodeOptionsSignature = signature;
+  const selected = new Set(Array.from(select.selectedOptions).map(option => Number(option.value)));
+  const ids = nodes.map(node => node.node_id);
+  select.replaceChildren(...nodes.map(node => {
+    networkNodeNames.set(node.node_id, node.name || `Node ${node.node_id}`);
+    const option = document.createElement('option');
+    option.value = String(node.node_id);
+    option.textContent = `${node.name || `Node ${node.node_id}`} · ${node.link_outage === false ? 'connected' : 'disconnected'}`;
+    option.selected = selected.size ? selected.has(node.node_id) : ids.indexOf(node.node_id) < 3;
+    return option;
+  }));
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('node') && selectedNodeId === -1) {
+    const nid = Number(urlParams.get('node'));
+    if (nodes.some(n => n.node_id === nid)) {
+      handleNodeSelection(nid);
+    }
+  }
+}
+
+function ingestNetworkPerformance(frame) {
+  const nodes = Array.isArray(frame?.nodes_telemetry) ? frame.nodes_telemetry : [];
+  updateNetworkNodeOptions(nodes);
+  const sample = networkPerformanceHistory.ingest({
+    frameIndex: Number(frame?.frame_index ?? 0),
+    simulationTimeS: Number(frame?.sim_time_s ?? 0),
+    nodes,
+  }, networkGraphUpdatesEnabled);
+  if (sample && (sample.simulationTimeS - networkLastRenderTime >= 0.1 || document.visibilityState !== 'visible')) {
+    networkLastRenderTime = sample.simulationTimeS;
+    drawNetworkCharts();
+  }
+}
+
+function setupNetworkDashboard() {
+  ['network-view-mode', 'network-node-select', 'network-time-range', 'network-show-snr', 'network-show-rate', 'network-show-transferred'].forEach(id => {
+    $(id)?.addEventListener('change', drawNetworkCharts);
+  });
+  $('network-pause')?.addEventListener('click', () => {
+    networkGraphUpdatesEnabled = !networkGraphUpdatesEnabled;
+    const button = $('network-pause');
+    if (button) button.textContent = networkGraphUpdatesEnabled ? 'Pause graph updates' : 'Resume graph updates';
+    setText('network-dashboard-state', networkGraphUpdatesEnabled ? 'LIVE' : 'PAUSED');
+    drawNetworkCharts();
+  });
+  $('network-clear')?.addEventListener('click', () => {
+    networkPerformanceHistory.clear();
+    networkLastRenderTime = 0;
+    drawNetworkCharts();
+  });
+  window.addEventListener('resize', drawNetworkCharts);
+}
 function updateStepControlUI(enabled) {
   const btn = $('btn-step');
   if (!btn) return;
@@ -1510,6 +2373,7 @@ dataCommVisualizer.setOnSteppedCycleComplete(() => {
    CLIENT-SIDE WEBWORKER & RENDERING CONTROLLER
    ==================================================================== */
 const $ = id => document.getElementById(id);
+setupNetworkDashboard();
 
 // Keep the original radar stage mounted for the lifetime of the application.
 const persistentMapMount = $('persistent-map-mount');
@@ -1572,8 +2436,12 @@ const TAU = Math.PI * 2;
 let THEATER_RADIUS_M = 300000;
 
 let isPaused = false;
-let selectedNodeId = 4;
+let selectedNodeId = -1;
+let inspectorDismissed = false;
 let hoveredNodeId = null;
+let hoveredLinkNodeId = null;
+let mapHoverPoint = null;
+let activeMapHoverRenderer = null;
 let draggedEntity = null;
 let lastMoveSendTime = 0;
 let hillshadeCanvas = null;
@@ -1583,9 +2451,27 @@ let panOffsetY_m = 0;
 let isPanning = false;
 let panStartX = 0;
 let panStartY = 0;
+let terrainToolMode = 'idle';
+let terrainMeasurement = null;
+let terrainRegionDraft = [];
+let terrainRegions = [];
+let nextTerrainRegionId = 1;
 let activeSchedulerMode = 'tac_tad';
 let activeTerrainMode = 'real';
 let activeTerrainBounds = null;
+let pendingTerrainCenteringBounds = null;
+let terrainMapMode = 'radar';
+let mapLibreInstance = null;
+let mapLibreInitialized = false;
+let mapLibreErrorShown = false;
+let mapLibreSelectionMessage = 'Click ACN or a ground node for telemetry.';
+let mapLibreTravelledPath = [];
+let mapLibreTerrainRaster = null;
+let mapLibreTerrainVisible = true;
+let mapLibreTerrainOpacity = 0.55;
+let mapLibreTerrainMode = 'relief';
+let mapLibreToolHandlersReady = false;
+let mapLibreNodeDrag = null;
 let spatialLocked = false;
 const trajectoryEditor = new TrajectoryEditorState();
 const obstacleEditor = new ObstacleEditorState();
@@ -1621,12 +2507,15 @@ function updateRadarCursorReadout(xM, yM, isInside) {
   if (!hudEl) return;
 
   if (!isInside) {
+    hudEl.classList.add('is-idle');
     if (!lastInsideRadar) return;
     lastInsideRadar = false;
     hudEl.innerHTML = renderCursorHudHtml(computeRadarCursorReadout({ xM: 0, yM: 0, isInsideRadar: false }));
     hudEl.title = 'Move pointer over radar map to inspect coordinates';
     return;
   }
+
+  hudEl.classList.remove('is-idle');
 
   if (lastInsideRadar && Math.abs(xM - lastReadoutX) < 1 && Math.abs(yM - lastReadoutY) < 1) {
     return;
@@ -2477,6 +3366,122 @@ function drawBacklogChart(canvas, records, inspectedFrame, targetNodeId) {
   setText('chart-backlog-label', `${targetLabel} backlog & drops`);
 }
 
+function renderRegistration(frame) {
+  if (!frame) return;
+  const nodes = frame.nodes_telemetry || [];
+  const states = nodes.map(n => n.registration_state || 'UNREGISTERED');
+  const registered = states.filter(s => s === 'REGISTERED').length;
+  const pending = states.filter(s => s === 'REQUESTING' || s === 'AUTHENTICATING').length;
+  const exceptional = states.filter(s => s === 'REJECTED' || s === 'LOST').length;
+  const pct = nodes.length ? Math.round(registered / nodes.length * 100) : 0;
+  const summary = document.getElementById('registration-summary');
+  if (summary) summary.innerHTML = `<div class="panel"><b>${nodes.length}</b><span>Total nodes</span></div><div class="panel"><b>${registered}</b><span>Registered</span></div><div class="panel"><b>${pending}</b><span>Pending</span></div><div class="panel"><b>${exceptional}</b><span>Rejected / lost</span></div><div class="panel"><b>${pct}%</b><span>Success</span></div>`;
+  const body = document.querySelector('#registration-table tbody');
+  if (body) body.innerHTML = nodes.map(n => `<tr><td>${n.name || `Node ${n.node_id}`}</td><td>${n.registration_state || 'UNREGISTERED'}</td><td>${n.registration_start_time_s == null ? '—' : `${Number(n.registration_start_time_s).toFixed(2)} s`}</td><td>${n.registration_completion_time_s == null ? '—' : `${Number(n.registration_completion_time_s).toFixed(2)} s`}</td><td>${n.registration_elapsed_s == null ? '—' : `${Number(n.registration_elapsed_s).toFixed(2)} s`}</td><td>${n.link_outage ? 'RF outage' : 'RF available'}</td><td>${n.communication_eligible ? 'Association eligible' : 'No'}</td></tr>`).join('');
+  const empty = document.getElementById('registration-empty');
+  if (empty) empty.style.display = nodes.length ? 'none' : 'block';
+  const time = document.getElementById('registration-sim-time');
+  if (time) time.textContent = `${Number(frame.sim_time_s || 0).toFixed(2)} s`;
+  const eventBody = document.getElementById('registration-events');
+  if (eventBody) eventBody.innerHTML = (frame.registration_telemetry?.events || []).slice(-100).reverse().map(e => `<tr><td>${Number(e.sim_time_s).toFixed(2)} s</td><td>${e.node_id}</td><td>${e.state}</td></tr>`).join('');
+}
+
+function mapField(value, digits = 1, unit = '') {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(digits)}${unit}` : 'Unavailable';
+}
+function mapEscape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+function nodeLinkLabel(node) {
+  if (!node) return 'Unavailable';
+  if (node.link_outage) return 'RF OUTAGE';
+  if (node.obstacle_blocked || node.terrain_is_los === false) return 'BLOCKED';
+  return node.is_transmitting ? 'TRANSMITTING' : 'AVAILABLE';
+}
+function nodeAchievedRate(node) {
+  const rate = node?.transfer_state?.current_rate_mbps;
+  return typeof rate === 'number' && Number.isFinite(rate) ? `${rate.toFixed(2)} Mbps` : 'Unavailable';
+}
+function renderNodeHoverTooltip(nodeId, point, kind = 'node') {
+  const tooltip = $('map-node-tooltip');
+  const node = latestTelemetry?.nodes_telemetry?.find(item => item.node_id === nodeId);
+  if (!tooltip || !node || !point) { if (tooltip) tooltip.style.display = 'none'; return; }
+  const name = node.name || `Node ${node.node_id}`;
+  const latLon = typeof node.lat_deg === 'number' && Number.isFinite(node.lat_deg) && typeof node.lon_deg === 'number' && Number.isFinite(node.lon_deg)
+    ? `${node.lat_deg.toFixed(5)}°, ${node.lon_deg.toFixed(5)}°` : 'Unavailable';
+  const queue = typeof node.total_backlog_bytes === 'number' && Number.isFinite(node.total_backlog_bytes)
+    ? `${(node.total_backlog_bytes / 1024).toFixed(1)} KB queued` : 'Unavailable';
+  const link = nodeLinkLabel(node);
+  const title = kind === 'link' ? `ACN → ${name} · Communication link` : `${name} · Node ${node.node_id}`;
+  tooltip.innerHTML = `<div class="tip-title">${mapEscape(title)}</div><div class="tip-row">${kind === 'node' ? `Position <b>${mapEscape(latLon)}</b> · AGL <b>${mapEscape(mapField(node.agl_m, 1, ' m'))}</b>` : `State <b>${mapEscape(link)}</b> · SNR <b>${mapEscape(mapField(node.snr_db, 1, ' dB'))}</b>`}</div><div class="tip-row">Registration <b>${mapEscape(node.registration_state || 'Unavailable')}</b> · RF <b>${mapEscape(link)}</b></div><div class="tip-row">SNR <b>${mapEscape(mapField(node.snr_db, 1, ' dB'))}</b> · Achieved rate <b>${mapEscape(nodeAchievedRate(node))}</b></div><div class="tip-row">Queue <b>${mapEscape(queue)}</b>${typeof node.battery_level_pct === 'number' && Number.isFinite(node.battery_level_pct) ? ` · Battery <b>${mapEscape(mapField(node.battery_level_pct, 1, '%'))}</b>` : ''}</div>`;
+  tooltip.style.display = 'block';
+  const parent = $('radar-container');
+  if (!parent) return;
+  const bounds = parent.getBoundingClientRect();
+  let left = point.x + 18;
+  if (left + tooltip.offsetWidth > bounds.width - 8) left = point.x - tooltip.offsetWidth - 18;
+  left = Math.max(8, Math.min(bounds.width - tooltip.offsetWidth - 8, left));
+  let top = point.y - tooltip.offsetHeight - 16;
+  if (top < 8) top = point.y + 18;
+  top = Math.max(8, Math.min(bounds.height - tooltip.offsetHeight - 8, top));
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+function renderSelectedNodeDetails() {
+  const panel = $('map-node-details');
+  const content = $('map-node-detail-content');
+  if (!content) return;
+  const node = latestTelemetry?.nodes_telemetry?.find(item => item.node_id === selectedNodeId);
+  if (!node) {
+    content.className = 'map-node-empty';
+    content.innerHTML = 'No ground node selected. Select a marker or choose a terminal from Node Inventory.';
+    panel?.querySelectorAll('button:not(#btn-close-node-details)').forEach(button => { button.disabled = true; });
+    if (panel) panel.classList.add('is-empty');
+    return;
+  }
+  if (panel) {
+    panel.classList.remove('is-empty');
+    if (inspectorDismissed) {
+      panel.classList.add('is-closed');
+    } else {
+      panel.classList.remove('is-closed');
+    }
+  }
+  content.className = '';
+  const rate = nodeAchievedRate(node);
+  const rows = [
+    ['ID / name', `${node.node_id} · ${node.name || `Node ${node.node_id}`}`],
+    ['Registration', node.registration_state || null],
+    ['Latitude', typeof node.lat_deg === 'number' && Number.isFinite(node.lat_deg) ? `${node.lat_deg.toFixed(5)}°` : null],
+    ['Longitude', typeof node.lon_deg === 'number' && Number.isFinite(node.lon_deg) ? `${node.lon_deg.toFixed(5)}°` : null],
+    ['AGL', typeof node.agl_m === 'number' ? `${node.agl_m.toFixed(1)} m` : null],
+    ['Terrain state', node.state_name],
+    ['RF link', nodeLinkLabel(node)],
+    ['SNR / MODCOD', typeof node.snr_db === 'number' ? `${node.snr_db.toFixed(1)} dB · ${node.modcod_name || 'Unavailable'}` : null],
+    ['Achieved rate', rate !== 'Unavailable' ? rate : null],
+    ['Communication', node.is_transmitting ? 'Ground → ACN · transmitting' : (node.allocated_slot_ms > 0 ? 'Ground → ACN · slot allocated' : null)],
+    ['Battery', typeof node.battery_level_pct === 'number' ? `${node.battery_level_pct.toFixed(1)}%${typeof node.battery_capacity_mah === 'number' ? ` · ${node.battery_capacity_mah.toFixed(0)} mAh` : ''}` : null],
+    ['Queue', typeof node.total_backlog_bytes === 'number' ? `${(node.total_backlog_bytes / 1024).toFixed(1)} KB` : null],
+    ['Priority', typeof node.tactical_priority === 'number' ? node.tactical_priority.toFixed(1) : null],
+  ].filter(([, value]) => value !== null && value !== undefined);
+  content.innerHTML = `<h3>${mapEscape(node.name || `Node ${node.node_id}`)} <span class="muted">#${node.node_id}</span></h3><div class="detail-sub">${mapEscape(node.registration_state || 'Registration unavailable')} · ${mapEscape(nodeLinkLabel(node))}</div><div class="detail-grid">${rows.map(([label, value]) => `<span>${mapEscape(label)}</span><span>${mapEscape(value)}</span>`).join('')}</div>`;
+  const moveButton = $('map-node-details')?.querySelector('[data-map-action="move"]');
+  if (moveButton) { moveButton.disabled = spatialLocked; moveButton.title = spatialLocked ? 'Disable Spatial Lock to move nodes' : ''; }
+  $('map-node-details')?.querySelectorAll('button:not([data-map-action="move"])').forEach(button => { button.disabled = false; });
+}
+function setSharedMapHover(renderer, kind, nodeId, point) {
+  const changed = hoveredNodeId !== (kind === 'node' ? nodeId : null) || hoveredLinkNodeId !== (kind === 'link' ? nodeId : null);
+  activeMapHoverRenderer = renderer;
+  hoveredNodeId = kind === 'node' ? nodeId : null;
+  hoveredLinkNodeId = kind === 'link' ? nodeId : null;
+  mapHoverPoint = point;
+  renderNodeHoverTooltip(nodeId, point, kind);
+  if (changed) {
+    if (renderer === 'radar') drawRadar();
+    else updateMapLibreOverlay();
+  }
+}
+
 worker.onmessage = (event) => {
   const msg = event.data;
   if (!msg) return;
@@ -2487,6 +3492,20 @@ worker.onmessage = (event) => {
     }
     obstacleEditor.markSimulationFrameAdvanced();
     latestTelemetry = msg.frame;
+    const currentNodeIds = new Set((msg.frame.nodes_telemetry || []).map(node => node.node_id));
+    const priorSelectedNodeId = selectedNodeId;
+    if (!currentNodeIds.has(selectedNodeId)) selectedNodeId = Number.isInteger(msg.frame.selected_node_id) && currentNodeIds.has(msg.frame.selected_node_id) ? msg.frame.selected_node_id : -1;
+    if (priorSelectedNodeId !== selectedNodeId) syncNodeDropdowns(selectedNodeId);
+    if ((hoveredNodeId !== null && !currentNodeIds.has(hoveredNodeId)) || (hoveredLinkNodeId !== null && !currentNodeIds.has(hoveredLinkNodeId))) {
+      hoveredNodeId = null; hoveredLinkNodeId = null; activeMapHoverRenderer = null; mapHoverPoint = null;
+      const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
+    }
+    renderSelectedNodeDetails();
+    const dashboardOption = Array.from($('network-node-select')?.options || []).find(option => Number(option.value) === selectedNodeId);
+    if (dashboardOption && !dashboardOption.selected) { dashboardOption.selected = true; drawNetworkCharts(); }
+    if (activeMapHoverRenderer && mapHoverPoint) renderNodeHoverTooltip(hoveredLinkNodeId ?? hoveredNodeId, mapHoverPoint, hoveredLinkNodeId !== null ? 'link' : 'node');
+    ingestNetworkPerformance(msg.frame);
+    renderRegistration(msg.frame);
     if (msg.frame && msg.frame.terrain_bounds) {
       activeTerrainBounds = msg.frame.terrain_bounds;
     }
@@ -2495,6 +3514,7 @@ worker.onmessage = (event) => {
     if (typeof msg.frame.spatial_locked === 'boolean') updateSpatialLockControl(msg.frame.spatial_locked);
     syncTrajectoryEditorFromWorker(msg.frame.trajectory_config);
     updateDashboardDOM(msg.frame);
+    updateMapLibreOverlay();
     if (threeController) {
       threeController.updateTelemetry(msg.frame);
     }
@@ -2524,17 +3544,41 @@ worker.onmessage = (event) => {
       updateDashboardDOM(latestTelemetry);
       drawFresnel();
     }
+  } else if (msg.type === 'CUSTOM_DEM_LOADED') {
+    if (msg.bounds) {
+      activeTerrainBounds = msg.bounds;
+      window.centerMapOnTerrain(msg.bounds);
+      pendingTerrainCenteringBounds = null;
+    }
   } else if (msg.type === 'HILLSHADE_READY') {
     renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode, msg.bounds);
     requestTerrainMeshData(false);
     if (threeController && hillshadeCanvas) {
       threeController.setHillshadeCanvas(hillshadeCanvas);
     }
+    if (msg.bounds) {
+      activeTerrainBounds = msg.bounds;
+      if (pendingTerrainCenteringBounds) {
+        window.centerMapOnTerrain(msg.bounds);
+        pendingTerrainCenteringBounds = null;
+      }
+    }
   } else if (msg.type === 'TERRAIN_MESH_DATA_READY') {
     handleTerrainMeshDataResponse(msg);
+    if (msg.bounds) {
+      activeTerrainBounds = msg.bounds;
+      if (pendingTerrainCenteringBounds) {
+        window.centerMapOnTerrain(msg.bounds);
+        pendingTerrainCenteringBounds = null;
+      }
+    }
   } else if (msg.type === 'TERRAIN_BOUNDS_READY') {
     if (msg.bounds) {
       activeTerrainBounds = msg.bounds;
+      if (pendingTerrainCenteringBounds) {
+        window.centerMapOnTerrain(msg.bounds);
+        pendingTerrainCenteringBounds = null;
+      }
     }
   } else if (msg.type === 'COMMAND_RESULT') {
     routeCommandResult(msg, {
@@ -2576,6 +3620,7 @@ function updateSpatialLockControl(locked) {
   refreshTrajectoryEditor();
   refreshObstacleEditor();
   syncSelectedNodeAglUI();
+  renderSelectedNodeDetails();
 }
 
 function renderHillshadeFromWorker(data, size, boundsKm, terrainMode, bounds) {
@@ -2622,7 +3667,13 @@ let currentTerrainResolution = 'native512';
 
 function handleNodeSelection(nodeId) {
   if (historyController.isInspecting) return;
+  inspectorDismissed = false;
   selectedNodeId = nodeId;
+  const networkSelect = $('network-node-select');
+  const networkOption = networkSelect && Array.from(networkSelect.options).find(option => Number(option.value) === nodeId);
+  if (networkOption) { networkOption.selected = true; networkSelect.dispatchEvent(new Event('change', { bubbles: true })); }
+  renderSelectedNodeDetails();
+  updateMapLibreOverlay();
   pendingAglUpdate = null;
   syncNodeDropdowns(selectedNodeId);
   syncSelectedNodeAglUI();
@@ -2636,11 +3687,40 @@ function handleNodeSelection(nodeId) {
   if (latestTelemetry && latestTelemetry.nodes_telemetry) {
     const search = $('terminal-search');
     renderTerminalInventory(latestTelemetry.nodes_telemetry, selectedNodeId, search ? search.value : '');
+    selectedTrafficNodeId = nodeId;
+    const trafficSel = $('traffic-node-select');
+    if (trafficSel && Array.from(trafficSel.options).some(o => Number(o.value) === nodeId)) {
+      trafficSel.value = String(nodeId);
+    }
+    renderNetworkTrafficInventory(latestTelemetry);
   }
   drawRadar();
   drawFresnel();
   if (latestTelemetry) updateDashboardDOM(latestTelemetry);
 }
+
+$('map-node-details')?.addEventListener('click', event => {
+  const action = event.target?.closest?.('[data-map-action]')?.dataset.mapAction;
+  if (!action) return;
+  if (action === 'edit') $('btn-node-edit')?.click();
+  else if (action === 'delete') $('btn-node-delete')?.click();
+  else if (action === 'performance') window.switchMainTab?.('tab-network');
+  else if (action === 'focus' || action === 'move') {
+    const node = latestTelemetry?.nodes_telemetry?.find(item => item.node_id === selectedNodeId);
+    if (!node) return;
+    if (terrainMapMode === 'maplibre' && mapLibreInstance) mapLibreInstance.easeTo({ center: [node.lon_deg, node.lat_deg], duration: 300 });
+    else { panOffsetX_m = node.x_m; panOffsetY_m = node.y_m; drawRadar(); }
+    if (action === 'move') setText('map-node-action-status', 'Node centered. Drag its highlighted marker to reposition it.');
+  }
+});
+
+$('btn-close-node-details')?.addEventListener('click', (e) => {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
+  inspectorDismissed = true;
+  const panel = $('map-node-details');
+  if (panel) panel.classList.add('is-closed');
+});
 
 function initThreeStage() {
   const container = $('three-stage-container');
@@ -2760,6 +3840,7 @@ window.setStageViewMode = function(mode) {
   if (btn3D) btn3D.classList.toggle('active', mode === '3d');
 
   const radarCvs = $('radar-canvas');
+  const mapLibreStage = $('maplibre-stage');
   const threeWrap = $('three-stage-container');
   const resLabel = $('label-mesh-res');
   const resToggle = $('mesh-res-toggle');
@@ -2774,6 +3855,7 @@ window.setStageViewMode = function(mode) {
     }
     requestTerrainMeshData(false);
     if (radarCvs) radarCvs.style.display = 'none';
+    if (mapLibreStage) mapLibreStage.style.display = 'none';
     if (threeWrap) {
       threeWrap.style.display = 'block';
       threeWrap.setAttribute('aria-hidden', 'false');
@@ -2782,6 +3864,9 @@ window.setStageViewMode = function(mode) {
       threeController.setViewMode('3d');
       if (hillshadeCanvas) {
         threeController.setHillshadeCanvas(hillshadeCanvas);
+      }
+      if (activeTerrainBounds) {
+        threeController.centerOnBounds(activeTerrainBounds);
       }
     }
   } else {
@@ -2796,11 +3881,581 @@ window.setStageViewMode = function(mode) {
       threeWrap.setAttribute('aria-hidden', 'true');
     }
     if (radarCvs) {
-      radarCvs.style.display = 'block';
-      drawRadar();
+      if (terrainMapMode === 'maplibre') {
+        initializeMapLibre();
+        radarCvs.style.display = 'none';
+        if (mapLibreStage) mapLibreStage.style.display = 'block';
+        requestAnimationFrame(() => mapLibreInstance?.resize());
+        updateMapLibreOverlay();
+      } else {
+        radarCvs.style.display = 'block';
+        if (mapLibreStage) mapLibreStage.style.display = 'none';
+        drawRadar();
+      }
     }
   }
 };
+
+function mapLibreCoordinate(xM, yM) {
+  const coordinate = cartesianToGeodetic(xM, yM);
+  return [coordinate.lonDeg, coordinate.latDeg];
+}
+
+function emptyFeatureCollection() {
+  return { type: 'FeatureCollection', features: [] };
+}
+
+function mapLibrePointToLocal(coordinate) {
+  const longitude = Number(coordinate?.[0]);
+  const latitude = Number(coordinate?.[1]);
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+  const local = geodeticToCartesian(latitude, longitude);
+  return { lng: longitude, lat: latitude, x: local.xM, y: local.yM };
+}
+
+function geographicDistanceM(a, b) {
+  const earthRadiusM = 6371008.8;
+  const lat1 = Number(a.lat) * Math.PI / 180;
+  const lat2 = Number(b.lat) * Math.PI / 180;
+  const dLat = lat2 - lat1;
+  const dLon = (Number(b.lng) - Number(a.lng)) * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * earthRadiusM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function mapLibreToolPoint(featureOrCoordinate) {
+  const coordinate = Array.isArray(featureOrCoordinate)
+    ? featureOrCoordinate
+    : featureOrCoordinate?.geometry?.coordinates;
+  return mapLibrePointToLocal(coordinate);
+}
+
+function updateMapLibreToolSources() {
+  if (!mapLibreInstance || !mapLibreInitialized) return;
+  const setData = (id, data) => {
+    const source = mapLibreInstance.getSource(id);
+    if (source && typeof source.setData === 'function') source.setData(data);
+  };
+  const draftCoordinates = terrainRegionDraft.map(point => [point.lng, point.lat]);
+  setData('maplibre-measurement', terrainMeasurement
+    ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[terrainMeasurement.start.lng, terrainMeasurement.start.lat], [terrainMeasurement.end.lng, terrainMeasurement.end.lat]] }, properties: {} }] }
+    : emptyFeatureCollection());
+  setData('maplibre-region-draft', draftCoordinates.length
+    ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: draftCoordinates }, properties: {} }] }
+    : emptyFeatureCollection());
+}
+
+function mapLibreToolClick(event) {
+  if (!mapLibreInstance || terrainToolMode === 'idle') return;
+  const point = mapLibreToolPoint(event.lngLat ? [event.lngLat.lng, event.lngLat.lat] : null);
+  if (!point) return;
+  if (terrainToolMode === 'measure') {
+    if (!terrainMeasurement) {
+      terrainMeasurement = { start: point, end: point, distanceM: 0 };
+      setTerrainToolStatus('Select the second geographic point on the map.');
+    } else {
+      terrainMeasurement.end = point;
+      terrainMeasurement.distanceM = geographicDistanceM(terrainMeasurement.start, point);
+      terrainToolMode = 'idle';
+      setTerrainToolStatus(`Distance: ${terrainDistanceText(terrainMeasurement.distanceM)}`);
+    }
+    updateMapLibreToolSources();
+    refreshTerrainToolbox();
+    return;
+  }
+  if (terrainToolMode === 'region') {
+    terrainRegionDraft.push(point);
+    setTerrainToolStatus(`${terrainRegionDraft.length} point${terrainRegionDraft.length === 1 ? '' : 's'} selected. Finish at three or more points.`);
+    updateMapLibreToolSources();
+    refreshTerrainToolbox();
+  }
+}
+
+function initializeMapLibreToolHandlers() {
+  if (mapLibreToolHandlersReady || !mapLibreInstance) return;
+  mapLibreToolHandlersReady = true;
+  mapLibreInstance.on('click', mapLibreToolClick);
+  mapLibreInstance.on('mousemove', event => {
+    if (terrainToolMode === 'measure' || terrainToolMode === 'region') {
+      mapLibreInstance.getCanvas().style.cursor = 'crosshair';
+    }
+  });
+}
+
+function terrainRamp(value, minElevation, maxElevation) {
+  const span = Math.max(1, maxElevation - minElevation);
+  const t = Math.max(0, Math.min(1, (value - minElevation) / span));
+  const stops = [
+    [0.00, [26, 78, 121]],
+    [0.20, [44, 129, 116]],
+    [0.42, [117, 166, 90]],
+    [0.62, [194, 179, 105]],
+    [0.82, [151, 105, 72]],
+    [1.00, [239, 239, 239]],
+  ];
+  for (let i = 1; i < stops.length; i++) {
+    if (t <= stops[i][0]) {
+      const [a, b] = [stops[i - 1], stops[i]];
+      const f = (t - a[0]) / (b[0] - a[0]);
+      return [0, 1, 2].map(channel => Math.round(a[1][channel] + (b[1][channel] - a[1][channel]) * f));
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+function renderMapLibreTerrainRaster() {
+  if (!mapLibreTerrainRaster) return;
+  const { elevations, width, height, metadata } = mapLibreTerrainRaster;
+  const maxDimension = 1024;
+  const scale = Math.min(1, maxDimension / Math.max(width, height));
+  const outputWidth = Math.max(2, Math.round(width * scale));
+  const outputHeight = Math.max(2, Math.round(height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  const image = context.createImageData(outputWidth, outputHeight);
+  const minElevation = Number(metadata.minElevationM);
+  const maxElevation = Number(metadata.maxElevationM);
+  const sample = (row, column) => {
+    const r = Math.max(0, Math.min(height - 1, row));
+    const c = Math.max(0, Math.min(width - 1, column));
+    return elevations[r * width + c];
+  };
+  for (let y = 0; y < outputHeight; y++) {
+    const sourceRow = Math.round((y / (outputHeight - 1)) * (height - 1));
+    for (let x = 0; x < outputWidth; x++) {
+      const sourceColumn = Math.round((x / (outputWidth - 1)) * (width - 1));
+      const elevation = sample(sourceRow, sourceColumn);
+      const pixel = (y * outputWidth + x) * 4;
+      if (!Number.isFinite(elevation)) {
+        image.data[pixel + 3] = 0;
+        continue;
+      }
+      let color = terrainRamp(elevation, minElevation, maxElevation);
+      if (mapLibreTerrainMode === 'hillshade') {
+        const left = sample(sourceRow, sourceColumn - 1);
+        const right = sample(sourceRow, sourceColumn + 1);
+        const north = sample(sourceRow - 1, sourceColumn);
+        const south = sample(sourceRow + 1, sourceColumn);
+        const dx = Number.isFinite(left) && Number.isFinite(right) ? right - left : 0;
+        const dy = Number.isFinite(north) && Number.isFinite(south) ? south - north : 0;
+        const shade = Math.max(0.35, Math.min(1.25, 0.78 - (dx + dy) / Math.max(1, maxElevation - minElevation) * 5));
+        color = color.map(channel => Math.round(Math.max(0, Math.min(255, channel * shade))));
+      }
+      image.data[pixel] = color[0];
+      image.data[pixel + 1] = color[1];
+      image.data[pixel + 2] = color[2];
+      image.data[pixel + 3] = 235;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  mapLibreTerrainRaster.dataUrl = canvas.toDataURL('image/png');
+  mapLibreTerrainRaster.coordinates = [
+    [Number(metadata.minLonDeg), Number(metadata.maxLatDeg)],
+    [Number(metadata.maxLonDeg), Number(metadata.maxLatDeg)],
+    [Number(metadata.maxLonDeg), Number(metadata.minLatDeg)],
+    [Number(metadata.minLonDeg), Number(metadata.minLatDeg)],
+  ];
+  applyMapLibreTerrainRaster();
+}
+
+function applyMapLibreTerrainRaster() {
+  if (!mapLibreInstance || !mapLibreInitialized || !mapLibreTerrainRaster) return;
+  const source = mapLibreInstance.getSource('maplibre-hgt');
+  if (!source) return;
+  if (typeof source.updateImage === 'function') {
+    source.updateImage({
+      url: mapLibreTerrainRaster.dataUrl,
+      coordinates: mapLibreTerrainRaster.coordinates,
+    });
+  }
+  if (mapLibreInstance.getLayer('maplibre-hgt-layer')) {
+    mapLibreInstance.setPaintProperty('maplibre-hgt-layer', 'raster-opacity', mapLibreTerrainVisible ? mapLibreTerrainOpacity : 0);
+    mapLibreInstance.setLayoutProperty('maplibre-hgt-layer', 'visibility', mapLibreTerrainVisible ? 'visible' : 'none');
+  }
+  const status = $('maplibre-status');
+  if (status && !mapLibreErrorShown) {
+    status.textContent = `MapLibre satellite view · HGT ${mapLibreTerrainRaster.metadata.tileName} · ${mapLibreTerrainRaster.metadata.minElevationM.toFixed(0)}–${mapLibreTerrainRaster.metadata.maxElevationM.toFixed(0)} m`;
+  }
+}
+
+function ensureMapLibreTerrainLayer() {
+  if (!mapLibreInstance || !mapLibreInitialized || !mapLibreTerrainRaster) return;
+  if (!mapLibreInstance.getSource('maplibre-hgt')) {
+    mapLibreInstance.addSource('maplibre-hgt', {
+      type: 'image',
+      url: mapLibreTerrainRaster.dataUrl,
+      coordinates: mapLibreTerrainRaster.coordinates,
+    });
+  }
+  if (!mapLibreInstance.getLayer('maplibre-hgt-layer')) {
+    mapLibreInstance.addLayer({
+      id: 'maplibre-hgt-layer',
+      type: 'raster',
+      source: 'maplibre-hgt',
+      paint: { 'raster-opacity': mapLibreTerrainVisible ? mapLibreTerrainOpacity : 0 },
+    });
+  }
+  applyMapLibreTerrainRaster();
+}
+
+function setMapLibreTerrainRaster(elevations, metadata) {
+  if (!(elevations instanceof Float32Array) || !metadata) return;
+  const width = Number(metadata.rasterWidth);
+  const height = Number(metadata.rasterHeight);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || elevations.length < width * height) return;
+  mapLibreTerrainRaster = { elevations, width, height, metadata, dataUrl: '', coordinates: [] };
+  renderMapLibreTerrainRaster();
+  ensureMapLibreTerrainLayer();
+}
+
+function updateMapLibreOverlay() {
+  if (!mapLibreInstance || !mapLibreInitialized || !latestTelemetry) return;
+  const acn = latestTelemetry.acn_telemetry || {};
+  const acnX = Number(acn.pos_x ?? 0);
+  const acnY = Number(acn.pos_y ?? 0);
+  const acnCoordinate = mapLibreCoordinate(acnX, acnY);
+  const headingRad = Number(acn.heading_rad);
+  if (!mapLibreTravelledPath.length || mapLibreTravelledPath[mapLibreTravelledPath.length - 1][0] !== acnCoordinate[0] || mapLibreTravelledPath[mapLibreTravelledPath.length - 1][1] !== acnCoordinate[1]) {
+    mapLibreTravelledPath.push(acnCoordinate);
+    if (mapLibreTravelledPath.length > 512) mapLibreTravelledPath.shift();
+  }
+  const nodeFeatures = (latestTelemetry.nodes_telemetry || []).flatMap(node => {
+    const preview = mapLibreNodeDrag?.nodeId === node.node_id ? mapLibreNodeDrag.local : null;
+    const x = Number(preview?.xM ?? node.x_m ?? node.position?.[0]);
+    const y = Number(preview?.yM ?? node.y_m ?? node.position?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+    return [{
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: mapLibreCoordinate(x, y) },
+      properties: {
+        label: node.name || node.callsign || `S${node.node_id}`,
+        color: node.color_hex || '#38bdf8',
+        nodeId: node.node_id,
+        callsign: node.name || node.callsign || `S${node.node_id}`,
+        lat: Number(node.lat_deg),
+        lon: Number(node.lon_deg),
+        agl: Number(node.agl_m),
+        battery: Number(node.battery_level_pct),
+        txPower: Number(node.tx_power_dbm),
+        priority: Number(node.tactical_priority),
+        linkStatus: node.link_outage ? 'OUTAGE' : (node.obstacle_blocked || !node.terrain_is_los ? 'BLOCKED' : (node.is_transmitting ? 'CONNECTED' : 'DEGRADED')),
+        status: node.state_name || node.modcod_name || 'UNKNOWN',
+        registrationState: node.registration_state || 'UNREGISTERED',
+        rfOutage: node.link_outage ? 1 : 0,
+        selected: node.node_id === selectedNodeId ? 1 : 0,
+        hovered: node.node_id === hoveredNodeId ? 1 : 0,
+      },
+    }];
+  });
+  const acnFeature = {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: acnCoordinate },
+    properties: {
+      label: 'ACN RELAY',
+      color: '#f59e0b',
+      headingDeg: Number.isFinite(headingRad) ? headingRad * 180 / Math.PI : 0,
+      lat: acnCoordinate[1],
+      lon: acnCoordinate[0],
+    },
+  };
+  const linkFeatures = (latestTelemetry.nodes_telemetry || []).flatMap(node => {
+    const preview = mapLibreNodeDrag?.nodeId === node.node_id ? mapLibreNodeDrag.local : null;
+    const x = Number(preview?.xM ?? node.x_m ?? node.position?.[0]);
+    const y = Number(preview?.yM ?? node.y_m ?? node.position?.[1]);
+    const hasLinkTelemetry = typeof node.link_outage === 'boolean' || Number.isFinite(Number(node.bitrate_bps)) || typeof node.modcod_name === 'string';
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !hasLinkTelemetry) return [];
+    const { classification, style } = classifyAndStyleLink(node);
+    return [{
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [acnCoordinate, mapLibreCoordinate(x, y)] },
+      properties: {
+        nodeId: node.node_id,
+        source: 'ACN-1',
+        destination: node.name || `Node ${node.node_id}`,
+        selected: node.node_id === selectedNodeId ? 1 : 0,
+        hovered: node.node_id === hoveredLinkNodeId ? 1 : 0,
+        color: style.strokeColor,
+        selectedColor: style.selectedStrokeColor,
+        status: classification.status,
+        statusLabel: style.statusLabel,
+      },
+    }];
+  });
+  const flightPath = Array.isArray(acn.flight_path)
+    ? acn.flight_path
+      .filter(point => Array.isArray(point) && Number.isFinite(point[0]) && Number.isFinite(point[1]))
+      .map(point => mapLibreCoordinate(point[0], point[1]))
+    : [];
+  const waypointPath = latestTelemetry.trajectory_config?.waypoints
+    ?.filter(point => Number.isFinite(point.x_m) && Number.isFinite(point.y_m))
+    .map(point => mapLibreCoordinate(point.x_m, point.y_m)) || [];
+  const plannedCoordinates = flightPath.length >= 2 ? flightPath : waypointPath;
+  const waypointFeatures = latestTelemetry.trajectory_config?.waypoints
+    ?.filter(point => Number.isFinite(point.x_m) && Number.isFinite(point.y_m))
+    .map((point, index) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: mapLibreCoordinate(point.x_m, point.y_m) },
+      properties: { label: `WP${index + 1}` },
+    })) || [];
+  const regionFeatures = terrainRegions.map(region => {
+    const coordinates = region.points.map(point => point.lng !== undefined && point.lat !== undefined
+      ? [point.lng, point.lat]
+      : mapLibreCoordinate(point.x, point.y));
+    if (coordinates.length < 3) return null;
+    coordinates.push(coordinates[0]);
+    return {
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [coordinates] },
+      properties: { color: region.color, visible: region.visible ? 1 : 0 },
+    };
+  }).filter(Boolean);
+
+  const setData = (id, data) => {
+    const source = mapLibreInstance.getSource(id);
+    if (source && typeof source.setData === 'function') source.setData(data);
+  };
+  setData('maplibre-acn', { type: 'FeatureCollection', features: [acnFeature] });
+  setData('maplibre-nodes', { type: 'FeatureCollection', features: nodeFeatures });
+  setData('maplibre-links', { type: 'FeatureCollection', features: linkFeatures });
+  setData('maplibre-planned', plannedCoordinates.length >= 2
+    ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: plannedCoordinates }, properties: {} }] }
+    : emptyFeatureCollection());
+  setData('maplibre-travelled', mapLibreTravelledPath.length >= 2
+    ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: mapLibreTravelledPath }, properties: {} }] }
+    : emptyFeatureCollection());
+  setData('maplibre-waypoints', { type: 'FeatureCollection', features: waypointFeatures });
+  setData('maplibre-regions', { type: 'FeatureCollection', features: regionFeatures });
+  updateMapLibreToolSources();
+  const info = $('maplibre-info');
+  if (info) info.textContent = mapLibreSelectionMessage;
+}
+
+function fitMapLibreToTerrain() {
+  if (!mapLibreInstance || !activeTerrainBounds) return;
+  const minX = Number(activeTerrainBounds.minX);
+  const maxX = Number(activeTerrainBounds.maxX);
+  const minY = Number(activeTerrainBounds.minY);
+  const maxY = Number(activeTerrainBounds.maxY);
+  if (![minX, maxX, minY, maxY].every(Number.isFinite)) return;
+  const sw = mapLibreCoordinate(minX, minY);
+  const ne = mapLibreCoordinate(maxX, maxY);
+  const container = mapLibreInstance.getContainer();
+  const padding = Math.min(48, Math.max(8, Math.min(container.clientWidth, container.clientHeight) * 0.18));
+  mapLibreInstance.fitBounds([sw, ne], { padding, duration: 0, maxZoom: 12 });
+}
+
+function initializeMapLibre() {
+  if (mapLibreInstance) return;
+  const status = $('maplibre-status');
+  const rasterConfig = window.__xbandMapLibreRaster || {};
+  const rasterTiles = rasterConfig.tiles || window.__xbandMapLibreRasterTileUrl ||
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+  const rasterAttribution = rasterConfig.attribution || window.__xbandMapLibreRasterAttribution ||
+    'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community';
+  const rasterMaxZoom = Number.isFinite(Number(rasterConfig.maxzoom)) ? Number(rasterConfig.maxzoom) : 19;
+  setWorkerUrl(mapLibreWorkerUrl);
+  mapLibreInstance = new MapLibreMap({
+    container: 'maplibre-map',
+    style: {
+      version: 8,
+      sources: {
+        'maplibre-satellite': {
+          type: 'raster',
+          tiles: Array.isArray(rasterTiles) ? rasterTiles : [rasterTiles],
+          tileSize: 256,
+          maxzoom: rasterMaxZoom,
+          attribution: rasterAttribution,
+        },
+      },
+      layers: [{ id: 'maplibre-satellite-layer', type: 'raster', source: 'maplibre-satellite' }],
+    },
+    center: [76.5, 34.5],
+    zoom: 6,
+    attributionControl: true,
+    cooperativeGestures: true,
+  });
+  mapLibreInstance.addControl(new NavigationControl({ showCompass: true }), 'top-right');
+  mapLibreInstance.on('error', event => {
+    if (mapLibreErrorShown) return;
+    mapLibreErrorShown = true;
+    if (status) status.textContent = 'Satellite imagery unavailable. Check the configured raster tile source.';
+    console.error('MapLibre map error', event.error || event);
+  });
+  mapLibreInstance.on('load', () => {
+    mapLibreInitialized = true;
+    ensureMapLibreTerrainLayer();
+    const sourceDefinitions = {
+      'maplibre-acn': emptyFeatureCollection(),
+      'maplibre-nodes': emptyFeatureCollection(),
+      'maplibre-links': emptyFeatureCollection(),
+      'maplibre-planned': emptyFeatureCollection(),
+      'maplibre-travelled': emptyFeatureCollection(),
+      'maplibre-waypoints': emptyFeatureCollection(),
+      'maplibre-regions': emptyFeatureCollection(),
+      'maplibre-measurement': emptyFeatureCollection(),
+      'maplibre-region-draft': emptyFeatureCollection(),
+    };
+    Object.entries(sourceDefinitions).forEach(([id, data]) => mapLibreInstance.addSource(id, { type: 'geojson', data }));
+    mapLibreInstance.addLayer({ id: 'maplibre-regions-fill', type: 'fill', source: 'maplibre-regions', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['==', ['get', 'visible'], 1], 0.18, 0] } });
+    mapLibreInstance.addLayer({ id: 'maplibre-regions-line', type: 'line', source: 'maplibre-regions', paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': ['case', ['==', ['get', 'visible'], 1], 1, 0] } });
+    mapLibreInstance.addLayer({ id: 'maplibre-measurement-line', type: 'line', source: 'maplibre-measurement', paint: { 'line-color': '#f8fafc', 'line-width': 3, 'line-dasharray': [1, 1] } });
+    mapLibreInstance.addLayer({ id: 'maplibre-region-draft-line', type: 'line', source: 'maplibre-region-draft', paint: { 'line-color': '#f59e0b', 'line-width': 2, 'line-dasharray': [1, 1] } });
+    mapLibreInstance.addLayer({ id: 'maplibre-planned-line', type: 'line', source: 'maplibre-planned', paint: { 'line-color': '#f59e0b', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.9 } });
+    mapLibreInstance.addLayer({ id: 'maplibre-travelled-line', type: 'line', source: 'maplibre-travelled', paint: { 'line-color': '#fef08a', 'line-width': 3, 'line-opacity': 0.95 } });
+    mapLibreInstance.addLayer({ id: 'maplibre-waypoints-circle', type: 'circle', source: 'maplibre-waypoints', paint: { 'circle-radius': 4, 'circle-color': '#f59e0b', 'circle-stroke-color': '#111827', 'circle-stroke-width': 1.5 } });
+    mapLibreInstance.addLayer({ id: 'maplibre-waypoints-label', type: 'symbol', source: 'maplibre-waypoints', layout: { 'text-field': ['get', 'label'], 'text-size': 10, 'text-offset': [0, 1.1], 'text-anchor': 'top' }, paint: { 'text-color': '#fef3c7', 'text-halo-color': '#111827', 'text-halo-width': 1 } });
+    const linkPaint = { 'line-color': ['case', ['==', ['get', 'hovered'], 1], '#f8fafc', ['==', ['get', 'selected'], 1], ['get', 'selectedColor'], ['get', 'color']], 'line-width': ['case', ['==', ['get', 'selected'], 1], 3.5, ['==', ['get', 'hovered'], 1], 3, 2], 'line-opacity': ['case', ['==', ['get', 'selected'], 1], 0.95, ['==', ['get', 'hovered'], 1], 0.9, 0.75] };
+    const selectableLinkLayers = ['maplibre-links-line', 'maplibre-links-degraded', 'maplibre-links-terrain-blocked', 'maplibre-links-obstacle-blocked', 'maplibre-links-outage', 'maplibre-links-unknown'];
+    mapLibreInstance.addLayer({ id: 'maplibre-links-line', type: 'line', source: 'maplibre-links', filter: ['==', ['get', 'status'], 'CONNECTED'], paint: linkPaint });
+    [
+      ['maplibre-links-degraded', 'DEGRADED', [7, 3]],
+      ['maplibre-links-terrain-blocked', 'BLOCKED_TERRAIN', [4, 4]],
+      ['maplibre-links-obstacle-blocked', 'BLOCKED_OBSTACLE', [2, 3]],
+      ['maplibre-links-outage', 'OUTAGE_DISCONNECTED', [3, 6]],
+      ['maplibre-links-unknown', 'UNKNOWN', [1, 5]],
+    ].forEach(([id, status, dash]) => mapLibreInstance.addLayer({
+      id, type: 'line', source: 'maplibre-links', filter: ['==', ['get', 'status'], status],
+      paint: { ...linkPaint, 'line-dasharray': dash },
+    }));
+    mapLibreInstance.addLayer({ id: 'maplibre-nodes-circle', type: 'circle', source: 'maplibre-nodes', paint: { 'circle-radius': ['case', ['==', ['get', 'selected'], 1], 8, ['==', ['get', 'hovered'], 1], 7, 6], 'circle-color': ['get', 'color'], 'circle-stroke-color': ['case', ['==', ['get', 'selected'], 1], '#ffffff', ['==', ['get', 'hovered'], 1], '#f8fafc', ['==', ['get', 'rfOutage'], 1], '#ef4444', ['any', ['==', ['get', 'registrationState'], 'LOST'], ['==', ['get', 'registrationState'], 'REJECTED']], '#f59e0b', ['==', ['get', 'registrationState'], 'REGISTERED'], '#4fd1a1', '#0f172a'], 'circle-stroke-width': ['case', ['==', ['get', 'selected'], 1], 2.5, ['==', ['get', 'hovered'], 1], 2, 1.5] } });
+    mapLibreInstance.addLayer({ id: 'maplibre-acn-circle', type: 'circle', source: 'maplibre-acn', paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#fff7ed', 'circle-stroke-width': 2 } });
+    mapLibreInstance.addLayer({ id: 'maplibre-acn-heading', type: 'symbol', source: 'maplibre-acn', layout: { 'text-field': '▲', 'text-size': 16, 'text-rotate': ['get', 'headingDeg'], 'text-rotation-alignment': 'map' }, paint: { 'text-color': '#fff7ed', 'text-halo-color': '#7c2d12', 'text-halo-width': 1 } });
+    mapLibreInstance.addLayer({ id: 'maplibre-labels', type: 'symbol', source: 'maplibre-nodes', layout: { 'text-field': ['get', 'label'], 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top' }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 } });
+    mapLibreInstance.addLayer({ id: 'maplibre-acn-label', type: 'symbol', source: 'maplibre-acn', layout: { 'text-field': ['get', 'label'], 'text-size': 12, 'text-offset': [0, 1.3], 'text-anchor': 'top' }, paint: { 'text-color': '#f59e0b', 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 } });
+    const selectableLayers = ['maplibre-acn-circle', 'maplibre-nodes-circle'];
+    initializeMapLibreToolHandlers();
+    mapLibreInstance.on('mousedown', 'maplibre-nodes-circle', event => {
+      const feature = event.features?.[0];
+      const nodeId = Number(feature?.properties?.nodeId);
+      if (!Number.isInteger(nodeId)) return;
+      if (historyController.isInspecting || terrainToolMode !== 'idle' || obstacleEditor.mode !== 'navigate' || trajectoryEditor.activeMode === 'waypoints') return;
+      handleNodeSelection(nodeId);
+      // Keep node selection available while a drawing/editor tool is active,
+      // but only allow a drag from the normal navigation mode.
+      if (spatialLocked) return;
+      event.preventDefault();
+      const dragPanWasEnabled = mapLibreInstance.dragPan.isEnabled();
+      if (dragPanWasEnabled) mapLibreInstance.dragPan.disable();
+      mapLibreNodeDrag = { nodeId, local: null, dragPanWasEnabled, lastSentAt: 0, moved: false };
+      mapLibreInstance.getCanvas().style.cursor = 'grabbing';
+    });
+    mapLibreInstance.on('mousemove', event => {
+      const coordinate = mapLibreInstance.unproject(event.point);
+      const local = geodeticToCartesian(coordinate.lat, coordinate.lng);
+      updateRadarCursorReadout(local.xM, local.yM, true);
+      if (!mapLibreNodeDrag) return;
+      mapLibreNodeDrag.local = { xM: local.xM, yM: local.yM };
+      mapLibreNodeDrag.moved = true;
+      updateMapLibreOverlay();
+      const now = performance.now();
+      if (now - mapLibreNodeDrag.lastSentAt >= 40) {
+        sendCommand({ type: 'NODE_MOVE', node_id: mapLibreNodeDrag.nodeId, x_m: local.xM, y_m: local.yM });
+        mapLibreNodeDrag.lastSentAt = now;
+      }
+    });
+    mapLibreInstance.on('mouseout', () => {
+      updateRadarCursorReadout(0, 0, false);
+    });
+    const finishMapLibreNodeDrag = () => {
+      if (!mapLibreNodeDrag) return;
+      const drag = mapLibreNodeDrag;
+      if (drag.local && !spatialLocked) {
+        sendCommand({ type: 'NODE_MOVE', node_id: drag.nodeId, x_m: drag.local.xM, y_m: drag.local.yM });
+      }
+      mapLibreNodeDrag = null;
+      if (drag.dragPanWasEnabled) mapLibreInstance?.dragPan.enable();
+      if (mapLibreInstance) mapLibreInstance.getCanvas().style.cursor = '';
+      updateMapLibreOverlay();
+    };
+    mapLibreInstance.on('mouseup', finishMapLibreNodeDrag);
+    window.addEventListener('pointerup', finishMapLibreNodeDrag);
+    window.addEventListener('pointercancel', finishMapLibreNodeDrag);
+    mapLibreInstance.on('click', selectableLayers, event => {
+      if (terrainToolMode !== 'idle' || obstacleEditor.mode !== 'navigate' || trajectoryEditor.activeMode === 'waypoints') return;
+      const feature = event.features?.[0];
+      if (!feature) return;
+      if (feature.layer.id === 'maplibre-acn-circle') {
+        const props = feature.properties || {};
+        mapLibreSelectionMessage = `ACN RELAY\n${Number(props.lat).toFixed(5)}°, ${Number(props.lon).toFixed(5)}°\nHeading ${Number(props.headingDeg).toFixed(1)}°`;
+      } else {
+        const props = feature.properties || {};
+        const nodeId = Number(props.nodeId);
+        if (Number.isInteger(nodeId)) handleNodeSelection(nodeId);
+        mapLibreSelectionMessage = 'Node selected · live details shown in the selected-node panel.';
+      }
+      const info = $('maplibre-info');
+      if (info) info.textContent = mapLibreSelectionMessage;
+    });
+    mapLibreInstance.on('mouseenter', selectableLayers, () => { mapLibreInstance.getCanvas().style.cursor = 'pointer'; });
+    mapLibreInstance.on('mouseleave', selectableLayers, () => { mapLibreInstance.getCanvas().style.cursor = ''; });
+    mapLibreInstance.on('mousemove', 'maplibre-nodes-circle', event => {
+      if (mapLibreNodeDrag) return;
+      const id = Number(event.features?.[0]?.properties?.nodeId);
+      if (Number.isInteger(id)) setSharedMapHover('maplibre', 'node', id, { x: event.point.x, y: event.point.y });
+    });
+    mapLibreInstance.on('mouseleave', 'maplibre-nodes-circle', () => {
+      if (activeMapHoverRenderer === 'maplibre' && hoveredNodeId !== null) {
+        hoveredNodeId = null; mapHoverPoint = null; activeMapHoverRenderer = null;
+        const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
+        updateMapLibreOverlay();
+      }
+    });
+    mapLibreInstance.on('mousemove', selectableLinkLayers, event => {
+      if (mapLibreNodeDrag) return;
+      const id = Number(event.features?.[0]?.properties?.nodeId);
+      if (Number.isInteger(id)) setSharedMapHover('maplibre', 'link', id, { x: event.point.x, y: event.point.y });
+    });
+    mapLibreInstance.on('mouseleave', selectableLinkLayers, () => {
+      if (activeMapHoverRenderer === 'maplibre' && hoveredLinkNodeId !== null) {
+        hoveredLinkNodeId = null; mapHoverPoint = null; activeMapHoverRenderer = null;
+        const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
+        updateMapLibreOverlay();
+      }
+    });
+    mapLibreInstance.on('click', selectableLinkLayers, event => {
+      if (terrainToolMode !== 'idle' || obstacleEditor.mode !== 'navigate' || trajectoryEditor.activeMode === 'waypoints') return;
+      if (mapLibreInstance.queryRenderedFeatures(event.point, { layers: ['maplibre-nodes-circle'] }).length) return;
+      const id = Number(event.features?.[0]?.properties?.nodeId);
+      if (Number.isInteger(id)) handleNodeSelection(id);
+    });
+    if (status && !mapLibreErrorShown && !mapLibreTerrainRaster) status.textContent = 'MapLibre satellite view · simulation overlays live';
+    updateMapLibreOverlay();
+    fitMapLibreToTerrain();
+  });
+}
+
+function setMapMode(mode) {
+  if (activeMapHoverRenderer && activeMapHoverRenderer !== (mode === 'maplibre' ? 'maplibre' : 'radar')) {
+    hoveredNodeId = null; hoveredLinkNodeId = null; activeMapHoverRenderer = null; mapHoverPoint = null;
+    const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
+  }
+  terrainMapMode = mode === 'maplibre' ? 'maplibre' : 'radar';
+  const radar = $('radar-canvas');
+  const map = $('maplibre-stage');
+  $('btnMapRadar')?.classList.toggle('active', terrainMapMode === 'radar');
+  $('btnMapLibre')?.classList.toggle('active', terrainMapMode === 'maplibre');
+  if (stageViewMode !== '2d') return;
+  if (terrainMapMode === 'maplibre') {
+    initializeMapLibre();
+    if (radar) radar.style.display = 'none';
+    if (map) map.style.display = 'block';
+    requestAnimationFrame(() => {
+      mapLibreInstance?.resize();
+      updateMapLibreOverlay();
+      if (mapLibreInitialized && !activeTerrainBounds) mapLibreInstance.jumpTo({ center: [76.5, 34.5], zoom: 6 });
+    });
+  } else {
+    if (map) map.style.display = 'none';
+    if (radar) radar.style.display = 'block';
+    drawRadar();
+  }
+}
+
+$('btnMapRadar')?.addEventListener('click', () => setMapMode('radar'));
+$('btnMapLibre')?.addEventListener('click', () => setMapMode('maplibre'));
 
 function setTrajectoryMessage(message, error = false) {
   const el = $('trajectory-editor-message');
@@ -3222,6 +4877,15 @@ window.stepSim = function() {
   sendCommand({ type: 'SIM_CONTROL', action: 'step', step_request_id: reqId });
 };
 
+let currentSimSpeed = 1.0;
+const SPEED_PRESET_IDS = {
+  0.5: 'spd-05',
+  1.0: 'spd-10',
+  2.0: 'spd-20',
+  5.0: 'spd-50',
+  10.0: 'spd-100',
+};
+
 window.setSpeed = function(spd) {
   if (historyController.isInspecting) {
     historyController.exitHistorical();
@@ -3231,9 +4895,57 @@ window.setSpeed = function(spd) {
     schedHistoryController.exitHistorical();
     syncSchedulerLiveUIState();
   }
-  ['spd-01', 'spd-05', 'spd-10'].forEach(id => $(id).classList.remove('active'));
-  $(spd === 0.1 ? 'spd-01' : spd === 0.5 ? 'spd-05' : 'spd-10').classList.add('active');
-  sendCommand({ type: 'SET_SPEED', speed: spd });
+
+  let num = typeof spd === 'number' ? spd : parseFloat(spd);
+  if (!Number.isFinite(num)) num = 1.0;
+  num = Math.max(0.1, Math.min(10.0, Math.round(num * 100) / 100));
+
+  currentSimSpeed = num;
+
+  const slider = $('sim-speed-slider');
+  if (slider && Math.abs(parseFloat(slider.value) - num) > 0.001) {
+    slider.value = String(num);
+  }
+
+  const input = $('sim-speed-input');
+  if (input && Math.abs(parseFloat(input.value) - num) > 0.001) {
+    input.value = num % 1 === 0 ? num.toFixed(1) : String(num);
+  }
+
+  const readout = $('sim-speed-readout');
+  if (readout) {
+    readout.textContent = `${num % 1 === 0 ? num.toFixed(1) : num}×`;
+  }
+
+  const presetIds = ['spd-01', 'spd-05', 'spd-10', 'spd-20', 'spd-50', 'spd-100'];
+  presetIds.forEach(id => {
+    const btn = $(id);
+    if (btn) btn.classList.remove('active');
+  });
+
+  for (const [presetSpeed, presetId] of Object.entries(SPEED_PRESET_IDS)) {
+    if (Math.abs(num - Number(presetSpeed)) < 0.01) {
+      const activeBtn = $(presetId);
+      if (activeBtn) activeBtn.classList.add('active');
+      break;
+    }
+  }
+
+  sendCommand({ type: 'SET_SPEED', speed: num });
+};
+
+window.onSpeedSliderInput = function(val) {
+  const num = parseFloat(val);
+  if (Number.isFinite(num)) {
+    setSpeed(num);
+  }
+};
+
+window.onSpeedNumInput = function(val) {
+  const num = parseFloat(val);
+  if (Number.isFinite(num)) {
+    setSpeed(num);
+  }
 };
 
 window.resetSim = function() {
@@ -3250,15 +4962,20 @@ window.resetSim = function() {
   historyController.reset();
   schedHistoryController.reset();
   dataCommVisualizer.reset();
+  networkTrafficTracker.clear();
+  setSpeed(1.0);
   updateStepControlUI(true);
   updatePauseButtonUI();
   updateScrubberUI();
   updateSchedulerScrubberUI();
+  if (terrainTopViewport && typeof terrainTopViewport.clearPinnedBounds === 'function') {
+    terrainTopViewport.clearPinnedBounds();
+  }
   sendCommand({ type: 'SIM_CONTROL', action: 'reset' });
 };
 
 window.loadPreset = function(id) {
-  if (id === 'PRESET_RESET') {
+  if (id === 'PRESET_RESET' || id === 'PRESET_ACN_ONLY' || id === 'PRESET_16_NODES') {
     if (historyController.isInspecting) {
       historyController.exitHistorical();
       syncLiveUIState();
@@ -3272,10 +4989,21 @@ window.loadPreset = function(id) {
     historyController.reset();
     schedHistoryController.reset();
     dataCommVisualizer.reset();
+    networkTrafficTracker.clear();
     updateStepControlUI(true);
     updatePauseButtonUI();
     updateScrubberUI();
     updateSchedulerScrubberUI();
+    if (id === 'PRESET_RESET' && terrainTopViewport && typeof terrainTopViewport.clearPinnedBounds === 'function') {
+      terrainTopViewport.clearPinnedBounds();
+    }
+    if (id === 'PRESET_ACN_ONLY') {
+      selectedNodeId = -1;
+      syncNodeDropdowns(-1);
+    } else if (id === 'PRESET_16_NODES') {
+      selectedNodeId = 4;
+      syncNodeDropdowns(4);
+    }
   }
   sendCommand({ type: 'LOAD_PRESET', preset_id: id });
 };
@@ -3294,12 +5022,181 @@ window.toggleActiveScheduler = function() {
   sendCommand({ type: 'SET_SCHEDULER', mode: next });
 };
 
-window.setRadarRange = function(rangeM) {
-  currentRadarRangeM = rangeM;
+function setRadarRange(rangeM) {
+  currentRadarRangeM = Math.max(15000, Math.min(300000, Number.isFinite(rangeM) ? rangeM : 60000));
   ['zoom-30', 'zoom-60', 'zoom-100', 'zoom-200'].forEach(id => $(id).classList.remove('active'));
-  const id = { 30000: 'zoom-30', 60000: 'zoom-60', 100000: 'zoom-100', 200000: 'zoom-200' }[rangeM];
+  const id = { 30000: 'zoom-30', 60000: 'zoom-60', 100000: 'zoom-100', 200000: 'zoom-200' }[currentRadarRangeM];
   if (id) $(id).classList.add('active');
-};
+  drawRadar();
+}
+window.setRadarRange = setRadarRange;
+
+function getRadarPointerWorld(event) {
+  const rect = radarCanvas.getBoundingClientRect();
+  const w = radarCanvas.parentElement.clientWidth || rect.width;
+  const h = radarCanvas.parentElement.clientHeight || rect.height;
+  return screenToWorld(event.clientX - rect.left, event.clientY - rect.top, w, h);
+}
+
+function terrainDistanceText(distanceM) {
+  return distanceM >= 1000 ? `${(distanceM / 1000).toFixed(2)} km` : `${distanceM.toFixed(0)} m`;
+}
+
+function setTerrainToolStatus(text) {
+  setText('terrain-toolbox-status', text);
+}
+
+function finishTerrainRegion() {
+  if (terrainRegionDraft.length < 3) {
+    setTerrainToolStatus('A region needs at least three points.');
+    return;
+  }
+  terrainRegions.push({
+    id: nextTerrainRegionId++,
+    points: terrainRegionDraft.map(point => ({ ...point })),
+    color: '#f59e0b',
+    visible: true,
+  });
+  terrainRegionDraft = [];
+  terrainToolMode = 'idle';
+  setTerrainToolStatus(`Region ${terrainRegions[terrainRegions.length - 1].id} saved.`);
+  refreshTerrainToolbox();
+  updateMapLibreOverlay();
+  drawRadar();
+}
+
+function cancelTerrainTool() {
+  terrainToolMode = 'idle';
+  terrainRegionDraft = [];
+  updateMapLibreToolSources();
+  refreshTerrainToolbox();
+  drawRadar();
+}
+
+function clearTerrainMeasurement() {
+  terrainMeasurement = null;
+  if (terrainToolMode === 'measure') terrainToolMode = 'idle';
+  updateMapLibreToolSources();
+  refreshTerrainToolbox();
+  drawRadar();
+}
+
+function refreshTerrainToolbox() {
+  const measureButton = $('terrain-measure-btn');
+  const regionButton = $('terrain-region-btn');
+  const finishButton = $('terrain-region-finish-btn');
+  const cancelButton = $('terrain-region-cancel-btn');
+  if (measureButton) {
+    measureButton.classList.toggle('active', terrainToolMode === 'measure');
+    measureButton.textContent = terrainToolMode === 'measure' ? 'Measuring…' : 'Measure distance';
+  }
+  if (regionButton) {
+    regionButton.classList.toggle('active', terrainToolMode === 'region');
+    regionButton.textContent = terrainToolMode === 'region' ? 'Drawing region…' : 'Draw region';
+  }
+  if (finishButton) finishButton.disabled = terrainToolMode !== 'region' || terrainRegionDraft.length < 3;
+  if (cancelButton) cancelButton.disabled = terrainToolMode !== 'region' && terrainMeasurement === null;
+
+  const list = $('terrain-toolbox-regions');
+  if (list) {
+    list.innerHTML = terrainRegions.length
+      ? terrainRegions.map(region => `
+        <div class="terrain-toolbox-region" data-region-id="${region.id}">
+          <input type="checkbox" data-region-action="visibility" ${region.visible ? 'checked' : ''} title="Show or hide region">
+          <input type="color" data-region-action="color" value="${region.color}" title="Change region colour">
+          <span>Region ${region.id} (${region.points.length} points)</span>
+          <button type="button" data-region-action="delete" title="Delete region">Delete</button>
+        </div>`).join('')
+      : '<span class="terrain-toolbox-status">No regions drawn.</span>';
+  }
+}
+
+function setupTerrainToolbox() {
+  $('terrain-fit-btn')?.addEventListener('click', () => {
+    if (terrainMapMode === 'maplibre' && mapLibreInstance && activeTerrainBounds) fitMapLibreToTerrain();
+    else if (activeTerrainBounds) window.centerMapOnTerrain(activeTerrainBounds);
+    else setTerrainToolStatus('No active terrain bounds to fit.');
+  });
+  $('terrain-zoom-in-btn')?.addEventListener('click', () => {
+    if (terrainMapMode === 'maplibre' && mapLibreInstance) mapLibreInstance.zoomIn({ duration: 150 });
+    else setRadarRange(currentRadarRangeM * 0.85);
+  });
+  $('terrain-zoom-out-btn')?.addEventListener('click', () => {
+    if (terrainMapMode === 'maplibre' && mapLibreInstance) mapLibreInstance.zoomOut({ duration: 150 });
+    else setRadarRange(currentRadarRangeM * 1.15);
+  });
+  $('terrain-measure-btn')?.addEventListener('click', () => {
+    terrainRegionDraft = [];
+    terrainToolMode = terrainToolMode === 'measure' ? 'idle' : 'measure';
+    setTerrainToolStatus(terrainToolMode === 'measure' ? 'Select two points on the map.' : 'Measurement cancelled.');
+    refreshTerrainToolbox();
+    updateMapLibreToolSources();
+    drawRadar();
+  });
+  $('terrain-measure-clear-btn')?.addEventListener('click', clearTerrainMeasurement);
+  $('terrain-region-btn')?.addEventListener('click', () => {
+    terrainMeasurement = null;
+    terrainRegionDraft = [];
+    terrainToolMode = terrainToolMode === 'region' ? 'idle' : 'region';
+    setTerrainToolStatus(terrainToolMode === 'region' ? 'Click three or more points, then finish.' : 'Region drawing cancelled.');
+    refreshTerrainToolbox();
+    updateMapLibreToolSources();
+    drawRadar();
+  });
+  $('terrain-region-finish-btn')?.addEventListener('click', finishTerrainRegion);
+  $('terrain-region-cancel-btn')?.addEventListener('click', cancelTerrainTool);
+  $('terrain-toolbox-regions')?.addEventListener('change', event => {
+    const target = event.target;
+    const row = target.closest('[data-region-id]');
+    const region = row && terrainRegions.find(item => item.id === Number(row.dataset.regionId));
+    if (!region) return;
+    if (target.dataset.regionAction === 'visibility') region.visible = target.checked;
+    if (target.dataset.regionAction === 'color') region.color = target.value;
+    updateMapLibreOverlay();
+    drawRadar();
+  });
+  $('terrain-toolbox-regions')?.addEventListener('click', event => {
+    const target = event.target;
+    if (target.dataset.regionAction !== 'delete') return;
+    const row = target.closest('[data-region-id]');
+    const id = Number(row?.dataset.regionId);
+    terrainRegions = terrainRegions.filter(region => region.id !== id);
+    refreshTerrainToolbox();
+    updateMapLibreOverlay();
+    drawRadar();
+  });
+
+  const toolboxToggleBtn = $('terrain-toolbox-toggle-btn');
+  const toolboxPanel = $('terrain-toolbox-panel');
+  const toolboxCloseBtn = $('terrain-toolbox-close-btn');
+
+  function setTerrainToolboxExpanded(expanded) {
+    if (expanded) {
+      toolboxPanel?.classList.remove('is-collapsed');
+      toolboxToggleBtn?.classList.add('is-hidden');
+      toolboxToggleBtn?.setAttribute('aria-expanded', 'true');
+    } else {
+      toolboxPanel?.classList.add('is-collapsed');
+      toolboxToggleBtn?.classList.remove('is-hidden');
+      toolboxToggleBtn?.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  toolboxToggleBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setTerrainToolboxExpanded(true);
+  });
+
+  toolboxCloseBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setTerrainToolboxExpanded(false);
+  });
+
+  refreshTerrainToolbox();
+}
+setupTerrainToolbox();
 
 window.centerMapOnACN = function() {
   panOffsetX_m = 0;
@@ -3494,6 +5391,25 @@ function handleNodeCommandResult(msg) {
     showNodeFeedback(`Terminal ${id} successfully ${act}ed.`);
     const form = $('node-editor-form');
     if (form) form.style.display = 'none';
+
+    if (msg.command_type === 'NODE_ADD') {
+      if (typeof msg.node_id === 'number' && (selectedNodeId < 0 || selectedNodeId === undefined)) {
+        selectedNodeId = msg.node_id;
+        syncNodeDropdowns(selectedNodeId);
+      }
+    } else if (msg.command_type === 'NODE_DELETE') {
+      mapLibreSelectionMessage = 'Hover markers for telemetry · select a node for live details.';
+      updateMapLibreOverlay();
+      if (hoveredNodeId === id || hoveredLinkNodeId === id) {
+        hoveredNodeId = null; hoveredLinkNodeId = null; activeMapHoverRenderer = null; mapHoverPoint = null;
+        const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
+      }
+      if (selectedNodeId === id) {
+        const replacement = latestTelemetry?.nodes_telemetry?.find(node => node.node_id !== id);
+        if (replacement) handleNodeSelection(replacement.node_id);
+        else { selectedNodeId = -1; syncNodeDropdowns(-1); renderSelectedNodeDetails(); updateMapLibreOverlay(); drawRadar(); }
+      }
+    }
   } else {
     showNodeFeedback(`Operation failed: ${msg.reason || 'Worker rejected the command.'}`, true);
   }
@@ -3529,6 +5445,16 @@ function initNodeInventoryToolbar() {
       if (inputY) inputY.value = '0';
       const inputAgl = $('node-input-agl');
       if (inputAgl) inputAgl.value = '2.0';
+      const inputTx = $('node-input-tx-power');
+      if (inputTx) inputTx.value = '36.0';
+      const inputBatCap = $('node-input-battery-capacity');
+      if (inputBatCap) inputBatCap.value = '5000';
+      const inputBatLvl = $('node-input-battery-level');
+      if (inputBatLvl) inputBatLvl.value = '100';
+      const inputPri = $('node-input-priority');
+      if (inputPri) inputPri.value = '1.0';
+      const inputCol = $('node-input-color');
+      if (inputCol) inputCol.value = '#38bdf8';
       if (form) form.style.display = 'block';
     };
   }
@@ -3591,6 +5517,16 @@ function initNodeInventoryToolbar() {
       if (inputY) inputY.value = String(node.y_m ?? 0);
       const inputAgl = $('node-input-agl');
       if (inputAgl) inputAgl.value = String(node.agl_m ?? 2.0);
+      const inputTx = $('node-input-tx-power');
+      if (inputTx) inputTx.value = String(node.tx_power_dbm ?? (node.node_type === 'mcp' ? 43.0 : 36.0));
+      const inputBatCap = $('node-input-battery-capacity');
+      if (inputBatCap) inputBatCap.value = String(node.battery_capacity_mah ?? (node.node_type === 'mcp' ? 20000 : 5000));
+      const inputBatLvl = $('node-input-battery-level');
+      if (inputBatLvl) inputBatLvl.value = String(node.battery_level_pct ?? 100);
+      const inputPri = $('node-input-priority');
+      if (inputPri) inputPri.value = String(node.tactical_priority ?? 1.0);
+      const inputCol = $('node-input-color');
+      if (inputCol) inputCol.value = node.color_hex || (node.node_type === 'mcp' ? '#f59e0b' : '#38bdf8');
       if (form) form.style.display = 'block';
     };
   }
@@ -3608,6 +5544,11 @@ function initNodeInventoryToolbar() {
       const xM = Number($('node-input-x')?.value);
       const yM = Number($('node-input-y')?.value);
       const aglM = Number($('node-input-agl')?.value);
+      const txPowerDbm = Number($('node-input-tx-power')?.value);
+      const batteryCapacityMah = Number($('node-input-battery-capacity')?.value);
+      const batteryLevelPct = Number($('node-input-battery-level')?.value);
+      const tacticalPriority = Number($('node-input-priority')?.value);
+      const colorHex = $('node-input-color')?.value?.trim();
 
       const coordVal = validateNodeCoordinates(xM, yM);
       if (!coordVal.valid) {
@@ -3626,11 +5567,60 @@ function initNodeInventoryToolbar() {
           return;
         }
       }
+      const txVal = validateNodeTxPower(txPowerDbm);
+      if (!txVal.valid) {
+        showNodeFeedback(txVal.error || 'Invalid transmit power.', true);
+        return;
+      }
+      const batCapVal = validateNodeBatteryCapacity(batteryCapacityMah);
+      if (!batCapVal.valid) {
+        showNodeFeedback(batCapVal.error || 'Invalid battery capacity.', true);
+        return;
+      }
+      const batLvlVal = validateNodeBatteryLevel(batteryLevelPct);
+      if (!batLvlVal.valid) {
+        showNodeFeedback(batLvlVal.error || 'Invalid battery level.', true);
+        return;
+      }
+      const priVal = validateNodeTacticalPriority(tacticalPriority);
+      if (!priVal.valid) {
+        showNodeFeedback(priVal.error || 'Invalid tactical priority.', true);
+        return;
+      }
+      if (colorHex) {
+        const colVal = validateNodeColorHex(colorHex);
+        if (!colVal.valid) {
+          showNodeFeedback(colVal.error || 'Invalid color hex.', true);
+          return;
+        }
+      }
 
       if (nodeEditorMode === 'add') {
-        sendCommand(buildNodeAddCommand({ xM, yM, aglM, callsign: callsign || undefined, role }));
+        sendCommand(buildNodeAddCommand({
+          xM,
+          yM,
+          aglM,
+          callsign: callsign || undefined,
+          role,
+          colorHex,
+          txPowerDbm,
+          batteryCapacityMah,
+          batteryLevelPct,
+          tacticalPriority,
+        }));
       } else {
-        sendCommand(buildNodeUpdateCommand(nodeEditorTargetId, { xM, yM, aglM, callsign: callsign || undefined, role }));
+        sendCommand(buildNodeUpdateCommand(nodeEditorTargetId, {
+          xM,
+          yM,
+          aglM,
+          callsign: callsign || undefined,
+          role,
+          colorHex,
+          txPowerDbm,
+          batteryCapacityMah,
+          batteryLevelPct,
+          tacticalPriority,
+        }));
       }
     };
   }
@@ -3639,6 +5629,7 @@ window.initNodeInventoryToolbar = initNodeInventoryToolbar;
 
 window.onTargetNodeChange = function(val) {
   if (historyController.isInspecting) return;
+  inspectorDismissed = false;
   selectedNodeId = parseInt(val, 10);
   pendingAglUpdate = null;
   syncNodeDropdowns(selectedNodeId);
@@ -3648,6 +5639,12 @@ window.onTargetNodeChange = function(val) {
   if (latestTelemetry && latestTelemetry.nodes_telemetry) {
     const search = $('terminal-search');
     renderTerminalInventory(latestTelemetry.nodes_telemetry, selectedNodeId, search ? search.value : '');
+    selectedTrafficNodeId = nodeId;
+    const trafficSel = $('traffic-node-select');
+    if (trafficSel && Array.from(trafficSel.options).some(o => Number(o.value) === nodeId)) {
+      trafficSel.value = String(nodeId);
+    }
+    renderNetworkTrafficInventory(latestTelemetry);
   }
   if (schedHistoryController.isInspecting) {
     syncSchedulerHistoricalUIState();
@@ -3699,6 +5696,13 @@ window.setTerrainMode = function(mode) {
     return;
   }
   activeTerrainMode = mode;
+  if (mode === 'synthetic') {
+    activeTerrainBounds = null;
+    pendingTerrainCenteringBounds = null;
+    if (terrainTopViewport && typeof terrainTopViewport.clearPinnedBounds === 'function') {
+      terrainTopViewport.clearPinnedBounds();
+    }
+  }
   mainTerrainEngine.setTerrainMode(mode);
   cachedTerrainMeshData = null;
   updateTerrainHudBadge();
@@ -3712,33 +5716,174 @@ window.setTerrainMode = function(mode) {
   }
 };
 
-/* ---------- Upload Modal & File Parser ---------- */
-window.openUploadModal = function() {
-  $('upload-modal').removeAttribute('hidden');
-  const statusBox = $('upload-status');
-  statusBox.style.display = 'none';
-};
-window.closeUploadModal = function() {
-  $('upload-modal').setAttribute('hidden', '');
-};
-window.onDragOver = function(e) { e.preventDefault(); $('dropzone').classList.add('dragover'); };
-window.onDragLeave = function(e) { e.preventDefault(); $('dropzone').classList.remove('dragover'); };
-window.onDropFile = function(e) {
-  e.preventDefault();
-  $('dropzone').classList.remove('dragover');
-  if (e.dataTransfer && e.dataTransfer.files.length) {
-    onFileSelected(e.dataTransfer.files[0]);
+/* ---------- Upload Modal, Multi-Tile Folder Catalog & Streaming Engine ---------- */
+const tileCache = new DecodedTileCache(typeof DEFAULT_LRU_CACHE_CAPACITY !== 'undefined' ? DEFAULT_LRU_CACHE_CAPACITY : 12);
+let currentCatalog = [];
+let currentClusters = [];
+let activePatchSelection = null;
+
+function getTerrainLayout() {
+  const cvs = (typeof terrainCanvas !== 'undefined' && terrainCanvas) ? terrainCanvas : $('terrain-canvas');
+  const w = (cvs && cvs.parentElement) ? cvs.parentElement.clientWidth : (cvs ? cvs.width : 800);
+  const h = (cvs && cvs.parentElement) ? cvs.parentElement.clientHeight : (cvs ? cvs.height : 320);
+  return { width: Math.max(10, w), height: Math.max(10, h), padL: 60, padR: 24, padT: 28, padB: 34 };
+}
+window.getTerrainLayout = getTerrainLayout;
+
+window.centerMapOnTerrain = function(bounds) {
+  if (!bounds) return;
+  const minX = bounds.minX !== undefined ? bounds.minX : -bounds.halfWidthM;
+  const maxX = bounds.maxX !== undefined ? bounds.maxX : bounds.halfWidthM;
+  const minY = bounds.minY !== undefined ? bounds.minY : -bounds.halfHeightM;
+  const maxY = bounds.maxY !== undefined ? bounds.maxY : bounds.halfHeightM;
+
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) return;
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const spanX = Math.max(1000, maxX - minX);
+  const spanY = Math.max(1000, maxY - minY);
+
+  // 1. Center 2D Radar Canvas with container dimension & aspect ratio awareness
+  const rCvs = (typeof radarCanvas !== 'undefined' && radarCanvas) ? radarCanvas : $('radar-canvas');
+  const rw = (rCvs && rCvs.parentElement) ? rCvs.parentElement.clientWidth : (rCvs ? rCvs.width : 800);
+  const rh = (rCvs && rCvs.parentElement) ? rCvs.parentElement.clientHeight : (rCvs ? rCvs.height : 600);
+  const rcx = rw / 2;
+  const rcy = rh / 2;
+  const minHalfDim = Math.min(rcx, rcy);
+  const halfSpanX = spanX / 2;
+  const halfSpanY = spanY / 2;
+  // Ensure both width and height fit inside visible radar area with comfortable padding (~20% margin)
+  const fitRangeX = (halfSpanX * (minHalfDim / Math.max(1, rcx))) / 0.80;
+  const fitRangeY = (halfSpanY * (minHalfDim / Math.max(1, rcy))) / 0.80;
+  currentRadarRangeM = Math.max(15000, Math.min(300000, Math.max(fitRangeX, fitRangeY)));
+
+  panOffsetX_m = cx;
+  panOffsetY_m = cy;
+  setRadarRange(currentRadarRangeM);
+  drawRadar();
+
+  // 2. Center 3D Three.js View
+  if (threeController && typeof threeController.centerOnBounds === 'function') {
+    threeController.centerOnBounds({
+      minX,
+      maxX,
+      minY,
+      maxY,
+      minElevationM: bounds.minElevationM,
+      maxElevationM: bounds.maxElevationM,
+    });
+  }
+  if (terrainMapMode === 'maplibre') fitMapLibreToTerrain();
+  if (terrainMapMode === 'maplibre') fitMapLibreToTerrain();
+
+  // 3. Center Top View with actual layout aspect ratio and padding
+  if (terrainTopViewport && typeof terrainTopViewport.fitToBounds === 'function') {
+    terrainTopViewport.fitToBounds({ minX, maxX, minY, maxY }, getTerrainLayout(), 0.08);
+    if (typeof drawFresnel === 'function') {
+      drawFresnel();
+    }
   }
 };
+
+function openUploadModal() {
+  const modal = $('upload-modal');
+  if (modal) modal.removeAttribute('hidden');
+  const statusBox = $('upload-status');
+  if (statusBox) statusBox.style.display = 'none';
+}
+window.openUploadModal = openUploadModal;
+
+function closeUploadModal() {
+  const modal = $('upload-modal');
+  if (modal) modal.setAttribute('hidden', '');
+}
+window.closeUploadModal = closeUploadModal;
+
+function onDragOver(e) {
+  e.preventDefault();
+  const dz = $('dropzone');
+  if (dz) dz.classList.add('dragover');
+}
+window.onDragOver = onDragOver;
+
+function onDragLeave(e) {
+  e.preventDefault();
+  const dz = $('dropzone');
+  if (dz) dz.classList.remove('dragover');
+}
+window.onDragLeave = onDragLeave;
+
+function onDropFile(e) {
+  e.preventDefault();
+  const dz = $('dropzone');
+  if (dz) dz.classList.remove('dragover');
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+    if (e.dataTransfer.files.length > 1) {
+      window.onFolderSelected(e.dataTransfer.files);
+    } else {
+      window.onFileSelected(e.dataTransfer.files[0]);
+    }
+  }
+}
+window.onDropFile = onDropFile;
 
 window.onFileSelected = function(file) {
   if (!file) return;
   const statusBox = $('upload-status');
+  const patchCtrl = $('folder-patch-controls');
+  if (patchCtrl) patchCtrl.style.display = 'none';
   statusBox.style.display = 'block';
   statusBox.className = 'upload-status-box status-loading';
   statusBox.textContent = `Parsing ${file.name} directly in browser...`;
 
-  if (file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg')) {
+  const lowerName = file.name.toLowerCase();
+
+  if (lowerName.endsWith('.hgt')) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target.result;
+        const parseResult = parseHgtBuffer(file.name, buffer);
+        if (!parseResult.success) {
+          statusBox.className = 'upload-status-box status-error';
+          statusBox.textContent = `[✗] Error: ${parseResult.error}`;
+          return;
+        }
+
+        // Update local active terrain bounds & pending confirmed centering
+        activeTerrainBounds = parseResult.metadata;
+        pendingTerrainCenteringBounds = parseResult.metadata;
+        setMapLibreTerrainRaster(parseResult.elevations, parseResult.metadata);
+
+        // Send custom DEM to worker
+        sendCommand({
+          type: 'LOAD_CUSTOM_DEM',
+          elevations: parseResult.elevations,
+          metadata: parseResult.metadata,
+        });
+        sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
+        sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
+        requestTerrainMeshData(true);
+
+        // Center cameras without altering authentic coordinates
+        window.centerMapOnTerrain(parseResult.metadata);
+
+        const meta = parseResult.metadata;
+        statusBox.className = 'upload-status-box status-success';
+        statusBox.textContent = `[✓] Loaded ${meta.tileName} (${parseResult.resolution} ${parseResult.sampleCount}×${parseResult.sampleCount}, Elev: ${parseResult.minElevationM?.toFixed(0)}m–${parseResult.maxElevationM?.toFixed(0)}m MSL, Voids: ${parseResult.voidCount}) · View Centered`;
+        setTimeout(() => window.closeUploadModal && window.closeUploadModal(), 1500);
+      } catch (err) {
+        statusBox.className = 'upload-status-box status-error';
+        statusBox.textContent = `[✗] Failed to process HGT: ${err?.message || err}`;
+      }
+    };
+    reader.onerror = () => {
+      statusBox.className = 'upload-status-box status-error';
+      statusBox.textContent = `[✗] Failed to read file: ${file.name}`;
+    };
+    reader.readAsArrayBuffer(file);
+  } else if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
     const reader = new FileReader();
     reader.onload = (evt) => {
       const img = new Image();
@@ -3750,6 +5895,9 @@ window.onFileSelected = function(file) {
         offCtx.drawImage(img, 0, 0, 512, 512);
         const pData = offCtx.getImageData(0, 0, 512, 512).data;
         const packedGrid = [];
+        const floatElevations = new Float32Array(512 * 512);
+        const minMsl = 2500;
+        const maxMsl = 6000;
         for (let r = 0; r < 512; r++) {
           const row = [];
           for (let c = 0; c < 512; c++) {
@@ -3757,25 +5905,221 @@ window.onFileSelected = function(file) {
             const gray = pData[idx];
             const packed = (gray << 16) | (gray << 8) | gray;
             row.push(packed);
+            floatElevations[r * 512 + c] = minMsl + (gray / 255.0) * (maxMsl - minMsl);
           }
           packedGrid.push(row);
         }
         renderHillshadeFromWorker(packedGrid, 512, 300, 'real');
+
+        // Forward elevations to worker so simulation uses this custom DEM!
+        const meta = {
+          ...REAL_LADAKH_DEM_METADATA,
+          tileName: file.name.replace(/\.[^/.]+$/, '').toUpperCase(),
+          minElevationM: minMsl,
+          maxElevationM: maxMsl,
+        };
+        activeTerrainBounds = meta;
+        pendingTerrainCenteringBounds = meta;
+        setMapLibreTerrainRaster(floatElevations, meta);
+        sendCommand({
+          type: 'LOAD_CUSTOM_DEM',
+          elevations: floatElevations,
+          metadata: meta,
+        });
+        sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
+        sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
+        requestTerrainMeshData(true);
+
+        window.centerMapOnTerrain(meta);
+
         statusBox.className = 'upload-status-box status-success';
         statusBox.textContent = `[✓] Custom Heightmap Processed (${file.name})`;
-        setTimeout(closeUploadModal, 1200);
+        setTimeout(() => window.closeUploadModal && window.closeUploadModal(), 1200);
       };
       img.src = evt.target.result;
     };
     reader.readAsDataURL(file);
   } else {
     statusBox.className = 'upload-status-box status-error';
-    statusBox.textContent = 'Please provide an image heightmap (.png, .jpg) for direct client processing.';
+    statusBox.textContent = 'Please provide an SRTM elevation file (.hgt) or image heightmap (.png, .jpg).';
+  }
+};
+
+async function decodeTileFile(catalogTile) {
+  const cached = tileCache.get(catalogTile.tileName);
+  if (cached) return cached;
+
+  const buffer = await catalogTile.file.arrayBuffer();
+  const decode = decodeHgtBuffer(buffer, catalogTile.sampleCount);
+  const decoded = {
+    tileName: catalogTile.tileName,
+    minLatDeg: catalogTile.minLatDeg,
+    maxLatDeg: catalogTile.maxLatDeg,
+    minLonDeg: catalogTile.minLonDeg,
+    maxLonDeg: catalogTile.maxLonDeg,
+    sampleCount: catalogTile.sampleCount,
+    elevations: decode.elevations,
+    minElevationM: decode.minElevationM,
+    maxElevationM: decode.maxElevationM,
+    voidCount: decode.voidCount,
+  };
+  tileCache.set(catalogTile.tileName, decoded);
+  return decoded;
+}
+
+window.loadActivePatch = async function(options) {
+  const statusBox = $('upload-status');
+  const patchCtrl = $('folder-patch-controls');
+  statusBox.style.display = 'block';
+  statusBox.className = 'upload-status-box status-loading';
+  statusBox.textContent = `Selecting and stitching terrain patch...`;
+
+  try {
+    const patch = selectActivePatch(options);
+    if (!patch || patch.tiles.length === 0) {
+      statusBox.className = 'upload-status-box status-error';
+      statusBox.textContent = `[✗] Could not select a valid terrain patch from catalog.`;
+      return;
+    }
+    activePatchSelection = patch;
+
+    statusBox.textContent = `Decoding ${patch.tiles.length} active patch tile(s) [${patch.tiles.map(t => t.tileName).join(', ')}]...`;
+    const decodedTiles = await Promise.all(patch.tiles.map(decodeTileFile));
+
+    const mosaic = stitchHgtTiles(decodedTiles, patch);
+
+    activeTerrainBounds = mosaic.metadata;
+    pendingTerrainCenteringBounds = mosaic.metadata;
+    setMapLibreTerrainRaster(mosaic.elevations, mosaic.metadata);
+
+    // Send LOAD_CUSTOM_DEM to worker
+    sendCommand({
+      type: 'LOAD_CUSTOM_DEM',
+      elevations: mosaic.elevations,
+      metadata: mosaic.metadata,
+    });
+    sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
+    sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
+    requestTerrainMeshData(true);
+
+    // Center views on the stitched mosaic bounds
+    window.centerMapOnTerrain(mosaic.metadata);
+
+    statusBox.className = 'upload-status-box status-success';
+    const tileCountStr = `${patch.tiles.length} tile${patch.tiles.length > 1 ? 's' : ''}`;
+    statusBox.textContent = `[✓] Stitched & Loaded ${tileCountStr}: ${mosaic.metadata.tileName} (${mosaic.rasterWidth}×${mosaic.rasterHeight}, Elev: ${mosaic.minElevationM.toFixed(0)}m–${mosaic.maxElevationM.toFixed(0)}m MSL, Voids: ${mosaic.voidCount}) · View Centered`;
+
+    if (patchCtrl) {
+      renderFolderPatchControls(patchCtrl, patch, currentCatalog, currentClusters, mosaic);
+    }
+  } catch (err) {
+    statusBox.className = 'upload-status-box status-error';
+    statusBox.textContent = `[✗] Failed to stitch patch: ${err?.message || err}`;
+  }
+};
+
+window.shiftTerrainPatch = async function(dLat, dLon) {
+  if (!activePatchSelection || currentCatalog.length === 0) return;
+  const currentAnchor = currentCatalog.find(t => t.tileName === activePatchSelection.anchorTileName);
+  if (!currentAnchor) return;
+
+  const targetLat = currentAnchor.minLatDeg + dLat + 0.5;
+  const targetLon = currentAnchor.minLonDeg + dLon + 0.5;
+
+  await window.loadActivePatch({
+    catalog: currentCatalog,
+    targetLatDeg: targetLat,
+    targetLonDeg: targetLon,
+    maxTiles: 4,
+  });
+};
+
+function renderFolderPatchControls(container, patch, catalog, clusters, mosaic) {
+  container.style.display = 'block';
+  const totalTiles = catalog.length;
+  const activeCount = patch.tiles.length;
+  const missingCount = patch.missingNeighbourNames.length;
+
+  let clusterSummary = '';
+  if (clusters.length > 1) {
+    clusterSummary = `<div style="color:#94a3b8;margin-bottom:6px">Discovered <b>${totalTiles}</b> valid HGT tiles across <b>${clusters.length}</b> separate geographic clusters.</div>`;
+  } else {
+    clusterSummary = `<div style="color:#94a3b8;margin-bottom:6px">Discovered <b>${totalTiles}</b> valid contiguous HGT tiles in folder.</div>`;
+  }
+
+  let patchInfo = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-weight:600;color:#38bdf8">Active Patch (${patch.rows}×${patch.cols} deg, ${activeCount} tiles loaded):</span>
+      <span style="color:#64748b;font-family:monospace">${mosaic.rasterWidth}×${mosaic.rasterHeight} px</span>
+    </div>
+    <div style="font-family:monospace;font-size:11px;background:#090d16;padding:6px 8px;border-radius:4px;border:1px solid #1e293b;margin-bottom:8px;word-break:break-all">
+      ${patch.tiles.map(t => `<span style="color:#22c55e;display:inline-block;margin-right:6px">✓ ${t.tileName}</span>`).join('')}
+    </div>
+  `;
+
+  if (missingCount > 0) {
+    patchInfo += `
+      <div style="color:#f59e0b;font-size:11px;margin-bottom:8px">
+        ⚠️ Missing in bounding patch: ${patch.missingNeighbourNames.join(', ')} (unmapped void filled with NaN)
+      </div>
+    `;
+  }
+
+  let navButtons = '';
+  if (totalTiles > 4) {
+    navButtons = `
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e293b">
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px">Shift Active Patch across folder:</div>
+        <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+          <button type="button" class="btn-sm" onclick="shiftTerrainPatch(1, 0)" title="Shift patch North by 1°">▲ North (+1°)</button>
+          <button type="button" class="btn-sm" onclick="shiftTerrainPatch(-1, 0)" title="Shift patch South by 1°">▼ South (-1°)</button>
+          <button type="button" class="btn-sm" onclick="shiftTerrainPatch(0, -1)" title="Shift patch West by 1°">◄ West (-1°)</button>
+          <button type="button" class="btn-sm" onclick="shiftTerrainPatch(0, 1)" title="Shift patch East by 1°">► East (+1°)</button>
+        </div>
+      </div>
+    `;
+  }
+
+  const closeBtn = `<button type="button" class="btn-sm" onclick="closeUploadModal()" style="margin-top:10px;width:100%;background:#334155;color:#e2e8f0;border:none;padding:6px;border-radius:4px;cursor:pointer">Done / Close Modal</button>`;
+
+  container.innerHTML = clusterSummary + patchInfo + navButtons + closeBtn;
+}
+
+window.onFolderSelected = async function(fileList) {
+  if (!fileList || fileList.length === 0) return;
+  const statusBox = $('upload-status');
+  const patchCtrl = $('folder-patch-controls');
+  statusBox.style.display = 'block';
+  statusBox.className = 'upload-status-box status-loading';
+  statusBox.textContent = `Scanning folder for SRTM .hgt elevation files...`;
+
+  try {
+    currentCatalog = buildTileCatalog(fileList);
+    if (currentCatalog.length === 0) {
+      statusBox.className = 'upload-status-box status-error';
+      statusBox.textContent = `[✗] No valid SRTM .hgt files found in selected folder. Expected naming [NS]XX[EW]YYY.hgt.`;
+      if (patchCtrl) patchCtrl.style.display = 'none';
+      return;
+    }
+
+    currentClusters = clusterNeighbouringTiles(currentCatalog);
+
+    // If only 1 file in catalog, load as single tile
+    if (currentCatalog.length === 1) {
+      window.onFileSelected(currentCatalog[0].file);
+      return;
+    }
+
+    // Select initial active patch around theater center (34.5°N, 76.5°E) or first tile
+    await window.loadActivePatch({ catalog: currentCatalog, maxTiles: 4 });
+  } catch (err) {
+    statusBox.className = 'upload-status-box status-error';
+    statusBox.textContent = `[✗] Folder processing error: ${err?.message || err}`;
   }
 };
 
 /* ---------- Tab Navigation ---------- */
-const TABS = ['tab-overview', 'tab-scheduler', 'tab-terrain', 'tab-terminal', 'tab-doc'];
+const TABS = ['tab-overview', 'tab-scheduler', 'tab-network', 'tab-registration', 'tab-terrain', 'tab-terminal', 'tab-doc'];
 window.switchMainTab = function(targetTabId) {
   TABS.forEach(tid => {
     const pane = $(tid);
@@ -3783,11 +6127,43 @@ window.switchMainTab = function(targetTabId) {
     if (pane) pane.classList.toggle('active', tid === targetTabId);
     if (btn) btn.classList.toggle('active', tid === targetTabId);
   });
+  if (targetTabId === 'tab-terminal' && latestTelemetry) {
+    if (currentTrafficSubtab === 'traffic') {
+      renderNetworkTrafficInventory(latestTelemetry);
+    } else if (latestTelemetry.nodes_telemetry) {
+      const search = $('terminal-search');
+      renderTerminalInventory(latestTelemetry.nodes_telemetry, selectedNodeId, search ? search.value : '');
+    }
+  }
   setTimeout(resizeCanvases, 20);
 };
 
 function syncTabWithLocationHash() {
-  if (/^#report-/.test(window.location.hash)) window.switchMainTab('tab-doc');
+  const hash = window.location.hash || '';
+  if (/^#report-/.test(hash)) {
+    window.switchMainTab('tab-doc');
+  } else if (hash) {
+    const rawTab = hash.split('?')[0].replace(/^#/, '');
+    if (TABS.includes(rawTab)) {
+      window.switchMainTab(rawTab);
+    }
+  }
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('preset')) {
+    setTimeout(() => window.loadPreset(urlParams.get('preset')), 100);
+  }
+  if (urlParams.has('node')) {
+    const nid = Number(urlParams.get('node'));
+    if (Number.isFinite(nid)) setTimeout(() => handleNodeSelection(nid), 300);
+  }
+  if (urlParams.has('view')) {
+    const v = urlParams.get('view');
+    const select = $('network-view-mode');
+    if (select && (v === 'individual' || v === 'aggregate')) {
+      select.value = v;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
 }
 window.addEventListener('hashchange', syncTabWithLocationHash);
 syncTabWithLocationHash();
@@ -3803,17 +6179,28 @@ function resizeCanvases() {
   if (threeController) {
     threeController.handleResize();
   }
+  if (mapLibreInstance && terrainMapMode === 'maplibre') {
+    mapLibreInstance.resize();
+  }
+  if (activeTerrainBounds && terrainTopViewport && typeof terrainTopViewport.fitToBounds === 'function') {
+    terrainTopViewport.fitToBounds(activeTerrainBounds, getTerrainLayout(), 0.08);
+  }
   drawRadar();
   drawWaterfall();
   drawFresnel();
   drawSchedulerCharts();
+  drawNetworkCharts();
 }
 window.addEventListener('resize', resizeCanvases);
 setTimeout(resizeCanvases, 30);
 
 if ('ResizeObserver' in window) {
   const ro = new ResizeObserver(() => resizeCanvases());
-  [radarCanvas, waterfallCanvas, terrainCanvas, $('sched-chart-utilization'), $('sched-chart-backlog')].forEach(c => {
+  [
+    radarCanvas, waterfallCanvas, terrainCanvas,
+    $('sched-chart-utilization'), $('sched-chart-backlog'),
+    $('network-individual-chart'), $('network-aggregate-chart')
+  ].forEach(c => {
     if (c && c.parentElement) ro.observe(c.parentElement);
   });
 }
@@ -3838,12 +6225,14 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
 
   const countBadge = $('inventory-nodes-count');
   if (countBadge) {
-    countBadge.textContent = `${nodes.length} active node${nodes.length === 1 ? '' : 's'} · WGS-84 & Local Cartesian`;
+    countBadge.textContent = nodes.length > 0
+      ? `${nodes.length} active node${nodes.length === 1 ? '' : 's'} · WGS-84 & Local Cartesian`
+      : '0 active nodes · ACN-Only Standby';
   }
 
   const pill = $('inventory-selected-pill');
   if (pill) {
-    pill.textContent = selectedId >= 0 ? `Selected: Node ${selectedId}` : 'No Node Selected';
+    pill.textContent = selectedId >= 0 ? `Selected: Node ${selectedId}` : 'No Node Selected (ACN Only)';
   }
 
   populateDropdownsOnce(nodes);
@@ -3870,8 +6259,22 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
     const agl = typeof n.agl_m === 'number' ? n.agl_m : (typeof n.antenna_height_m === 'number' ? n.antenna_height_m : 2.0);
     const totalMsl = typeof n.altitude_msl_m === 'number' ? n.altitude_msl_m : (typeof n.z_m === 'number' ? n.z_m : (terrainMsl + agl));
 
+    const isDepleted = n.is_depleted || (typeof n.battery_level_pct === 'number' && n.battery_level_pct <= 0);
     const statusObj = classifyLinkCommunicationStatus(n);
-    const badge = getStatusBadgeInfo(statusObj.status);
+    let badge = getStatusBadgeInfo(statusObj.status);
+    if (isDepleted) {
+      badge = {
+        badgeClass: 'badge-danger',
+        badgeText: 'BATTERY DEPLETED',
+      };
+    }
+
+    const nodeColor = n.color_hex || (n.node_type === 'mcp' ? '#f59e0b' : '#38bdf8');
+    const txPwr = typeof n.tx_power_dbm === 'number' ? `${n.tx_power_dbm.toFixed(1)} dBm` : (n.node_type === 'mcp' ? '43.0 dBm' : '36.0 dBm');
+    const batLvl = typeof n.battery_level_pct === 'number' ? n.battery_level_pct.toFixed(0) : '100';
+    const batCap = typeof n.battery_capacity_mah === 'number' ? n.battery_capacity_mah.toFixed(0) : (n.node_type === 'mcp' ? '20000' : '5000');
+    const batStr = `${batLvl}% (${batCap} mAh)`;
+    const priStr = typeof n.tactical_priority === 'number' ? `${n.tactical_priority.toFixed(1)}x` : '1.0x';
 
     const tr = document.createElement('tr');
     if (isSelected) tr.classList.add('is-selected');
@@ -3884,8 +6287,13 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
 
     tr.innerHTML = `
       <td style="text-align:left;font-family:var(--mono)">${n.node_id}</td>
-      <td style="text-align:left;font-weight:600">${callsign}</td>
+      <td style="text-align:left;font-weight:600">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${nodeColor};margin-right:6px;vertical-align:middle"></span>${callsign}
+      </td>
       <td style="text-align:left;font-family:var(--sans)">${role}</td>
+      <td style="font-family:var(--mono)">${txPwr}</td>
+      <td style="font-family:var(--mono)">${batStr}</td>
+      <td style="font-family:var(--mono)">${priStr}</td>
       <td title="${latDms}" style="font-family:var(--mono)">${latStr}</td>
       <td title="${lonDms}" style="font-family:var(--mono)">${lonStr}</td>
       <td>${x.toFixed(0)}</td>
@@ -3898,6 +6306,14 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
     rows.push(tr);
   }
 
+  if (rows.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="14" style="text-align:center;padding:24px;color:var(--text-muted);font-style:italic">
+      ${nodes.length === 0 ? 'No ground terminals registered. ACN operating in standalone relay standby. Click "+ Add Node" to deploy a terminal.' : 'No nodes match search query.'}
+    </td>`;
+    rows.push(tr);
+  }
+
   tbody.replaceChildren(...rows);
 }
 
@@ -3905,7 +6321,14 @@ function populateDropdownsOnce(nodes) {
   ['quickNodeSelect', 'termNodeSelect'].forEach(id => {
     const sel = $(id);
     if (!sel || !Array.isArray(nodes)) return;
-    const key = nodes.map(n => n.node_id).join(',');
+    if (nodes.length === 0) {
+      if (sel.dataset.lastKey === 'empty' && sel.children.length === 1) return;
+      sel.dataset.lastKey = 'empty';
+      sel.innerHTML = '<option value="-1">No ground terminals (ACN only)</option>';
+      sel.value = '-1';
+      return;
+    }
+    const key = nodes.map(n => `${n.node_id}:${n.name}:${n.node_type}`).join(',');
     if (sel.dataset.lastKey === key && sel.children.length === nodes.length) return;
     sel.dataset.lastKey = key;
     sel.innerHTML = '';
@@ -3922,6 +6345,281 @@ function populateDropdownsOnce(nodes) {
       sel.value = nodes[0].node_id;
     }
   });
+}
+
+/* ---------- Network Traffic Inventory Controller ---------- */
+const networkTrafficTracker = new NetworkTrafficTracker();
+let selectedTrafficNodeId = 4;
+let trafficSortColumn = 'fromName';
+let trafficSortAscending = true;
+let currentTrafficSubtab = 'inventory';
+
+window.switchTerminalSubtab = function(subtabName) {
+  currentTrafficSubtab = subtabName;
+  const isTraffic = subtabName === 'traffic';
+  const viewInv = $('terminal-subtab-view-inventory');
+  const viewTraf = $('terminal-subtab-view-traffic');
+  const btnInv = $('btn-subtab-inventory');
+  const btnTraf = $('btn-subtab-traffic');
+  if (viewInv) viewInv.style.display = isTraffic ? 'none' : 'block';
+  if (viewTraf) viewTraf.style.display = isTraffic ? 'block' : 'none';
+  if (btnInv) btnInv.classList.toggle('active', !isTraffic);
+  if (btnTraf) btnTraf.classList.toggle('active', isTraffic);
+  if (isTraffic && latestTelemetry) {
+    renderNetworkTrafficInventory(latestTelemetry);
+  }
+};
+
+window.onTrafficNodeSelectChange = function(nodeIdStr) {
+  const nid = Number(nodeIdStr);
+  if (Number.isInteger(nid)) {
+    selectedTrafficNodeId = nid;
+    if (latestTelemetry) renderNetworkTrafficInventory(latestTelemetry);
+  }
+};
+
+window.onTrafficFilterChange = function() {
+  if (latestTelemetry) renderNetworkTrafficInventory(latestTelemetry);
+};
+
+window.resetTrafficFilters = function() {
+  const search = $('traffic-search-input');
+  const dir = $('traffic-direction-filter');
+  const stat = $('traffic-status-filter');
+  if (search) search.value = '';
+  if (dir) dir.value = 'all';
+  if (stat) stat.value = 'all';
+  if (latestTelemetry) renderNetworkTrafficInventory(latestTelemetry);
+};
+
+window.sortTrafficTable = function(colName) {
+  if (trafficSortColumn === colName) {
+    trafficSortAscending = !trafficSortAscending;
+  } else {
+    trafficSortColumn = colName;
+    trafficSortAscending = true;
+  }
+  if (latestTelemetry) renderNetworkTrafficInventory(latestTelemetry);
+};
+
+function renderNetworkTrafficInventory(frame) {
+  if (!frame) return;
+  const nodes = frame.nodes_telemetry || [];
+  const trafficFrame = {
+    frameIndex: Number(frame.frame_index ?? 0),
+    simulationTimeS: Number(frame.sim_time_s ?? 0),
+    nodes: nodes,
+    downlinkTelemetry: frame.downlink_telemetry,
+    schedulerMode: frame.scheduler_mode,
+  };
+
+  // 1. Populate traffic node dropdown
+  const nodeSel = $('traffic-node-select');
+  if (nodeSel && nodes.length > 0) {
+    const key = nodes.map(n => n.node_id).join(',');
+    if (nodeSel.dataset.lastKey !== key) {
+      nodeSel.dataset.lastKey = key;
+      nodeSel.innerHTML = '';
+      nodes.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n.node_id;
+        opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id}`;
+        nodeSel.appendChild(opt);
+      });
+      if (nodes.some(n => n.node_id === selectedTrafficNodeId)) {
+        nodeSel.value = selectedTrafficNodeId;
+      } else {
+        selectedTrafficNodeId = nodes[0].node_id;
+        nodeSel.value = selectedTrafficNodeId;
+      }
+    }
+  }
+
+  // 2. Combined Network Summary
+  const flows = networkTrafficTracker.getFlowRecords(trafficFrame);
+  const combined = networkTrafficTracker.getCombinedNetworkSummary(flows);
+
+  setText('traffic-agg-tx', formatTrafficBytes(combined.totalPayloadTransmittedBytes));
+  setText('traffic-agg-rx', formatTrafficBytes(combined.totalPayloadReceivedBytes));
+  setText('traffic-agg-ul-rate', formatTrafficRate(combined.totalUplinkThroughputMbps));
+  setText('traffic-agg-dl-rate', formatTrafficRate(combined.totalDownlinkThroughputMbps));
+  setText('traffic-agg-links', `${combined.activeCommunicationLinksCount} / ${nodes.length}`);
+  setText('traffic-agg-deliveries', String(combined.totalSuccessfulDeliveries));
+  setText('traffic-agg-lost', String(combined.totalPacketsLost));
+  setText('traffic-agg-snr', combined.averageSnrDb !== null ? `${combined.averageSnrDb > 0 ? '+' : ''}${combined.averageSnrDb.toFixed(1)} dB` : '—');
+  setText('traffic-agg-min-snr', combined.minimumSnrDb !== null ? `Min: ${combined.minimumSnrDb > 0 ? '+' : ''}${combined.minimumSnrDb.toFixed(1)} dB` : 'Min: —');
+
+  // 3. Per-Node Summary
+  const nodeSummary = networkTrafficTracker.getPerNodeSummary(selectedTrafficNodeId, trafficFrame);
+  if (nodeSummary) {
+    setText('traffic-node-header', `Node ${nodeSummary.nodeId}: ${nodeSummary.callsign}`);
+    setText('traffic-node-role-badge', nodeSummary.role);
+
+    const badgeInfo = getTrafficStatusBadge(nodeSummary.linkStatus);
+    const badgeEl = $('traffic-node-status-badge');
+    if (badgeEl) {
+      badgeEl.className = `kpi-badge ${badgeInfo.badgeClass}`;
+      badgeEl.textContent = badgeInfo.label;
+    }
+
+    setText('traffic-node-tx', formatTrafficBytes(nodeSummary.totalDataTransmittedBytes));
+    setText('traffic-node-rx', formatTrafficBytes(nodeSummary.totalDataReceivedBytes));
+    setText('traffic-node-ul-rate', formatTrafficRate(nodeSummary.currentUploadRateMbps));
+    setText('traffic-node-dl-rate', formatTrafficRate(nodeSummary.currentDownloadRateMbps));
+    setText('traffic-node-deliveries', String(nodeSummary.totalSuccessfulTransfers));
+    setText('traffic-node-snr', formatTrafficSnr(nodeSummary.snrDb));
+    setText('traffic-node-availability', `${nodeSummary.communicationAvailabilityPct.toFixed(1)}%`);
+    setText('traffic-node-links', String(nodeSummary.activeLinksCount));
+
+    const modcodEl = $('traffic-node-modcod');
+    const matchedNode = nodes.find(n => n.node_id === selectedTrafficNodeId);
+    if (modcodEl) modcodEl.textContent = `MODCOD: ${matchedNode?.modcod_name ?? '—'}`;
+
+    // 4. Communication Flow Diagram
+    setText('flow-node-source-title', `Node ${nodeSummary.nodeId} [${nodeSummary.callsign}]`);
+    setText('flow-node-source-role', nodeSummary.role);
+    setText('flow-node-source-rate', `UL: ${formatTrafficRate(nodeSummary.currentUploadRateMbps)}`);
+    setText('flow-uplink-snr', `SNR: ${formatTrafficSnr(nodeSummary.snrDb)}`);
+
+    const ulLine = $('flow-uplink-line');
+    const isUlActive = nodeSummary.linkStatus === 'CONNECTED' || nodeSummary.linkStatus === 'DEGRADED';
+    const isUlBlocked = nodeSummary.linkStatus === 'BLOCKED_TERRAIN' || nodeSummary.linkStatus === 'BLOCKED_OBSTACLE';
+    if (ulLine) {
+      ulLine.className = isUlBlocked ? 'traffic-flow-line is-blocked' : (isUlActive ? 'traffic-flow-line is-active' : 'traffic-flow-line');
+    }
+    setText('flow-uplink-label', isUlBlocked ? '✖ Blocked (Ridge)' : (isUlActive ? '▸▸ Uplink (Active)' : '╌╌ Uplink (Outage)'));
+
+    const flowBadge = $('traffic-flow-mode-badge');
+    if (flowBadge) {
+      flowBadge.className = isUlBlocked ? 'kpi-badge badge-crimson' : (isUlActive ? 'kpi-badge badge-emerald' : 'kpi-badge badge-neutral');
+      flowBadge.textContent = isUlBlocked ? 'TERRAIN OCCLUDED' : (isUlActive ? 'AIR-TO-GROUND ACTIVE' : 'OUTAGE');
+    }
+
+    const narrative = $('traffic-flow-narrative');
+    if (narrative) {
+      if (isUlBlocked) {
+        narrative.textContent = `Terrain ridge blocks direct optical line-of-sight from Node ${nodeSummary.nodeId} to ACN. Uplink radiation halted to prevent airtime waste. Packets held in queue awaiting re-emergence.`;
+      } else if (isUlActive) {
+        narrative.textContent = `Active ${nodeSummary.currentUploadRateMbps > 0 ? 'payload transmission' : 'synchronization link'} established with ACN Relay at ${formatTrafficSnr(nodeSummary.snrDb)} SNR. ACN is broadcasting downlink subframe to ${combined.activeCommunicationLinksCount} units in line of sight.`;
+      } else {
+        narrative.textContent = `Link budget exhausted due to extreme range or low transmit power. No usable MODCOD available.`;
+      }
+    }
+  } else {
+    // Empty state (ACN only)
+    setText('traffic-node-header', 'Standby (ACN Only)');
+    setText('traffic-node-role-badge', 'No Terminals Deployed');
+    setText('traffic-node-tx', '0.00 KB');
+    setText('traffic-node-rx', '0.00 KB');
+    setText('traffic-node-ul-rate', '0.00 Mbps');
+    setText('traffic-node-dl-rate', '0.00 Mbps');
+    setText('traffic-node-deliveries', '0');
+    setText('traffic-node-snr', '—');
+    setText('traffic-node-availability', '—');
+    setText('traffic-node-links', '0');
+    setText('flow-node-source-title', 'Standby (0 Nodes)');
+    setText('flow-node-source-role', 'Standalone Relay');
+    setText('flow-node-source-rate', 'UL: 0.00 Mbps');
+    setText('flow-uplink-snr', 'SNR: —');
+    const ulLine = $('flow-uplink-line');
+    if (ulLine) ulLine.className = 'traffic-flow-line';
+    const flowBadge = $('traffic-flow-mode-badge');
+    if (flowBadge) {
+      flowBadge.className = 'kpi-badge badge-neutral';
+      flowBadge.textContent = 'STANDBY LOITER';
+    }
+  }
+
+  setText('flow-dest-count', `${nodes.length} Registered`);
+
+  // 5. Populate and filter table
+  const tbody = $('network-traffic-tbody');
+  if (!tbody) return;
+
+  const q = String($('traffic-search-input')?.value || '').trim().toLowerCase();
+  const dirFilter = $('traffic-direction-filter')?.value || 'all';
+  const statusFilter = $('traffic-status-filter')?.value || 'all';
+
+  let filtered = flows.filter(f => {
+    if (dirFilter !== 'all' && f.direction !== dirFilter) return false;
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'BLOCKED' && !f.linkStatus.startsWith('BLOCKED')) return false;
+      if (statusFilter === 'OUTAGE' && f.linkStatus !== 'OUTAGE_DISCONNECTED') return false;
+      if (statusFilter !== 'BLOCKED' && statusFilter !== 'OUTAGE' && f.linkStatus !== statusFilter) return false;
+    }
+    if (q) {
+      const match = f.fromName.toLowerCase().includes(q) ||
+        f.toName.toLowerCase().includes(q) ||
+        String(f.fromId).includes(q) ||
+        f.direction.toLowerCase().includes(q) ||
+        f.linkStatusText.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  // Sort filtered records
+  filtered.sort((a, b) => {
+    let va = a[trafficSortColumn];
+    let vb = b[trafficSortColumn];
+    if (va === null || va === undefined) va = -Infinity;
+    if (vb === null || vb === undefined) vb = -Infinity;
+    if (typeof va === 'string') {
+      return trafficSortAscending ? va.localeCompare(String(vb)) : String(vb).localeCompare(va);
+    }
+    return trafficSortAscending ? (va > vb ? 1 : (va < vb ? -1 : 0)) : (va < vb ? 1 : (va > vb ? -1 : 0));
+  });
+
+  setText('traffic-table-count', `${filtered.length} active communication flow${filtered.length === 1 ? '' : 's'}`);
+
+  const rows = [];
+  for (const r of filtered) {
+    const tr = document.createElement('tr');
+    tr.style.cursor = r.direction === 'Uplink' ? 'pointer' : 'default';
+    if (r.direction === 'Uplink' && r.fromId === selectedNodeId) {
+      tr.classList.add('is-selected');
+    }
+    if (r.direction === 'Uplink' && typeof r.fromId === 'number') {
+      tr.onclick = () => {
+        if (typeof window.onTargetNodeChange === 'function') {
+          window.onTargetNodeChange(r.fromId);
+        }
+      };
+    }
+
+    const badge = getTrafficStatusBadge(r.linkStatus);
+    const dirClass = r.direction === 'Uplink' ? 'uplink' : 'downlink';
+    const rateColor = r.dataRateMbps > 0 ? 'var(--accent)' : 'var(--muted)';
+    const lostHtml = r.packetsLost > 0 ? `<b style="color:#ef4444">${r.packetsLost}</b>` : '0';
+
+    tr.innerHTML = `
+      <td style="font-weight:600;text-align:left">${r.fromName}</td>
+      <td style="font-family:var(--mono);text-align:right">${formatTrafficBytes(r.dataSentBytes)}</td>
+      <td style="text-align:left;color:var(--muted)">${r.toName}</td>
+      <td style="font-family:var(--mono);text-align:right">${formatTrafficBytes(r.dataReceivedBytes)}</td>
+      <td style="text-align:center"><span class="direction-badge ${dirClass}">${r.direction}</span></td>
+      <td style="font-family:var(--mono);text-align:right;color:${rateColor}">${formatTrafficRate(r.dataRateMbps)}</td>
+      <td style="font-family:var(--mono);text-align:right">${formatTrafficSnr(r.snrDb)}</td>
+      <td style="text-align:center"><span class="kpi-badge ${badge.badgeClass}">${badge.label}</span></td>
+      <td style="font-family:var(--mono);text-align:right">${r.packetsSent.toLocaleString()}</td>
+      <td style="font-family:var(--mono);text-align:right">${r.packetsReceived.toLocaleString()}</td>
+      <td style="font-family:var(--mono);text-align:right">${lostHtml}</td>
+      <td style="font-family:var(--mono);text-align:center;color:var(--muted)">${formatTrafficSimTime(r.lastActivitySimTimeS)}</td>
+    `;
+    rows.push(tr);
+  }
+
+  if (rows.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="12" style="text-align:center;padding:24px;color:var(--muted);font-style:italic">
+      ${nodes.length === 0
+        ? '<strong>ACN RELAY STANDBY:</strong> Aerial communication node is loitering with zero ground terminals deployed. Network traffic inventory will automatically populate upon terminal deployment or preset selection.'
+        : 'No communication flows match the selected filter criteria.'}
+    </td>`;
+    rows.push(tr);
+  }
+
+  tbody.replaceChildren(...rows);
 }
 
 // Experiment capture utility
@@ -4062,6 +6760,23 @@ function updateDashboardDOM(frame) {
   experimentObserve(frame);
   setText('clock-display', `T+${(frame.sim_time_s ?? 0).toFixed(1)}s`);
   setText('frame-display', `#${frame.frame_index ?? 0}`);
+
+  // Synchronize simulation speed and show achieved speed if system cannot sustain requested rate
+  const targetSpeed = typeof frame.target_speed === 'number' ? frame.target_speed : (typeof frame.speed === 'number' ? frame.speed : currentSimSpeed);
+  const achievedSpeed = typeof frame.achieved_speed === 'number' ? frame.achieved_speed : null;
+  const isSimPaused = Boolean(frame.paused);
+
+  const achievedBadge = $('sim-achieved-readout');
+  if (achievedBadge) {
+    if (!isSimPaused && achievedSpeed !== null && targetSpeed > 1.0 && achievedSpeed < targetSpeed * 0.85) {
+      achievedBadge.textContent = `Act: ${achievedSpeed.toFixed(1)}×`;
+      achievedBadge.style.display = 'inline-block';
+      achievedBadge.title = `Actual execution speed (${achievedSpeed.toFixed(2)}×) is lower than target (${targetSpeed}×) due to host CPU load`;
+    } else {
+      achievedBadge.style.display = 'none';
+    }
+  }
+
   if (frame.plain_english_narrative) setText('overview-narrative', frame.plain_english_narrative);
   if (frame.acn_telemetry && typeof frame.acn_telemetry.current_speed_mps === 'number' && Number.isFinite(frame.acn_telemetry.current_speed_mps)) {
     const curSpeed = frame.acn_telemetry.current_speed_mps;
@@ -4074,6 +6789,14 @@ function updateDashboardDOM(frame) {
     if (search) window.filterTerminalOptions(q);
     renderTerminalInventory(frame.nodes_telemetry, selectedNodeId, q);
     syncSelectedNodeAglUI();
+    networkTrafficTracker.ingest({
+      frameIndex: Number(frame.frame_index ?? 0),
+      simulationTimeS: Number(frame.sim_time_s ?? 0),
+      nodes: frame.nodes_telemetry,
+      downlinkTelemetry: frame.downlink_telemetry,
+      schedulerMode: frame.scheduler_mode,
+    });
+    renderNetworkTrafficInventory(frame);
   }
 
   const kpi = frame.comparative_kpi_dashboard || {};
@@ -4334,6 +7057,17 @@ function updateDashboardDOM(frame) {
       setText('lb-gas', '--');
       setText('lb-rain', '--');
     }
+    const clearQBar = (id) => {
+      const el = $('qbar-' + id);
+      if (el) el.style.width = '0%';
+      setText('qval-' + id, '--');
+    };
+    clearQBar('69');
+    clearQBar('65');
+    clearQBar('67');
+    const pEl = $('qbar-70');
+    if (pEl) pEl.style.width = '0%';
+    setText('qval-70', '--');
   }
 
   // Active Transfer State Machine
@@ -4419,6 +7153,52 @@ function drawRadar() {
           renderDemCoverageBoundary(ctx, boundaryGeom, MONO);
         }
       }
+    }
+
+    const drawToolPolygon = (points, color, fillAlpha, lineWidth = 2, dashed = false) => {
+      if (!points || points.length < 2) return;
+      const screenPoints = points.map(point => worldToScreen(point.x, point.y, w, h));
+      ctx.save();
+      ctx.beginPath();
+      screenPoints.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+      if (screenPoints.length >= 3) {
+        ctx.closePath();
+        ctx.fillStyle = `${color}${fillAlpha}`;
+        ctx.fill();
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      if (dashed) ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color;
+      screenPoints.forEach(point => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 3, 0, TAU);
+        ctx.fill();
+      });
+      ctx.restore();
+    };
+    terrainRegions.forEach(region => {
+      if (region.visible) drawToolPolygon(region.points, region.color, '26');
+    });
+    if (terrainRegionDraft.length) drawToolPolygon(terrainRegionDraft, '#f59e0b', '18', 1.5, true);
+    if (terrainMeasurement) {
+      const start = worldToScreen(terrainMeasurement.start.x, terrainMeasurement.start.y, w, h);
+      const end = worldToScreen(terrainMeasurement.end.x, terrainMeasurement.end.y, w, h);
+      ctx.save();
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([7, 4]);
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#f97316';
+      [start, end].forEach(point => { ctx.beginPath(); ctx.arc(point.x, point.y, 4, 0, TAU); ctx.fill(); });
+      ctx.font = `bold 11px ${MONO}`;
+      ctx.fillStyle = '#fed7aa';
+      ctx.textAlign = 'center';
+      ctx.fillText(terrainDistanceText(terrainMeasurement.distanceM), (start.x + end.x) / 2, (start.y + end.y) / 2 - 8);
+      ctx.restore();
     }
 
     // Dynamic zoom tile overlay if available
@@ -4610,7 +7390,9 @@ function drawRadar() {
       ctx.beginPath();
       ctx.moveTo(acnPos.x, acnPos.y);
       ctx.lineTo(item.nPos.x, item.nPos.y);
-      if (item.node.is_transmitting) {
+      if (item.node.node_id === hoveredLinkNodeId) {
+        ctx.strokeStyle = '#f8fafc'; ctx.lineWidth = 3.2; ctx.setLineDash([]);
+      } else if (item.node.is_transmitting) {
         ctx.strokeStyle = item.classification.status === 'DEGRADED' ? 'rgba(245, 158, 11, 0.85)' : '#38bdf8';
         ctx.lineWidth = 2.0;
         ctx.setLineDash([]);
@@ -4815,15 +7597,15 @@ function drawRadar() {
       ctx.save();
       ctx.beginPath();
       if (isMCP) {
-        ctx.fillStyle = '#38bdf8';
+        ctx.fillStyle = node.color_hex || '#38bdf8';
         ctx.rect(nPos.x - 5, nPos.y - 5, 10, 10);
       } else {
-        ctx.fillStyle = style.nodeColor;
+        ctx.fillStyle = node.color_hex || style.nodeColor;
         ctx.arc(nPos.x, nPos.y, 4.5, 0, TAU);
       }
       ctx.fill();
-      ctx.strokeStyle = isSel ? '#ffffff' : '#0b0e14';
-      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = isSel ? '#ffffff' : isHovered ? '#f8fafc' : node.link_outage ? '#ef4444' : (node.registration_state === 'LOST' || node.registration_state === 'REJECTED') ? '#f59e0b' : node.registration_state === 'REGISTERED' ? '#4fd1a1' : '#0b0e14';
+      ctx.lineWidth = isSel ? 2.2 : isHovered ? 1.8 : 1.3;
       ctx.stroke();
 
       if (isSel) {
@@ -4842,7 +7624,7 @@ function drawRadar() {
       }
       ctx.restore();
 
-      const label = isMCP ? 'MCP' : `S${node.node_id}`;
+      const label = node.name || (isMCP ? 'MCP' : `S${node.node_id}`);
       const showLabel = isSel || isHovered || isMCP || (currentRadarRangeM <= 30000 && placedNodeLabels.length < 5);
       if (showLabel) {
         ctx.save();
@@ -4859,9 +7641,7 @@ function drawRadar() {
       }
     });
 
-    // ------------------------------------------------------------------
-    // Hover Target-Lock Reticle & Tactical Callout
-    // ------------------------------------------------------------------
+    // Radar keeps its original reticle; sharedNodeTooltip renders the matching details in HTML.
     if (hoveredNodeId !== null) {
       const hovItem = nodeItems.find(item => item.node.node_id === hoveredNodeId);
       if (hovItem) {
@@ -4903,59 +7683,6 @@ function drawRadar() {
         ctx.lineTo(hp.x + bs, hp.y + bs - bl);
         ctx.stroke();
 
-        const nodeName = hovNode.name || `S${hovNode.node_id}`;
-        const nodeType = (hovNode.node_type || (hovNode.node_id === 15 ? 'mcp' : 'soldier')).toUpperCase();
-        const slantKm = Number(hovNode.slant_range_km || 0).toFixed(1);
-        const snrDb = Number(hovNode.snr_db || 0).toFixed(1);
-        const modcod = hovNode.modcod_name || 'QPSK';
-        const state = hovInput.state_name || hovNode.state_name || 'NORMAL_LOS';
-        const backlogKb = ((hovNode.total_backlog_bytes || 0) / 1024).toFixed(1);
-
-        const line1 = `[ ${nodeName} // ${nodeType} ]  ${hovStyle.statusLabel}`;
-        const line2 = `COMM STATUS: ${hovClass.status} (${hovStyle.patternDescription})`;
-        const line3 = `RANGE: ${slantKm} km | SNR: ${snrDb} dB (${modcod})`;
-        const line4 = `STATE: ${state} | BACKLOG: ${backlogKb} KB`;
-
-        ctx.font = `600 10px ${MONO}`;
-        const tw1 = ctx.measureText(line1).width;
-        ctx.font = `10px ${MONO}`;
-        const tw2 = ctx.measureText(line2).width;
-        const tw3 = ctx.measureText(line3).width;
-        const tw4 = ctx.measureText(line4).width;
-        const boxW = Math.max(tw1, tw2, tw3, tw4) + 16;
-        const boxH = 62;
-
-        let bx = hp.x + 14;
-        let by = hp.y - 30;
-        if (bx + boxW > w - 10) bx = hp.x - boxW - 14;
-        if (by < 10) by = 10;
-        if (by + boxH > h - 10) by = h - boxH - 10;
-
-        ctx.fillStyle = '#0f1522';
-        ctx.fillRect(bx, by, boxW, boxH);
-        ctx.strokeStyle = '#1e2633';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx, by, boxW, boxH);
-
-        ctx.fillStyle = reticleColor;
-        ctx.fillRect(bx, by, 3, boxH);
-
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-
-        ctx.font = `600 10px ${MONO}`;
-        ctx.fillStyle = reticleColor;
-        ctx.fillText(line1, bx + 7, by + 5);
-
-        ctx.font = `10px ${MONO}`;
-        ctx.fillStyle = hovStyle.badgeColor;
-        ctx.fillText(line2, bx + 7, by + 19);
-
-        ctx.fillStyle = '#e8ecef';
-        ctx.fillText(line3, bx + 7, by + 33);
-
-        ctx.fillStyle = '#9aa8b3';
-        ctx.fillText(line4, bx + 7, by + 47);
         ctx.restore();
       }
     }
@@ -4989,17 +7716,62 @@ function drawRadar() {
 }
 
 /* Radar Interaction Handlers */
+function radarLinkHit(px, py, w, h, radiusPx = 6) {
+  const acn = latestTelemetry?.acn_telemetry;
+  if (!acn || !Number.isFinite(acn.pos_x) || !Number.isFinite(acn.pos_y)) return null;
+  const a = worldToScreen(acn.pos_x, acn.pos_y, w, h);
+  let bestNode = null, bestDistance = radiusPx;
+  for (const node of latestTelemetry.nodes_telemetry || []) {
+    const b = worldToScreen(Number(node.x_m), Number(node.y_m), w, h);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const denominator = dx * dx + dy * dy;
+    const t = denominator ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / denominator)) : 0;
+    const distance = Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy));
+    if (distance < bestDistance) { bestDistance = distance; bestNode = node.node_id; }
+  }
+  return bestNode;
+}
+
 radarCanvas.addEventListener('mousedown', (e) => {
   const rect = radarCanvas.getBoundingClientRect();
   const px = e.clientX - rect.left, py = e.clientY - rect.top;
   const w = radarCanvas.parentElement.clientWidth, h = radarCanvas.parentElement.clientHeight;
   if (e.button === 0) {
     const world = screenToWorld(px, py, w, h);
+    if (terrainToolMode === 'measure') {
+      if (!terrainMeasurement) {
+        const geo = cartesianToGeodetic(world.x, world.y);
+        const point = { x: world.x, y: world.y, lng: geo.lonDeg, lat: geo.latDeg };
+        terrainMeasurement = { start: point, end: point, distanceM: 0 };
+        setTerrainToolStatus('Select the second point on the map.');
+      } else {
+        const geo = cartesianToGeodetic(world.x, world.y);
+        terrainMeasurement.end = { x: world.x, y: world.y, lng: geo.lonDeg, lat: geo.latDeg };
+        terrainMeasurement.distanceM = geographicDistanceM(terrainMeasurement.start, terrainMeasurement.end);
+        terrainToolMode = 'idle';
+        setTerrainToolStatus(`Distance: ${terrainDistanceText(terrainMeasurement.distanceM)}`);
+      }
+      refreshTerrainToolbox();
+      drawRadar();
+      return;
+    }
+    if (terrainToolMode === 'region') {
+      const geo = cartesianToGeodetic(world.x, world.y);
+      terrainRegionDraft.push({ x: world.x, y: world.y, lng: geo.lonDeg, lat: geo.latDeg });
+      setTerrainToolStatus(`${terrainRegionDraft.length} point${terrainRegionDraft.length === 1 ? '' : 's'} selected. Finish at three or more points.`);
+      refreshTerrainToolbox();
+      drawRadar();
+      return;
+    }
     // In armed placement mode the click itself is the command to add a route point,
     // not a hit-test selection. Node-first priority applies to select/drag below.
     if (!spatialLocked && trajectoryEditor.activeMode === 'waypoints' && waypointPlacementArmed) {
       addWaypointAt(world.x, world.y);
       $('trajectory-place-point').classList.remove('active');
+      return;
+    }
+    if (obstacleEditor.mode === 'place' && !spatialLocked) {
+      createObstacleAt(world.x, world.y);
       return;
     }
     let nodeHit = null, nodeHitDistance = Number.POSITIVE_INFINITY;
@@ -5033,31 +7805,22 @@ radarCanvas.addEventListener('mousedown', (e) => {
       nodeHitDistance, waypointHitDistance, obstacleHitDistance, obstacleEditor.mode,
       trajectoryEditor.activeMode === 'waypoints' && !spatialLocked,
     );
-    if (pointerTarget === 'node' && nodeHit) {
+    if (pointerTarget === 'node' && nodeHit && obstacleEditor.mode === 'navigate' && trajectoryEditor.activeMode !== 'waypoints') {
       if (historyController.isInspecting) {
         radarCanvas.style.cursor = 'not-allowed';
         return;
       }
-      selectedNodeId = nodeHit.node_id;
-      syncNodeDropdowns(selectedNodeId);
-      sendCommand({ type: 'SELECT_NODE', node_id: nodeHit.node_id });
-      updateSchedulerScrubberUI();
-      if (schedHistoryController.isInspecting) {
-        syncSchedulerHistoricalUIState();
-      } else {
-        drawSchedulerCharts();
-        if (latestTelemetry) updateDashboardDOM(latestTelemetry);
-      }
+      handleNodeSelection(nodeHit.node_id);
       if (spatialLocked) {
+        radarCanvas.style.cursor = 'pointer';
+        return;
+      }
+      if (obstacleEditor.mode !== 'navigate' || trajectoryEditor.activeMode === 'waypoints') {
         radarCanvas.style.cursor = 'pointer';
         return;
       }
       draggedEntity = { type: 'node', id: nodeHit.node_id };
       radarCanvas.style.cursor = 'grabbing';
-      return;
-    }
-    if (obstacleEditor.mode === 'place' && !spatialLocked) {
-      createObstacleAt(world.x, world.y);
       return;
     }
     if (pointerTarget === 'obstacle' && obstacleHitId) {
@@ -5074,6 +7837,10 @@ radarCanvas.addEventListener('mousedown', (e) => {
       refreshTrajectoryEditor();
       return;
     }
+    if (obstacleEditor.mode === 'navigate' && trajectoryEditor.activeMode !== 'waypoints') {
+      const linkNodeId = radarLinkHit(px, py, w, h);
+      if (linkNodeId !== null) { handleNodeSelection(linkNodeId); return; }
+    }
   }
   isPanning = true; panStartX = e.clientX; panStartY = e.clientY; radarCanvas.style.cursor = 'move';
 });
@@ -5081,7 +7848,10 @@ radarCanvas.addEventListener('mousedown', (e) => {
 radarCanvas.addEventListener('mouseenter', () => { isMouseInsideRadar = true; });
 radarCanvas.addEventListener('mouseleave', () => {
   isMouseInsideRadar = false;
-  hoveredNodeId = null;
+  if (activeMapHoverRenderer === 'radar') {
+    hoveredNodeId = null; hoveredLinkNodeId = null; activeMapHoverRenderer = null; mapHoverPoint = null;
+    const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
+  }
   updateRadarCursorReadout(0, 0, false);
 });
 
@@ -5114,17 +7884,30 @@ window.addEventListener('mousemove', (e) => {
       const distance = Math.hypot(px - pos.x, py - pos.y);
       if (distance <= best) { best = distance; hit = node.node_id; }
     }
-    hoveredNodeId = hit;
+    const linkHit = hit === null && terrainToolMode === 'idle' && obstacleEditor.mode === 'navigate' && trajectoryEditor.activeMode !== 'waypoints'
+      ? radarLinkHit(px, py, w, h) : null;
+    if (hit !== null) setSharedMapHover('radar', 'node', hit, { x: px, y: py });
+    else if (linkHit !== null) setSharedMapHover('radar', 'link', linkHit, { x: px, y: py });
+    else if (activeMapHoverRenderer === 'radar') {
+      const changed = hoveredNodeId !== null || hoveredLinkNodeId !== null;
+      hoveredNodeId = null; hoveredLinkNodeId = null; activeMapHoverRenderer = null; mapHoverPoint = null;
+      const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
+      if (changed) drawRadar();
+    }
     let obstacleHover = false;
     if (hit === null && obstacleEditor.mode !== 'navigate') {
       const world = screenToWorld(px, py, w, h), toleranceM = 12 / getRadarGeometry(w, h).scale;
       obstacleHover = obstacleEditor.draft.some(obstacle => obstacleContainsPoint(obstacle, world.x, world.y, toleranceM));
     }
-    radarCanvas.style.cursor = hit !== null ? 'pointer'
+    radarCanvas.style.cursor = hit !== null || linkHit !== null ? 'pointer'
       : obstacleEditor.mode === 'place' && !spatialLocked ? 'crosshair'
       : obstacleHover ? (spatialLocked ? 'pointer' : 'grab') : 'grab';
   } else if (!insideRadar && !draggedEntity && !isPanning) {
-    hoveredNodeId = null;
+    if (activeMapHoverRenderer === 'radar') {
+      hoveredNodeId = null; hoveredLinkNodeId = null; activeMapHoverRenderer = null; mapHoverPoint = null;
+      const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
+      drawRadar();
+    }
     radarCanvas.style.cursor = 'grab';
   }
 
@@ -5139,6 +7922,7 @@ window.addEventListener('mousemove', (e) => {
         catch (error) { obstacleEditor.message = error.message; refreshObstacleEditor(); }
       }
     } else {
+      draggedEntity.lastPosition = { xM: world.x, yM: world.y };
       const now = performance.now();
       if (now - lastMoveSendTime > 40) {
         sendCommand({ type: 'NODE_MOVE', node_id: draggedEntity.id, x_m: world.x, y_m: world.y });
@@ -5153,9 +7937,15 @@ window.addEventListener('mousemove', (e) => {
   }
 });
 
-window.addEventListener('mouseup', () => {
+const finishRadarDrag = () => {
+  if (draggedEntity?.type === 'node' && draggedEntity.lastPosition && !spatialLocked) {
+    sendCommand({ type: 'NODE_MOVE', node_id: draggedEntity.id, x_m: draggedEntity.lastPosition.xM, y_m: draggedEntity.lastPosition.yM });
+  }
   draggedEntity = null; isPanning = false; radarCanvas.style.cursor = 'grab';
-});
+};
+window.addEventListener('mouseup', finishRadarDrag);
+window.addEventListener('pointerup', finishRadarDrag);
+window.addEventListener('pointercancel', finishRadarDrag);
 radarCanvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   currentRadarRangeM = Math.max(15000, Math.min(300000, currentRadarRangeM * (e.deltaY < 0 ? 0.85 : 1.15)));
@@ -5521,7 +8311,9 @@ function drawFresnel() {
         if (tNodeLabel) {
           tNodeLabel.textContent = histRecord
             ? `${histRecord.nodeName} [Historical #${histRecord.frameIndex}]`
-            : `Node ${selectedNodeId} (${selNode?.name || 'Terminal'})`;
+            : (selectedNodeId >= 0 && selNode
+                ? `Node ${selectedNodeId} (${selNode?.name || 'Terminal'})`
+                : 'No Node Selected (ACN Only)');
         }
 
         const tZoomLabel = $('terrain-zoom-label');
@@ -5532,10 +8324,15 @@ function drawFresnel() {
 
         const tClearBadge = $('terrain-clearance-badge');
         if (tClearBadge) {
-          const clr = profile ? profile.terrainMinimumClearanceM : (histRecord ? histRecord.obstruction.minClearanceM : 0);
-          const isLos = profile ? profile.terrainIsLos : (histRecord ? histRecord.obstruction.terrainIsLos : true);
-          tClearBadge.className = isLos ? 'kpi-badge badge-emerald' : 'kpi-badge badge-crimson';
-          tClearBadge.textContent = isLos ? `CLEARANCE: +${clr.toFixed(0)}m` : `OCCLUSION: ${clr.toFixed(0)}m`;
+          if (!profile && !histRecord) {
+            tClearBadge.className = 'kpi-badge';
+            tClearBadge.textContent = 'CLEARANCE: --';
+          } else {
+            const clr = profile ? profile.terrainMinimumClearanceM : (histRecord ? histRecord.obstruction.minClearanceM : 0);
+            const isLos = profile ? profile.terrainIsLos : (histRecord ? histRecord.obstruction.terrainIsLos : true);
+            tClearBadge.className = isLos ? 'kpi-badge badge-emerald' : 'kpi-badge badge-crimson';
+            tClearBadge.textContent = isLos ? `CLEARANCE: +${clr.toFixed(0)}m` : `OCCLUSION: ${clr.toFixed(0)}m`;
+          }
         }
 
         const tCrestBadge = $('terrain-crest-badge');

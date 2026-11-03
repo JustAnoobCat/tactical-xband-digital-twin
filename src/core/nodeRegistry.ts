@@ -56,6 +56,14 @@ export interface GroundNodeEntity {
   trafficOptions: NodeTrafficOptions;
   /** Deterministic RNG seed derived via computeNodeSeed. */
   readonly seed: number;
+  /** Configured transmit power in dBm. */
+  txPowerDbm?: number;
+  /** Battery capacity in mAh. */
+  batteryCapacityMah?: number;
+  /** Current battery level percentage (0.0 - 100.0). */
+  batteryLevelPct?: number;
+  /** Tactical priority multiplier (0.1 - 5.0). */
+  tacticalPriority?: number;
 }
 
 /**
@@ -263,6 +271,10 @@ export class NodeRegistry {
     trafficOptions?: NodeTrafficOptions;
     entityId?: string;
     colorHex?: string;
+    txPowerDbm?: number;
+    batteryCapacityMah?: number;
+    batteryLevelPct?: number;
+    tacticalPriority?: number;
   } = {}): GroundNodeEntity {
     if (!this.canAddNode()) {
       throw new Error(`Maximum active ground-node capacity (${MAX_ACTIVE_GROUND_NODES}) reached.`);
@@ -278,6 +290,10 @@ export class NodeRegistry {
     const aglM = params.aglM !== undefined ? params.aglM : DEFAULT_ANTENNA_AGL_M;
     const trafficOptions: NodeTrafficOptions = params.trafficOptions ? { ...params.trafficOptions } : {};
     const seed = computeNodeSeed(nodeId, this.seedOffset);
+    const txPowerDbm = params.txPowerDbm !== undefined ? params.txPowerDbm : (role === 'mcp' ? 43.0 : 36.0);
+    const batteryCapacityMah = params.batteryCapacityMah !== undefined ? params.batteryCapacityMah : (role === 'mcp' ? 20000 : 5000);
+    const batteryLevelPct = params.batteryLevelPct !== undefined ? Math.max(0.0, Math.min(100.0, params.batteryLevelPct)) : 100.0;
+    const tacticalPriority = params.tacticalPriority !== undefined ? Math.max(0.1, Math.min(5.0, params.tacticalPriority)) : 1.0;
 
     const identity: NodeIdentity = {
       entityId,
@@ -294,6 +310,10 @@ export class NodeRegistry {
       aglM,
       trafficOptions,
       seed,
+      txPowerDbm,
+      batteryCapacityMah,
+      batteryLevelPct,
+      tacticalPriority,
     };
 
     this.register(entity);
@@ -317,6 +337,13 @@ export class NodeRegistry {
     return true;
   }
 
+  public updateBatteryLevel(nodeId: number, batteryLevelPct: number): boolean {
+    const entity = this.byNodeId.get(nodeId);
+    if (!entity) return false;
+    entity.batteryLevelPct = Math.max(0.0, Math.min(100.0, batteryLevelPct));
+    return true;
+  }
+
   public updateEntity(
     nodeId: number,
     updates: {
@@ -326,6 +353,10 @@ export class NodeRegistry {
       aglM?: number;
       trafficOptions?: NodeTrafficOptions;
       colorHex?: string;
+      txPowerDbm?: number;
+      batteryCapacityMah?: number;
+      batteryLevelPct?: number;
+      tacticalPriority?: number;
     }
   ): boolean {
     const entity = this.byNodeId.get(nodeId);
@@ -339,6 +370,18 @@ export class NodeRegistry {
     }
     if (updates.trafficOptions) {
       entity.trafficOptions = { ...updates.trafficOptions };
+    }
+    if (updates.txPowerDbm !== undefined) {
+      entity.txPowerDbm = updates.txPowerDbm;
+    }
+    if (updates.batteryCapacityMah !== undefined) {
+      entity.batteryCapacityMah = updates.batteryCapacityMah;
+    }
+    if (updates.batteryLevelPct !== undefined) {
+      entity.batteryLevelPct = Math.max(0.0, Math.min(100.0, updates.batteryLevelPct));
+    }
+    if (updates.tacticalPriority !== undefined) {
+      entity.tacticalPriority = Math.max(0.1, Math.min(5.0, updates.tacticalPriority));
     }
     if (updates.callsign !== undefined || updates.role !== undefined || updates.colorHex !== undefined) {
       const updatedIdentity: NodeIdentity = {
@@ -393,6 +436,10 @@ export function createDefault16NodeRegistry(seedOffset: number = 0): NodeRegistr
       aglM: DEFAULT_ANTENNA_AGL_M,
       trafficOptions,
       seed,
+      txPowerDbm: i === MCP_ID ? 43.0 : 36.0,
+      batteryCapacityMah: i === MCP_ID ? 20000 : 5000,
+      batteryLevelPct: 100.0,
+      tacticalPriority: 1.0,
     };
 
     registry.register(entity);

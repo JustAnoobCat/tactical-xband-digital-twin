@@ -268,6 +268,17 @@ export class GroundNodeTrafficSubsystem {
 
   public isShadowed: boolean = false;
 
+  /** Configured transmit power in dBm. If undefined, falls back to role default. */
+  public txPowerDbm?: number;
+  /** Configured battery capacity in mAh. */
+  public batteryCapacityMah: number = 5000;
+  /** Current battery level percentage (0.0 to 100.0). */
+  public batteryLevelPct: number = 100.0;
+  /** Configured tactical priority (0.1 to 5.0). */
+  public tacticalPriority: number = 1.0;
+  /** Flag indicating total battery exhaustion. */
+  public isDepleted: boolean = false;
+
   private readonly c2IntervalS: number = 0.1; // 10 Hz heartbeat
   private lastC2TimeS: number = -1.0;
   private rngState: number;
@@ -357,6 +368,9 @@ export class GroundNodeTrafficSubsystem {
     currentSimTimeS: number,
     _frameDurationS: number = 0.02
   ): Packet[] {
+    if (this.batteryLevelPct <= 0 || this.isDepleted) {
+      return [];
+    }
     const generated: Packet[] = [];
 
     // 1. 5QI 69: Periodic C2 Health & Status
@@ -396,6 +410,9 @@ export class GroundNodeTrafficSubsystem {
   }
 
   public injectTraffic(trafficType: string, currentSimTimeS: number): number {
+    if (this.batteryLevelPct <= 0 || this.isDepleted) {
+      return 0;
+    }
     const kind = trafficType.trim().toUpperCase();
     let count = 0;
 
