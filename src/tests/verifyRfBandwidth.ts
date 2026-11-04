@@ -30,7 +30,7 @@ console.log('[1/6] Verifying channel bandwidth input validation...');
 
   // Invalid bandwidths: <= 0, > 50, NaN, Infinity, negative
   for (const badBw of [0, -1, 0.05, 50.1, 100, Number.NaN, Infinity, '10MHz']) {
-    const res = sim.handleMessage({ type: 'CONFIG_UPDATE', params: { channel_bandwidth_mhz: badBw } });
+    const res = sim.handleMessage({ type: 'CONFIG_UPDATE', params: { channel_bandwidth_mhz: badBw as any } });
     assert.equal(res.accepted, false, `Invalid bandwidth ${badBw} must be rejected`);
   }
 

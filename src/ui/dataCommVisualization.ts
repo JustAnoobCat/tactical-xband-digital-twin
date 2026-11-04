@@ -23,11 +23,9 @@
  */
 
 import { ActiveTransferTelemetry } from '../core/transferMetrics';
+import type { Point2D } from '../shared/types';
 
-export interface Point2D {
-  readonly x: number;
-  readonly y: number;
-}
+export type { Point2D };
 
 export interface ParticleState {
   readonly x: number;

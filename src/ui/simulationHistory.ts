@@ -9,7 +9,7 @@
  */
 
 import type { LinkProfile, LinkProfileObstacleInterval, LinkProfileSample } from '../core/linkProfile';
-import type { Position3D } from '../core/terrain';
+import type { Position3D } from '../shared/types';
 
 export interface HistoricalObstructionSummary {
   readonly terrainIsLos: boolean;

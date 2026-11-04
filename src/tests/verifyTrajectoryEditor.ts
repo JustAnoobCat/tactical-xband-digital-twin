@@ -68,7 +68,7 @@ editor.cancel();
 const worker = new SimulationWorkerManager();
 const initialFlight = worker.flightConfig;
 for (const orbit_a_m of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '']) {
-  assert.equal(worker.handleMessage({ type: 'CONFIG_UPDATE', params: { orbit_a_m } }).accepted, false,
+  assert.equal(worker.handleMessage({ type: 'CONFIG_UPDATE', params: { orbit_a_m: orbit_a_m as any } }).accepted, false,
     'worker rejects invalid numeric ellipse values');
 }
 assert.equal(worker.flightConfig, initialFlight, 'invalid ellipse values preserve the last valid worker trajectory');

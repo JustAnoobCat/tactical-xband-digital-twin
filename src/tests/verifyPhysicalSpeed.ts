@@ -30,7 +30,7 @@ console.log('[1/8] Verifying physical speed parameter bounds and validation...')
 
   // Invalid speed updates
   for (const badSpeed of [-1, -0.01, 1001, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 'fast']) {
-    const res = sim.handleMessage({ type: 'CONFIG_UPDATE', params: { loiter_speed_mps: badSpeed } });
+    const res = sim.handleMessage({ type: 'CONFIG_UPDATE', params: { loiter_speed_mps: badSpeed as any } });
     assert.equal(res.accepted, false, `Invalid speed ${badSpeed} must be rejected`);
   }
 

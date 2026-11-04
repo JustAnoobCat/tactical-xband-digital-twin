@@ -8,8 +8,10 @@
 
 import { EnvironmentConfig, RFConfig, SPEED_OF_LIGHT } from './config';
 import { ObstacleField, ObstacleIntersection } from './obstacles';
+import type { Position3D } from '../shared/types';
+import { THEATER_HALF_M } from '../shared/constants';
 
-export type Position3D = readonly [xM: number, yM: number, zM: number];
+export type { Position3D };
 
 export interface SlantGeometry {
   readonly slantRangeM: number;
@@ -33,7 +35,7 @@ export interface TerrainObstruction {
 }
 
 // Regional 1,200 x 1,200 km Theater Extent (+/- 600 km from origin)
-export const THEATER_EXTENT_1200KM_M = 600000.0;
+export const THEATER_EXTENT_1200KM_M = THEATER_HALF_M;
 export const DEFAULT_GRID_SIZE = 512;
 
 // ----------------------------------------------------------------------------

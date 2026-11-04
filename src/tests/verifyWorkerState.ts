@@ -134,7 +134,7 @@ async function runWorkerStateVerification(): Promise<void> {
     { type: 'CONFIG_UPDATE', params: { node_id: nodeId, agl_m: 1001 } },
     [],
   ];
-  for (const message of invalidCases) assert.equal(sim.handleMessage(message).accepted, false);
+  for (const message of invalidCases) assert.equal(sim.handleMessage(message as any).accepted, false);
   assert.equal(sim.rfConfig.carrierFrequencyHz, previousFrequency, 'invalid multi-field update has no partial effect');
   assert.equal(sim.nodesTac[nodeId].aglM, previousAgl);
   assert.deepEqual(sim.nodesTac[nodeId].position, lockedPosition);

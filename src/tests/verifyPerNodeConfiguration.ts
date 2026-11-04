@@ -295,7 +295,8 @@ async function runTests(): Promise<void> {
   // Inspect telemetry
   const telList = worker.buildNodesTelemetry();
   const addedTel = telList.find(n => n.node_id === addedNid);
-  assert(Boolean(addedTel), 'Added node present in telemetry');
+  assert(Boolean(addedTel && addedTel.name), 'Added node present in telemetry');
+  if (!addedTel) throw new Error('Added node missing');
   assert(addedTel.name === 'RECON-TAC', 'Callsign matches in telemetry');
   assert(addedTel.color_hex === '#a855f7', 'Color hex matches in telemetry');
   assert(addedTel.tx_power_dbm === 38.5, 'Tx power matches in telemetry');
@@ -317,6 +318,8 @@ async function runTests(): Promise<void> {
   assert(updateRes.accepted === true, 'NODE_UPDATE accepted');
 
   const telUpdated = worker.buildNodesTelemetry().find(n => n.node_id === addedNid);
+  assert(Boolean(telUpdated), 'Updated node present in telemetry');
+  if (!telUpdated) throw new Error('Updated node missing');
   assert(telUpdated.color_hex === '#14b8a6', 'Updated color matches in telemetry');
   assert(telUpdated.tx_power_dbm === 45.0, 'Updated Tx power matches in telemetry');
   assert(telUpdated.battery_capacity_mah === 12000, 'Updated battery capacity matches in telemetry');

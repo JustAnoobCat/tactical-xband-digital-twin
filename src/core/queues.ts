@@ -10,7 +10,7 @@
  */
 
 import { NodeType } from './config';
-import { Position3D } from './terrain';
+import { Position3D } from '../shared/types';
 import { NodeIdentity, NodeTrafficOptions, formatDeterministicNodeUuid } from './nodeRegistry';
 
 export class Packet {

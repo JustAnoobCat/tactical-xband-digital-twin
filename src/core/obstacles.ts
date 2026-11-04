@@ -1,4 +1,4 @@
-import type { Position3D } from './terrain';
+import type { Position3D } from '../shared/types';
 
 /** Maximum number of simultaneously committed obstacles. Keep benchmarked with look-ahead. */
 export const MAX_OBSTACLES = 128;

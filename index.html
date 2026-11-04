@@ -1939,59 +1939,6 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 (function(){
   const gc=HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext=function(t,...a){const c=gc.call(this,t,...a);if(c&&t==='2d'){c.imageSmoothingQuality='high';c.lineJoin='round'}return c};
-  const cr=t=>{const t2=t*t,t3=t2*t;return[-.5*t3+t2-.5*t,1.5*t3-2.5*t2+1,-1.5*t3+2*t2+.5*t,.5*t3-.5*t2]};
-  function upsample(data,n,f){
-    const m=n*f,W=Array.from({length:f},(_,i)=>cr(i/f)),cl=i=>i<0?0:i>=n?n-1:i;
-    const src=new Float32Array(n*n*3);
-    for(let r=0;r<n;r++)for(let c=0;c<n;c++){const v=data[r][c],k=(r*n+c)*3,ok=typeof v==='number'&&v>255;
-      src[k]=ok?(v>>16)&255:20;src[k+1]=ok?(v>>8)&255:26;src[k+2]=ok?v&255:38}
-    const tmp=new Float32Array(n*m*3);
-    for(let r=0;r<n;r++)for(let x=0;x<m;x++){const c0=(x/f)|0,w=W[x%f];
-      for(let ch=0;ch<3;ch++){let s=0;for(let t=0;t<4;t++)s+=w[t]*src[(r*n+cl(c0-1+t))*3+ch];tmp[(r*m+x)*3+ch]=s}}
-    const out=new Array(m);
-    for(let y=0;y<m;y++){const r0=(y/f)|0,w=W[y%f],row=new Array(m);
-      for(let x=0;x<m;x++){let p=0;
-        for(let ch=0;ch<3;ch++){let s=0;for(let t=0;t<4;t++)s+=w[t]*tmp[(cl(r0-1+t)*m+x)*3+ch];s=s<0?0:s>255?255:s;p=(p<<8)|((s+.5)|0)}
-        row[x]=p>255?p:(p|0x010000)}
-      out[y]=row}
-    return out}
-  const TILE_N=768;let tile=null,boundsM=600000,rid=0,pending=null;
-  function onTile(d){
-    if(pending&&d.request_id<pending.id)return;
-    pending=null;
-    const n=d.grid_size,v=d.data,px=new Uint8ClampedArray(n*n*4);
-    for(let i=0,p=0;i<v.length;i++){const q=v[i];px[p++]=(q>>16)&255;px[p++]=(q>>8)&255;px[p++]=q&255;px[p++]=255}
-    const cv=document.createElement('canvas');cv.width=cv.height=n;
-    cv.getContext('2d').putImageData(new ImageData(px,n,n),0,0);
-    tile={canvas:cv,cx:d.center_x_m,cy:d.center_y_m,half:d.half_extent_m}}
-  window.__xbandDrawTile=(ctx,w2s,w,h)=>{
-    if(!tile)return;
-    const a=w2s(tile.cx-tile.half,tile.cy+tile.half,w,h),b=w2s(tile.cx+tile.half,tile.cy-tile.half,w,h);
-    ctx.save();ctx.imageSmoothingEnabled=true;ctx.drawImage(tile.canvas,a.x,a.y,b.x-a.x,b.y-a.y);ctx.restore()};
-  setInterval(()=>{
-    const v=window.__xbandView,wk=window.__xbandWorker;
-    if(!v||!wk||!v.scale)return;
-    const hx=v.w/2/v.scale,hy=v.h/2/v.scale,need=Math.max(hx,hy);
-    if(need>200000){tile=null;return}
-    if(pending&&performance.now()-pending.t<4000)return;
-    const covers=tile&&Math.abs(v.cx-tile.cx)+hx<=tile.half&&Math.abs(v.cy-tile.cy)+hy<=tile.half;
-    if(covers&&tile.half<=need*2.6)return;
-    pending={id:++rid,t:performance.now()};
-    wk.postMessage({type:'GET_HILLSHADE_TILE',request_id:rid,center_x_m:v.cx,center_y_m:v.cy,
-      half_extent_m:Math.min(boundsM,Math.max(8000,need*1.6)),grid_size:TILE_N})},250);
-  function enhance(ev){
-    try{const d=ev.data;
-      if(d&&d.type==='HILLSHADE_TILE_READY'){onTile(d);return ev}
-      if(d&&d.type==='HILLSHADE_READY'&&Array.isArray(d.data)&&d.data.length){
-        tile=null;pending=null;boundsM=(d.bounds?.halfWidthM || (d.bounds_km||600)*1000);
-        return ev;
-      }
-    }catch(_){}
-    return ev}
-  const NW=window.Worker,setter=Object.getOwnPropertyDescriptor(NW.prototype,'onmessage').set;
-  window.Worker=class extends NW{
-    constructor(...a){super(...a);const source=String(a[0]||'');if(!source.includes('simWorker'))return;window.__xbandWorker=this;let h=null;const self=this;
-      Object.defineProperty(this,'onmessage',{configurable:true,get:()=>h,set(fn){h=fn;setter.call(self,fn?ev=>fn.call(self,enhance(ev)):null)}})}};
 })();
 
 /* UX layer: quick tour, expert view, keyboard shortcuts. */
@@ -2563,9 +2510,20 @@ let latestProfileNodeId = -1;
 // Dedicated 50 Hz WebWorker
 const worker = new Worker(new URL("./src/worker/simWorker.ts", import.meta.url), { type: "module" });
 
-function sendCommand(msg) {
+/**
+ * Authoritative typed helper for dispatching worker commands from the main UI thread.
+ * Ensures consistent transfer list handling and command typing.
+ *
+ * @param {import('./src/shared/workerProtocol.ts').WorkerInboundCommand} msg
+ * @param {Transferable[]} [transferList]
+ */
+function sendCommand(msg, transferList) {
   if (worker) {
-    worker.postMessage(msg);
+    if (transferList && transferList.length > 0) {
+      worker.postMessage(msg, transferList);
+    } else {
+      worker.postMessage(msg);
+    }
   }
 }
 
@@ -3764,7 +3722,7 @@ function requestTerrainMeshData(force = false) {
 
   const reqId = ++terrainMeshRequestId;
   inFlightTerrainMeshRequest = { requestId: reqId, terrainMode: currentMode };
-  worker.postMessage({
+  sendCommand({
     type: 'GET_TERRAIN_MESH_DATA',
     request_id: reqId,
   });
@@ -7199,11 +7157,6 @@ function drawRadar() {
       ctx.textAlign = 'center';
       ctx.fillText(terrainDistanceText(terrainMeasurement.distanceM), (start.x + end.x) / 2, (start.y + end.y) / 2 - 8);
       ctx.restore();
-    }
-
-    // Dynamic zoom tile overlay if available
-    if (window.__xbandDrawTile) {
-      window.__xbandDrawTile(ctx, (x, y, pw, ph) => worldToScreen(x, y, pw, ph), w, h);
     }
 
     // 3. Topographic Ridge Spines across Rectangular Area

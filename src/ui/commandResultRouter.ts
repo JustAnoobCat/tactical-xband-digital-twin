@@ -1,5 +1,6 @@
 import { MAX_ACN_WAYPOINTS } from '../core/config';
 import { validateClosedWaypointPath } from '../core/waypoints';
+import type { WorkerCommandResult } from '../shared/workerProtocol';
 
 export interface RoutedCommandResult {
   readonly type: string;
@@ -8,7 +9,7 @@ export interface RoutedCommandResult {
   readonly accepted?: boolean;
   readonly reason?: string;
   readonly spatial_locked?: boolean;
-  readonly trajectory_config?: unknown;
+  readonly trajectory_config?: WorkerCommandResult['trajectory_config'] | unknown;
 }
 
 export interface CommandResultHandlers {

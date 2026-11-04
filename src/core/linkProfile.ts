@@ -1,4 +1,5 @@
-import type { Position3D, TerrainObstruction } from './terrain';
+import type { Position3D } from '../shared/types';
+import type { TerrainObstruction } from './terrain';
 
 /** One worker-generated sample along the ground terminal to ACN link. All elevations and distances are metres. */
 export interface LinkProfileSample {

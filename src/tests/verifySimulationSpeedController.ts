@@ -34,7 +34,7 @@ console.log('[1/7] Verifying speed multiplier range [0.1, 10] and decimal inputs
   // Invalid speeds: below 0.1x, above 10x, negative, zero, non-finite
   const invalidSpeeds = [0.09, 0.05, 0, -0.1, -1.0, 10.01, 15.0, 100.0, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 'fast', null, undefined];
   for (const bad of invalidSpeeds) {
-    const res = sim.handleMessage({ type: 'SET_SPEED', speed: bad });
+    const res = sim.handleMessage({ type: 'SET_SPEED', speed: bad as any });
     assert.equal(res.accepted, false, `Invalid speed ${String(bad)} must be rejected`);
   }
 

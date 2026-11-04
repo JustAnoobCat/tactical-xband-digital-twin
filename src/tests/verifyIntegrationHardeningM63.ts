@@ -316,7 +316,7 @@ console.log('[8/11] Verifying rejection of invalid bandwidth values...');
   // Worker CONFIG_UPDATE
   const sim = new SimulationWorkerManager();
   for (const badBw of [0, -1, 0.05, 50.1, 100, Number.NaN, Infinity, 'invalid']) {
-    const res = sim.handleMessage({ type: 'CONFIG_UPDATE', params: { channel_bandwidth_mhz: badBw } });
+    const res = sim.handleMessage({ type: 'CONFIG_UPDATE', params: { channel_bandwidth_mhz: badBw as any } });
     assert.equal(res.accepted, false, `Worker must reject invalid bandwidth ${badBw}`);
   }
 

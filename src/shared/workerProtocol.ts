@@ -1,0 +1,611 @@
+/**
+ * Tactical X-Band Air-to-Ground Network Digital Twin
+ * Shared Worker Communication Protocol & Message Contracts
+ *
+ * Defines strongly typed contracts for all message exchanges between
+ * the authoritative Web Worker simulation engine and the main UI thread.
+ */
+
+import type { Position3D } from './types';
+import type { NodeType } from '../core/config';
+import type { NodeTrafficOptions } from '../core/nodeRegistry';
+import type { Obstacle } from '../core/obstacles';
+import type { LinkProfile } from '../core/linkProfile';
+import type { TerrainBoundsTelemetry, TerrainObstruction, DemGeographicMetadata } from '../core/terrain';
+import type { NodeTerrainState } from '../core/trajectory';
+import type { ActiveTransferTelemetry } from '../core/transferMetrics';
+import type { RegistrationState, RegistrationEvent } from '../core/registration';
+
+// ----------------------------------------------------------------------------
+// Component Telemetry Contracts
+// ----------------------------------------------------------------------------
+
+export interface TrajectoryConfigTelemetry {
+  readonly trajectory_mode: 'ellipse' | 'waypoints';
+  readonly center_x_m: number;
+  readonly center_y_m: number;
+  readonly orbit_a_m: number;
+  readonly orbit_b_m: number;
+  readonly orbit_rotation_deg: number;
+  readonly loiter_speed_mps?: number;
+  readonly current_speed_mps?: number;
+  readonly acn_altitude_m?: number;
+  readonly waypoints: readonly { readonly x_m: number; readonly y_m: number }[];
+}
+
+export interface AcnTelemetry {
+  readonly pos_x: number;
+  readonly pos_y: number;
+  readonly pos_z: number;
+  readonly lat_deg: number;
+  readonly lon_deg: number;
+  readonly vel_x: number;
+  readonly vel_y: number;
+  readonly heading_rad: number;
+  readonly current_speed_mps: number;
+  readonly target_speed_mps: number;
+  readonly acceleration_limit_mps2?: number;
+  readonly deceleration_limit_mps2?: number;
+  readonly coverage_radius_m: number;
+  readonly coverage_radius_km: number;
+  readonly flight_path: readonly (readonly [number, number])[];
+}
+
+export interface NodeTransferTelemetry {
+  readonly node_id: number;
+  readonly status: 'IDLE' | 'TRANSMITTING' | 'BLOCKED_NLOS' | 'FAILED_DROPPED' | 'ACKNOWLEDGED' | string;
+  readonly status_message: string;
+  readonly active_type: string | null;
+  readonly total_bytes: number;
+  readonly delivered_bytes: number;
+  readonly dropped_bytes: number;
+  readonly dropped_packets: number;
+  readonly progress_pct: number;
+  readonly start_time_s: number;
+  readonly ack_time_s: number;
+  readonly current_rate_bps: number;
+  readonly current_rate_mbps: number;
+  readonly eta_s: number | null;
+  readonly eta_status: string;
+}
+
+export interface NodeTelemetryItem {
+  readonly node_id: number;
+  readonly entity_id?: string;
+  readonly creation_sequence?: number;
+  readonly name: string;
+  readonly node_type: NodeType | string;
+  readonly x_m: number;
+  readonly y_m: number;
+  readonly z_m: number;
+  readonly position?: readonly [number, number, number];
+  readonly lat_deg: number;
+  readonly lon_deg: number;
+  readonly coordinate_reference: string;
+  readonly terrain_elevation_msl_m: number;
+  readonly agl_m: number;
+  readonly altitude_msl_m: number;
+  readonly slant_range_km: number;
+  readonly snr_db: number;
+  readonly modcod_name: string;
+  readonly link_outage: boolean;
+  readonly bitrate_bps: number;
+  readonly bitrate_mbps: number;
+  readonly terrain_is_los: boolean;
+  readonly diffraction_loss_db: number;
+  readonly state_name: NodeTerrainState | string;
+  readonly time_to_occlusion_s: number;
+  readonly time_to_emergence_s: number;
+  readonly fresnel_clearance_m: number;
+  readonly obstacle_blocked: boolean;
+  readonly is_coverage_complete?: boolean;
+  readonly isCoverageComplete?: boolean;
+  readonly coverage_note?: string;
+  readonly coverageNote?: string;
+  readonly c2_backlog: number;
+  readonly voice_backlog: number;
+  readonly video_backlog: number;
+  readonly photo_backlog: number;
+  readonly c2_bytes: number;
+  readonly voice_bytes: number;
+  readonly video_bytes: number;
+  readonly photo_bytes: number;
+  readonly total_backlog_bytes: number;
+  readonly is_transmitting: boolean;
+  readonly is_wasting_airtime: boolean;
+  readonly allocated_slot_ms: number;
+  readonly allocated_capacity_bits: number;
+  readonly transfer_state: NodeTransferTelemetry | null;
+  readonly color_hex: string;
+  readonly tx_power_dbm: number;
+  readonly battery_capacity_mah: number;
+  readonly battery_level_pct: number;
+  readonly tactical_priority: number;
+  readonly is_depleted: boolean;
+  readonly registration_state: string;
+  readonly registration_start_time_s: number | null;
+  readonly registration_completion_time_s: number | null;
+  readonly registration_elapsed_s: number | null;
+  readonly communication_eligible: boolean;
+  readonly [key: string]: unknown;
+}
+
+export interface TelemetryGanttAllocation {
+  readonly node_id: number;
+  readonly start_ms: number;
+  readonly duration_ms: number;
+  readonly duration_s: number;
+  readonly slot_start_s: number;
+  readonly capacity_bits: number;
+  readonly modcod_name: string;
+  readonly spectral_efficiency: number;
+  readonly c2_bytes: number;
+  readonly voice_bytes: number;
+  readonly video_bytes: number;
+  readonly photo_bytes: number;
+  readonly is_pre_occlusion_flush: boolean;
+  readonly is_out_of_frame?: boolean;
+}
+
+export interface SelectedLinkBudgetTelemetry {
+  readonly node_id: number;
+  readonly node_type: NodeType | string;
+  readonly slant_range_m: number;
+  readonly slant_range_km: number;
+  readonly fspl_db: number;
+  readonly diffraction_loss_db: number;
+  readonly gas_loss_db: number;
+  readonly rain_loss_db: number;
+  readonly cable_loss_db: number;
+  readonly implementation_margin_db: number;
+  readonly total_loss_db: number;
+  readonly tx_power_dbm: number;
+  readonly tx_gain_dbi: number;
+  readonly rx_gain_dbi: number;
+  readonly prx_dbm: number;
+  readonly pnoise_dbm: number;
+  readonly snr_db: number;
+  readonly modcod_name: string;
+  readonly spectral_efficiency_bps_hz: number;
+  readonly bitrate_bps: number;
+  readonly bitrate_mbps: number;
+  readonly is_outage: boolean;
+  readonly obstacle_blocked: boolean;
+  readonly terrain_is_los: boolean;
+  readonly earth_bulge_m: number;
+  readonly channel_bandwidth_hz?: number;
+  readonly is_coverage_complete?: boolean;
+  readonly isCoverageComplete?: boolean;
+  readonly coverage_note?: string;
+  readonly coverageNote?: string;
+  readonly [key: string]: unknown;
+}
+
+export interface FresnelSliceTelemetry {
+  readonly profile: LinkProfile;
+  readonly node_id: number;
+  readonly node_name: string;
+  readonly distance_km: number;
+  readonly clearance_m: number;
+  readonly status: string;
+  readonly obstructed: boolean;
+  readonly diffraction_loss_db: number;
+  readonly terrain_is_los: boolean;
+  readonly obstacle_blocked: boolean;
+  readonly obstacle_intersections: TerrainObstruction['obstacleIntersections'];
+  readonly state_name?: NodeTerrainState | string;
+  readonly link_budget: SelectedLinkBudgetTelemetry;
+  readonly profile_points: readonly [number, number, number, number][];
+  readonly is_coverage_complete?: boolean;
+  readonly coverage_note?: string;
+}
+
+export interface ComparativeKpiDashboard {
+  readonly static_goodput_mb: number;
+  readonly tac_goodput_mb: number;
+  readonly gain_multiplier: number;
+  readonly static_waste_pct: number;
+  readonly tac_waste_pct: number;
+  readonly static_drops: number;
+  readonly static_drop_pct: number;
+  readonly tac_drops: number;
+  readonly tac_drop_pct: number;
+  readonly ul_utilization_pct: number;
+  readonly node4_pre_shadow_backlog_kb: number;
+  readonly static_node4_pre_shadow_backlog_kb: number;
+  readonly node4_evac_status: string;
+  readonly static_selected_backlog_kb: number | null;
+  readonly tac_selected_backlog_kb: number | null;
+  readonly static_goodput_frame_bits: number;
+  readonly tac_goodput_frame_bits: number;
+  readonly active_goodput_frame_bits: number;
+  readonly static_wasted_frame_bits: number;
+  readonly tac_wasted_frame_bits: number;
+  readonly active_wasted_frame_bits: number;
+  readonly static_drop_delay_frame_pkts: number;
+  readonly static_drop_overflow_frame_pkts: number;
+  readonly static_drop_frame_pkts: number;
+  readonly tac_drop_delay_frame_pkts: number;
+  readonly tac_drop_overflow_frame_pkts: number;
+  readonly tac_drop_frame_pkts: number;
+  readonly active_drop_delay_frame_pkts: number;
+  readonly active_drop_overflow_frame_pkts: number;
+  readonly active_drop_frame_pkts: number;
+  readonly static_utilization_pct: number;
+  readonly tac_utilization_pct: number;
+  readonly static_p50_bps: number | null;
+  readonly static_p95_bps: number | null;
+  readonly tac_p50_bps: number | null;
+  readonly tac_p95_bps: number | null;
+  readonly rolling_window_sample_count: number;
+  readonly rolling_window_capacity: number;
+}
+
+export interface RegistrationTelemetry {
+  readonly nodes: readonly {
+    readonly node_id: number;
+    readonly entity_id?: string;
+    readonly state: RegistrationState | string;
+    readonly start_time_s: number | null;
+    readonly completion_time_s: number | null;
+  }[];
+  readonly events: readonly RegistrationEvent[];
+}
+
+export interface DownlinkTelemetry {
+  readonly is_control_broadcast: boolean;
+  readonly ctrl_duration_ms: number;
+  readonly dl_duration_ms: number;
+  readonly broadcast_active: boolean;
+}
+
+export interface TelemetryFrame {
+  readonly frame_index: number;
+  readonly sim_time_s: number;
+  readonly speed: number;
+  readonly target_speed: number;
+  readonly achieved_speed: number;
+  readonly paused: boolean;
+  readonly step_request_id?: number;
+  readonly spatial_locked: boolean;
+  readonly spatial_revision: number;
+  readonly trajectory_config: TrajectoryConfigTelemetry;
+  readonly scheduler_mode: string;
+  readonly selected_node_id: number;
+  readonly plain_english_narrative: string;
+  readonly acn_telemetry: AcnTelemetry;
+  readonly nodes_telemetry: readonly NodeTelemetryItem[];
+  readonly registration_telemetry: RegistrationTelemetry;
+  readonly active_gantt_allocations: readonly TelemetryGanttAllocation[];
+  readonly static_gantt_allocations: readonly TelemetryGanttAllocation[];
+  readonly tac_gantt_allocations: readonly TelemetryGanttAllocation[];
+  readonly comparative_kpi_dashboard: ComparativeKpiDashboard;
+  readonly static_p50_bps: number | null;
+  readonly static_p95_bps: number | null;
+  readonly tac_p50_bps: number | null;
+  readonly tac_p95_bps: number | null;
+  readonly selected_node_fresnel: FresnelSliceTelemetry;
+  readonly selected_link_budget: SelectedLinkBudgetTelemetry;
+  readonly transfer_telemetry: ActiveTransferTelemetry;
+  readonly active_transfers: readonly ActiveTransferTelemetry[];
+  readonly downlink_telemetry: DownlinkTelemetry;
+  readonly terrain_mode: string;
+  readonly terrain_bounds_km: number;
+  readonly terrain_bounds: TerrainBoundsTelemetry;
+}
+
+// ----------------------------------------------------------------------------
+// Worker Command Result
+// ----------------------------------------------------------------------------
+
+export interface WorkerCommandResult {
+  readonly type: 'COMMAND_RESULT';
+  readonly command_type: string;
+  readonly accepted: boolean;
+  readonly reason?: string;
+  readonly spatial_locked: boolean;
+  readonly request_id?: string | number;
+  readonly node_id?: number;
+  readonly entity_id?: string;
+  readonly deleted_node_id?: number;
+  readonly source_node_id?: number;
+  readonly creation_sequence?: number;
+  readonly nodes_count?: number;
+  readonly trajectory_config?: {
+    readonly trajectory_mode: 'ellipse' | 'waypoints';
+    readonly center_x_m: number;
+    readonly center_y_m: number;
+    readonly orbit_a_m: number;
+    readonly orbit_b_m: number;
+    readonly orbit_rotation_deg: number;
+    readonly loiter_speed_mps?: number;
+    readonly acn_altitude_m?: number;
+    readonly waypoints: readonly { readonly x_m: number; readonly y_m: number }[];
+  };
+  readonly obstacle_set?: readonly Obstacle[];
+  readonly obstruction_state?: readonly {
+    readonly node_id: number;
+    readonly terrain_is_los: boolean;
+    readonly obstacle_blocked: boolean;
+    readonly obstacle_intersections: TerrainObstruction['obstacleIntersections'];
+    readonly link_outage: boolean;
+    readonly bitrate_bps: number;
+    readonly modcod_name: string;
+    readonly predicted_state: NodeTerrainState;
+    readonly time_to_occlusion_s: number;
+    readonly time_to_emergence_s: number;
+    readonly is_shadowed: boolean;
+    readonly is_coverage_complete?: boolean;
+    readonly coverage_note?: string;
+  }[];
+}
+
+// ----------------------------------------------------------------------------
+// Inbound Worker Commands (Main Thread -> Worker)
+// ----------------------------------------------------------------------------
+
+export interface BaseWorkerInboundCommand {
+  readonly type: string;
+  readonly request_id?: string | number;
+}
+
+export interface SimControlCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SIM_CONTROL';
+  readonly action: 'pause' | 'resume' | 'step' | 'reset';
+  readonly step_request_id?: number;
+}
+
+export interface SetSpeedCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_SPEED';
+  readonly speed: number;
+}
+
+export interface SetSchedulerCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_SCHEDULER';
+  readonly mode: 'tac_tad' | 'static';
+}
+
+export interface SelectNodeCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SELECT_NODE';
+  readonly node_id: number;
+}
+
+export interface SetSpatialLockCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_SPATIAL_LOCK';
+  readonly locked: boolean;
+}
+
+export interface NodeMoveCommand extends BaseWorkerInboundCommand {
+  readonly type: 'NODE_MOVE';
+  readonly node_id: number;
+  readonly x_m: number;
+  readonly y_m: number;
+}
+
+export interface NodeAddCommand extends BaseWorkerInboundCommand {
+  readonly type: 'NODE_ADD';
+  readonly role?: NodeType;
+  readonly x_m?: number;
+  readonly y_m?: number;
+  readonly position?: readonly [number, number] | [number, number];
+  readonly agl_m?: number;
+  readonly callsign?: string;
+  readonly color_hex?: string;
+  readonly tx_power_dbm?: number;
+  readonly battery_capacity_mah?: number;
+  readonly battery_level_pct?: number;
+  readonly tactical_priority?: number;
+  readonly request_id?: string | number;
+  readonly traffic_options?: NodeTrafficOptions;
+}
+
+export interface NodeDeleteCommand extends BaseWorkerInboundCommand {
+  readonly type: 'NODE_DELETE';
+  readonly node_id: number;
+  readonly request_id?: string | number;
+}
+
+export interface NodeDuplicateCommand extends BaseWorkerInboundCommand {
+  readonly type: 'NODE_DUPLICATE';
+  readonly source_node_id: number;
+  readonly offset_x_m?: number;
+  readonly offset_y_m?: number;
+  readonly callsign?: string;
+  readonly request_id?: string | number;
+}
+
+export interface NodeUpdateCommand extends BaseWorkerInboundCommand {
+  readonly type: 'NODE_UPDATE';
+  readonly node_id: number;
+  readonly x_m?: number;
+  readonly y_m?: number;
+  readonly agl_m?: number;
+  readonly callsign?: string;
+  readonly role?: 'soldier' | 'mcp';
+  readonly color_hex?: string;
+  readonly tx_power_dbm?: number;
+  readonly battery_capacity_mah?: number;
+  readonly battery_level_pct?: number;
+  readonly tactical_priority?: number;
+  readonly traffic_options?: NodeTrafficOptions;
+  readonly request_id?: string | number;
+}
+
+export interface ObstaclesReplaceCommand extends BaseWorkerInboundCommand {
+  readonly type: 'OBSTACLES_REPLACE';
+  readonly obstacles: readonly Obstacle[] | Obstacle[] | readonly unknown[];
+  readonly request_id?: string | number;
+}
+
+export interface ConfigUpdateParams {
+  readonly carrier_freq_ghz?: number;
+  readonly channel_bandwidth_mhz?: number;
+  readonly rain_rate_mmh?: number;
+  readonly acn_altitude_m?: number;
+  readonly orbit_a_m?: number;
+  readonly orbit_b_m?: number;
+  readonly orbit_rotation_deg?: number;
+  readonly loiter_speed_mps?: number;
+  readonly acceleration_limit_mps2?: number;
+  readonly deceleration_limit_mps2?: number;
+  readonly coverage_radius_km?: number;
+  readonly center_x_m?: number;
+  readonly center_y_m?: number;
+  readonly node_id?: number;
+  readonly agl_m?: number;
+  readonly terrain_mode?: 'real' | 'synthetic';
+  readonly trajectory_mode?: 'ellipse' | 'waypoints';
+  readonly waypoints?: readonly { readonly x_m: number; readonly y_m: number }[];
+}
+
+export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
+  readonly type: 'CONFIG_UPDATE' | 'SET_PARAMS';
+  readonly request_id?: string | number;
+  readonly params?: ConfigUpdateParams;
+  readonly carrier_freq_ghz?: number;
+  readonly channel_bandwidth_mhz?: number;
+  readonly rain_rate_mmh?: number;
+  readonly acn_altitude_m?: number;
+  readonly orbit_a_m?: number;
+  readonly orbit_b_m?: number;
+  readonly orbit_rotation_deg?: number;
+  readonly loiter_speed_mps?: number;
+  readonly acceleration_limit_mps2?: number;
+  readonly deceleration_limit_mps2?: number;
+  readonly coverage_radius_km?: number;
+  readonly center_x_m?: number;
+  readonly center_y_m?: number;
+  readonly node_id?: number;
+  readonly agl_m?: number;
+  readonly terrain_mode?: 'real' | 'synthetic';
+  readonly trajectory_mode?: 'ellipse' | 'waypoints';
+  readonly waypoints?: readonly { readonly x_m: number; readonly y_m: number }[];
+}
+
+export interface LoadPresetCommand extends BaseWorkerInboundCommand {
+  readonly type: 'LOAD_PRESET';
+  readonly preset_id: 'ACN_ONLY' | '16_NODES' | string;
+}
+
+export interface InjectTrafficCommand extends BaseWorkerInboundCommand {
+  readonly type: 'INJECT_TRAFFIC';
+  readonly node_id?: number;
+  readonly traffic_type: string;
+}
+
+export interface ClearTransferCommand extends BaseWorkerInboundCommand {
+  readonly type: 'CLEAR_TRANSFER';
+  readonly node_id?: number;
+}
+
+export interface SetTerrainModeCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_TERRAIN_MODE';
+  readonly mode: 'real' | 'synthetic';
+}
+
+export interface LoadCustomDemCommand extends BaseWorkerInboundCommand {
+  readonly type: 'LOAD_CUSTOM_DEM';
+  readonly elevations: Float32Array | ArrayBuffer;
+  readonly buffer?: ArrayBuffer | Float32Array;
+  readonly request_id?: string | number;
+  readonly metadata?: DemGeographicMetadata;
+}
+
+export interface GetHillshadeCommand extends BaseWorkerInboundCommand {
+  readonly type: 'GET_HILLSHADE';
+}
+
+export interface GetTerrainBoundsCommand extends BaseWorkerInboundCommand {
+  readonly type: 'GET_TERRAIN_BOUNDS';
+  readonly request_id?: string | number;
+}
+
+export interface GetTerrainMeshDataCommand extends BaseWorkerInboundCommand {
+  readonly type: 'GET_TERRAIN_MESH_DATA';
+  readonly request_id?: string | number;
+}
+
+export type WorkerInboundCommand =
+  | SimControlCommand
+  | SetSpeedCommand
+  | SetSchedulerCommand
+  | SelectNodeCommand
+  | SetSpatialLockCommand
+  | NodeMoveCommand
+  | NodeAddCommand
+  | NodeDeleteCommand
+  | NodeDuplicateCommand
+  | NodeUpdateCommand
+  | ObstaclesReplaceCommand
+  | ConfigUpdateCommand
+  | LoadPresetCommand
+  | InjectTrafficCommand
+  | ClearTransferCommand
+  | SetTerrainModeCommand
+  | LoadCustomDemCommand
+  | GetHillshadeCommand
+  | GetTerrainBoundsCommand
+  | GetTerrainMeshDataCommand;
+
+// ----------------------------------------------------------------------------
+// Outbound Worker Messages (Worker -> Main Thread)
+// ----------------------------------------------------------------------------
+
+export interface TelemetryFrameMessage {
+  readonly type: 'TELEMETRY_FRAME';
+  readonly frame: TelemetryFrame;
+}
+
+export interface ProfileFrameMessage {
+  readonly type: 'PROFILE_FRAME';
+  readonly selectedNodeId: number;
+  readonly profileSerial: number;
+  readonly spatial_revision: number;
+  readonly fresnel: FresnelSliceTelemetry;
+  readonly selected_link_budget?: SelectedLinkBudgetTelemetry;
+  readonly nodes_telemetry?: readonly NodeTelemetryItem[];
+}
+
+export interface HillshadeReadyMessage {
+  readonly type: 'HILLSHADE_READY';
+  readonly grid_size: number;
+  readonly bounds_km: number;
+  readonly bounds: TerrainBoundsTelemetry;
+  readonly data: readonly (readonly number[])[] | number[][];
+  readonly terrain_mode: 'real' | 'synthetic';
+}
+
+export interface TerrainBoundsReadyMessage {
+  readonly type: 'TERRAIN_BOUNDS_READY';
+  readonly request_id?: string | number;
+  readonly bounds: TerrainBoundsTelemetry;
+}
+
+export interface CustomDemLoadedMessage {
+  readonly type: 'CUSTOM_DEM_LOADED';
+  readonly request_id?: string | number;
+  readonly tile_name: string;
+  readonly resolution: number;
+  readonly bounds: TerrainBoundsTelemetry;
+}
+
+export interface TerrainMeshDataReadyMessage {
+  readonly type: 'TERRAIN_MESH_DATA_READY';
+  readonly request_id?: string | number;
+  readonly terrain_mode: 'real' | 'synthetic';
+  readonly bounds: TerrainBoundsTelemetry;
+  readonly grid_size: number;
+  readonly min_elevation_m: number;
+  readonly max_elevation_m: number;
+  readonly elevations: Float32Array;
+}
+
+/** Discriminated union of all messages posted from the simulation worker to the host. */
+export type WorkerOutboundMessage =
+  | TelemetryFrameMessage
+  | ProfileFrameMessage
+  | HillshadeReadyMessage
+  | TerrainBoundsReadyMessage
+  | CustomDemLoadedMessage
+  | TerrainMeshDataReadyMessage
+  | WorkerCommandResult;

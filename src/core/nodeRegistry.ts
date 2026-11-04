@@ -15,8 +15,9 @@
  */
 
 import { NodeType, GROUND_NODE_IDS } from './config';
+import { MCP_ID } from '../shared/constants';
 
-export const MCP_ID = 15;
+export { MCP_ID };
 export const DEFAULT_ANTENNA_AGL_M = 2.0;
 export const MAX_ACTIVE_GROUND_NODES = 128;
 

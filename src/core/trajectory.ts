@@ -11,7 +11,8 @@
 
 import { ACNFlightConfig, ACNWaypoint, EnvironmentConfig, RFConfig } from './config';
 import { LinkBudgetEngine } from './linkBudget';
-import { Position3D, TerrainEngine } from './terrain';
+import { TerrainEngine } from './terrain';
+import type { Position3D } from '../shared/types';
 import { validateClosedWaypointPath } from './waypoints';
 
 export enum NodeTerrainState {
