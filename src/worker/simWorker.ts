@@ -96,6 +96,10 @@ import {
   NodeLifecycleManager,
 } from './nodeLifecycleManager';
 import {
+  TerrainMeshGenerator,
+  type TerrainMeshGenerationResult,
+} from './terrainMeshGenerator';
+import {
   buildFresnelSlice as computeFresnelSlice,
   buildEmptyFresnelSlice,
   PROFILE_FRESNEL_FRACTION,
@@ -110,6 +114,7 @@ export {
   HillshadeGenerator,
   TelemetrySerializer,
   NodeLifecycleManager,
+  TerrainMeshGenerator,
   ActiveTransferManager,
   normalizeSlotAllocationToFrame,
   PROFILE_FRESNEL_FRACTION,
@@ -127,6 +132,7 @@ export type {
   RunningMetrics,
   NodeTransferState,
   TelemetrySimulationState,
+  TerrainMeshGenerationResult,
 };
 
 const ANTENNA_HEIGHT_M = 2.0;
@@ -949,54 +955,14 @@ export class SimulationWorkerManager {
       }
 
       case 'GET_TERRAIN_MESH_DATA': {
-        const isReal = this.terrainEngine.terrainMode === 'real' && this.terrainEngine.hasRealDem && this.terrainEngine.realDemGrid !== null;
-        const bounds = this.getTerrainBounds();
-        const gridSize = 512;
-        const transferGrid = new Float32Array(gridSize * gridSize);
-
-        let minElev = Number.POSITIVE_INFINITY;
-        let maxElev = Number.NEGATIVE_INFINITY;
-
-        if (isReal && this.terrainEngine.realDemGrid && this.terrainEngine.realDemGrid.length === gridSize * gridSize) {
-          // Direct 512x512 copy
-          transferGrid.set(this.terrainEngine.realDemGrid);
-          for (let i = 0; i < transferGrid.length; i++) {
-            const v = transferGrid[i];
-            if (Number.isFinite(v)) {
-              if (v < minElev) minElev = v;
-              if (v > maxElev) maxElev = v;
-            }
-          }
-        } else {
-          // Synthetic procedural mode or custom resolution DEM: sample 512x512 matrix over bounds
-          const stepX = (bounds.maxX - bounds.minX) / 511.0;
-          const stepY = (bounds.maxY - bounds.minY) / 511.0;
-          for (let r = 0; r < gridSize; r++) {
-            const yM = bounds.maxY - r * stepY; // Row 0 is North (+Y)
-            for (let c = 0; c < gridSize; c++) {
-              const xM = bounds.minX + c * stepX; // Col 0 is West (-X)
-              const v = this.terrainEngine.getElevation(xM, yM);
-              const val = Number.isFinite(v) ? v : 0;
-              transferGrid[r * gridSize + c] = val;
-              if (val < minElev) minElev = val;
-              if (val > maxElev) maxElev = val;
-            }
-          }
-        }
-
-        const payload: TerrainMeshDataReadyMessage = {
-          type: 'TERRAIN_MESH_DATA_READY',
-          request_id: msg.request_id,
-          terrain_mode: this.terrainEngine.terrainMode,
-          bounds,
-          grid_size: gridSize,
-          min_elevation_m: isFinite(minElev) ? minElev : 0,
-          max_elevation_m: isFinite(maxElev) ? maxElev : 5000,
-          elevations: transferGrid,
-        };
+        const { message: payload, transferList } = TerrainMeshGenerator.generate(
+          this.terrainEngine,
+          msg.request_id,
+          512
+        );
 
         // Transfer ownership of transferGrid.buffer ONLY
-        this.emitHostMessage(payload, [transferGrid.buffer]);
+        this.emitHostMessage(payload, transferList);
         return result(true);
       }
 
