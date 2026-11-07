@@ -1,0 +1,750 @@
+/* X-Band C2 visual tokens.
+ * Cosmetic-only layer: layout and interaction geometry remain owned by index.html.
+ */
+:root {
+  --c2-bg: #171819;
+  --c2-surface: #202223;
+  --c2-raised: #292b2c;
+  --c2-elevated: #303233;
+  --c2-line: #3a3b3b;
+  --c2-line-strong: #4a4b4b;
+  --c2-active-line: #a96c48;
+  --c2-text: #e8e5df;
+  --c2-muted: #aaa69e;
+  --c2-faint: #85837e;
+  --c2-accent: #c17b50;
+  --c2-accent-light: #e0a16f;
+  --c2-champagne: #d5ad79;
+  --c2-accent-soft: rgba(193, 123, 80, 0.12);
+  --c2-ok: #4fd1a1;
+  --c2-warn: #d5ad79;
+  --c2-bad: #ff7070;
+  --c2-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --c2-mono: "IBM Plex Mono", ui-monospace, Consolas, Menlo, monospace;
+}
+
+/* Bridge the inline structural stylesheet to the cosmetic theme tokens. */
+:root {
+  --ink: var(--c2-bg);
+  --surface: var(--c2-surface);
+  --raised: var(--c2-raised);
+  --line: var(--c2-line);
+  --line2: var(--c2-line-strong);
+  --text: var(--c2-text);
+  --muted: var(--c2-muted);
+  --faint: var(--c2-faint);
+  --accent: var(--c2-accent);
+  --ok: var(--c2-ok);
+  --warn: var(--c2-warn);
+  --bad: var(--c2-bad);
+}
+
+body {
+  background-color: var(--c2-bg);
+  color: var(--c2-text);
+  font-family: var(--c2-sans);
+}
+
+.topbar,
+.rail,
+.stage-toolbar,
+.analysis-context,
+.detail-viewport {
+  background-color: var(--c2-surface);
+  border-color: var(--c2-line);
+}
+
+.panel,
+.card,
+.waterfall-card,
+.table-card,
+.sched-chart-card,
+.inspector-metric,
+.kpi,
+.timeline-scrubber-panel,
+.modal-card,
+.trajectory-editor,
+.obstacle-editor,
+.research-notice,
+.report-callout,
+.formula-card {
+  background-color: var(--c2-surface);
+  border-color: var(--c2-line);
+  color: var(--c2-text);
+}
+
+.panel-head,
+.card-head,
+.pane-head,
+.sec-title,
+.stage-title,
+.group-title,
+.metric-val,
+.kpi-val,
+.form-row b,
+.inspector-metric strong {
+  color: var(--c2-text);
+}
+
+.brand b,
+.brand small,
+.nav-tab,
+.tool-label,
+.muted,
+.metric-base,
+.form-row span,
+.data-table th,
+.kpi-label,
+.research-subtitle {
+  color: var(--c2-muted);
+}
+
+button,
+select,
+input[type="text"],
+input[type="search"],
+input[type="number"] {
+  color: var(--c2-text);
+}
+
+button {
+  background-color: var(--c2-raised);
+  border-color: var(--c2-line);
+}
+
+button:hover {
+  background-color: var(--c2-elevated);
+  border-color: var(--c2-line-strong);
+}
+
+button:disabled {
+  color: var(--c2-faint);
+}
+
+button.active,
+.seg button.active,
+.nav-tab.active,
+.btn-live.active {
+  background-color: var(--c2-accent-soft);
+  border-color: var(--c2-active-line);
+  color: var(--c2-accent-light);
+}
+
+.primary,
+.btn-primary {
+  background-color: var(--c2-accent);
+  border-color: var(--c2-accent);
+  color: #171819;
+}
+
+.primary:hover,
+.btn-primary:hover {
+  background-color: var(--c2-accent-light);
+  border-color: var(--c2-accent-light);
+  color: #171819;
+}
+
+.btn-danger {
+  background-color: rgba(255, 112, 112, 0.1);
+  border-color: rgba(255, 112, 112, 0.4);
+  color: #ffb3b3;
+}
+
+.btn-danger:hover {
+  background-color: var(--c2-bad);
+  border-color: var(--c2-bad);
+  color: #241313;
+}
+
+.link-btn,
+.c-acc,
+.situation-strip strong,
+.research-kicker {
+  color: var(--c2-accent-light);
+}
+
+.link-btn:hover {
+  color: var(--c2-champagne);
+}
+
+.seg,
+select,
+input[type="text"],
+input[type="search"],
+input[type="number"],
+.experiment-capture-status,
+.stat,
+.track-bg,
+.transfer-monitor {
+  background-color: var(--c2-bg);
+  border-color: var(--c2-line);
+}
+
+select:focus,
+input[type="text"]:focus,
+input[type="search"]:focus,
+input[type="number"]:focus,
+input[type="range"]:focus-visible {
+  border-color: var(--c2-active-line);
+}
+
+input[type="range"] {
+  background-color: var(--c2-line-strong);
+  accent-color: var(--c2-accent);
+}
+
+input[type="range"]::-webkit-slider-thumb,
+input[type="range"]::-moz-range-thumb {
+  background-color: var(--c2-accent);
+}
+
+.data-table th,
+.doc-table-clean th {
+  background-color: var(--c2-raised);
+  border-color: var(--c2-line-strong);
+  color: var(--c2-muted);
+}
+
+.data-table td,
+.doc-table-clean td {
+  border-color: var(--c2-line);
+  color: var(--c2-text);
+}
+
+.data-table tr:hover td {
+  background-color: rgba(193, 123, 80, 0.06);
+}
+
+.map-legend,
+.situation-strip,
+.tooltip,
+[role="tooltip"] {
+  background-color: rgba(23, 24, 25, 0.94);
+  border-color: var(--c2-line-strong);
+  color: var(--c2-text);
+}
+
+.badge-cyan,
+.kpi-badge.badge-cyan {
+  background-color: var(--c2-accent-soft);
+  border-color: rgba(193, 123, 80, 0.5);
+  color: var(--c2-accent-light);
+}
+
+.badge-amber,
+.report-status-pending {
+  background-color: rgba(213, 173, 121, 0.14);
+  border-color: rgba(213, 173, 121, 0.45);
+  color: var(--c2-champagne);
+}
+
+.badge-emerald,
+.report-status {
+  color: var(--c2-ok);
+}
+
+.badge-crimson,
+.btn-danger {
+  color: var(--c2-bad);
+}
+
+.legend-dot.los {
+  background-color: var(--c2-ok);
+}
+
+.brand-mark {
+  border-color: var(--c2-accent);
+  background-color: var(--c2-accent);
+}
+
+.map-resize-handle:hover,
+.map-resize-handle:focus-visible {
+  background-color: var(--c2-accent-soft);
+}
+
+.nav-tab {
+  border-color: transparent;
+  color: var(--c2-muted);
+}
+
+.nav-tab:hover,
+.nav-tab.active {
+  background-color: var(--c2-raised);
+  border-color: var(--c2-line-strong);
+  color: var(--c2-accent-light);
+}
+
+.topbar button:hover,
+.rail button:hover,
+.panel button:hover,
+.card button:hover,
+.stage-toolbar button:hover,
+.terrain-control-strip button:hover {
+  border-color: var(--c2-line-strong);
+  color: var(--c2-text);
+}
+
+.topbar button.active,
+.rail button.active,
+.panel button.active,
+.card button.active,
+.stage-toolbar button.active,
+.terrain-control-strip button.active,
+.seg button.active {
+  background-color: var(--c2-accent-soft);
+  border-color: var(--c2-active-line);
+  color: var(--c2-accent-light);
+}
+
+.clock,
+.kpi-val,
+.metric-val,
+.form-row b,
+.mono,
+output,
+#frame-display {
+  font-family: var(--c2-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.clock,
+.kpi-val,
+.metric-val,
+.form-row b {
+  color: var(--c2-text);
+}
+
+.status-loading {
+  background-color: var(--c2-accent-soft);
+  color: var(--c2-accent-light);
+}
+
+.status-success {
+  background-color: rgba(79, 209, 161, 0.1);
+  color: var(--c2-ok);
+}
+
+.status-error {
+  background-color: rgba(255, 112, 112, 0.1);
+  color: var(--c2-bad);
+}
+
+.dropzone {
+  background-color: var(--c2-bg);
+  border-color: var(--c2-line-strong);
+}
+
+.dropzone.dragover {
+  background-color: var(--c2-accent-soft);
+  border-color: var(--c2-accent);
+}
+
+.formula-card {
+  border-left-color: var(--c2-accent);
+}
+
+.research-toc a:hover {
+  color: var(--c2-text);
+  border-color: var(--c2-accent);
+}
+
+:focus-visible {
+  outline-color: var(--c2-accent-light);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001ms !important;
+  }
+}
+
+
+/* ============================================================
+ * Phase 1 UI/UX Enhancements — appended 2026-11-04
+ * ============================================================ */
+
+/* 1. Topbar refinements */
+.topbar { gap: 10px; padding: 0 14px; min-height: 48px; }
+.brand { gap: 8px; }
+.brand b { font-size: 13px; letter-spacing: 0.02em; font-weight: 700; }
+.brand small { font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--c2-faint); }
+.brand-mark { width: 16px; height: 16px; }
+.brand-mark::after { inset: 3px; }
+.clock { font-size: 14px; letter-spacing: 0.06em; color: var(--c2-accent-light); }
+#frame-display { font-size: 11px; color: var(--c2-faint); }
+
+/* 2. Navigation rail enhancements */
+.rail { width: 84px; padding: 10px 5px; gap: 2px; }
+.nav-tab { padding: 11px 4px; font-size: 10px; letter-spacing: 0.02em; gap: 5px; border-radius: 6px; }
+.nav-tab svg { width: 19px; height: 19px; stroke-width: 1.5; }
+.nav-tab.active { font-weight: 700; }
+.nav-tab.active svg { stroke-width: 2; }
+
+/* 3. Panel improvements */
+.panel { border-radius: 6px; }
+.panel-head { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--c2-line); }
+.sec-title { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c2-muted); }
+
+/* 4. Pane content enhancements */
+.pane-head h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--c2-text); }
+.pane-head h2 + .lede, .lede { color: var(--c2-muted); font-size: 12px; line-height: 1.6; margin-bottom: 16px; }
+
+/* 5. KPI badges */
+.kpi-badge { font-size: 9.5px; letter-spacing: 0.08em; padding: 2px 7px; font-weight: 700; }
+
+/* 6. Stat cards */
+.stat { padding: 10px 12px; border-radius: 5px; }
+.stat b { font-size: 15px; }
+
+/* 7. Data tables */
+.data-table tbody tr:nth-child(even) td { background-color: rgba(255,255,255,0.015); }
+.data-table tbody tr.is-selected td { background-color: rgba(193, 123, 80, 0.12) !important; }
+.data-table th { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 10px 6px; }
+
+/* 8. Context bar */
+.analysis-context { padding: 5px 16px; font-size: 11px; min-height: 32px; }
+.context-kicker { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.context-meta { gap: 3px 14px; }
+.context-meta b { font-size: 11px; }
+
+/* 9. Metric displays */
+.metric-val { font-size: 20px; }
+.metric-name { font-size: 12px; font-weight: 600; }
+.metric-foot { font-size: 11px; }
+
+/* 10. Toolbar and stage improvements */
+.stage-toolbar { padding: 6px 12px; min-height: 44px; gap: 6px 12px; }
+.stage-title { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.tool-label { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--c2-faint); }
+.seg button { font-size: 11px; padding: 3px 9px; }
+
+/* 11. Inspector metric improvements */
+.inspector-metric { padding: 8px 10px; border-radius: 5px; }
+.inspector-metric span { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--c2-faint); }
+.inspector-metric strong { font-size: 13px; }
+
+/* 12. Network chart improvements */
+.network-chart-head { font-size: 11px; letter-spacing: 0.04em; }
+.network-chart-head span { text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; color: var(--c2-faint); }
+
+/* 13. Welcome banner */
+.welcome { border-radius: 6px; background: rgba(193, 123, 80, 0.06) !important; border-color: rgba(193, 123, 80, 0.25) !important; }
+
+/* 14. Link buttons */
+.link-btn { font-size: 11.5px; font-weight: 500; }
+
+/* 15. Scheduler chart cards */
+.sched-chart-card { border-radius: 5px; }
+.sched-chart-head { font-size: 10.5px; letter-spacing: 0.03em; }
+
+/* 16. Situation strip */
+.situation-strip { padding: 7px 14px; min-height: 36px; font-size: 11.5px; border-top: 1px solid var(--c2-line); }
+.situation-strip strong { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* 17. Terrain toolbox */
+.terrain-toolbox-panel {
+  background: rgba(23, 24, 25, 0.95) !important;
+  border-color: rgba(193, 123, 80, 0.35) !important;
+}
+.terrain-toolbox-panel strong { color: var(--c2-accent-light); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* 18. MapLibre overlays */
+.maplibre-status, .maplibre-info {
+  background: rgba(23, 24, 25, 0.92) !important;
+  border-color: rgba(193, 123, 80, 0.3) !important;
+  color: var(--c2-muted) !important;
+}
+
+/* 19. Map legend */
+.map-legend { background: rgba(23, 24, 25, 0.92) !important; border-color: var(--c2-line-strong) !important; font-size: 9.5px; }
+
+/* 20. Radar cursor HUD */
+.radar-cursor-hud {
+  background: rgba(18, 20, 24, 0.65) !important;
+  border-color: rgba(74, 75, 75, 0.45) !important;
+  border-left-color: var(--c2-accent) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  padding: 3px 8px !important;
+  font-size: 10px !important;
+  gap: 8px !important;
+  bottom: 8px !important;
+  left: 8px !important;
+}
+.radar-cursor-hud.is-idle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 21. Node tooltip */
+.map-node-tooltip {
+  border-left-color: var(--c2-accent) !important;
+  background: rgba(23, 24, 25, 0.97) !important;
+}
+
+/* 22. Node inspector side panel */
+.map-node-details {
+  background: rgba(23, 24, 25, 0.97) !important;
+  border-left-color: var(--c2-line) !important;
+}
+.map-node-details.is-empty,
+.map-node-details.is-closed {
+  display: none !important;
+}
+.map-node-details h3 { font-size: 13px; font-weight: 600; }
+.map-node-details .detail-grid { font-size: 10.5px; }
+.map-node-header { border-bottom-color: var(--c2-line) !important; }
+
+/* 22B. Collapsible Terrain Toolbox */
+.terrain-toolbox-toggle-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(23, 24, 25, 0.88) !important;
+  border: 1px solid var(--c2-line-strong) !important;
+  border-left: 2px solid var(--c2-accent) !important;
+  border-radius: 4px;
+  font-family: var(--c2-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c2-text) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.15s ease;
+}
+.terrain-toolbox-toggle-btn:hover {
+  background: var(--c2-raised) !important;
+  border-color: var(--c2-accent-light) !important;
+  color: #fff !important;
+}
+.terrain-toolbox-toggle-btn.is-hidden {
+  display: none !important;
+}
+.terrain-toolbox-panel.is-collapsed {
+  display: none !important;
+}
+.btn-close-toolbox {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--c2-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 1px 5px !important;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.btn-close-toolbox:hover {
+  background: var(--c2-raised);
+  color: var(--c2-text);
+  border-color: var(--c2-line);
+}
+
+/* 23. Scheduler timeline */
+.timeline-scrubber-panel { border-radius: 5px; }
+.btn-live.active { font-size: 10px; letter-spacing: 0.06em; }
+
+/* 24. Registration summary */
+.registration-summary .panel { border-radius: 5px; text-align: center; align-items: center; }
+.registration-summary b { color: var(--c2-accent-light); }
+.registration-summary span { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* 25. Research doc */
+.doc-layout h2 { font-size: 22px; letter-spacing: -0.02em; }
+.doc-layout h3 { font-size: 15px; }
+.doc-layout p, .doc-layout li { font-size: 12.5px; }
+
+/* 26. Transfer monitor */
+.transfer-monitor { border-radius: 5px; }
+.transfer-header strong { font-size: 12px; }
+
+/* 27. Overview event list */
+.overview-event-list li { border-left-color: var(--c2-accent) !important; background: rgba(193, 123, 80, 0.04) !important; }
+.overview-event-list .event-time { color: var(--c2-faint); }
+
+/* 28. Improved focus states */
+:focus-visible { outline-color: var(--c2-accent); outline-width: 1.5px; }
+
+/* 29. Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--c2-bg); }
+::-webkit-scrollbar-thumb { background: var(--c2-line-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c2-faint); }
+
+/* 30. Map tool active state */
+.map-tool-active { border-color: var(--c2-accent) !important; color: var(--c2-accent-light) !important; }
+
+/* 31. Obstacle/trajectory editor */
+.trajectory-editor, .obstacle-editor { border-radius: 5px; }
+
+/* 32. Network dashboard controls */
+.network-metrics-toggles { background: var(--c2-bg) !important; border-color: var(--c2-line) !important; border-radius: 5px; }
+.network-metrics-toggles label { font-size: 11.5px; }
+.network-dashboard-controls .sec-title { margin-bottom: 8px; }
+
+/* 33. Network chart card */
+.network-chart-card { background: var(--c2-bg) !important; border-color: var(--c2-line) !important; border-radius: 6px; }
+
+/* 34. Network Traffic Inventory & Communication Flow */
+.terminal-subnav-bar { display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--c2-line); padding-bottom: 10px; }
+.terminal-subnav-bar .btn { font-size: 11.5px; padding: 6px 14px; border-radius: 5px; transition: all 0.15s ease; }
+.terminal-subnav-bar .btn.active { background: rgba(193, 123, 80, 0.18) !important; border-color: var(--c2-accent) !important; color: #fff !important; font-weight: 600; }
+.traffic-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.traffic-stat-card { background: var(--c2-bg); border: 1px solid var(--c2-line); border-radius: 5px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.traffic-stat-card span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--c2-faint); }
+.traffic-stat-card b { font-size: 15px; font-family: var(--mono); color: var(--c2-text); }
+.traffic-stat-card small { font-size: 10px; color: var(--c2-muted); }
+.traffic-node-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.traffic-flow-diagram { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 18px; background: rgba(18, 20, 24, 0.7); border: 1px solid var(--c2-line); border-radius: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.traffic-flow-node { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 16px; background: var(--c2-bg); border: 1px solid var(--c2-line-strong); border-radius: 5px; min-width: 140px; text-align: center; }
+.traffic-flow-node strong { font-size: 12px; color: #fff; }
+.traffic-flow-node small { font-size: 10px; color: var(--c2-muted); }
+.traffic-flow-link { flex: 1; min-width: 130px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0 10px; position: relative; }
+.traffic-flow-line { width: 100%; height: 2px; background: var(--c2-line-strong); position: relative; }
+.traffic-flow-line.is-active { background: linear-gradient(90deg, #38bdf8, #818cf8); box-shadow: 0 0 8px rgba(56, 189, 248, 0.4); }
+.traffic-flow-line.is-blocked { background: #ef4444; }
+.traffic-flow-label { font-size: 10px; font-family: var(--mono); color: var(--c2-muted); white-space: nowrap; }
+.direction-badge { font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 3px; font-family: var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.direction-badge.uplink { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); }
+.direction-badge.downlink { background: rgba(167, 139, 250, 0.15); color: #c4b5fd; border: 1px solid rgba(167, 139, 250, 0.35); }
+.traffic-filters-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; padding: 8px 12px; background: var(--c2-bg); border: 1px solid var(--c2-line); border-radius: 5px; }
+.traffic-filters-bar input[type="search"] { flex: 1; min-width: 180px; padding: 4px 8px; font-size: 11.5px; background: var(--ink); border: 1px solid var(--line); color: var(--text); border-radius: 4px; }
+.traffic-filters-bar select { padding: 4px 8px; font-size: 11.5px; background: var(--ink); border: 1px solid var(--line); color: var(--text); border-radius: 4px; }
+#network-traffic-table th { cursor: pointer; user-select: none; }
+#network-traffic-table th:hover { color: var(--c2-accent); }
+#network-traffic-table th.sort-asc::after { content: " ▲"; font-size: 8px; }
+#network-traffic-table th.sort-desc::after { content: " ▼"; font-size: 8px; }
+
+/* 35. Variable Simulation Speed Controller */
+.sim-speed-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.sim-speed-readout {
+  font-family: var(--c2-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--c2-accent-light, #38bdf8);
+  min-width: 32px;
+  text-align: right;
+  letter-spacing: -0.02em;
+}
+
+.sim-speed-achieved {
+  font-family: var(--c2-mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.sim-speed-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 72px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--c2-line, #1f293d);
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+  vertical-align: middle;
+}
+
+.sim-speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--c2-accent-light, #38bdf8);
+  border: 1.5px solid var(--c2-raised, #0f172a);
+  box-shadow: 0 0 4px rgba(56, 189, 248, 0.5);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.sim-speed-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.sim-speed-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--c2-accent-light, #38bdf8);
+  border: 1.5px solid var(--c2-raised, #0f172a);
+  box-shadow: 0 0 4px rgba(56, 189, 248, 0.5);
+  cursor: pointer;
+}
+
+.sim-speed-input {
+  width: 44px;
+  height: 22px;
+  padding: 1px 4px;
+  font-family: var(--c2-mono, monospace);
+  font-size: 11px;
+  text-align: right;
+  color: var(--c2-text, #e2e8f0);
+  background: var(--c2-layer-base, #0b1119);
+  border: 1px solid var(--c2-line, #1f293d);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.sim-speed-input:focus {
+  border-color: var(--c2-accent-light, #38bdf8);
+  outline: none;
+  box-shadow: 0 0 0 1px var(--c2-accent-light, #38bdf8);
+}
+
+.sim-speed-presets {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.spd-preset-btn {
+  background: transparent;
+  border: 0;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--c2-text-muted, #94a3b8);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.spd-preset-btn:hover {
+  background: var(--c2-raised, #0f172a);
+  color: var(--c2-text, #e2e8f0);
+}
+
+.spd-preset-btn.active {
+  background: var(--c2-accent-soft, rgba(56, 189, 248, 0.15));
+  border-color: var(--c2-active-line, #38bdf8);
+  color: var(--c2-accent-light, #38bdf8);
+  box-shadow: inset 0 0 0 1px var(--c2-line-strong, #334155);
+}
+
+@media (max-width: 1100px) {
+  .sim-speed-slider {
+    width: 52px;
+  }
+}

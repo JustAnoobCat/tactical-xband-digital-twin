@@ -1,0 +1,32 @@
+Metric_Identifier,Static_TDMA_Baseline,Tac_TAD_Dynamic,Delta_or_Advantage
+Delivered_Goodput_Mb,27.72,215.78,+7.78x
+Goodput_P50_Mbps,0.13,2.11,+1.98 Mbps
+Goodput_P95_Mbps,0.96,3.49,+2.53 Mbps
+Concluded_Packet_Drop_Rate_Pct,52.68%,13.93%,-38.75%
+Pending_In_Flight_Rate_Pct,0.08%,0.00%,-0.07%
+Total_Non_Delivery_Rate_Pct,52.71%,13.93%,-38.78%
+Hard_Shadow_Slot_Time_Allocation_Waste_Pct,6.31%,0.00%,-6.31%
+Severed_Link_Payload_Waste_Mb,6.02,0.00,-6.02 Mb
+Severed_Link_Payload_Waste_Pct,17.85%,0.00%,-17.85%
+Total_Actual_Drops,27088,7168,19920
+Total_Pending_At_Termination,39,2,37
+5QI_69_Emergency_C2_/_Mission-Critical_Signaling_Concluded_Drop_Pct,7.92%,4.63%,-3.29%
+5QI_69_Emergency_C2_/_Mission-Critical_Signaling_Pending_Pct,0.00%,0.00%,+0.00%
+5QI_69_Emergency_C2_/_Mission-Critical_Signaling_Total_Non_Delivery_Pct,7.92%,4.63%,-3.29%
+5QI_69_Emergency_C2_/_Mission-Critical_Signaling_Mean_Latency_ms,0.00,232.51,--232.51 ms
+5QI_69_Emergency_C2_/_Mission-Critical_Signaling_P95_Latency_ms,0.00,0.00,-0.00 ms
+5QI_65_Mission-Critical_PTT_Voice_Concluded_Drop_Pct,25.70%,25.73%,--0.03%
+5QI_65_Mission-Critical_PTT_Voice_Pending_Pct,0.00%,0.00%,+0.00%
+5QI_65_Mission-Critical_PTT_Voice_Total_Non_Delivery_Pct,25.70%,25.73%,--0.03%
+5QI_65_Mission-Critical_PTT_Voice_Mean_Latency_ms,0.00,0.14,--0.14 ms
+5QI_65_Mission-Critical_PTT_Voice_P95_Latency_ms,0.00,0.00,-0.00 ms
+5QI_67_Mission-Critical_Video_Concluded_Drop_Pct,100.00%,12.37%,-87.63%
+5QI_67_Mission-Critical_Video_Pending_Pct,0.18%,0.01%,-0.17%
+5QI_67_Mission-Critical_Video_Total_Non_Delivery_Pct,100.00%,12.38%,-87.62%
+5QI_67_Mission-Critical_Video_Mean_Latency_ms,0.00,6.41,--6.41 ms
+5QI_67_Mission-Critical_Video_P95_Latency_ms,0.00,40.00,--40.00 ms
+5QI_70_High-Resolution_Tactical_Imagery_/_Photo_Concluded_Drop_Pct,100.00%,1.15%,-98.85%
+5QI_70_High-Resolution_Tactical_Imagery_/_Photo_Pending_Pct,0.00%,0.00%,+0.00%
+5QI_70_High-Resolution_Tactical_Imagery_/_Photo_Total_Non_Delivery_Pct,100.00%,1.15%,-98.85%
+5QI_70_High-Resolution_Tactical_Imagery_/_Photo_Mean_Latency_ms,0.00,132.70,--132.70 ms
+5QI_70_High-Resolution_Tactical_Imagery_/_Photo_P95_Latency_ms,0.00,340.00,--340.00 ms

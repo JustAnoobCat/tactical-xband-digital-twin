@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production & Build outputs
+dist/
+dist-ssr/
+build/
+release/
+*.local
+
+# Logs & Environment
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.env
+.env.*
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# Python residuals (if any)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+
+# Benchmark & Verification Generated Artifacts
+benchmark_results/generated/*.json
+benchmark_results/generated/*.csv
+!benchmark_results/generated/typescript-benchmark-2026-10-27T06-51-55-930Z.*
+benchmark_results/generated/quarantine_superseded_m01/*.json
+benchmark_results/generated/quarantine_superseded_m01/*.csv
