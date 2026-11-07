@@ -11,6 +11,7 @@
     "test": "node scripts/run_all_verifications.mjs",
     "verify:project": "node scripts/verify-project.mjs",
     "verify:variable-altitude": "vite-node src/tests/verifyVariableAltitude.ts",
+    "verify:variable-tdma": "vite-node src/tests/verifyVariableTdma.ts",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",
     "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts"

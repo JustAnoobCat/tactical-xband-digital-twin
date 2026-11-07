@@ -257,6 +257,25 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 .obstacle-list button{text-align:left;padding:5px 8px;font:11px var(--mono)}
 .obstacle-message{min-height:1.5em;margin-top:7px;font-size:11px;color:var(--muted)}
 .obstacle-message.error{color:var(--bad)}
+.tdma-editor{border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:12px;margin:12px 0}
+.tdma-editor .editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.tdma-editor label{display:block;color:var(--muted);font-size:11px}
+.tdma-editor input[type=number],.tdma-editor select{width:100%;margin-top:3px;background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:6px;color:var(--text)}
+.tdma-editor input[type=range]{width:100%;accent-color:var(--accent);height:6px;cursor:pointer}
+.tdma-editor .editor-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.tdma-editor .editor-message{min-height:1.5em;margin-top:7px;font-size:11px;color:var(--muted)}
+.tdma-editor .editor-message.error{color:var(--bad)}
+.tdma-editor .editor-message.ok{color:var(--ok)}
+.tdma-preview-container{margin:10px 0;background:var(--ink);border:1px solid var(--line);border-radius:4px;padding:8px}
+.tdma-bar-wrap{display:flex;height:24px;border-radius:3px;overflow:hidden;background:#1e293b;margin:6px 0 4px}
+.tdma-bar-segment{display:flex;align-items:center;justify-content:center;font-size:9.5px;font-family:var(--mono);font-weight:600;color:#0b1015;white-space:nowrap;overflow:hidden;transition:width 0.15s ease}
+.tdma-bar-ctrl{background:#38bdf8}
+.tdma-bar-dl{background:#fbbf24}
+.tdma-bar-ul{background:#10b981}
+.tdma-diag-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;font-size:11px;font-family:var(--mono)}
+.tdma-diag-item{background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.05);padding:5px 8px;border-radius:4px}
+.tdma-diag-item span{color:var(--muted);display:block;font-size:10px}
+.tdma-diag-item b{color:var(--text);font-size:11px}
 .map-tool-active{border-color:var(--warn)!important;color:var(--warn)!important}
 .overview-trend-footer{display:flex;justify-content:space-between;font-size:11px;margin-top:5px}
 .overview-event-list{list-style:none;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow:auto;margin-top:12px}
@@ -853,6 +872,118 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div id="trajectory-editor-message" class="editor-message" role="status" aria-live="polite">Edits are previews until applied.</div>
         </details>
 
+        <details class="tdma-editor" id="tdma-editor-details">
+          <summary><strong>TDMA Waveform & Frame Editor</strong> <small id="tdma-authority-label" class="muted">Worker configuration</small></summary>
+          <p class="muted" style="font-size:11px;margin:8px 0">Configure superframe duration, control/downlink boundaries, guard intervals, and uplink slot sizing. Changes are previewed locally until applied to the simulation worker.</p>
+          
+          <div class="editor-grid" style="grid-template-columns:1fr">
+            <label for="tdma-preset-select">Waveform Preset
+              <select id="tdma-preset-select" aria-label="TDMA Waveform Preset">
+                <option value="TDMA_PRESET_STANDARD_20MS">Standard 20ms Tactical (Baseline)</option>
+                <option value="TDMA_PRESET_FAST_10MS">Fast 10ms Intercept (High-Dynamics)</option>
+                <option value="TDMA_PRESET_EXTENDED_40MS">Extended 40ms Patrol (Long Range)</option>
+                <option value="TDMA_PRESET_SYMMETRIC_50_50">Symmetric 50/50 C2 Waveform</option>
+                <option value="TDMA_PRESET_SWARM_64SLOT">Swarm 64-Slot High-Density Waveform</option>
+                <option value="custom">Custom Waveform (User-defined)</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="tdma-preview-container">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-family:var(--mono)">
+              <span class="muted">Live Frame Partition</span>
+              <span id="tdma-preview-total-badge" style="color:var(--cyan);font-weight:600">20.0 ms (50 Hz)</span>
+            </div>
+            <div id="tdma-preview-bar" class="tdma-bar-wrap">
+              <div id="tdma-bar-ctrl" class="tdma-bar-segment tdma-bar-ctrl" style="width:5%">CTRL: 1.0ms</div>
+              <div id="tdma-bar-dl" class="tdma-bar-segment tdma-bar-dl" style="width:15%">DL: 3.0ms</div>
+              <div id="tdma-bar-ul" class="tdma-bar-segment tdma-bar-ul" style="width:80%">UL: 16.0ms</div>
+            </div>
+            <div class="tdma-diag-grid">
+              <div class="tdma-diag-item">
+                <span>Uplink Available (T_ul)</span>
+                <b id="tdma-diag-ul">16.0 ms</b>
+              </div>
+              <div class="tdma-diag-item">
+                <span>Nominal Slot (tau_slot)</span>
+                <b id="tdma-diag-slot">988 μs (16 nodes)</b>
+              </div>
+              <div class="tdma-diag-item">
+                <span>TA Max Range Margin</span>
+                <b id="tdma-diag-range">1.80 km (12 μs)</b>
+              </div>
+              <div class="tdma-diag-item">
+                <span>Ctrl + Guard Overhead</span>
+                <b id="tdma-diag-overhead">5.96%</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="editor-grid">
+            <div style="grid-column:1 / -1">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <label for="tdma-frame-slider">Superframe Duration (T_frame)</label>
+                <span style="font-family:var(--mono);font-size:11px;color:var(--cyan)"><span id="tdma-frame-val">20</span> ms</span>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:2px">
+                <input id="tdma-frame-slider" type="range" min="5" max="100" step="1" value="20" aria-label="Superframe duration slider">
+                <input id="tdma-frame-ms" type="number" min="5" max="100" step="1" value="20" style="width:75px" aria-label="Superframe duration number ms">
+              </div>
+            </div>
+
+            <div>
+              <label for="tdma-ctrl-ms">Control Subframe (ms)</label>
+              <input id="tdma-ctrl-ms" type="number" min="0.2" max="10.0" step="0.1" value="1.0" aria-label="Control Subframe Duration ms">
+            </div>
+
+            <div>
+              <label for="tdma-dl-min-ms">Downlink Min (ms)</label>
+              <input id="tdma-dl-min-ms" type="number" min="0.5" max="30.0" step="0.5" value="3.0" aria-label="Downlink Min Duration ms">
+            </div>
+
+            <div>
+              <label for="tdma-dl-max-ms">Downlink Max (ms)</label>
+              <input id="tdma-dl-max-ms" type="number" min="0.5" max="50.0" step="0.5" value="7.0" aria-label="Downlink Max Duration ms">
+            </div>
+
+            <div>
+              <label for="tdma-guard-us">Guard Interval (μs)</label>
+              <input id="tdma-guard-us" type="number" min="1" max="100" step="1" value="12" aria-label="Guard Interval us">
+            </div>
+
+            <div>
+              <label for="tdma-min-slot-us">Min Slot (μs)</label>
+              <input id="tdma-min-slot-us" type="number" min="50" max="2000" step="50" value="200" aria-label="Min Slot Duration us">
+            </div>
+
+            <div>
+              <label for="tdma-max-slot-ms">Max Slot (ms)</label>
+              <input id="tdma-max-slot-ms" type="number" min="1.0" max="50.0" step="0.5" value="8.0" aria-label="Max Slot Duration ms">
+            </div>
+
+            <div style="grid-column:1 / -1">
+              <label for="tdma-policy">Uplink Allocation Policy</label>
+              <select id="tdma-policy" aria-label="Uplink Policy">
+                <option value="equal_active">Equal Active Terminals (Standard)</option>
+                <option value="dynamic_demand">Dynamic Demand Proportional</option>
+                <option value="fixed_slot_count">Fixed Slot Count Slicing</option>
+              </select>
+            </div>
+
+            <div id="tdma-fixed-slots-container" style="grid-column:1 / -1" hidden>
+              <label for="tdma-fixed-slots">Fixed Slot Slices (K)</label>
+              <input id="tdma-fixed-slots" type="number" min="1" max="64" step="1" value="16" aria-label="Fixed Slot Count">
+              <p class="muted" style="font-size:10px;margin:2px 0 0">Divides uplink into exactly K equal physical slices (idle or round-robin if terminal count differs).</p>
+            </div>
+          </div>
+
+          <div class="editor-actions">
+            <button type="button" id="tdma-apply-btn" class="primary">Apply to simulation</button>
+            <button type="button" id="tdma-reset-btn">Reset to Standard (20ms)</button>
+          </div>
+          <div id="tdma-editor-message" class="editor-message" role="status" aria-live="polite">Edits are previews until applied.</div>
+        </details>
+
         <details class="obstacle-editor">
           <summary><strong>Obstacle editor</strong> <small id="obstacle-commit-label" class="muted">Worker-confirmed set · 0 / 128</small></summary>
           <p class="muted" style="font-size:11px;margin:8px 0">Plan-view footprints only. The worker uses terrain elevation for physical obstruction. Select mode lets you drag centers; Place mode adds the selected shape at a map click.</p>
@@ -1050,7 +1181,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       </div>
 
       <div class="panel waterfall-card">
-        <div class="panel-head"><span class="sec-title">Superframe timeline (20 ms, 50 Hz)</span></div>
+        <div class="panel-head"><span class="sec-title" id="waterfall-superframe-label">Superframe timeline (20 ms, 50 Hz)</span></div>
         <div class="legend">
           <span><i style="background:#38bdf8"></i>C2 signaling</span><span><i style="background:#10b981"></i>Voice (PTT)</span><span><i style="background:#f59e0b"></i>Video</span><span><i style="background:#fb923c"></i>Photo/data</span><span><i style="background:#ef4444"></i>Wasted on severed link</span><span><i style="background:rgba(16,185,129,0.25);border:1px dashed #34d399"></i>Reclaimed airtime</span><span><i style="background:#ef4444"></i>Overlap conflict</span><span><i style="background:#1f2937;outline:1px solid var(--line2)"></i>Headroom</span>
         </div>
@@ -2942,6 +3073,7 @@ function recordSchedulerHistoricalFrame(frame) {
     tacAllocations: tacAllocations ? mapAllocs(tacAllocations) : undefined,
     ctrlDurationMs: frame.downlink_telemetry?.ctrl_duration_ms ?? 1.0,
     dlDurationMs: frame.downlink_telemetry?.dl_duration_ms ?? 3.0,
+    superframeDurationMs: frame.tdma_frame_config?.frameDurationMs ?? 20.0,
     nodeBacklogs,
     kpi: {
       staticGoodputMb: kpi.static_goodput_mb ?? 0,
@@ -3569,6 +3701,7 @@ worker.onmessage = (event) => {
     recordSchedulerHistoricalFrame(msg.frame);
     if (typeof msg.frame.spatial_locked === 'boolean') updateSpatialLockControl(msg.frame.spatial_locked);
     syncTrajectoryEditorFromWorker(msg.frame.trajectory_config);
+    syncTdmaEditorFromWorker(msg.frame.tdma_frame_config);
     updateDashboardDOM(msg.frame);
     updateMapLibreOverlay();
     if (threeController) {
@@ -3668,6 +3801,7 @@ worker.onmessage = (event) => {
     });
     handleAglCommandResult(msg);
     handleNodeCommandResult(msg);
+    handleTdmaCommandResult(msg);
   }
 };
 
@@ -5006,6 +5140,389 @@ $('trajectory-remove-point').addEventListener('click', () => {
 $('trajectory-apply').addEventListener('click', applyTrajectoryDraft);
 $('trajectory-cancel').addEventListener('click', cancelTrajectoryDraft);
 refreshTrajectoryEditor();
+
+/* ---------- TDMA Waveform & Frame Editor Controls ---------- */
+const TDMA_PRESETS_UI = {
+  TDMA_PRESET_STANDARD_20MS: {
+    frameDurationMs: 20.0,
+    ctrlDurationMs: 1.0,
+    dlMinDurationMs: 3.0,
+    dlMaxDurationMs: 7.0,
+    guardIntervalUs: 12.0,
+    minSlotDurationUs: 200.0,
+    maxSlotDurationMs: 8.0,
+    uplinkPolicy: 'equal_active',
+  },
+  TDMA_PRESET_FAST_10MS: {
+    frameDurationMs: 10.0,
+    ctrlDurationMs: 0.5,
+    dlMinDurationMs: 1.5,
+    dlMaxDurationMs: 3.0,
+    guardIntervalUs: 8.0,
+    minSlotDurationUs: 100.0,
+    maxSlotDurationMs: 4.0,
+    uplinkPolicy: 'equal_active',
+  },
+  TDMA_PRESET_EXTENDED_40MS: {
+    frameDurationMs: 40.0,
+    ctrlDurationMs: 2.0,
+    dlMinDurationMs: 6.0,
+    dlMaxDurationMs: 12.0,
+    guardIntervalUs: 25.0,
+    minSlotDurationUs: 400.0,
+    maxSlotDurationMs: 16.0,
+    uplinkPolicy: 'equal_active',
+  },
+  TDMA_PRESET_SYMMETRIC_50_50: {
+    frameDurationMs: 20.0,
+    ctrlDurationMs: 1.0,
+    dlMinDurationMs: 9.0,
+    dlMaxDurationMs: 9.0,
+    guardIntervalUs: 12.0,
+    minSlotDurationUs: 200.0,
+    maxSlotDurationMs: 8.0,
+    uplinkPolicy: 'equal_active',
+  },
+  TDMA_PRESET_SWARM_64SLOT: {
+    frameDurationMs: 20.0,
+    ctrlDurationMs: 1.0,
+    dlMinDurationMs: 2.0,
+    dlMaxDurationMs: 4.0,
+    guardIntervalUs: 6.0,
+    minSlotDurationUs: 100.0,
+    maxSlotDurationMs: 4.0,
+    uplinkPolicy: 'fixed_slot_count',
+    fixedSlotCount: 64,
+  },
+};
+
+let tdmaDraft = { ...TDMA_PRESETS_UI.TDMA_PRESET_STANDARD_20MS };
+let tdmaConfigDirty = false;
+let pendingTdmaRequestId = null;
+let tdmaRequestSerial = 0;
+
+function setTdmaMessage(text, isError = false) {
+  const el = $('tdma-editor-message');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'editor-message' + (isError ? ' error' : (text.includes('committed') ? ' ok' : ''));
+}
+
+function updateTdmaLivePreview() {
+  const frameMs = tdmaDraft.frameDurationMs;
+  const ctrlMs = tdmaDraft.ctrlDurationMs;
+  const dlMinMs = tdmaDraft.dlMinDurationMs;
+  const guardUs = tdmaDraft.guardIntervalUs;
+  const policy = tdmaDraft.uplinkPolicy || 'equal_active';
+  const fixedSlots = tdmaDraft.fixedSlotCount ?? 16;
+
+  const ulMs = Math.max(0, frameMs - ctrlMs - dlMinMs);
+
+  const ctrlPct = Math.max(0, Math.min(100, (ctrlMs / frameMs) * 100));
+  const dlPct = Math.max(0, Math.min(100 - ctrlPct, (dlMinMs / frameMs) * 100));
+  const ulPct = Math.max(0, 100 - ctrlPct - dlPct);
+
+  const barCtrl = $('tdma-bar-ctrl');
+  const barDl = $('tdma-bar-dl');
+  const barUl = $('tdma-bar-ul');
+  if (barCtrl) {
+    barCtrl.style.width = `${ctrlPct.toFixed(1)}%`;
+    barCtrl.textContent = `CTRL: ${ctrlMs.toFixed(1)}ms`;
+  }
+  if (barDl) {
+    barDl.style.width = `${dlPct.toFixed(1)}%`;
+    barDl.textContent = `DL: ${dlMinMs.toFixed(1)}ms`;
+  }
+  if (barUl) {
+    barUl.style.width = `${ulPct.toFixed(1)}%`;
+    barUl.textContent = `UL: ${ulMs.toFixed(1)}ms`;
+  }
+
+  const totalBadge = $('tdma-preview-total-badge');
+  if (totalBadge) {
+    totalBadge.textContent = `${frameMs.toFixed(1)} ms (${(1000 / frameMs).toFixed(0)} Hz)`;
+  }
+
+  const diagUl = $('tdma-diag-ul');
+  if (diagUl) diagUl.textContent = `${ulMs.toFixed(1)} ms`;
+
+  let terminalCount = 16;
+  if (policy === 'fixed_slot_count') {
+    terminalCount = fixedSlots;
+  } else if (latestTelemetry?.nodes_telemetry?.length) {
+    terminalCount = latestTelemetry.nodes_telemetry.length;
+  }
+
+  const tauSlotUs = terminalCount > 0 ? Math.max(0, (ulMs * 1000 - terminalCount * guardUs) / terminalCount) : 0;
+  const diagSlot = $('tdma-diag-slot');
+  if (diagSlot) {
+    const slotStr = tauSlotUs >= 1000 ? `${(tauSlotUs / 1000).toFixed(2)} ms` : `${Math.round(tauSlotUs)} μs`;
+    diagSlot.textContent = `${slotStr} (${terminalCount} ${policy === 'fixed_slot_count' ? 'slots' : 'nodes'})`;
+  }
+
+  const c = 299792458;
+  const safeRangeKm = (c * (guardUs * 1e-6) / 2) / 1000;
+  const diagRange = $('tdma-diag-range');
+  if (diagRange) diagRange.textContent = `${safeRangeKm.toFixed(2)} km (${guardUs} μs)`;
+
+  const overheadMs = ctrlMs + (terminalCount * guardUs) / 1000;
+  const overheadPct = frameMs > 0 ? (overheadMs / frameMs) * 100 : 0;
+  const diagOverhead = $('tdma-diag-overhead');
+  if (diagOverhead) diagOverhead.textContent = `${overheadPct.toFixed(2)}%`;
+
+  const authLabel = $('tdma-authority-label');
+  if (authLabel && tdmaConfigDirty) {
+    authLabel.textContent = 'Uncommitted draft';
+  }
+}
+
+function syncInputsFromDraft() {
+  const setVal = (id, val) => {
+    const el = $(id);
+    if (el) el.value = val;
+  };
+  setVal('tdma-frame-slider', tdmaDraft.frameDurationMs);
+  setVal('tdma-frame-ms', tdmaDraft.frameDurationMs);
+  setText('tdma-frame-val', String(tdmaDraft.frameDurationMs));
+  setVal('tdma-ctrl-ms', tdmaDraft.ctrlDurationMs);
+  setVal('tdma-dl-min-ms', tdmaDraft.dlMinDurationMs);
+  setVal('tdma-dl-max-ms', tdmaDraft.dlMaxDurationMs);
+  setVal('tdma-guard-us', tdmaDraft.guardIntervalUs);
+  setVal('tdma-min-slot-us', tdmaDraft.minSlotDurationUs);
+  setVal('tdma-max-slot-ms', tdmaDraft.maxSlotDurationMs);
+  setVal('tdma-policy', tdmaDraft.uplinkPolicy || 'equal_active');
+  setVal('tdma-fixed-slots', tdmaDraft.fixedSlotCount ?? 16);
+
+  const fixedContainer = $('tdma-fixed-slots-container');
+  if (fixedContainer) {
+    fixedContainer.hidden = (tdmaDraft.uplinkPolicy !== 'fixed_slot_count');
+  }
+}
+
+function syncTdmaEditorFromWorker(config) {
+  if (!config || tdmaConfigDirty || pendingTdmaRequestId !== null) return;
+  tdmaDraft = {
+    frameDurationMs: config.frameDurationMs ?? 20.0,
+    ctrlDurationMs: config.ctrlDurationMs ?? 1.0,
+    dlMinDurationMs: config.dlMinDurationMs ?? 3.0,
+    dlMaxDurationMs: config.dlMaxDurationMs ?? 7.0,
+    guardIntervalUs: config.guardIntervalUs ?? 12.0,
+    minSlotDurationUs: config.minSlotDurationUs ?? 200.0,
+    maxSlotDurationMs: config.maxSlotDurationMs ?? 8.0,
+    uplinkPolicy: config.uplinkPolicy || 'equal_active',
+    ...(config.fixedSlotCount !== undefined ? { fixedSlotCount: config.fixedSlotCount } : {}),
+  };
+
+  const presetSelect = $('tdma-preset-select');
+  if (presetSelect) {
+    let matchedKey = 'custom';
+    for (const [key, preset] of Object.entries(TDMA_PRESETS_UI)) {
+      if (
+        Math.abs(preset.frameDurationMs - tdmaDraft.frameDurationMs) < 1e-4 &&
+        Math.abs(preset.ctrlDurationMs - tdmaDraft.ctrlDurationMs) < 1e-4 &&
+        Math.abs(preset.dlMinDurationMs - tdmaDraft.dlMinDurationMs) < 1e-4 &&
+        Math.abs(preset.dlMaxDurationMs - tdmaDraft.dlMaxDurationMs) < 1e-4 &&
+        Math.abs(preset.guardIntervalUs - tdmaDraft.guardIntervalUs) < 1e-4 &&
+        (preset.uplinkPolicy || 'equal_active') === tdmaDraft.uplinkPolicy &&
+        ((preset.fixedSlotCount ?? null) === (tdmaDraft.fixedSlotCount ?? null))
+      ) {
+        matchedKey = key;
+        break;
+      }
+    }
+    presetSelect.value = matchedKey;
+  }
+
+  syncInputsFromDraft();
+  updateTdmaLivePreview();
+  const authLabel = $('tdma-authority-label');
+  if (authLabel) {
+    authLabel.textContent = `Worker-confirmed · ${tdmaDraft.frameDurationMs}ms (${(1000/tdmaDraft.frameDurationMs).toFixed(0)} Hz)`;
+  }
+}
+
+function validateTdmaDraft(draft) {
+  if (!Number.isFinite(draft.frameDurationMs) || draft.frameDurationMs < 5.0 || draft.frameDurationMs > 100.0) {
+    return 'Superframe duration must be between 5.0 and 100.0 ms.';
+  }
+  if (!Number.isFinite(draft.ctrlDurationMs) || draft.ctrlDurationMs < 0.2 || draft.ctrlDurationMs > 10.0) {
+    return 'Control subframe duration must be between 0.2 and 10.0 ms.';
+  }
+  if (!Number.isFinite(draft.dlMinDurationMs) || draft.dlMinDurationMs < 0.5 || draft.dlMinDurationMs > 30.0) {
+    return 'Downlink min duration must be between 0.5 and 30.0 ms.';
+  }
+  if (!Number.isFinite(draft.dlMaxDurationMs) || draft.dlMaxDurationMs < 0.5 || draft.dlMaxDurationMs > 50.0) {
+    return 'Downlink max duration must be between 0.5 and 50.0 ms.';
+  }
+  if (draft.dlMaxDurationMs < draft.dlMinDurationMs) {
+    return 'Downlink max duration cannot be smaller than downlink min duration.';
+  }
+  if (!Number.isFinite(draft.guardIntervalUs) || draft.guardIntervalUs < 1.0 || draft.guardIntervalUs > 100.0) {
+    return 'Guard interval must be between 1.0 and 100.0 μs.';
+  }
+  if (!Number.isFinite(draft.minSlotDurationUs) || draft.minSlotDurationUs < 50.0 || draft.minSlotDurationUs > 2000.0) {
+    return 'Min slot duration must be between 50.0 and 2000.0 μs.';
+  }
+  if (!Number.isFinite(draft.maxSlotDurationMs) || draft.maxSlotDurationMs < 1.0 || draft.maxSlotDurationMs > 50.0) {
+    return 'Max slot duration must be between 1.0 and 50.0 ms.';
+  }
+  if (draft.minSlotDurationUs <= draft.guardIntervalUs) {
+    return 'Min slot duration must be strictly greater than guard interval.';
+  }
+  const minUlReserveS = (draft.minSlotDurationUs + draft.guardIntervalUs) * 1e-6;
+  const minUlReserveMs = minUlReserveS * 1000.0;
+  if (draft.ctrlDurationMs + draft.dlMaxDurationMs > draft.frameDurationMs - minUlReserveMs + 1e-6) {
+    return `Physical ceiling exceeded: Control (${draft.ctrlDurationMs}ms) + DL Max (${draft.dlMaxDurationMs}ms) leaves less than required ${minUlReserveMs.toFixed(2)}ms for uplink.`;
+  }
+  if (draft.uplinkPolicy === 'fixed_slot_count') {
+    if (!Number.isInteger(draft.fixedSlotCount) || draft.fixedSlotCount < 1 || draft.fixedSlotCount > 64) {
+      return 'Fixed slot count must be an integer between 1 and 64.';
+    }
+  }
+  return null;
+}
+
+function handleTdmaCommandResult(msg) {
+  if (pendingTdmaRequestId && msg.request_id === pendingTdmaRequestId) {
+    if (msg.accepted || msg.success) {
+      pendingTdmaRequestId = null;
+      tdmaConfigDirty = false;
+      setTdmaMessage('TDMA configuration committed by worker.', false);
+      const authLabel = $('tdma-authority-label');
+      if (authLabel) {
+        authLabel.textContent = `Worker-confirmed · ${tdmaDraft.frameDurationMs}ms (${(1000/tdmaDraft.frameDurationMs).toFixed(0)} Hz)`;
+      }
+    } else {
+      pendingTdmaRequestId = null;
+      setTdmaMessage(`Worker rejected configuration: ${msg.reason || msg.error || 'Invalid TDMA configuration.'}`, true);
+    }
+  }
+}
+
+function applyTdmaDraft() {
+  const err = validateTdmaDraft(tdmaDraft);
+  if (err) {
+    setTdmaMessage(err, true);
+    return;
+  }
+  const requestId = `tdma-${++tdmaRequestSerial}`;
+  pendingTdmaRequestId = requestId;
+  setTdmaMessage('Applying TDMA configuration to worker…');
+  sendCommand({
+    type: 'CONFIG_UPDATE',
+    request_id: requestId,
+    params: {
+      tdma_frame_config: { ...tdmaDraft },
+    },
+  });
+}
+
+function resetTdmaToStandard() {
+  tdmaDraft = { ...TDMA_PRESETS_UI.TDMA_PRESET_STANDARD_20MS };
+  const presetSelect = $('tdma-preset-select');
+  if (presetSelect) presetSelect.value = 'TDMA_PRESET_STANDARD_20MS';
+  syncInputsFromDraft();
+  tdmaConfigDirty = false;
+  updateTdmaLivePreview();
+  const requestId = `tdma-${++tdmaRequestSerial}`;
+  pendingTdmaRequestId = requestId;
+  setTdmaMessage('Resetting to Standard (20ms) configuration…');
+  sendCommand({
+    type: 'CONFIG_UPDATE',
+    request_id: requestId,
+    params: {
+      tdma_frame_config: { ...tdmaDraft },
+    },
+  });
+}
+
+$('tdma-preset-select')?.addEventListener('change', e => {
+  const val = e.target.value;
+  if (val in TDMA_PRESETS_UI) {
+    tdmaDraft = { ...TDMA_PRESETS_UI[val] };
+    syncInputsFromDraft();
+    tdmaConfigDirty = true;
+    updateTdmaLivePreview();
+    setTdmaMessage('Preset selected. Apply to commit to simulation.');
+  }
+});
+
+const onTdmaInputChange = () => {
+  tdmaConfigDirty = true;
+  const pSelect = $('tdma-preset-select');
+  if (pSelect) pSelect.value = 'custom';
+  updateTdmaLivePreview();
+  setTdmaMessage('Edits are previews until applied.');
+};
+
+$('tdma-frame-slider')?.addEventListener('input', e => {
+  tdmaDraft.frameDurationMs = parseFloat(e.target.value);
+  const numInput = $('tdma-frame-ms');
+  if (numInput) numInput.value = tdmaDraft.frameDurationMs;
+  setText('tdma-frame-val', String(tdmaDraft.frameDurationMs));
+  onTdmaInputChange();
+});
+
+$('tdma-frame-ms')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v)) {
+    tdmaDraft.frameDurationMs = v;
+    const slider = $('tdma-frame-slider');
+    if (slider) slider.value = v;
+    setText('tdma-frame-val', String(v));
+    onTdmaInputChange();
+  }
+});
+
+$('tdma-ctrl-ms')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v)) { tdmaDraft.ctrlDurationMs = v; onTdmaInputChange(); }
+});
+
+$('tdma-dl-min-ms')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v)) { tdmaDraft.dlMinDurationMs = v; onTdmaInputChange(); }
+});
+
+$('tdma-dl-max-ms')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v)) { tdmaDraft.dlMaxDurationMs = v; onTdmaInputChange(); }
+});
+
+$('tdma-guard-us')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v)) { tdmaDraft.guardIntervalUs = v; onTdmaInputChange(); }
+});
+
+$('tdma-min-slot-us')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v)) { tdmaDraft.minSlotDurationUs = v; onTdmaInputChange(); }
+});
+
+$('tdma-max-slot-ms')?.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v)) { tdmaDraft.maxSlotDurationMs = v; onTdmaInputChange(); }
+});
+
+$('tdma-policy')?.addEventListener('change', e => {
+  tdmaDraft.uplinkPolicy = e.target.value;
+  const fixedContainer = $('tdma-fixed-slots-container');
+  if (fixedContainer) {
+    fixedContainer.hidden = (tdmaDraft.uplinkPolicy !== 'fixed_slot_count');
+  }
+  onTdmaInputChange();
+});
+
+$('tdma-fixed-slots')?.addEventListener('input', e => {
+  const v = parseInt(e.target.value, 10);
+  if (Number.isInteger(v)) { tdmaDraft.fixedSlotCount = v; onTdmaInputChange(); }
+});
+
+$('tdma-apply-btn')?.addEventListener('click', applyTdmaDraft);
+$('tdma-reset-btn')?.addEventListener('click', resetTdmaToStandard);
+
+syncInputsFromDraft();
+updateTdmaLivePreview();
 
 /* ---------- UI Controls ---------- */
 window.togglePause = function() {
@@ -7671,6 +8188,7 @@ function drawRadar() {
         staticAllocations: histSchedRec.staticAllocations,
         tacAllocations: histSchedRec.tacAllocations,
         nodes: histNodes,
+        superframeDurationMs: histSchedRec?.superframeDurationMs ?? latestTelemetry?.tdma_frame_config?.frameDurationMs ?? 20.0,
         ctrlDurationMs: histSchedRec.ctrlDurationMs ?? 1.0,
         dlDurationMs: histSchedRec.dlDurationMs ?? 3.0,
         isBroadcastingDownlink: true,
@@ -7703,6 +8221,8 @@ function drawRadar() {
         staticAllocations: latestTelemetry.static_gantt_allocations,
         tacAllocations: latestTelemetry.tac_gantt_allocations,
         nodes: commNodes,
+        superframeDurationMs: latestTelemetry?.tdma_frame_config?.frameDurationMs ?? 20.0,
+        tdmaFrameConfig: latestTelemetry?.tdma_frame_config,
         ctrlDurationMs: latestTelemetry.downlink_telemetry?.ctrl_duration_ms ?? 1.0,
         dlDurationMs: latestTelemetry.downlink_telemetry?.dl_duration_ms ?? 3.0,
         isBroadcastingDownlink: Boolean(latestTelemetry.downlink_telemetry?.broadcast_active ?? true),
@@ -8167,19 +8687,12 @@ function drawWaterfall() {
   try {
     const cvs = waterfallCanvas;
     if (!cvs) return;
-    const w = cvs.parentElement.clientWidth || 800;
-    const h = cvs.parentElement.clientHeight || 220;
+    const syncResult = syncCanvasDpr(waterfallCanvas, waterfallCtx);
+    if (!syncResult.isVisible) return;
+    const w = syncResult.cssWidth, h = syncResult.cssHeight;
     if (w <= 0 || h <= 0) return;
     const g = waterfallCtx;
     g.clearRect(0, 0, w, h);
-
-    const FP = 0.020, padL = 118, padR = 18, padT = 22, padB = 24, gap = 18;
-    const plotW = Math.max(60, w - padL - padR);
-    const trackH = Math.max(34, Math.min(64, (h - padT - padB - gap) / 2));
-    const yStatic = padT, yTac = padT + trackH + gap;
-    const xOf = s => padL + (s / FP) * plotW;
-    const xOfMs = ms => padL + (ms / 20.0) * plotW;
-    const sel = typeof selectedNodeId === 'number' ? selectedNodeId : -1;
 
     // Fix 1: Unified Snapshot Identity & Gantt Synchronization
     const isHistorical = typeof schedHistoryController !== 'undefined' && Boolean(schedHistoryController.isInspecting);
@@ -8192,19 +8705,36 @@ function drawWaterfall() {
       (isHistorical && histSchedRec && activeSnap.source === 'historical' && activeSnap.frameIndex === histSchedRec.frameIndex)
     );
 
+    const superframeDurationMs = Math.max(1.0, (useSnap && Number.isFinite(useSnap.superframeDurationMs))
+      ? useSnap.superframeDurationMs
+      : (Number.isFinite(latestTelemetry?.tdma_frame_config?.frameDurationMs)
+          ? latestTelemetry.tdma_frame_config.frameDurationMs
+          : 20.0));
+
+    const FP = superframeDurationMs / 1000.0, padL = 118, padR = 18, padT = 22, padB = 24, gap = 18;
+    const plotW = Math.max(60, w - padL - padR);
+    const trackH = Math.max(34, Math.min(64, (h - padT - padB - gap) / 2));
+    const yStatic = padT, yTac = padT + trackH + gap;
+    const xOf = s => padL + (s / FP) * plotW;
+    const xOfMs = ms => padL + (ms / superframeDurationMs) * plotW;
+    const sel = typeof selectedNodeId === 'number' ? selectedNodeId : -1;
+
+    const waterfallTitle = $('waterfall-superframe-label');
+    if (waterfallTitle) {
+      waterfallTitle.textContent = `Superframe timeline (${superframeDurationMs.toFixed(1)} ms, ${(1000 / superframeDurationMs).toFixed(0)} Hz)`;
+    }
+
     const schedMode = useSnap
       ? useSnap.schedulerMode
       : (histSchedRec ? histSchedRec.schedulerMode : (latestTelemetry?.scheduler_mode || 'tac_tad'));
 
-    const ctrlDurationMs = useSnap
+    const ctrlDurationMs = Math.max(0.0, (useSnap && Number.isFinite(useSnap.ctrlDurationMs))
       ? useSnap.ctrlDurationMs
-      : (histSchedRec?.ctrlDurationMs ?? latestTelemetry?.downlink_telemetry?.ctrl_duration_ms ?? 1.0);
+      : (histSchedRec?.ctrlDurationMs ?? latestTelemetry?.downlink_telemetry?.ctrl_duration_ms ?? 1.0));
 
-    const dlDurationMs = useSnap
+    const dlDurationMs = Math.max(0.0, (useSnap && Number.isFinite(useSnap.dlDurationMs))
       ? useSnap.dlDurationMs
-      : (histSchedRec?.dlDurationMs ?? latestTelemetry?.downlink_telemetry?.dl_duration_ms ?? 3.0);
-
-    const superframeDurationMs = useSnap ? useSnap.superframeDurationMs : 20.0;
+      : (histSchedRec?.dlDurationMs ?? latestTelemetry?.downlink_telemetry?.dl_duration_ms ?? 3.0));
 
     const nodes = (useSnap?.nodes ?? (histSchedRec ? histSchedRec.nodeBacklogs : (latestTelemetry?.nodes_telemetry || []))) || [];
 
@@ -8240,13 +8770,14 @@ function drawWaterfall() {
     const subframeOffsetMs = dataCommVisualizer.getCurrentSubframeOffsetMs();
     const activeSlot = activeTimeline.resolveAt(subframeOffsetMs);
 
-    // Time grid
+    // Time grid (dynamic based on superframe duration)
     g.font = `10px ${MONO}`; g.textAlign = 'center'; g.lineWidth = 1;
-    for (let ms = 0; ms <= 20; ms += 2) {
-      const x = Math.round(xOf(ms / 1000)) + 0.5;
-      g.strokeStyle = ms % 10 === 0 ? 'rgba(157,180,255,0.28)' : 'rgba(120,140,160,0.14)';
+    const stepMs = gfxNiceStep(superframeDurationMs, 10);
+    for (let ms = 0; ms <= superframeDurationMs + 1e-4; ms += stepMs) {
+      const x = Math.round(xOfMs(ms)) + 0.5;
+      g.strokeStyle = Math.round(ms / stepMs) % 2 === 0 ? 'rgba(157,180,255,0.28)' : 'rgba(120,140,160,0.14)';
       g.beginPath(); g.moveTo(x, padT - 6); g.lineTo(x, yTac + trackH + 5); g.stroke();
-      g.fillStyle = '#7d8c99'; g.fillText(String(ms), x, h - 8);
+      g.fillStyle = '#7d8c99'; g.fillText(String(Number(ms.toFixed(1))), x, h - 8);
     }
     g.textAlign = 'left'; g.fillText('ms', padL + plotW + 3, h - 8);
 
@@ -8255,7 +8786,8 @@ function drawWaterfall() {
       g.fillStyle = col; g.font = `600 11px ${MONO}`; g.fillText(title, padL - 12, y + trackH / 2 - 1);
       g.fillStyle = '#7d8c99'; g.font = `10px ${MONO}`; g.fillText(sub, padL - 12, y + trackH / 2 + 12);
     };
-    trackLabel('STATIC TDMA', 'fixed 16 slots', yStatic, '#e8ecef');
+    const staticSlotCount = staticTimeline.allocations.length || 16;
+    trackLabel('STATIC TDMA', `${staticSlotCount} slots`, yStatic, '#e8ecef');
     trackLabel('TAC-TAD', 'dynamic slots', yTac, '#9db4ff');
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -8269,30 +8801,30 @@ function drawWaterfall() {
       // Draw CTRL and DL broadcasts if present in static segments
       const ctrlSeg = staticTimeline.segments.find(s => s.phase === 'CONTROL_BROADCAST');
       if (ctrlSeg && ctrlSeg.durationMs > 0) {
-        const cx = xOfMs(ctrlSeg.startMs), cw = Math.max(1, (ctrlSeg.durationMs / 20.0) * plotW);
+        const cx = xOfMs(ctrlSeg.startMs), cw = Math.max(1, (ctrlSeg.durationMs / superframeDurationMs) * plotW);
         g.fillStyle = 'rgba(157,180,255,0.10)'; g.fillRect(cx, yStatic + 1, cw, trackH - 2);
         g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
         g.fillText('CTRL', cx + 1, yStatic - 5);
       }
       const dlSeg = staticTimeline.segments.find(s => s.phase === 'DOWNLINK_BROADCAST');
       if (dlSeg && dlSeg.durationMs > 0) {
-        const dx = xOfMs(dlSeg.startMs), dw = Math.max(1, (dlSeg.durationMs / 20.0) * plotW);
+        const dx = xOfMs(dlSeg.startMs), dw = Math.max(1, (dlSeg.durationMs / superframeDurationMs) * plotW);
         g.fillStyle = 'rgba(157,180,255,0.18)'; g.fillRect(dx, yStatic + 1, dw, trackH - 2);
         g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
         g.fillText('DL', dx + 2, yStatic - 5);
       }
 
-      // Fix 2: Render GUARD intervals in Static TDMA as subtle inter-slot spaces
+      // Render GUARD intervals in Static TDMA as subtle inter-slot spaces
       const staticGuardSegments = staticTimeline.segments.filter(s => s.phase === 'GUARD' && s.durationMs >= 0.1);
       staticGuardSegments.forEach(seg => {
-        const gx = xOfMs(seg.startMs), gw = Math.max(1, (seg.durationMs / 20.0) * plotW);
+        const gx = xOfMs(seg.startMs), gw = Math.max(1, (seg.durationMs / superframeDurationMs) * plotW);
         g.fillStyle = 'rgba(100, 116, 139, 0.08)';
         g.fillRect(gx, yStatic + 3, gw, trackH - 6);
       });
 
       staticUlSegments.forEach(seg => {
         const nid = seg.scheduledNodeId ?? -1;
-        const sx = xOfMs(seg.startMs) + 0.5, sw = Math.max(2, (seg.durationMs / 20.0) * plotW - 1);
+        const sx = xOfMs(seg.startMs) + 0.5, sw = Math.max(2, (seg.durationMs / superframeDurationMs) * plotW - 1);
         const sy = yStatic + 3, sh = trackH - 6;
         const out = Boolean(seg.isWastedAirtime);
         const isActiveStatic = schedMode === 'static' && activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId === nid;
@@ -8314,9 +8846,10 @@ function drawWaterfall() {
         }
       });
     } else {
-      // Fallback 16 slots if no static allocations ingested yet
-      const slotW = plotW / 16;
-      for (let i = 0; i < 16; i++) {
+      // Fallback slots if no static allocations ingested yet
+      const fallbackK = latestTelemetry?.tdma_frame_config?.fixedSlotCount ?? 16;
+      const slotW = plotW / fallbackK;
+      for (let i = 0; i < fallbackK; i++) {
         const x = padL + i * slotW + 1.5, sw = slotW - 3, y = yStatic + 3, sh = trackH - 6;
         const n = nodes.find(nd => (nd.node_id ?? nd.nodeId) === i);
         const out = !!n && ((n.state_name ?? n.stateName) === 'HARD_SHADOW_CUTOFF' || n.linkOutage || n.link_outage);
@@ -8346,14 +8879,14 @@ function drawWaterfall() {
 
     const ctrlSeg = tacTimeline.segments.find(s => s.phase === 'CONTROL_BROADCAST');
     if (ctrlSeg && ctrlSeg.durationMs > 0) {
-      const cx = xOfMs(ctrlSeg.startMs), cw = Math.max(1, (ctrlSeg.durationMs / 20.0) * plotW);
+      const cx = xOfMs(ctrlSeg.startMs), cw = Math.max(1, (ctrlSeg.durationMs / superframeDurationMs) * plotW);
       g.fillStyle = 'rgba(157,180,255,0.10)'; g.fillRect(cx, yTac + 1, cw, trackH - 2);
       g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
       g.fillText('CTRL', cx + 1, yTac - 5);
     }
     const dlSeg = tacTimeline.segments.find(s => s.phase === 'DOWNLINK_BROADCAST');
     if (dlSeg && dlSeg.durationMs > 0) {
-      const dx = xOfMs(dlSeg.startMs), dw = Math.max(1, (dlSeg.durationMs / 20.0) * plotW);
+      const dx = xOfMs(dlSeg.startMs), dw = Math.max(1, (dlSeg.durationMs / superframeDurationMs) * plotW);
       g.fillStyle = 'rgba(157,180,255,0.18)'; g.fillRect(dx, yTac + 1, dw, trackH - 2);
       g.fillStyle = '#9db4ff'; g.font = `9px ${MONO}`; g.textAlign = 'left';
       g.fillText('DL', dx + 2, yTac - 5);
@@ -8362,7 +8895,7 @@ function drawWaterfall() {
     const tacUlSegments = tacTimeline.segments.filter(s => s.phase === 'UPLINK_SLOT');
     tacUlSegments.forEach(seg => {
       const nid = seg.scheduledNodeId ?? -1;
-      const ax = xOfMs(seg.startMs), aw = Math.max(2, (seg.durationMs / 20.0) * plotW);
+      const ax = xOfMs(seg.startMs), aw = Math.max(2, (seg.durationMs / superframeDurationMs) * plotW);
       const y = yTac + 3, sh = trackH - 6;
       const isActiveTac = schedMode !== 'static' && activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId === nid;
 
@@ -8386,10 +8919,10 @@ function drawWaterfall() {
       }
     });
 
-    // Fix 2: Render IDLE_RECLAIMED segments in Tac-TAD track
+    // Render IDLE_RECLAIMED segments in Tac-TAD track
     const tacReclaimedSegments = tacTimeline.segments.filter(s => s.phase === 'IDLE_RECLAIMED');
     tacReclaimedSegments.forEach(seg => {
-      const rx = xOfMs(seg.startMs), rw = Math.max(2, (seg.durationMs / 20.0) * plotW - 1);
+      const rx = xOfMs(seg.startMs), rw = Math.max(2, (seg.durationMs / superframeDurationMs) * plotW - 1);
       const ry = yTac + 3, rh = trackH - 6;
       gfxRRect(g, rx, ry, rw, rh, 3);
       g.fillStyle = 'rgba(16, 185, 129, 0.08)'; g.fill();
@@ -8411,11 +8944,11 @@ function drawWaterfall() {
       }
     });
 
-    // Fix 3: Render CONFLICT intervals prominently on whichever track has overlaps
+    // Render CONFLICT intervals prominently on whichever track has overlaps
     const renderTrackConflicts = (conflicts, yTrack) => {
       conflicts.forEach(conf => {
         const cx = xOfMs(conf.startMs);
-        const cw = Math.max(3, (Math.max(0, conf.endMs - conf.startMs) / 20.0) * plotW);
+        const cw = Math.max(3, (Math.max(0, conf.endMs - conf.startMs) / superframeDurationMs) * plotW);
         const cy = yTrack + 2, ch = trackH - 4;
         g.save();
         gfxRRect(g, cx, cy, cw, ch, 2);
@@ -8444,7 +8977,7 @@ function drawWaterfall() {
     // ─────────────────────────────────────────────────────────────────────────
     // 3. Synchronized Visual Playhead Line
     // ─────────────────────────────────────────────────────────────────────────
-    if (Number.isFinite(subframeOffsetMs) && subframeOffsetMs >= 0 && subframeOffsetMs <= 20.0) {
+    if (Number.isFinite(subframeOffsetMs) && subframeOffsetMs >= 0 && subframeOffsetMs <= superframeDurationMs) {
       const px = Math.round(xOfMs(subframeOffsetMs)) + 0.5;
       const isConflict = activeSlot.phase === 'CONFLICT';
       const playheadCol = isConflict ? '#ef4444' : '#38bdf8';

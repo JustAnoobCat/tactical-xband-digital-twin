@@ -41,6 +41,7 @@ import {
 } from '../core/terrain';
 import { RollingGoodputTracker } from '../core/rollingGoodput';
 import { RegistrationLifecycle } from '../core/registration';
+import { TdmaFrameConfig } from '../core/tdmaConfig';
 import {
   NodeRegistry,
   createDefault16NodeRegistry,
@@ -153,6 +154,8 @@ export class SimulationWorkerManager {
 
   public staticScheduler: LegacyStaticScheduler;
   public tacScheduler: TerrainAwareDynamicScheduler;
+  public tdmaConfig: TdmaFrameConfig = new TdmaFrameConfig();
+  private tdmaAccumulatorS: number = 0.0;
 
   public simTimeS: number = 0.0;
   public frameIndex: number = 0;
@@ -246,7 +249,10 @@ export class SimulationWorkerManager {
     );
 
     this.staticScheduler = new LegacyStaticScheduler();
+    this.staticScheduler.setTdmaConfig(this.tdmaConfig);
     this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
+    this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+    this.tdmaAccumulatorS = 0.0;
 
     this.metrics = {
       staticGoodputBits: 0,
@@ -410,17 +416,78 @@ export class SimulationWorkerManager {
     // Refresh all spatially derived decisions before traffic generation reads isShadowed.
     this.refreshObstructionState(acnPos, t);
 
-    // 1. Generate traffic and prune queues
-    for (let i = 0; i < this.nodesStatic.length; i++) {
-      const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT);
-      const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT);
-      this.metrics.staticEnqueuedPkts += sPkts.length;
-      this.metrics.tacEnqueuedPkts += tPkts.length;
+    // TDMA Superframe Scheduling via Temporal Accumulator (Resolving Audit Finding 1)
+    this.tdmaAccumulatorS += FRAME_DT;
+    const tFrame = this.tdmaConfig.frameDurationS;
 
-      this.nodesStatic[i].queue.pruneExpiredPackets(t);
-      this.nodesTac[i].queue.pruneExpiredPackets(t);
+    if (Math.abs(tFrame - FRAME_DT) < 1e-6) {
+      // Baseline 20 ms mode: 100% bit-for-bit identical to original discrete physics
+      for (let i = 0; i < this.nodesStatic.length; i++) {
+        const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT);
+        const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT);
+        this.metrics.staticEnqueuedPkts += sPkts.length;
+        this.metrics.tacEnqueuedPkts += tPkts.length;
+
+        this.nodesStatic[i].queue.pruneExpiredPackets(t);
+        this.nodesTac[i].queue.pruneExpiredPackets(t);
+      }
+      this.executeTdmaSuperframe(t, FRAME_DT);
+      this.tdmaAccumulatorS = 0.0;
+    } else if (tFrame < FRAME_DT - 1e-6) {
+      // Fast waveforms (tFrame < 20 ms, e.g. 10 ms fast mode):
+      // Execute multiple TDMA sub-cycles within one 50 Hz physics tick
+      while (this.tdmaAccumulatorS >= tFrame - 1e-6) {
+        for (let i = 0; i < this.nodesStatic.length; i++) {
+          const sPkts = this.nodesStatic[i].generateTraffic(t, tFrame);
+          const tPkts = this.nodesTac[i].generateTraffic(t, tFrame);
+          this.metrics.staticEnqueuedPkts += sPkts.length;
+          this.metrics.tacEnqueuedPkts += tPkts.length;
+
+          this.nodesStatic[i].queue.pruneExpiredPackets(t);
+          this.nodesTac[i].queue.pruneExpiredPackets(t);
+        }
+        this.executeTdmaSuperframe(t, tFrame);
+        this.tdmaAccumulatorS -= tFrame;
+      }
+    } else {
+      // Extended waveforms (tFrame > 20 ms, e.g. 40 ms extended mode):
+      // Generate traffic for FRAME_DT every tick so backlogs accumulate naturally
+      for (let i = 0; i < this.nodesStatic.length; i++) {
+        const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT);
+        const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT);
+        this.metrics.staticEnqueuedPkts += sPkts.length;
+        this.metrics.tacEnqueuedPkts += tPkts.length;
+
+        this.nodesStatic[i].queue.pruneExpiredPackets(t);
+        this.nodesTac[i].queue.pruneExpiredPackets(t);
+      }
+      if (this.tdmaAccumulatorS >= tFrame - 1e-6) {
+        this.executeTdmaSuperframe(t, tFrame);
+        this.tdmaAccumulatorS -= tFrame;
+      }
     }
 
+    // 5. Active Transfer Machine
+    const activeReport = this.schedulerMode === 'tac_tad' ? this.lastReportTac : this.lastReportStatic;
+    if (activeReport) {
+      this.transferManager.step({
+        activeNodes: this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic,
+        linkStatuses: this.linkStatuses,
+        predStates: this.predStates,
+        activeReport,
+        simTimeS: t,
+        isPaused: this.isPaused,
+      });
+    }
+
+    // 6. Dispatch frame to main UI thread
+    if (emitTelemetry) {
+      const frame = this.buildTelemetryFrame(acnPos);
+      this.emitHostMessage({ type: 'TELEMETRY_FRAME', frame });
+    }
+  }
+
+  private executeTdmaSuperframe(t: number, tFrame: number): void {
     // 2. Schedulers
     const reportStatic = this.staticScheduler.scheduleFrame(
       this.frameIndex,
@@ -440,9 +507,9 @@ export class SimulationWorkerManager {
     this.lastReportStatic = reportStatic;
     this.lastReportTac = reportTac;
 
-    // Rolling goodput sampling (M7.3: 200 superframes / 4 seconds of completed payload delivery)
-    this.staticGoodputTracker.recordSuperframeDeliveredBits(reportStatic.totalBitsTransmitted);
-    this.tacGoodputTracker.recordSuperframeDeliveredBits(reportTac.totalBitsTransmitted);
+    // Rolling goodput sampling (M7.3: 200 superframes of completed payload delivery)
+    this.staticGoodputTracker.recordSuperframeDeliveredBits(reportStatic.totalBitsTransmitted, tFrame);
+    this.tacGoodputTracker.recordSuperframeDeliveredBits(reportTac.totalBitsTransmitted, tFrame);
 
     // 3. Metrics accumulation
     this.metrics.staticGoodputBits += reportStatic.totalBitsTransmitted;
@@ -500,7 +567,7 @@ export class SimulationWorkerManager {
 
       const alloc = activeReport.allocations.find((a) => a.nodeId === nid);
       const tTxS = alloc && alloc.durationS > 0 && !nodeTac.isDepleted ? alloc.durationS : 0.0;
-      const tIdleS = Math.max(0.0, FRAME_DT - tTxS);
+      const tIdleS = Math.max(0.0, tFrame - tTxS);
       const drainedMah = (iIdleMa * tIdleS + iTxTotalMa * tTxS) / 3600.0;
       const capacityMah = Math.max(100.0, nodeTac.batteryCapacityMah || (isMcp ? 20000.0 : 5000.0));
       const deltaPct = (drainedMah / capacityMah) * 100.0;
@@ -512,22 +579,6 @@ export class SimulationWorkerManager {
       nodeTac.isDepleted = depleted;
       nodeStat.isDepleted = depleted;
       this.nodeRegistry.updateBatteryLevel(nid, nextLevelPct);
-    }
-
-    // 5. Active Transfer Machine
-    this.transferManager.step({
-      activeNodes: this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic,
-      linkStatuses: this.linkStatuses,
-      predStates: this.predStates,
-      activeReport,
-      simTimeS: t,
-      isPaused: this.isPaused,
-    });
-
-    // 6. Dispatch frame to main UI thread
-    if (emitTelemetry) {
-      const frame = this.buildTelemetryFrame(acnPos);
-      this.emitHostMessage({ type: 'TELEMETRY_FRAME', frame });
     }
   }
 
@@ -690,7 +741,10 @@ export class SimulationWorkerManager {
     this.initNodes();
     this.initTransfers();
     this.staticScheduler = new LegacyStaticScheduler();
+    this.staticScheduler.setTdmaConfig(this.tdmaConfig);
     this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
+    this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+    this.tdmaAccumulatorS = 0.0;
     this.simTimeS = 0.0;
     if (this.currentScenarioPreset === '16_NODES') {
       for (const id of GROUND_NODE_IDS) this.registrationLifecycle.add(id, this.simTimeS);
@@ -857,7 +911,9 @@ export class SimulationWorkerManager {
           this.initNodes();
           this.initTransfers();
           this.staticScheduler = new LegacyStaticScheduler();
+          this.staticScheduler.setTdmaConfig(this.tdmaConfig);
           this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
+          this.tacScheduler.setTdmaConfig(this.tdmaConfig);
           this.selectedNodeId = -1;
           this.spatialRevision++;
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
@@ -873,7 +929,9 @@ export class SimulationWorkerManager {
           this.initNodes();
           this.initTransfers();
           this.staticScheduler = new LegacyStaticScheduler();
+          this.staticScheduler.setTdmaConfig(this.tdmaConfig);
           this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
+          this.tacScheduler.setTdmaConfig(this.tdmaConfig);
           this.selectedNodeId = 4;
           this.resampleGroundNodeAltitudes();
           this.spatialRevision++;
@@ -1054,6 +1112,21 @@ export class SimulationWorkerManager {
         if (hasAgl && (p.agl_m === undefined || p.node_id === undefined || !Number.isInteger(p.node_id) || !this.nodeRegistry.hasNodeId(p.node_id))) return reject('AGL updates require a valid ground node_id and agl_m.');
         if (p.agl_m !== undefined && (p.agl_m < MIN_GROUND_AGL_M || p.agl_m > MAX_GROUND_AGL_M)) return reject(`agl_m must be between ${MIN_GROUND_AGL_M} and ${MAX_GROUND_AGL_M} metres.`);
 
+        let nextTdmaConfig: TdmaFrameConfig | null = null;
+        if (p.tdma_frame_config !== undefined) {
+          if (typeof p.tdma_frame_config !== 'object' || p.tdma_frame_config === null || Array.isArray(p.tdma_frame_config)) {
+            return reject('tdma_frame_config must be an object.');
+          }
+          try {
+            nextTdmaConfig = new TdmaFrameConfig({
+              ...this.tdmaConfig.toObject(),
+              ...p.tdma_frame_config,
+            });
+          } catch (error) {
+            return reject(error instanceof Error ? error.message : 'Invalid TDMA frame configuration.');
+          }
+        }
+
         const nextMode = p.trajectory_mode ?? this.flightConfig.trajectoryMode;
         if (p.waypoints !== undefined && nextMode !== 'waypoints') return reject('waypoints can only be edited while trajectory_mode is explicitly waypoints.');
         let nextWaypoints = this.flightConfig.waypoints;
@@ -1173,6 +1246,12 @@ export class SimulationWorkerManager {
           }
         }
         if (changesTerrain) this.initHillshade(512);
+        if (nextTdmaConfig) {
+          this.tdmaConfig = nextTdmaConfig;
+          this.staticScheduler.setTdmaConfig(this.tdmaConfig);
+          this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+          this.tdmaAccumulatorS = 0.0;
+        }
         if (changesTrajectory || changesTerrain || p.agl_m !== undefined) {
           this.spatialRevision++;
         }

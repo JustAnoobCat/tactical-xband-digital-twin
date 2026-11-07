@@ -43,6 +43,7 @@ import { GroundNodeTrafficSubsystem } from '../core/queues';
 import { NodeRegistry } from '../core/nodeRegistry';
 import { RegistrationLifecycle } from '../core/registration';
 import { RollingGoodputTracker } from '../core/rollingGoodput';
+import { TdmaFrameConfig } from '../core/tdmaConfig';
 import {
   ActiveTransferTelemetry,
   calculateTransferEtaSeconds,
@@ -129,6 +130,7 @@ export interface TelemetrySimulationState {
   readonly lastReportTac: FrameScheduleReport | null;
   readonly staticGoodputTracker: RollingGoodputTracker;
   readonly tacGoodputTracker: RollingGoodputTracker;
+  readonly tdmaConfig: TdmaFrameConfig;
 }
 
 /**
@@ -545,8 +547,14 @@ export class TelemetrySerializer {
       }
     }
 
-    const mapAlloc = (a: SlotAllocation) => normalizeSlotAllocationToFrame(a, state.simTimeS, FRAME_DT);
+    const mapAlloc = (a: SlotAllocation) =>
+      normalizeSlotAllocationToFrame(a, activeReport?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
     const allocations = (activeReport?.allocations ?? []).map(mapAlloc);
+
+    const mapAllocStatic = (a: SlotAllocation) =>
+      normalizeSlotAllocationToFrame(a, state.lastReportStatic?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
+    const mapAllocTac = (a: SlotAllocation) =>
+      normalizeSlotAllocationToFrame(a, state.lastReportTac?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
     const acnGeo = cartesianToGeodetic(acnPos[0], acnPos[1]);
 
     return {
@@ -611,8 +619,8 @@ export class TelemetrySerializer {
       nodes_telemetry: nodesTel,
       registration_telemetry: { nodes: state.registrationLifecycle.active(), events: state.registrationLifecycle.events() },
       active_gantt_allocations: allocations,
-      static_gantt_allocations: (state.lastReportStatic?.allocations ?? []).map(mapAlloc),
-      tac_gantt_allocations: (state.lastReportTac?.allocations ?? []).map(mapAlloc),
+      static_gantt_allocations: (state.lastReportStatic?.allocations ?? []).map(mapAllocStatic),
+      tac_gantt_allocations: (state.lastReportTac?.allocations ?? []).map(mapAllocTac),
       comparative_kpi_dashboard: kpi,
       static_p50_bps: state.staticGoodputTracker.p50Bps,
       static_p95_bps: state.staticGoodputTracker.p95Bps,
@@ -624,8 +632,8 @@ export class TelemetrySerializer {
       active_transfers: activeTransfers,
       downlink_telemetry: {
         is_control_broadcast: true,
-        ctrl_duration_ms: 1.0,
-        dl_duration_ms: (state.schedulerMode === 'tac_tad' && state.lastReportTac ? Math.max(3.0, 20.0 - 1.0 - (state.lastReportTac.totalUlAvailableS * 1000.0)) : 3.0),
+        ctrl_duration_ms: (activeReport?.ctrlDurationS ?? state.tdmaConfig.ctrlDurationS) * 1000.0,
+        dl_duration_ms: (activeReport?.dlDurationS ?? state.tdmaConfig.dlMinDurationS) * 1000.0,
         broadcast_active: true,
       },
       terrain_mode: state.terrainEngine.terrain_mode,
@@ -633,6 +641,7 @@ export class TelemetrySerializer {
         ? REAL_LADAKH_DEM_METADATA.halfWidthM / 1000
         : THEATER_HALF_M / 1000,
       terrain_bounds: state.terrainEngine.getTerrainBoundsTelemetry(),
+      tdma_frame_config: state.tdmaConfig ? state.tdmaConfig.toObject() : undefined,
     };
   }
 

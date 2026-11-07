@@ -14,6 +14,7 @@
 import { LinkStatus } from './linkBudget';
 import { GroundNodeTrafficSubsystem, QOS_PROFILES } from './queues';
 import { NodeTerrainState, PredictiveState } from './trajectory';
+import { TdmaFrameConfig } from './tdmaConfig';
 
 export const T_FRAME_S: number = 0.02; // 20 ms superframe
 export const T_CTRL_S: number = 0.001; // 1 ms control subframe
@@ -60,6 +61,14 @@ export interface FrameScheduleReport {
   readonly packetsDroppedOverflowThisFrame: number;
   /** Queue backlog remaining after this frame, in bits. */
   readonly totalBacklogBits: number;
+  /** Authoritative superframe duration in seconds (Resolving Audit Finding 5). */
+  readonly superframeDurationS: number;
+  /** Authoritative sync/C2 duration in seconds (Resolving Audit Finding 5). */
+  readonly ctrlDurationS: number;
+  /** Authoritative downlink duration in seconds (Resolving Audit Finding 5). */
+  readonly dlDurationS: number;
+  /** Authoritative available uplink duration in seconds (Resolving Audit Finding 5). */
+  readonly ulAvailableDurationS: number;
 }
 
 interface DropMetrics {
@@ -117,7 +126,12 @@ export interface BaseScheduler {
  */
 export class LegacyStaticScheduler implements BaseScheduler {
   public readonly schedulerName: string = 'Legacy_Static_TDMA';
+  private config: TdmaFrameConfig = new TdmaFrameConfig();
   private readonly previousDropCounts = new Map<number, { delay: number; overflow: number }>();
+
+  public setTdmaConfig(config: TdmaFrameConfig): void {
+    this.config = config;
+  }
 
   public evictNode(nodeId: number): void {
     this.previousDropCounts.delete(nodeId);
@@ -132,9 +146,11 @@ export class LegacyStaticScheduler implements BaseScheduler {
     _dlBacklogBytes: number = 0
   ): FrameScheduleReport {
     const numNodes = nodes.length;
-    const tUlAvailable = T_FRAME_S - T_CTRL_S - T_DL_MIN_S;
+    const tUlAvailable = this.config.frameDurationS - this.config.ctrlDurationS - this.config.dlMinDurationS;
 
-    if (numNodes === 0) {
+    const K = this.config.fixedSlotCount ?? numNodes;
+
+    if (K === 0) {
       return {
         frameIndex,
         timestampS: currentSimTimeS,
@@ -152,17 +168,21 @@ export class LegacyStaticScheduler implements BaseScheduler {
         packetsDroppedDelayThisFrame: 0,
         packetsDroppedOverflowThisFrame: 0,
         totalBacklogBits: 0,
+        superframeDurationS: this.config.frameDurationS,
+        ctrlDurationS: this.config.ctrlDurationS,
+        dlDurationS: this.config.dlMinDurationS,
+        ulAvailableDurationS: tUlAvailable,
       };
     }
 
-    const tauSlot = (tUlAvailable - numNodes * TAU_GUARD_S) / numNodes;
+    const tauSlot = (tUlAvailable - K * this.config.guardIntervalS) / K;
 
     const allocations: SlotAllocation[] = [];
     let totalBitsTx = 0;
     let totalBitsWasted = 0;
     let totalPayloadBitsDequeued = 0;
     let usedTimeS = 0.0;
-    let slotStartS = currentSimTimeS + T_CTRL_S + T_DL_MIN_S;
+    let slotStartS = currentSimTimeS + this.config.ctrlDurationS + this.config.dlMinDurationS;
 
     const getLink = (id: number): LinkStatus | undefined =>
       linkStatuses instanceof Map
@@ -177,8 +197,33 @@ export class LegacyStaticScheduler implements BaseScheduler {
       return (predictiveStates as Record<number, PredictiveState>)[id];
     };
 
-    for (let i = 0; i < numNodes; i++) {
-      const node = nodes[i];
+    for (let i = 0; i < K; i++) {
+      let node: GroundNodeTrafficSubsystem | undefined;
+      if (numNodes <= K) {
+        if (i < numNodes) {
+          node = nodes[i];
+        } else {
+          // IDLE_UNALLOCATED slot (Resolving Audit Finding 6)
+          allocations.push({
+            nodeId: -1,
+            slotStartS,
+            durationS: tauSlot,
+            timingAdvanceS: 0.001,
+            modcodName: 'IDLE_UNALLOCATED',
+            spectralEfficiency: 0.0,
+            capacityBits: 0,
+            isPreOcclusionFlush: false,
+          });
+          usedTimeS += tauSlot + this.config.guardIntervalS;
+          slotStartS += tauSlot + this.config.guardIntervalS;
+          continue;
+        }
+      } else {
+        // numNodes > K: round-robin modulo airtime multiplexing (Resolving Audit Finding 6)
+        const nodeIdx = (i + frameIndex * K) % numNodes;
+        node = nodes[nodeIdx];
+      }
+
       const ls = getLink(node.nodeId);
       const ps = getPred(node.nodeId);
 
@@ -198,8 +243,8 @@ export class LegacyStaticScheduler implements BaseScheduler {
         isPreOcclusionFlush: false,
       });
 
-      usedTimeS += tauSlot + TAU_GUARD_S;
-      slotStartS += tauSlot + TAU_GUARD_S;
+      usedTimeS += tauSlot + this.config.guardIntervalS;
+      slotStartS += tauSlot + this.config.guardIntervalS;
 
       if (!isDepleted) {
         const served = node.queue.dequeue(capBytes, currentSimTimeS);
@@ -238,6 +283,10 @@ export class LegacyStaticScheduler implements BaseScheduler {
       packetsDroppedDelayThisFrame: drops.delayThisFrame,
       packetsDroppedOverflowThisFrame: drops.overflowThisFrame,
       totalBacklogBits: backlogBits,
+      superframeDurationS: this.config.frameDurationS,
+      ctrlDurationS: this.config.ctrlDurationS,
+      dlDurationS: this.config.dlMinDurationS,
+      ulAvailableDurationS: tUlAvailable,
     };
   }
 }
@@ -248,6 +297,7 @@ export class LegacyStaticScheduler implements BaseScheduler {
 export class TerrainAwareDynamicScheduler implements BaseScheduler {
   public readonly schedulerName: string = 'Tac_TAD';
   public readonly tauMaxNormalS: number;
+  private config: TdmaFrameConfig = new TdmaFrameConfig();
   private readonly previousDropCounts = new Map<number, { delay: number; overflow: number }>();
 
   private readonly rAvg: Map<number, number> = new Map();
@@ -263,6 +313,10 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
     this.tauMaxNormalS = tauMaxNormalS;
   }
 
+  public setTdmaConfig(config: TdmaFrameConfig): void {
+    this.config = config;
+  }
+
   public evictNode(nodeId: number): void {
     this.previousDropCounts.delete(nodeId);
     this.rAvg.delete(nodeId);
@@ -276,8 +330,12 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
     predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
     dlBacklogBytes: number = 0
   ): FrameScheduleReport {
-    const tDl = dlBacklogBytes > 5000 ? Math.min(T_DL_MAX_S, T_DL_MIN_S + 0.002) : T_DL_MIN_S;
-    const tUlAvailable = T_FRAME_S - T_CTRL_S - tDl;
+    // Dynamic DL breathing with strict physical upper-bound ceiling check (Resolving Audit Finding 2)
+    const minUlReserveS = this.config.minSlotDurationS + this.config.guardIntervalS;
+    const maxAllowedDlS = this.config.frameDurationS - this.config.ctrlDurationS - minUlReserveS;
+    const targetDlS = dlBacklogBytes > 5000 ? Math.min(this.config.dlMaxDurationS, this.config.dlMinDurationS + 0.002) : this.config.dlMinDurationS;
+    const tDl = Math.min(targetDlS, Math.max(this.config.dlMinDurationS, maxAllowedDlS));
+    const tUlAvailable = this.config.frameDurationS - this.config.ctrlDurationS - tDl;
 
     if (nodes.length === 0) {
       return {
@@ -297,6 +355,10 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
         packetsDroppedDelayThisFrame: 0,
         packetsDroppedOverflowThisFrame: 0,
         totalBacklogBits: 0,
+        superframeDurationS: this.config.frameDurationS,
+        ctrlDurationS: this.config.ctrlDurationS,
+        dlDurationS: tDl,
+        ulAvailableDurationS: tUlAvailable,
       };
     }
 
@@ -392,11 +454,11 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
     let totalPayloadBitsDequeued = 0;
     let usedTimeS = 0.0;
     let remainingUlTimeS = tUlAvailable;
-    let slotStartS = currentSimTimeS + T_CTRL_S + tDl;
+    let slotStartS = currentSimTimeS + this.config.ctrlDurationS + tDl;
     const scheduledIds = new Set<number>();
 
     for (let i = 0; i < ranked.length; i++) {
-      if (remainingUlTimeS < TAU_MIN_S) break;
+      if (remainingUlTimeS < this.config.minSlotDurationS) break;
 
       const node = ranked[i].node;
       const nid = node.nodeId;
@@ -411,13 +473,14 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
       let isFlush = false;
 
       if (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
-        tauSlot = Math.min(remainingUlTimeS - TAU_GUARD_S, Math.max(tauReq, TAU_MIN_S));
+        tauSlot = Math.min(remainingUlTimeS - this.config.guardIntervalS, Math.max(tauReq, this.config.minSlotDurationS));
         isFlush = true;
       } else {
-        tauSlot = Math.min(tauReq, this.tauMaxNormalS, remainingUlTimeS - TAU_GUARD_S);
+        const maxSlot = Math.min(this.tauMaxNormalS, this.config.maxSlotDurationS);
+        tauSlot = Math.min(tauReq, maxSlot, remainingUlTimeS - this.config.guardIntervalS);
       }
 
-      if (tauSlot < TAU_MIN_S) continue;
+      if (tauSlot < this.config.minSlotDurationS) continue;
 
       const capBits = Math.floor(tauSlot * rInst);
       const capBytes = Math.floor(capBits / 8);
@@ -444,12 +507,12 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
       // Candidate filtering above excludes hard-shadow and reported-outage links.
       totalBitsTx += bitsServed;
 
-      // Update Proportional Fairness moving average
-      const rAchieved = bitsServed / T_FRAME_S;
+      // Update Proportional Fairness moving average using variable superframe duration
+      const rAchieved = bitsServed / this.config.frameDurationS;
       const rPrev = this.rAvg.get(nid) ?? 100000.0;
       this.rAvg.set(nid, (1.0 - this.alphaPf) * rPrev + this.alphaPf * rAchieved);
 
-      const consumed = tauSlot + TAU_GUARD_S;
+      const consumed = tauSlot + this.config.guardIntervalS;
       usedTimeS += consumed;
       slotStartS += consumed;
       remainingUlTimeS -= consumed;
@@ -486,6 +549,10 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
       packetsDroppedDelayThisFrame: drops.delayThisFrame,
       packetsDroppedOverflowThisFrame: drops.overflowThisFrame,
       totalBacklogBits: backlogBits,
+      superframeDurationS: this.config.frameDurationS,
+      ctrlDurationS: this.config.ctrlDurationS,
+      dlDurationS: tDl,
+      ulAvailableDurationS: tUlAvailable,
     };
   }
 }

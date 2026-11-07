@@ -83,7 +83,8 @@ const REGISTERED_SUITES = [
   { id: 'verify:traffic-inventory', name: 'Traffic Inventory UI Backlog Tables', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyNetworkTrafficInventory.ts'], category: 'ui' },
   { id: 'verify:network-dashboard', name: 'Network Performance Dashboard KPIs', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyNetworkPerformanceDashboard.ts'], category: 'ui' },
   { id: 'verify:sim-speed-controller', name: 'Kinematic Speed Controller Transitions', command: process.execPath, args: [viteNodeBin, 'src/tests/verifySimulationSpeedController.ts'], category: 'trajectory' },
-  { id: 'verify:variable-altitude', name: 'UAV Variable Altitude System (ALT-T1–T10)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVariableAltitude.ts'], category: 'trajectory' }
+  { id: 'verify:variable-altitude', name: 'UAV Variable Altitude System (ALT-T1–T10)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVariableAltitude.ts'], category: 'trajectory' },
+  { id: 'verify:variable-tdma', name: 'Variable TDMA Frame System (TDMA-T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVariableTdma.ts'], category: 'tdma' }
 ];
 
 // -----------------------------------------------------------------------------

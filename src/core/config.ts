@@ -260,3 +260,15 @@ export class ACNFlightConfig implements IACNFlightConfig {
 export const DEFAULT_RF_CONFIG = new RFConfig();
 export const DEFAULT_ENVIRONMENT_CONFIG = new EnvironmentConfig();
 export const DEFAULT_ACN_FLIGHT_CONFIG = new ACNFlightConfig();
+
+export {
+  TdmaFrameConfig,
+  TDMA_PRESETS,
+  TDMA_PRESET_STANDARD_20MS,
+  TDMA_PRESET_FAST_10MS,
+  TDMA_PRESET_EXTENDED_40MS,
+  TDMA_PRESET_SYMMETRIC_50_50,
+  TDMA_PRESET_SWARM_64SLOT,
+  DEFAULT_TDMA_FRAME_CONFIG,
+} from './tdmaConfig';
+export type { ITdmaFrameConfig, TdmaUplinkPolicy } from './tdmaConfig';

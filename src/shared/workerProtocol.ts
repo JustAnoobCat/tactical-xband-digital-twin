@@ -16,6 +16,10 @@ import type { TerrainBoundsTelemetry, TerrainObstruction, DemGeographicMetadata 
 import type { NodeTerrainState } from '../core/trajectory';
 import type { ActiveTransferTelemetry } from '../core/transferMetrics';
 import type { RegistrationState, RegistrationEvent } from '../core/registration';
+import { TdmaFrameConfig } from '../core/tdmaConfig';
+import type { ITdmaFrameConfig, TdmaUplinkPolicy } from '../core/tdmaConfig';
+export { TdmaFrameConfig };
+export type { ITdmaFrameConfig, TdmaUplinkPolicy };
 
 // ----------------------------------------------------------------------------
 // Component Telemetry Contracts
@@ -306,7 +310,13 @@ export interface TelemetryFrame {
   readonly terrain_mode: string;
   readonly terrain_bounds_km: number;
   readonly terrain_bounds: TerrainBoundsTelemetry;
+  readonly tdma_frame_config?: ITdmaFrameConfig;
 }
+
+/**
+ * Authoritative Simulation Telemetry Frame contract alias.
+ */
+export type SimulationTelemetryFrame = TelemetryFrame;
 
 // ----------------------------------------------------------------------------
 // Worker Command Result
@@ -474,6 +484,7 @@ export interface ConfigUpdateParams {
   readonly terrain_mode?: 'real' | 'synthetic';
   readonly trajectory_mode?: 'ellipse' | 'waypoints';
   readonly waypoints?: readonly { readonly x_m: number; readonly y_m: number; readonly z_m?: number }[];
+  readonly tdma_frame_config?: Partial<ITdmaFrameConfig>;
 }
 
 export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
@@ -502,6 +513,7 @@ export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
   readonly terrain_mode?: 'real' | 'synthetic';
   readonly trajectory_mode?: 'ellipse' | 'waypoints';
   readonly waypoints?: readonly { readonly x_m: number; readonly y_m: number; readonly z_m?: number }[];
+  readonly tdma_frame_config?: Partial<ITdmaFrameConfig>;
 }
 
 export interface LoadPresetCommand extends BaseWorkerInboundCommand {

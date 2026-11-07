@@ -102,6 +102,7 @@ export interface SchedulerFrameRecord {
   readonly kpi: SchedulerKpiSnapshot;
   readonly ctrlDurationMs?: number;
   readonly dlDurationMs?: number;
+  readonly superframeDurationMs?: number;
 }
 
 export interface SchedulerHistorySpan {
@@ -172,6 +173,7 @@ export function createSchedulerRecordSnapshot(input: {
   kpi: SchedulerKpiSnapshot;
   ctrlDurationMs?: number;
   dlDurationMs?: number;
+  superframeDurationMs?: number;
 }): SchedulerFrameRecord {
   // Defensive copy and freeze of active allocations
   const clonedActiveAllocations: SchedulerSlotAllocation[] = Array.isArray(input.activeAllocations)
@@ -239,6 +241,7 @@ export function createSchedulerRecordSnapshot(input: {
     kpi: frozenKpi,
     ctrlDurationMs: input.ctrlDurationMs,
     dlDurationMs: input.dlDurationMs,
+    superframeDurationMs: input.superframeDurationMs ?? 20.0,
   });
 
   return record;

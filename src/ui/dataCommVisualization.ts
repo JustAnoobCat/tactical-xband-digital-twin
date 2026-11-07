@@ -23,6 +23,7 @@
  */
 
 import { ActiveTransferTelemetry } from '../core/transferMetrics';
+import type { ITdmaFrameConfig } from '../core/tdmaConfig';
 import type { Point2D } from '../shared/types';
 
 export type { Point2D };
@@ -241,6 +242,8 @@ export interface DataCommFrameInput {
   readonly activeAllocations?: readonly ActiveGanttAllocation[];
   readonly downlinkTelemetry?: DownlinkTelemetryInfo | null;
   readonly dlBroadcastActive?: boolean;
+  readonly superframeDurationMs?: number;
+  readonly tdmaFrameConfig?: ITdmaFrameConfig | Partial<ITdmaFrameConfig> | null;
 }
 
 /**
@@ -329,6 +332,7 @@ export function createSuperframeSnapshot(params: {
   tacAllocations?: readonly any[];
   nodes: readonly any[];
   isBroadcastingDownlink?: boolean;
+  tdmaFrameConfig?: ITdmaFrameConfig | Partial<ITdmaFrameConfig>;
 }): SuperframeVisualSnapshot {
   const sessionId = params.sessionId ?? 0;
   const frameIndex = Math.max(0, params.frameIndex);
@@ -354,6 +358,10 @@ export function createSuperframeSnapshot(params: {
     transfer: cloneTransferTelemetry(n.transfer),
   }));
 
+  const superframeDurationMs = params.superframeDurationMs ?? params.tdmaFrameConfig?.frameDurationMs ?? 20.0;
+  const ctrlDurationMs = params.ctrlDurationMs ?? params.tdmaFrameConfig?.ctrlDurationMs ?? 1.0;
+  const dlDurationMs = params.dlDurationMs ?? params.tdmaFrameConfig?.dlMinDurationMs ?? 3.0;
+
   const snapshot: SuperframeVisualSnapshot = {
     snapshotId,
     source: params.source,
@@ -361,9 +369,9 @@ export function createSuperframeSnapshot(params: {
     frameIndex,
     simulationTimeS: simTimeS,
     schedulerMode: params.schedulerMode || 'tac_tad',
-    superframeDurationMs: params.superframeDurationMs ?? 20.0,
-    ctrlDurationMs: params.ctrlDurationMs ?? 1.0,
-    dlDurationMs: params.dlDurationMs ?? 3.0,
+    superframeDurationMs,
+    ctrlDurationMs,
+    dlDurationMs,
     allocations: normAllocs,
     ...(normStaticAllocs ? { staticAllocations: normStaticAllocs } : {}),
     ...(normTacAllocs ? { tacAllocations: normTacAllocs } : {}),
@@ -373,6 +381,39 @@ export function createSuperframeSnapshot(params: {
   };
 
   return deepFreezeSnapshot(snapshot);
+}
+
+/**
+ * Creates a SuperframeVisualSnapshot from a TelemetryFrame or historical telemetry record.
+ */
+export function createSuperframeSnapshotFromTelemetry(
+  frame: any,
+  options?: {
+    sessionId?: number;
+    source?: 'live' | 'historical';
+    nodes?: readonly any[];
+  }
+): SuperframeVisualSnapshot {
+  const superframeDurationMs = frame.tdma_frame_config?.frameDurationMs ?? 20.0;
+  const ctrlDurationMs = frame.downlink_telemetry?.ctrl_duration_ms ?? frame.tdma_frame_config?.ctrlDurationMs ?? 1.0;
+  const dlDurationMs = frame.downlink_telemetry?.dl_duration_ms ?? frame.tdma_frame_config?.dlMinDurationMs ?? 3.0;
+
+  return createSuperframeSnapshot({
+    source: options?.source ?? 'live',
+    sessionId: options?.sessionId,
+    frameIndex: frame.frame_index ?? Math.round((frame.sim_time_s || 0) / (superframeDurationMs / 1000.0)),
+    simulationTimeS: frame.sim_time_s ?? 0,
+    schedulerMode: frame.scheduler_mode ?? 'tac_tad',
+    stepRequestId: frame.step_request_id,
+    superframeDurationMs,
+    ctrlDurationMs,
+    dlDurationMs,
+    allocations: frame.active_gantt_allocations ?? [],
+    staticAllocations: frame.static_gantt_allocations,
+    tacAllocations: frame.tac_gantt_allocations,
+    nodes: options?.nodes ?? frame.nodes_telemetry ?? [],
+    isBroadcastingDownlink: Boolean(frame.downlink_telemetry?.broadcast_active ?? true),
+  });
 }
 
 /**
@@ -1342,16 +1383,21 @@ export class DataCommVisualizer {
       legacy.nodes.forEach((n) => posMap.set(n.nodeId, { x: n.screenX, y: n.screenY }));
       nodeScreenPositions = posMap;
 
+      const superframeDurationMs = legacy.superframeDurationMs ?? legacy.tdmaFrameConfig?.frameDurationMs ?? 20.0;
+      const ctrlDurationMs = legacy.downlinkTelemetry?.ctrl_duration_ms ?? legacy.tdmaFrameConfig?.ctrlDurationMs ?? 1.0;
+      const dlDurationMs = legacy.downlinkTelemetry?.dl_duration_ms ?? legacy.tdmaFrameConfig?.dlMinDurationMs ?? 3.0;
+
       snapshot = createSuperframeSnapshot({
         source: 'live',
         sessionId: this.sessionId,
-        frameIndex: Math.round(legacy.simTimeS / 0.02),
+        frameIndex: Math.round(legacy.simTimeS / (superframeDurationMs / 1000.0)),
         simulationTimeS: legacy.simTimeS,
         schedulerMode: legacy.schedulerMode,
         allocations: legacy.activeAllocations ?? [],
         nodes: legacy.nodes,
-        ctrlDurationMs: legacy.downlinkTelemetry?.ctrl_duration_ms ?? 1.0,
-        dlDurationMs: legacy.downlinkTelemetry?.dl_duration_ms ?? 3.0,
+        superframeDurationMs,
+        ctrlDurationMs,
+        dlDurationMs,
         isBroadcastingDownlink: legacy.dlBroadcastActive ?? true,
       });
 

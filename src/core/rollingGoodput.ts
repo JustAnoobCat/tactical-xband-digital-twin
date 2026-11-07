@@ -73,15 +73,19 @@ export class RollingGoodputTracker {
 
   /**
    * Ingests actual payload bits delivered in a completed superframe.
-   * Converts bits per 20 ms superframe into bits per second (bps).
+   * Converts bits per superframe into bits per second (bps) using variable frameDurationS.
    *
    * @param deliveredBits Actual payload bits delivered (>= 0).
+   * @param frameDurationS Optional superframe duration in seconds. Defaults to SUPERFRAME_DURATION_S (0.020s).
    */
-  public recordSuperframeDeliveredBits(deliveredBits: number): void {
+  public recordSuperframeDeliveredBits(deliveredBits: number, frameDurationS?: number): void {
     if (!Number.isFinite(deliveredBits) || deliveredBits < 0) {
       deliveredBits = 0;
     }
-    const rateBps = deliveredBits / SUPERFRAME_DURATION_S;
+    const durS = (typeof frameDurationS === 'number' && Number.isFinite(frameDurationS) && frameDurationS > 0)
+      ? frameDurationS
+      : SUPERFRAME_DURATION_S;
+    const rateBps = deliveredBits / durS;
     this.recordSampleBps(rateBps);
   }
 
