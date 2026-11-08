@@ -84,7 +84,9 @@ const REGISTERED_SUITES = [
   { id: 'verify:network-dashboard', name: 'Network Performance Dashboard KPIs', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyNetworkPerformanceDashboard.ts'], category: 'ui' },
   { id: 'verify:sim-speed-controller', name: 'Kinematic Speed Controller Transitions', command: process.execPath, args: [viteNodeBin, 'src/tests/verifySimulationSpeedController.ts'], category: 'trajectory' },
   { id: 'verify:variable-altitude', name: 'UAV Variable Altitude System (ALT-T1–T10)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVariableAltitude.ts'], category: 'trajectory' },
-  { id: 'verify:variable-tdma', name: 'Variable TDMA Frame System (TDMA-T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVariableTdma.ts'], category: 'tdma' }
+  { id: 'verify:variable-tdma', name: 'Variable TDMA Frame System (TDMA-T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVariableTdma.ts'], category: 'tdma' },
+  { id: 'verify:simulation-timeline', name: 'Simulation Timeline System (TL-CLK1–T16)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifySimulationTimeline.ts'], category: 'timeline' },
+  { id: 'verify:lookahead-decoupling', name: 'M1 Predictive Lookahead Decoupling (T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyLookaheadDecoupling.ts'], category: 'trajectory' }
 ];
 
 // -----------------------------------------------------------------------------

@@ -86,6 +86,13 @@ import type {
   FresnelSliceTelemetry,
   TerrainMeshDataReadyMessage,
   ConfigUpdateParams,
+  SpatialFrameSnapshot,
+  SpatialNodeSnapshot,
+  SpatialLinkBudgetSnapshot,
+  TimelineCommunicationRecord,
+  SuperframeEpochRecord,
+  SuperframeDiscontinuityRecord,
+  SchedulerEpochMetrics,
 } from '../shared/workerProtocol';
 import {
   HillshadeGenerator,
@@ -151,6 +158,22 @@ export class SimulationWorkerManager {
   public linkEngine: LinkBudgetEngine;
   public trajectoryEngine: ACNTrajectory;
   public lookaheadEngine: PredictiveLookAheadEngine;
+  public lookaheadIntervalFrames: number = 5; // Default: 10 Hz (every 5th frame) at 50 Hz physics
+  private readonly deferredEmergencyQueue: Set<number> = new Set();
+
+  public get lookaheadCadenceHz(): number {
+    return Math.round(50 / Math.max(1, this.lookaheadIntervalFrames));
+  }
+
+  public setLookaheadCadence(cadenceHz: number): void {
+    if (cadenceHz >= 50) {
+      this.lookaheadIntervalFrames = 1; // 50 Hz Reference mode
+    } else {
+      this.lookaheadIntervalFrames = Math.max(1, Math.round(50 / Math.max(1, cadenceHz)));
+    }
+    this.lookaheadEngine.invalidateAll();
+    this.deferredEmergencyQueue.clear();
+  }
 
   public staticScheduler: LegacyStaticScheduler;
   public tacScheduler: TerrainAwareDynamicScheduler;
@@ -171,6 +194,11 @@ export class SimulationWorkerManager {
   public liveAltitudeM: number = 5000.0;
   public liveVzMps: number = 0.0;
   public isTerrainClamped: boolean = false;
+  public batchSpatialSnapshots: SpatialFrameSnapshot[] = [];
+  public tdmaSimTimeS: number = 0.0;
+  public superframeEpochIndex: number = 0;
+  public discontinuityIndex: number = 0;
+  public pendingTimelineRecords: TimelineCommunicationRecord[] = [];
 
   public getLiveAcnPosition(): [number, number, number] {
     const p = this.trajectoryEngine.getAcnPosition(this.simTimeS);
@@ -416,6 +444,9 @@ export class SimulationWorkerManager {
     // Refresh all spatially derived decisions before traffic generation reads isShadowed.
     this.refreshObstructionState(acnPos, t);
 
+    // Capture spatial snapshot for batch preservation (TL-T16)
+    this.batchSpatialSnapshots.push(this.captureSpatialFrameSnapshot(acnPos));
+
     // TDMA Superframe Scheduling via Temporal Accumulator (Resolving Audit Finding 1)
     this.tdmaAccumulatorS += FRAME_DT;
     const tFrame = this.tdmaConfig.frameDurationS;
@@ -432,6 +463,7 @@ export class SimulationWorkerManager {
         this.nodesTac[i].queue.pruneExpiredPackets(t);
       }
       this.executeTdmaSuperframe(t, FRAME_DT);
+      this.recordSuperframeEpoch(FRAME_DT);
       this.tdmaAccumulatorS = 0.0;
     } else if (tFrame < FRAME_DT - 1e-6) {
       // Fast waveforms (tFrame < 20 ms, e.g. 10 ms fast mode):
@@ -447,6 +479,7 @@ export class SimulationWorkerManager {
           this.nodesTac[i].queue.pruneExpiredPackets(t);
         }
         this.executeTdmaSuperframe(t, tFrame);
+        this.recordSuperframeEpoch(tFrame);
         this.tdmaAccumulatorS -= tFrame;
       }
     } else {
@@ -463,6 +496,7 @@ export class SimulationWorkerManager {
       }
       if (this.tdmaAccumulatorS >= tFrame - 1e-6) {
         this.executeTdmaSuperframe(t, tFrame);
+        this.recordSuperframeEpoch(tFrame);
         this.tdmaAccumulatorS -= tFrame;
       }
     }
@@ -483,6 +517,8 @@ export class SimulationWorkerManager {
     // 6. Dispatch frame to main UI thread
     if (emitTelemetry) {
       const frame = this.buildTelemetryFrame(acnPos);
+      (frame as any).batch_spatial_snapshots = this.batchSpatialSnapshots.splice(0);
+      (frame as any).completed_superframes = this.pendingTimelineRecords.splice(0);
       this.emitHostMessage({ type: 'TELEMETRY_FRAME', frame });
     }
   }
@@ -582,24 +618,280 @@ export class SimulationWorkerManager {
     }
   }
 
+  public captureSpatialFrameSnapshot(acnPos: [number, number, number]): SpatialFrameSnapshot {
+    const vel = this.trajectoryEngine.getAcnVelocity(this.simTimeS);
+    const vx = vel[0];
+    const vy = vel[1];
+    const vz = this.liveVzMps;
+    const vHoriz = Math.hypot(vx, vy);
+    const headingRad = Math.atan2(vy, vx);
+    const pitchDeg = (Math.atan2(vz, vHoriz) * 180.0) / Math.PI;
+    const terrainZ = this.terrainEngine.getElevation(acnPos[0], acnPos[1]);
+    const altitudeAglM = this.liveAltitudeM - terrainZ;
+
+    const nodesSnapshot: SpatialNodeSnapshot[] = this.nodesTac.map((n) => {
+      const obs = this.obstructionResults.get(n.nodeId);
+      const ls = this.linkStatuses.get(n.nodeId);
+      const ps = this.predStates.get(n.nodeId);
+      return {
+        nodeId: n.nodeId,
+        posX: n.position[0],
+        posY: n.position[1],
+        posZ: n.position[2],
+        altitudeMslM: n.position[2],
+        altitudeAglM: n.aglM,
+        isLos: obs?.isLos ?? true,
+        isOutage: ls?.isOutage ?? true,
+        isObstacleBlocked: ls?.obstacleBlocked ?? false,
+        snrDb: ls?.snrDb ?? 0.0,
+        currentState: ps?.currentState ?? NodeTerrainState.NORMAL_LOS,
+      };
+    });
+
+    const selLs = this.selectedNodeId >= 0 ? this.linkStatuses.get(this.selectedNodeId) : undefined;
+    const selectedLinkBudget: SpatialLinkBudgetSnapshot | null = selLs
+      ? {
+          slantRangeM: selLs.slantRangeM,
+          fsplDb: selLs.fsplDb,
+          diffractionLossDb: selLs.diffractionLossDb,
+          gasLossDb: selLs.gasLossDb,
+          rainLossDb: selLs.rainLossDb,
+          totalLossDb: selLs.totalLossDb,
+          snrDb: selLs.snrDb,
+          modcodName: selLs.modcodName,
+          bitrateMbps: selLs.bitrateMbps,
+          isOutage: selLs.isOutage,
+        }
+      : null;
+
+    return {
+      frameIndex: this.frameIndex,
+      simulationTimeS: this.simTimeS,
+      wallClockTimeMs: performance.now(),
+      spatialRevision: this.spatialRevision,
+      acn: {
+        posX: acnPos[0],
+        posY: acnPos[1],
+        posZ: this.liveAltitudeM,
+        velX: vx,
+        velY: vy,
+        velZ: vz,
+        headingRad,
+        pitchDeg,
+        altitudeMslM: this.liveAltitudeM,
+        altitudeAglM,
+        coverageRadiusKm: this.flightConfig.coverageRadiusKm,
+        isTerrainClamped: this.isTerrainClamped,
+      },
+      nodes: nodesSnapshot,
+      selectedLinkBudget,
+    };
+  }
+
+  private extractSchedulerEpochMetrics(report: FrameScheduleReport | null): SchedulerEpochMetrics {
+    if (!report) {
+      return {
+        transmittedNonOutageBits: 0,
+        outageWastedBits: 0,
+        totalPayloadBitsDequeued: 0,
+        droppedDelayPkts: 0,
+        droppedOverflowPkts: 0,
+        totalDroppedPkts: 0,
+        droppedDelayBytes: 0,
+        droppedOverflowBytes: 0,
+        totalDroppedBytes: 0,
+        ulUtilizationPct: 0,
+      };
+    }
+    return {
+      transmittedNonOutageBits: report.totalBitsTransmitted,
+      outageWastedBits: report.totalBitsWastedOnOutage,
+      totalPayloadBitsDequeued: report.totalPayloadBitsDequeued,
+      droppedDelayPkts: report.packetsDroppedDelayThisFrame,
+      droppedOverflowPkts: report.packetsDroppedOverflowThisFrame,
+      totalDroppedPkts: report.packetsDroppedDelayThisFrame + report.packetsDroppedOverflowThisFrame,
+      droppedDelayBytes: report.droppedDelayBytes,
+      droppedOverflowBytes: report.droppedOverflowBytes,
+      totalDroppedBytes: report.totalDroppedBytes,
+      ulUtilizationPct: report.totalUlUtilizationPct,
+    };
+  }
+
+  private recordSuperframeEpoch(durationS: number): void {
+    const epochRecord: SuperframeEpochRecord = {
+      recordType: 'EPOCH',
+      epochIndex: this.superframeEpochIndex++,
+      startTimeS: this.tdmaSimTimeS,
+      endTimeS: this.tdmaSimTimeS + durationS,
+      durationMs: durationS * 1000.0,
+      configuredDurationMs: this.tdmaConfig.frameDurationMs,
+      nominalSimTimeS: this.simTimeS,
+      associatedSimulationFrameIndex: this.frameIndex,
+      staticMetrics: this.extractSchedulerEpochMetrics(this.lastReportStatic),
+      tacMetrics: this.extractSchedulerEpochMetrics(this.lastReportTac),
+      activeSchedulerMode: this.schedulerMode === 'static' ? 'static' : 'tac_tad',
+    };
+    this.pendingTimelineRecords.push(epochRecord);
+    this.tdmaSimTimeS += durationS;
+  }
+
   /** Recompute spatial decisions only; does not advance time or run traffic/schedulers. */
   private refreshObstructionState(acnPos: [number, number, number], timeS: number): void {
     const nextLinks = new Map<number, LinkStatus>();
     const nextPredictions = new Map<number, PredictiveState>();
     const nextObstructions = new Map<number, TerrainObstruction>();
     const nextShadow = new Map<number, boolean>();
-    for (let i = 0; i < this.nodesTac.length; i++) {
+
+    const numNodes = this.nodesTac.length;
+    const interval = Math.max(1, this.lookaheadIntervalFrames);
+
+    // 1. Authoritative 50 Hz Physical Obstruction Evaluation for ALL nodes
+    for (let i = 0; i < numNodes; i++) {
       const node = this.nodesTac[i];
       const nid = node.nodeId;
       const obstruction = this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
-      const prediction = this.lookaheadEngine.evaluatePredictiveState(node.position, timeS, obstruction);
       const [nx, ny, nz] = node.position;
       const slantM = Math.hypot(acnPos[0] - nx, acnPos[1] - ny, acnPos[2] - nz);
       nextObstructions.set(nid, obstruction);
-      nextPredictions.set(nid, prediction);
       nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm));
       // Traffic-generation shadow is current geometry, independent of a predicted re-emergence label.
       nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked);
+    }
+
+    // 2. Predictive Lookahead Evaluation (Decoupled with Interleaved Round-Robin & Bounded Emergency Budget)
+    if (interval <= 1) {
+      // 50 Hz Reference Mode: Evaluate all nodes unconditionally
+      for (let i = 0; i < numNodes; i++) {
+        const node = this.nodesTac[i];
+        const nid = node.nodeId;
+        const obstruction = nextObstructions.get(nid)!;
+        const prediction = this.lookaheadEngine.evaluatePredictiveState(node.position, timeS, obstruction);
+        nextPredictions.set(nid, prediction);
+        this.lookaheadEngine.storeCachedEntry(nid, {
+          nodeId: nid,
+          evaluatedSimTimeS: timeS,
+          evaluatedFrameIndex: this.frameIndex,
+          nodePosition: node.position,
+          rawPrediction: prediction,
+          spatialRevision: this.spatialRevision,
+        });
+      }
+      this.deferredEmergencyQueue.clear();
+    } else {
+      // 10 Hz Decoupled Interleaved Mode
+      const currentPhase = this.frameIndex % interval;
+      const normalQuota = Math.ceil(numNodes / interval);
+      const emergencyQuota = normalQuota; // Strictly bounded emergency allowance per frame
+      let emergencyCount = 0;
+
+      const scheduledNodes: GroundNodeTrafficSubsystem[] = [];
+      const emergencyNodes: GroundNodeTrafficSubsystem[] = [];
+      const cacheReconcileNodes: GroundNodeTrafficSubsystem[] = [];
+
+      for (let i = 0; i < numNodes; i++) {
+        const node = this.nodesTac[i];
+        const nid = node.nodeId;
+        const cached = this.lookaheadEngine.getCachedEntry(nid);
+        const obstruction = nextObstructions.get(nid)!;
+        const isPhysicallyBlocked = !obstruction.isLos || obstruction.obstacleBlocked;
+
+        const isScheduled = PredictiveLookAheadEngine.getNodeLookaheadPhase(nid, interval) === currentPhase;
+        const hasValidCache =
+          cached !== undefined &&
+          cached.spatialRevision === this.spatialRevision &&
+          Math.hypot(
+            cached.nodePosition[0] - node.position[0],
+            cached.nodePosition[1] - node.position[1],
+            cached.nodePosition[2] - node.position[2]
+          ) < 1e-3;
+
+        // Discrepancy check: unexpected transition where cached prediction contradicts current physical observation
+        const isDiscrepancy =
+          !hasValidCache ||
+          this.deferredEmergencyQueue.has(nid) ||
+          (hasValidCache && isPhysicallyBlocked && cached.rawPrediction.currentState === NodeTerrainState.NORMAL_LOS && cached.rawPrediction.timeToOcclusionS > 1.0);
+
+        if (isScheduled) {
+          scheduledNodes.push(node);
+        } else if (isDiscrepancy) {
+          emergencyNodes.push(node);
+        } else {
+          cacheReconcileNodes.push(node);
+        }
+      }
+
+      const nodesToCompute: Set<number> = new Set();
+
+      // Grant scheduled lookaheads up to normalQuota
+      for (const node of scheduledNodes) {
+        if (nodesToCompute.size < normalQuota) {
+          nodesToCompute.add(node.nodeId);
+          this.deferredEmergencyQueue.delete(node.nodeId);
+        } else {
+          cacheReconcileNodes.push(node);
+        }
+      }
+
+      // Grant emergency lookaheads within bounded emergencyQuota
+      for (const node of emergencyNodes) {
+        if (emergencyCount < emergencyQuota) {
+          nodesToCompute.add(node.nodeId);
+          emergencyCount++;
+          this.deferredEmergencyQueue.delete(node.nodeId);
+        } else {
+          // Defer excess emergencies to subsequent frames
+          this.deferredEmergencyQueue.add(node.nodeId);
+          cacheReconcileNodes.push(node);
+        }
+      }
+
+      // Execute full 30-step lookahead for budgeted nodes
+      for (let i = 0; i < numNodes; i++) {
+        const node = this.nodesTac[i];
+        const nid = node.nodeId;
+        const obstruction = nextObstructions.get(nid)!;
+
+        if (nodesToCompute.has(nid)) {
+          const prediction = this.lookaheadEngine.evaluatePredictiveState(node.position, timeS, obstruction);
+          nextPredictions.set(nid, prediction);
+          this.lookaheadEngine.storeCachedEntry(nid, {
+            nodeId: nid,
+            evaluatedSimTimeS: timeS,
+            evaluatedFrameIndex: this.frameIndex,
+            nodePosition: node.position,
+            rawPrediction: prediction,
+            spatialRevision: this.spatialRevision,
+          });
+        } else {
+          // Intervening / deferred frame: Reconcile with authoritative 50 Hz physical observation
+          const cached = this.lookaheadEngine.getCachedEntry(nid);
+          if (cached) {
+            const dtElapsed = Math.max(0.0, timeS - cached.evaluatedSimTimeS);
+            const reconciled = this.lookaheadEngine.reconcilePredictiveState(
+              cached.rawPrediction,
+              dtElapsed,
+              obstruction
+            );
+            nextPredictions.set(nid, reconciled);
+          } else {
+            // Unbudgeted cold or invalidated node: use instantaneous 50 Hz physical observation
+            // to generate a safe default prediction without running an expensive 30-step raycast.
+            // Node is deferred to upcoming frames within the strict per-frame budget.
+            const isPhysicallyBlocked = !obstruction.isLos || (obstruction.obstacleBlocked ?? false);
+            const fallbackPrediction: PredictiveState = {
+              currentState: isPhysicallyBlocked ? NodeTerrainState.HARD_SHADOW_CUTOFF : NodeTerrainState.NORMAL_LOS,
+              timeToOcclusionS: Number.POSITIVE_INFINITY,
+              timeToEmergenceS: Number.POSITIVE_INFINITY,
+              fresnelClearanceM: obstruction.minClearanceM,
+              fresnelRateOfChangeMps: 0.0,
+              predictedOutageDurationS: 0.0,
+              obstacleBlocked: obstruction.obstacleBlocked ?? false,
+            };
+            nextPredictions.set(nid, fallbackPrediction);
+            this.deferredEmergencyQueue.add(nid);
+          }
+        }
+      }
     }
     // Publish staged results together so no caller can observe a partial node refresh.
     this.linkStatuses.clear(); for (const [id, value] of nextLinks) this.linkStatuses.set(id, value);
@@ -745,6 +1037,11 @@ export class SimulationWorkerManager {
     this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
     this.tacScheduler.setTdmaConfig(this.tdmaConfig);
     this.tdmaAccumulatorS = 0.0;
+    this.tdmaSimTimeS = 0.0;
+    this.superframeEpochIndex = 0;
+    this.discontinuityIndex = 0;
+    this.pendingTimelineRecords = [];
+    this.batchSpatialSnapshots = [];
     this.simTimeS = 0.0;
     if (this.currentScenarioPreset === '16_NODES') {
       for (const id of GROUND_NODE_IDS) this.registrationLifecycle.add(id, this.simTimeS);
@@ -764,6 +1061,8 @@ export class SimulationWorkerManager {
     this.linkStatuses.clear();
     this.predStates.clear();
     this.obstructionResults.clear();
+    this.lookaheadEngine?.invalidateAll();
+    this.deferredEmergencyQueue.clear();
     this.metrics = {
       staticGoodputBits: 0,
       tacGoodputBits: 0,
@@ -829,6 +1128,8 @@ export class SimulationWorkerManager {
         try {
           // ObstacleField validates and builds its spatial index before atomically swapping state.
           this.terrainEngine.obstacleField.replace(msg.obstacles);
+          this.lookaheadEngine.invalidateAll();
+          this.deferredEmergencyQueue.clear();
         } catch (error) {
           return reject(error instanceof Error ? error.message : 'Invalid obstacle set.');
         }
@@ -887,6 +1188,8 @@ export class SimulationWorkerManager {
           this.nodeRegistry.updateSpatial(nid, xm, ym);
         }
         this.spatialRevision++;
+        this.lookaheadEngine.invalidateAll();
+        this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.emitProfileFrame();
         return result(true);
@@ -1032,6 +1335,8 @@ export class SimulationWorkerManager {
         this.hillshadeGenerator.invalidateRealCache();
         this.resampleGroundNodeAltitudes();
         this.spatialRevision++;
+        this.lookaheadEngine.invalidateAll();
+        this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.initHillshade(512);
 
@@ -1080,7 +1385,8 @@ export class SimulationWorkerManager {
       }
 
       case 'SET_PARAMS':
-      case 'CONFIG_UPDATE': {
+      case 'CONFIG_UPDATE':
+      case 'UPDATE_PARAMS': {
         const p: ConfigUpdateParams = (msg.params && typeof msg.params === 'object' && !Array.isArray(msg.params)) ? msg.params : msg;
         if (!p || typeof p !== 'object' || Array.isArray(p)) return reject('params must be an object.');
         const numericKeys = ['carrier_freq_ghz', 'channel_bandwidth_mhz', 'rain_rate_mmh', 'acn_altitude_m', 'orbit_a_m', 'orbit_b_m',
@@ -1247,13 +1553,53 @@ export class SimulationWorkerManager {
         }
         if (changesTerrain) this.initHillshade(512);
         if (nextTdmaConfig) {
+          const oldDurationMs = this.tdmaConfig.frameDurationMs;
+          const newDurationMs = nextTdmaConfig.frameDurationMs;
+          const residualS = this.tdmaAccumulatorS;
+
           this.tdmaConfig = nextTdmaConfig;
           this.staticScheduler.setTdmaConfig(this.tdmaConfig);
           this.tacScheduler.setTdmaConfig(this.tdmaConfig);
           this.tdmaAccumulatorS = 0.0;
+
+          if (residualS > 1e-6) {
+            const discontinuityRecord: SuperframeDiscontinuityRecord = {
+              recordType: 'DISCONTINUITY',
+              discontinuityIndex: this.discontinuityIndex++,
+              epochIndex: this.superframeEpochIndex++,
+              startTimeS: this.tdmaSimTimeS,
+              endTimeS: this.tdmaSimTimeS + residualS,
+              discardedDurationMs: residualS * 1000.0,
+              discardedDurationS: residualS,
+              oldDurationMs,
+              newDurationMs,
+              nominalSimTimeS: this.simTimeS,
+              reason: 'RECONFIGURATION_RESET',
+            };
+            this.pendingTimelineRecords.push(discontinuityRecord);
+            this.tdmaSimTimeS = this.tdmaSimTimeS + residualS;
+          } else {
+            this.tdmaSimTimeS = Math.max(this.tdmaSimTimeS, this.simTimeS);
+          }
         }
-        if (changesTrajectory || changesTerrain || p.agl_m !== undefined) {
+        if (p.lookahead_cadence_hz !== undefined) {
+          const hz = Number(p.lookahead_cadence_hz);
+          if (Number.isFinite(hz)) {
+            this.setLookaheadCadence(hz);
+          }
+        }
+        if (p.lookahead_interval_frames !== undefined) {
+          const iv = Number(p.lookahead_interval_frames);
+          if (Number.isFinite(iv) && iv >= 1) {
+            this.lookaheadIntervalFrames = Math.round(iv);
+            this.lookaheadEngine.invalidateAll();
+            this.deferredEmergencyQueue.clear();
+          }
+        }
+        if (changesTrajectory || changesTerrain || p.agl_m !== undefined || p.altitude_mode !== undefined || p.acn_altitude_m !== undefined) {
           this.spatialRevision++;
+          this.lookaheadEngine.invalidateAll();
+          this.deferredEmergencyQueue.clear();
         }
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.emitProfileFrame();
@@ -1340,6 +1686,8 @@ export class SimulationWorkerManager {
         }
 
         this.spatialRevision++;
+        this.lookaheadEngine.invalidateAll();
+        this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.emitProfileFrame();
 
@@ -1380,6 +1728,8 @@ export class SimulationWorkerManager {
         this.linkStatuses.delete(nid);
         this.predStates.delete(nid);
         this.obstructionResults.delete(nid);
+        this.lookaheadEngine.invalidateNode(nid);
+        this.deferredEmergencyQueue.delete(nid);
         this.transferManager.evictNode(nid);
 
         if (this.selectedNodeId === nid) {
@@ -1391,6 +1741,8 @@ export class SimulationWorkerManager {
         }
 
         this.spatialRevision++;
+        this.lookaheadEngine.invalidateAll();
+        this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.emitProfileFrame();
 
@@ -1428,6 +1780,8 @@ export class SimulationWorkerManager {
         this.transferManager.registerNode(nid);
 
         this.spatialRevision++;
+        this.lookaheadEngine.invalidateAll();
+        this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.emitProfileFrame();
 
@@ -1462,6 +1816,9 @@ export class SimulationWorkerManager {
 
         if (outcome.spatialChanged) {
           this.spatialRevision++;
+          if (outcome.nodeId !== undefined) {
+            this.lookaheadEngine.invalidateNode(outcome.nodeId);
+          }
         }
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.emitProfileFrame();

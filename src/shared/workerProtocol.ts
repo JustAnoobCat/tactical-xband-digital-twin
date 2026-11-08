@@ -311,7 +311,108 @@ export interface TelemetryFrame {
   readonly terrain_bounds_km: number;
   readonly terrain_bounds: TerrainBoundsTelemetry;
   readonly tdma_frame_config?: ITdmaFrameConfig;
+  readonly batch_spatial_snapshots?: readonly SpatialFrameSnapshot[];
+  readonly completed_superframes?: readonly TimelineCommunicationRecord[];
 }
+
+// ----------------------------------------------------------------------------
+// Timeline System Contracts (DRDO-TAC-XBAND-ARCH-TIMELINE-17)
+// ----------------------------------------------------------------------------
+
+export interface SpatialAcnSnapshot {
+  readonly posX: number;
+  readonly posY: number;
+  readonly posZ: number;
+  readonly velX: number;
+  readonly velY: number;
+  readonly velZ: number;
+  readonly headingRad: number;
+  readonly pitchDeg: number;
+  readonly altitudeMslM: number;
+  readonly altitudeAglM: number;
+  readonly coverageRadiusKm: number;
+  readonly isTerrainClamped: boolean;
+}
+
+export interface SpatialNodeSnapshot {
+  readonly nodeId: number;
+  readonly posX: number;
+  readonly posY: number;
+  readonly posZ: number;
+  readonly altitudeMslM: number;
+  readonly altitudeAglM: number;
+  readonly isLos: boolean;
+  readonly isOutage: boolean;
+  readonly isObstacleBlocked: boolean;
+  readonly snrDb: number;
+  readonly currentState: NodeTerrainState | string;
+}
+
+export interface SpatialLinkBudgetSnapshot {
+  readonly slantRangeM: number;
+  readonly fsplDb: number;
+  readonly diffractionLossDb: number;
+  readonly gasLossDb: number;
+  readonly rainLossDb: number;
+  readonly totalLossDb: number;
+  readonly snrDb: number;
+  readonly modcodName: string;
+  readonly bitrateMbps: number;
+  readonly isOutage: boolean;
+}
+
+export interface SpatialFrameSnapshot {
+  readonly frameIndex: number;
+  readonly simulationTimeS: number;
+  readonly wallClockTimeMs: number;
+  readonly spatialRevision: number;
+  readonly acn: SpatialAcnSnapshot;
+  readonly nodes: readonly SpatialNodeSnapshot[];
+  readonly selectedLinkBudget: SpatialLinkBudgetSnapshot | null;
+}
+
+export interface SchedulerEpochMetrics {
+  readonly transmittedNonOutageBits: number;
+  readonly outageWastedBits: number;
+  readonly totalPayloadBitsDequeued: number;
+  readonly droppedDelayPkts: number;
+  readonly droppedOverflowPkts: number;
+  readonly totalDroppedPkts: number;
+  readonly droppedDelayBytes: number | null;
+  readonly droppedOverflowBytes: number | null;
+  readonly totalDroppedBytes: number | null;
+  readonly ulUtilizationPct: number;
+}
+
+export interface SuperframeEpochRecord {
+  readonly recordType: 'EPOCH';
+  readonly epochIndex: number;
+  readonly startTimeS: number;
+  readonly endTimeS: number;
+  readonly durationMs: number;
+  readonly configuredDurationMs: number;
+  readonly nominalSimTimeS: number;
+  readonly associatedSimulationFrameIndex: number;
+  readonly staticMetrics: SchedulerEpochMetrics;
+  readonly tacMetrics: SchedulerEpochMetrics;
+  readonly activeSchedulerMode: 'tac_tad' | 'static';
+}
+
+export interface SuperframeDiscontinuityRecord {
+  readonly recordType: 'DISCONTINUITY';
+  readonly discontinuityIndex: number;
+  readonly epochIndex?: number;
+  readonly startTimeS: number;
+  readonly endTimeS: number;
+  readonly discardedDurationMs: number;
+  readonly discardedDurationS?: number;
+  readonly oldDurationMs: number;
+  readonly newDurationMs: number;
+  readonly nominalSimTimeS: number;
+  readonly reason: 'RECONFIGURATION_RESET';
+}
+
+export type TimelineCommunicationRecord = SuperframeEpochRecord | SuperframeDiscontinuityRecord;
 
 /**
  * Authoritative Simulation Telemetry Frame contract alias.
@@ -485,10 +586,12 @@ export interface ConfigUpdateParams {
   readonly trajectory_mode?: 'ellipse' | 'waypoints';
   readonly waypoints?: readonly { readonly x_m: number; readonly y_m: number; readonly z_m?: number }[];
   readonly tdma_frame_config?: Partial<ITdmaFrameConfig>;
+  readonly lookahead_cadence_hz?: number;
+  readonly lookahead_interval_frames?: number;
 }
 
 export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
-  readonly type: 'CONFIG_UPDATE' | 'SET_PARAMS';
+  readonly type: 'CONFIG_UPDATE' | 'SET_PARAMS' | 'UPDATE_PARAMS';
   readonly request_id?: string | number;
   readonly params?: ConfigUpdateParams;
   readonly carrier_freq_ghz?: number;
@@ -514,6 +617,8 @@ export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
   readonly trajectory_mode?: 'ellipse' | 'waypoints';
   readonly waypoints?: readonly { readonly x_m: number; readonly y_m: number; readonly z_m?: number }[];
   readonly tdma_frame_config?: Partial<ITdmaFrameConfig>;
+  readonly lookahead_cadence_hz?: number;
+  readonly lookahead_interval_frames?: number;
 }
 
 export interface LoadPresetCommand extends BaseWorkerInboundCommand {

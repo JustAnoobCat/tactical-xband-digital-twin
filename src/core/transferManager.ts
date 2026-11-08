@@ -99,6 +99,14 @@ export class ActiveTransferManager {
   }
 
   /**
+   * Returns the transfer state for a specific ground node, or undefined if untracked.
+   * Alias for get(nodeId) supporting explicit semantic queries.
+   */
+  public getNodeTransferState(nodeId: number): NodeTransferState | undefined {
+    return this.transfers.get(nodeId);
+  }
+
+  /**
    * Checks whether a ground node has an active transfer entry.
    */
   public has(nodeId: number): boolean {
@@ -205,11 +213,13 @@ export class ActiveTransferManager {
       const targetQos = qosMap[activeT] ?? 69;
       const pred = params.predStates.get(nid);
       const currState = pred?.currentState ?? NodeTerrainState.NORMAL_LOS;
+      const ls = params.linkStatuses.get(nid);
+      const isOutage = ls?.isOutage ?? true;
 
-      if (currState === NodeTerrainState.HARD_SHADOW_CUTOFF && trans.status === 'TRANSMITTING') {
+      if ((currState === NodeTerrainState.HARD_SHADOW_CUTOFF || isOutage) && trans.status === 'TRANSMITTING') {
         trans.status = 'BLOCKED_NLOS';
         trans.statusMessage = 'TERRAIN OCCLUSION: Link severed by ridge. Uplink paused.';
-      } else if (currState !== NodeTerrainState.HARD_SHADOW_CUTOFF && trans.status === 'BLOCKED_NLOS') {
+      } else if (!isOutage && currState !== NodeTerrainState.HARD_SHADOW_CUTOFF && trans.status === 'BLOCKED_NLOS') {
         trans.status = 'TRANSMITTING';
         trans.statusMessage = 'RE-EMERGED: Resuming uplink transfer.';
       }
@@ -223,9 +233,6 @@ export class ActiveTransferManager {
         trans.droppedPackets += deltaDrops;
         trans.droppedBytes += deltaDrops * avgSz;
       }
-
-      const ls = params.linkStatuses.get(nid);
-      const isOutage = ls?.isOutage ?? true;
 
       if (!isOutage && trans.status === 'TRANSMITTING') {
         const alloc = params.activeReport?.allocations.find((a) => a.nodeId === nid);

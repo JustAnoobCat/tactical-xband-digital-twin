@@ -736,6 +736,15 @@ export function createACNTrajectory(
   return engine;
 }
 
+export interface CachedLookaheadEntry {
+  readonly nodeId: number;
+  readonly evaluatedSimTimeS: number;
+  readonly evaluatedFrameIndex: number;
+  readonly nodePosition: Position3D;
+  readonly rawPrediction: PredictiveState;
+  readonly spatialRevision: number;
+}
+
 /**
  * Predictive Look-Ahead Machine.
  *
@@ -753,6 +762,84 @@ export class PredictiveLookAheadEngine {
   public horizonS: number;
   public dtStepS: number;
   public warningTimeThresholdS: number;
+
+  private readonly lookaheadCache: Map<number, CachedLookaheadEntry> = new Map();
+
+  /**
+   * Deterministically maps a stable node ID to an interleaved lookahead phase offset.
+   * Using nodeId ensures assignment is invariant to array reordering, insertions, or deletions.
+   */
+  public static getNodeLookaheadPhase(nodeId: number, intervalFrames: number = 5): number {
+    if (intervalFrames <= 1) return 0;
+    return ((nodeId % intervalFrames) + intervalFrames) % intervalFrames;
+  }
+
+  public getCachedEntry(nodeId: number): CachedLookaheadEntry | undefined {
+    return this.lookaheadCache.get(nodeId);
+  }
+
+  public storeCachedEntry(nodeId: number, entry: CachedLookaheadEntry): void {
+    this.lookaheadCache.set(nodeId, entry);
+  }
+
+  public invalidateNode(nodeId: number): void {
+    this.lookaheadCache.delete(nodeId);
+  }
+
+  public invalidateAll(): void {
+    this.lookaheadCache.clear();
+  }
+
+  public getCacheSize(): number {
+    return this.lookaheadCache.size;
+  }
+
+  /**
+   * Propagates cached predictive state forward by dtElapsedS and reconciles with
+   * authoritative instantaneous 50 Hz physical obstruction.
+   *
+   * Mathematical Safety Invariants:
+   * 1. Physically blocked ray (LOS=false) CANNOT evaluate to NORMAL_LOS or PRE_OCCLUSION_FLUSH.
+   * 2. Physically clear ray (LOS=true) CANNOT evaluate to HARD_SHADOW_CUTOFF or RE_EMERGENCE_BURST.
+   * 3. Intervening frames advance T_occ and T_em monotonically by dtElapsedS.
+   */
+  public reconcilePredictiveState(
+    cached: PredictiveState,
+    dtElapsedS: number,
+    currentObs: TerrainObstruction | { isLos: boolean; obstacleBlocked?: boolean; minClearanceM: number }
+  ): PredictiveState {
+    const isPhysicallyBlocked = !currentObs.isLos || (currentObs.obstacleBlocked ?? false);
+
+    if (isPhysicallyBlocked) {
+      const tEm = Number.isFinite(cached.timeToEmergenceS)
+        ? Math.max(0.0, cached.timeToEmergenceS - dtElapsedS)
+        : Number.POSITIVE_INFINITY;
+      const state = tEm <= 1.0 ? NodeTerrainState.RE_EMERGENCE_BURST : NodeTerrainState.HARD_SHADOW_CUTOFF;
+      return {
+        currentState: state,
+        timeToOcclusionS: 0.0,
+        timeToEmergenceS: tEm,
+        fresnelClearanceM: currentObs.minClearanceM,
+        fresnelRateOfChangeMps: cached.fresnelRateOfChangeMps,
+        predictedOutageDurationS: cached.predictedOutageDurationS,
+        obstacleBlocked: currentObs.obstacleBlocked ?? false,
+      };
+    } else {
+      const tOcc = Number.isFinite(cached.timeToOcclusionS)
+        ? Math.max(0.0, cached.timeToOcclusionS - dtElapsedS)
+        : Number.POSITIVE_INFINITY;
+      const state = tOcc <= this.warningTimeThresholdS ? NodeTerrainState.PRE_OCCLUSION_FLUSH : NodeTerrainState.NORMAL_LOS;
+      return {
+        currentState: state,
+        timeToOcclusionS: tOcc,
+        timeToEmergenceS: 0.0,
+        fresnelClearanceM: currentObs.minClearanceM,
+        fresnelRateOfChangeMps: cached.fresnelRateOfChangeMps,
+        predictedOutageDurationS: cached.predictedOutageDurationS,
+        obstacleBlocked: currentObs.obstacleBlocked ?? false,
+      };
+    }
+  }
 
   constructor(
     terrainEngine: TerrainEngine,
