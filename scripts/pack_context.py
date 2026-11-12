@@ -23,6 +23,8 @@ IGNORE_DIRS = {
     ".pytest_cache",
     ".vscode",
     "brain",
+    "graphify-out",
+    "benchmarks",
 }
 
 IGNORE_EXTENSIONS = {
