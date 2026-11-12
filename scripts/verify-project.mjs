@@ -167,6 +167,16 @@ check('Current package has build and test commands', () => {
   assert.ok(!pkg.scripts.test.includes('no test specified'), 'Placeholder test command remains');
 });
 
+check('Simulation timeline infrastructure provides observational epoch clock and batch spatial staging', () => {
+  assert.match(worker, /batchSpatialSnapshots/);
+  assert.match(worker, /tdmaSimTimeS/);
+  assert.match(worker, /superframeEpochIndex/);
+  assert.match(worker, /completed_superframes/);
+  const protocol = readFileSync(new URL('../src/shared/workerProtocol.ts', import.meta.url), 'utf8');
+  assert.match(protocol, /SpatialFrameSnapshot/);
+  assert.match(protocol, /TimelineCommunicationRecord/);
+});
+
 for (const item of checks) {
   console.log(`${item.status.padEnd(4)} ${item.name}${item.detail ? ` — ${item.detail}` : ''}`);
 }

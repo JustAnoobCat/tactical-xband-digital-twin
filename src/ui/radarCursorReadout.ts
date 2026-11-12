@@ -23,6 +23,7 @@ import {
   DEM_COVERAGE_HALF_WIDTH_M,
   DEM_COVERAGE_HALF_HEIGHT_M,
 } from '../core/geodesy';
+import { HIGHLAND_THEME } from './workbench/chartTheme';
 
 export interface RadarCursorReadoutInput {
   /** Local Cartesian X coordinate in metres (+X East) */
@@ -181,30 +182,30 @@ export function computeRadarCursorReadout(input: RadarCursorReadoutInput): Radar
  */
 export function renderCursorHudHtml(readout: RadarCursorReadoutResult): string {
   if (!readout.isInsideRadar) {
-    return `<span style="color:#64748b;display:inline-flex;align-items:center;gap:6px;"><span style="width:6px;height:6px;border-radius:50%;background:#475569;"></span>CURSOR: OUTSIDE RADAR MAP</span>`;
+    return `<span style="color:${HIGHLAND_THEME.text.faint};display:inline-flex;align-items:center;gap:6px;"><span style="width:6px;height:6px;border-radius:50%;background:${HIGHLAND_THEME.signal.slate};"></span>CURSOR: OUTSIDE RADAR MAP</span>`;
   }
 
   const isOutOfCoverage = readout.terrainElevationFormatted === 'N/A' || !readout.isWithinCoverage;
   const elevStyle = isOutOfCoverage
-    ? 'color:#f59e0b;font-weight:600;'
-    : 'color:#f1f5f9;font-weight:600;';
+    ? `color:${HIGHLAND_THEME.signal.ochre};font-weight:600;`
+    : `color:${HIGHLAND_THEME.text.primary};font-weight:600;`;
   const elevText = isOutOfCoverage
     ? 'N/A (Outside DEM)'
     : readout.terrainElevationFormatted;
 
   return `
     <span style="display:inline-flex;align-items:center;gap:6px;">
-      <span style="width:6px;height:6px;border-radius:50%;background:#38bdf8;box-shadow:0 0 6px #38bdf8;"></span>
-      <span style="color:#38bdf8;font-weight:600;letter-spacing:0.02em;">${readout.latDecimal}, ${readout.lonDecimal}</span>
-      <small style="color:#94a3b8;font-size:10px;margin-left:2px;">(${readout.dmsFull})</small>
+      <span style="width:6px;height:6px;border-radius:50%;background:${HIGHLAND_THEME.signal.amber};box-shadow:0 0 6px ${HIGHLAND_THEME.signal.amber};"></span>
+      <span style="color:${HIGHLAND_THEME.signal.amber};font-weight:600;letter-spacing:0.02em;">${readout.latDecimal}, ${readout.lonDecimal}</span>
+      <small style="color:${HIGHLAND_THEME.text.muted};font-size:10px;margin-left:2px;">(${readout.dmsFull})</small>
     </span>
-    <span style="color:var(--line2, #334155);user-select:none;">|</span>
+    <span style="color:var(--hi-line-strong, #2e3440);user-select:none;">|</span>
     <span style="display:inline-flex;align-items:center;gap:4px;">
-      <span style="color:#94a3b8;font-size:10.5px;">Terrain MSL:</span>
+      <span style="color:${HIGHLAND_THEME.text.muted};font-size:10.5px;">Terrain MSL:</span>
       <span style="${elevStyle}">${elevText}</span>
     </span>
-    <span style="color:var(--line2, #334155);user-select:none;">|</span>
-    <span style="color:#64748b;font-size:10.5px;">${readout.localCoordsFormatted}</span>
+    <span style="color:var(--hi-line-strong, #2e3440);user-select:none;">|</span>
+    <span style="color:${HIGHLAND_THEME.text.faint};font-size:10.5px;">${readout.localCoordsFormatted}</span>
   `.trim();
 }
 

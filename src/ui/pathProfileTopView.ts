@@ -27,6 +27,7 @@ import {
   type TerrainBoundsTelemetry,
   type DemGeographicMetadata,
 } from '../core/terrain';
+import { HIGHLAND_THEME } from './workbench/chartTheme';
 
 export interface TopViewBounds {
   readonly minXM: number;
@@ -764,14 +765,14 @@ function drawDemTerrain(
   ctx.drawImage(terrainCanvas as CanvasImageSource, destX, destY, destW, destH);
 
   // Subtle Satellite DEM Coverage Boundary & Corner reticles
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.40)';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.demBoundary;
   ctx.lineWidth = 1.0;
   ctx.setLineDash([4, 4]);
   ctx.strokeRect(destX, destY, destW, destH);
   ctx.setLineDash([]);
 
   const bracketLen = Math.min(18, Math.max(6, Math.min(destW, destH) * 0.04));
-  ctx.strokeStyle = '#38bdf8';
+  ctx.strokeStyle = HIGHLAND_THEME.signal.amber;
   ctx.lineWidth = 1.6;
 
   // TL
@@ -822,7 +823,7 @@ function drawKnownSummits(
       const sx = viewport.xToCanvas(summit.xM, layout);
       const sy = viewport.yToCanvas(summit.yM, layout);
 
-      ctx.fillStyle = '#f59e0b';
+      ctx.fillStyle = HIGHLAND_THEME.cartography.summitMarker;
       ctx.beginPath();
       ctx.moveTo(sx, sy - 6);
       ctx.lineTo(sx - 4, sy + 3);
@@ -830,8 +831,8 @@ function drawKnownSummits(
       ctx.closePath();
       ctx.fill();
 
-      ctx.font = '600 8px ui-monospace, monospace';
-      ctx.fillStyle = '#fde68a';
+      ctx.font = `600 8px ${HIGHLAND_THEME.font.mono}`;
+      ctx.fillStyle = HIGHLAND_THEME.cartography.summitLabel;
       ctx.textAlign = 'center';
       ctx.fillText(`▲ ${summit.elevM}m ${summit.name}`, sx, sy - 8);
     }
@@ -850,8 +851,8 @@ export function renderElevationLegend(
   const legH = 7;
 
   ctx.save();
-  ctx.fillStyle = 'rgba(10, 16, 24, 0.78)';
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+  ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
+  ctx.strokeStyle = HIGHLAND_THEME.line.strong;
   ctx.lineWidth = 1;
   ctx.beginPath();
   if ('roundRect' in ctx && typeof ctx.roundRect === 'function') {
@@ -863,8 +864,8 @@ export function renderElevationLegend(
   ctx.stroke();
 
   // Title
-  ctx.font = '600 7.5px ui-monospace, monospace';
-  ctx.fillStyle = '#94a3b8';
+  ctx.font = `600 7.5px ${HIGHLAND_THEME.font.mono}`;
+  ctx.fillStyle = HIGHLAND_THEME.text.muted;
   ctx.textAlign = 'left';
   ctx.fillText('ELEVATION MSL (m)', legX, legY - 3);
 
@@ -876,12 +877,12 @@ export function renderElevationLegend(
   grad.addColorStop(1.0, '#6682a8');  // 5800m
   ctx.fillStyle = grad;
   ctx.fillRect(legX, legY, legW, legH);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.strokeStyle = 'rgba(240, 236, 228, 0.25)';
   ctx.strokeRect(legX, legY, legW, legH);
 
   // Min / Max labels
-  ctx.font = '7px ui-monospace, monospace';
-  ctx.fillStyle = '#cbd5e1';
+  ctx.font = `7px ${HIGHLAND_THEME.font.mono}`;
+  ctx.fillStyle = HIGHLAND_THEME.text.primary;
   ctx.textAlign = 'left';
   ctx.fillText('2.8k', legX, legY + legH + 7);
   ctx.textAlign = 'right';
@@ -900,11 +901,10 @@ export function drawAircraftChevron(
   ctx.save();
   ctx.translate(cx, cy);
 
-  // A small registration mark keeps the aircraft identifiable without creating
-  // a second map feature that competes with the route.
+  // Registration ring around airborne relay
   ctx.beginPath();
   ctx.arc(0, 0, size + 5, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(126, 211, 224, 0.55)';
+  ctx.strokeStyle = 'rgba(224, 159, 62, 0.55)';
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 3]);
   ctx.stroke();
@@ -920,13 +920,13 @@ export function drawAircraftChevron(
   ctx.beginPath();
   ctx.moveTo(noseX, 0);
   ctx.lineTo(tipX, 0);
-  ctx.strokeStyle = 'rgba(8, 15, 23, 0.9)';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.routeKeyline;
   ctx.lineWidth = 3;
   ctx.stroke();
   ctx.beginPath();
   ctx.moveTo(noseX, 0);
   ctx.lineTo(tipX, 0);
-  ctx.strokeStyle = '#7ed3e0';
+  ctx.strokeStyle = HIGHLAND_THEME.signal.amberBright;
   ctx.lineWidth = 1;
   ctx.stroke();
 
@@ -934,7 +934,7 @@ export function drawAircraftChevron(
   ctx.moveTo(tipX - 4, -3);
   ctx.lineTo(tipX, 0);
   ctx.lineTo(tipX - 4, 3);
-  ctx.strokeStyle = '#7ed3e0';
+  ctx.strokeStyle = HIGHLAND_THEME.signal.amberBright;
   ctx.lineWidth = 1.2;
   ctx.stroke();
 
@@ -951,19 +951,19 @@ export function drawAircraftChevron(
   };
 
   drawDelta(1.08);
-  ctx.strokeStyle = 'rgba(7, 13, 20, 0.95)';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.routeKeyline;
   ctx.lineWidth = 3;
   ctx.stroke();
   drawDelta(1.0);
-  ctx.fillStyle = '#b9edf2';
+  ctx.fillStyle = HIGHLAND_THEME.signal.amber;
   ctx.fill();
-  ctx.strokeStyle = '#15333d';
+  ctx.strokeStyle = HIGHLAND_THEME.substrate.void;
   ctx.lineWidth = 1;
   ctx.stroke();
 
   ctx.beginPath();
   ctx.arc(size * 0.15, 0, 1.2, 0, Math.PI * 2);
-  ctx.fillStyle = '#163d49';
+  ctx.fillStyle = HIGHLAND_THEME.text.primary;
   ctx.fill();
 
   ctx.restore();
@@ -977,8 +977,8 @@ function drawTerminalDiamond(
   size = 6.5
 ): void {
   ctx.save();
-  ctx.fillStyle = isMcp ? '#38bdf8' : '#4fd1a1';
-  ctx.strokeStyle = '#0b1015';
+  ctx.fillStyle = isMcp ? HIGHLAND_THEME.signal.amber : HIGHLAND_THEME.signal.sage;
+  ctx.strokeStyle = HIGHLAND_THEME.substrate.void;
   ctx.lineWidth = 1.8;
   ctx.beginPath();
   if (isMcp) {
@@ -994,7 +994,7 @@ function drawTerminalDiamond(
   ctx.stroke();
 
   // Center pip
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = HIGHLAND_THEME.text.primary;
   ctx.beginPath();
   ctx.arc(cx, cy, 1.8, 0, Math.PI * 2);
   ctx.fill();
@@ -1019,20 +1019,20 @@ function drawPlanViewGrid(
   const stepY = calcNiceStep(spanY / 1000, 4) * 1000;
 
   ctx.lineWidth = 1;
-  ctx.font = '10px ui-monospace, monospace';
+  ctx.font = `10px ${HIGHLAND_THEME.font.mono}`;
 
   // East-West vertical gridlines
   const startX = Math.ceil(bounds.minXM / stepX) * stepX;
   for (let x = startX; x <= bounds.maxXM + 1e-6; x += stepX) {
     const cx = Math.round(viewport.xToCanvas(x, layout)) + 0.5;
     if (cx >= padL && cx <= padL + plotW) {
-      ctx.strokeStyle = 'rgba(120, 140, 160, 0.12)';
+      ctx.strokeStyle = HIGHLAND_THEME.line.grid;
       ctx.beginPath();
       ctx.moveTo(cx, padT);
       ctx.lineTo(cx, padT + plotH);
       ctx.stroke();
 
-      ctx.fillStyle = '#7d8c99';
+      ctx.fillStyle = HIGHLAND_THEME.text.faint;
       ctx.textAlign = 'center';
       const km = x / 1000;
       ctx.fillText(`${km >= 0 ? '+' : ''}${km.toFixed(0)} km E`, cx, padT + plotH + 14);
@@ -1044,13 +1044,13 @@ function drawPlanViewGrid(
   for (let y = startY; y <= bounds.maxYM + 1e-6; y += stepY) {
     const cy = Math.round(viewport.yToCanvas(y, layout)) + 0.5;
     if (cy >= padT && cy <= padT + plotH) {
-      ctx.strokeStyle = 'rgba(120, 140, 160, 0.12)';
+      ctx.strokeStyle = HIGHLAND_THEME.line.grid;
       ctx.beginPath();
       ctx.moveTo(padL, cy);
       ctx.lineTo(padL + plotW, cy);
       ctx.stroke();
 
-      ctx.fillStyle = '#7d8c99';
+      ctx.fillStyle = HIGHLAND_THEME.text.faint;
       ctx.textAlign = 'right';
       const km = y / 1000;
       ctx.fillText(`${km >= 0 ? '+' : ''}${km.toFixed(0)} km N`, padL - 6, cy + 3);
@@ -1060,8 +1060,8 @@ function drawPlanViewGrid(
   // Compass Rose in Top-Right
   const compX = padL + plotW - 28;
   const compY = padT + 28;
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
-  ctx.fillStyle = '#94a3b8';
+  ctx.strokeStyle = HIGHLAND_THEME.line.strong;
+  ctx.fillStyle = HIGHLAND_THEME.text.muted;
   ctx.beginPath();
   ctx.arc(compX, compY, 14, 0, Math.PI * 2);
   ctx.stroke();
@@ -1072,12 +1072,12 @@ function drawPlanViewGrid(
   ctx.lineTo(compX - 4, compY - 2);
   ctx.lineTo(compX + 4, compY - 2);
   ctx.closePath();
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = HIGHLAND_THEME.signal.amber;
   ctx.fill();
 
-  ctx.font = '600 8.5px ui-monospace, monospace';
+  ctx.font = `600 8.5px ${HIGHLAND_THEME.font.mono}`;
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = HIGHLAND_THEME.signal.amber;
   ctx.fillText('N', compX, compY - 14);
 }
 
@@ -1110,16 +1110,16 @@ function drawObstacleFootprints(
       if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     }
     ctx.closePath();
-    ctx.fillStyle = isHit ? 'rgba(239, 68, 68, 0.40)' : 'rgba(249, 115, 22, 0.32)';
+    ctx.fillStyle = isHit ? HIGHLAND_THEME.signal.vermilionSoft : HIGHLAND_THEME.signal.copperSoft;
     ctx.fill();
-    ctx.strokeStyle = isHit ? '#ef4444' : '#f97316';
+    ctx.strokeStyle = isHit ? HIGHLAND_THEME.signal.vermilion : HIGHLAND_THEME.signal.copper;
     ctx.lineWidth = isHit ? 2.0 : 1.4;
     ctx.stroke();
 
     const centerPx = viewport.xToCanvas(obs.xM, layout);
     const centerPy = viewport.yToCanvas(obs.yM, layout);
-    ctx.font = '600 8.5px ui-monospace, monospace';
-    ctx.fillStyle = isHit ? '#fca5a5' : '#fed7aa';
+    ctx.font = `600 8.5px ${HIGHLAND_THEME.font.mono}`;
+    ctx.fillStyle = isHit ? HIGHLAND_THEME.signal.vermilionBright : HIGHLAND_THEME.signal.copperBright;
     ctx.textAlign = 'center';
     ctx.fillText(`${obs.id}`, centerPx, centerPy + 3);
     ctx.restore();
@@ -1161,20 +1161,19 @@ export function drawTacticalTrajectory(
     }
   };
 
-  // A narrow dark keyline preserves contrast over both shaded and bright DEMs.
+  // Narrow dark keyline preserves contrast over shaded & bright DEM reliefs.
   buildPath();
-  ctx.strokeStyle = 'rgba(7, 13, 20, 0.95)';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.routeKeyline;
   ctx.lineWidth = 3.5;
   ctx.stroke();
 
-  // Muted aviation cyan reads as an instrument overlay rather than a glow.
+  // Warm-silver cartographic instrument route line.
   buildPath();
-  ctx.strokeStyle = '#79c8d5';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.routeCore;
   ctx.lineWidth = 1.8;
   ctx.stroke();
 
-  // Sparse, small directional ticks communicate travel direction without
-  // turning the route into a repeated pattern.
+  // Sparse directional ticks communicate travel direction cleanly.
   if (!options?.skipChevrons) {
     const N = canvasPoints.length;
     const segLengths: number[] = [];
@@ -1192,7 +1191,6 @@ export function drawTacticalTrajectory(
       cumDist.push(totalLen);
     }
 
-    // Only render chevrons if the path has sufficient screen size
     if (totalLen >= 40) {
       const targetSpacing = 180;
       const count = Math.max(1, Math.min(8, Math.round(totalLen / targetSpacing)));
@@ -1216,15 +1214,12 @@ export function drawTacticalTrajectory(
         const cx = p0[0] + u * (p1[0] - p0[0]);
         const cy = p0[1] + u * (p1[1] - p0[1]);
 
-        // If too close to the aircraft marker, skip this chevron to prevent overlapping
         if (acnPos && Math.hypot(cx - acnPos.x, cy - acnPos.y) < 28) {
           continue;
         }
 
-        // Tangent vector
         const tx = (p1[0] - p0[0]) / segLen;
         const ty = (p1[1] - p0[1]) / segLen;
-        // Perpendicular normal vector
         const nx = -ty;
         const ny = tx;
 
@@ -1242,11 +1237,11 @@ export function drawTacticalTrajectory(
         ctx.lineTo(tipX, tipY);
         ctx.lineTo(rightX, rightY);
 
-        ctx.strokeStyle = 'rgba(7, 13, 20, 0.9)';
+        ctx.strokeStyle = HIGHLAND_THEME.cartography.routeKeyline;
         ctx.lineWidth = 3.2;
         ctx.stroke();
 
-        ctx.strokeStyle = '#b9edf2';
+        ctx.strokeStyle = HIGHLAND_THEME.cartography.routeChevron;
         ctx.lineWidth = 1.2;
         ctx.stroke();
       }
@@ -1278,15 +1273,14 @@ export function drawDraftTrajectory(
     }
   };
 
-  // Draft routes remain amber and dashed so unapplied edits are unambiguous.
   buildPath();
-  ctx.strokeStyle = 'rgba(7, 13, 20, 0.85)';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.routeKeyline;
   ctx.lineWidth = 5.0;
   ctx.setLineDash([]);
   ctx.stroke();
 
   buildPath();
-  ctx.strokeStyle = '#e5ad58';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.routeDraft;
   ctx.lineWidth = 1.8;
   ctx.setLineDash([6, 4]);
   ctx.stroke();
@@ -1309,7 +1303,7 @@ export function drawTacticalWaypoints(
     if (wp.isSelected) {
       ctx.beginPath();
       ctx.arc(wp.x, wp.y, 9.5, 0, Math.PI * 2);
-      ctx.strokeStyle = '#f0c674';
+      ctx.strokeStyle = HIGHLAND_THEME.signal.amberBright;
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 3]);
       ctx.stroke();
@@ -1318,35 +1312,35 @@ export function drawTacticalWaypoints(
 
     ctx.beginPath();
     ctx.arc(wp.x, wp.y, 5.5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(7, 13, 20, 0.92)';
+    ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
     ctx.fill();
 
     ctx.beginPath();
     ctx.arc(wp.x, wp.y, 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = wp.isSelected ? 'rgba(229, 173, 88, 0.3)' : 'rgba(30, 41, 59, 0.9)';
+    ctx.fillStyle = wp.isSelected ? HIGHLAND_THEME.signal.amberSoft : HIGHLAND_THEME.substrate.raised;
     ctx.fill();
-    ctx.strokeStyle = wp.isSelected ? '#f0c674' : '#d39a4a';
+    ctx.strokeStyle = wp.isSelected ? HIGHLAND_THEME.signal.amberBright : HIGHLAND_THEME.signal.amber;
     ctx.lineWidth = wp.isSelected ? 1.8 : 1.2;
     ctx.stroke();
 
     ctx.beginPath();
     ctx.arc(wp.x, wp.y, 1.3, 0, Math.PI * 2);
-    ctx.fillStyle = '#f0c674';
+    ctx.fillStyle = HIGHLAND_THEME.signal.amberBright;
     ctx.fill();
 
     const label = wp.label ?? `WP${i + 1}`;
-    ctx.font = '600 8px ui-monospace, monospace';
+    ctx.font = `600 8px ${HIGHLAND_THEME.font.mono}`;
     const tw = ctx.measureText(label).width;
     const bx = wp.x + 9;
     const by = wp.y - 7;
 
-    ctx.fillStyle = 'rgba(7, 13, 20, 0.78)';
+    ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
     ctx.fillRect(bx - 2, by - 7, tw + 5, 11);
-    ctx.strokeStyle = wp.isSelected ? '#f0c674' : 'rgba(211, 154, 74, 0.5)';
+    ctx.strokeStyle = wp.isSelected ? HIGHLAND_THEME.signal.amberBright : HIGHLAND_THEME.signal.amberStrokeSoft;
     ctx.lineWidth = wp.isSelected ? 1 : 0.75;
     ctx.strokeRect(bx - 2, by - 8, tw + 5, 13);
 
-    ctx.fillStyle = wp.isSelected ? '#fff7df' : '#e8c98f';
+    ctx.fillStyle = wp.isSelected ? HIGHLAND_THEME.text.primary : HIGHLAND_THEME.signal.amberBright;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, bx + 1, by - 1.5);
@@ -1433,16 +1427,16 @@ function drawGroundNodes(
     const py = viewport.yToCanvas(y, layout);
 
     ctx.save();
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
-    ctx.strokeStyle = '#475569';
+    ctx.fillStyle = HIGHLAND_THEME.text.muted;
+    ctx.strokeStyle = HIGHLAND_THEME.signal.slate;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(px, py, 3, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    ctx.font = '8px ui-monospace, monospace';
-    ctx.fillStyle = '#94a3b8';
+    ctx.font = `8px ${HIGHLAND_THEME.font.mono}`;
+    ctx.fillStyle = HIGHLAND_THEME.text.muted;
     ctx.textAlign = 'center';
     ctx.fillText(`S${node.node_id}`, px, py - 5);
     ctx.restore();
@@ -1455,14 +1449,6 @@ function drawGroundNodes(
 
 /**
  * Renders the Terrain Path Profile in TOP VIEW (Plan View) mode with authentic DEM terrain.
- *
- * Displays:
- *  - Authentic Ladakh DEM relief & hypsometric elevation shading across surrounding terrain.
- *  - Restrained route vector with sparse direction markers.
- *  - Identified terrain crests and ridge occlusion hazard points.
- *  - Obstacle footprints along the path.
- *  - Compact heading-aware ACN symbol and Terminal diamond with elevation annotations.
- *  - Elevation legend.
  */
 export function renderTerrainTopView(
   ctx: CanvasRenderingContext2D,
@@ -1479,14 +1465,14 @@ export function renderTerrainTopView(
 
   // Background
   const bg = ctx.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, '#090e14');
-  bg.addColorStop(1, '#06090d');
+  bg.addColorStop(0, HIGHLAND_THEME.substrate.bg);
+  bg.addColorStop(1, HIGHLAND_THEME.substrate.void);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
   if (!profile || !profile.valid || profile.samples.length < 2) {
-    ctx.fillStyle = '#7d8c99';
-    ctx.font = '12px ui-monospace, monospace';
+    ctx.fillStyle = HIGHLAND_THEME.text.faint;
+    ctx.font = `12px ${HIGHLAND_THEME.font.mono}`;
     ctx.textAlign = 'center';
     ctx.fillText(profile && profile.invalidReason === 'NO_NODES_REGISTERED' ? 'ACN RELAY ONLY · NO GROUND TERMINALS CONNECTED' : 'Waiting for terrain profile data…', w / 2, h / 2);
     return;
@@ -1544,7 +1530,7 @@ export function renderTerrainTopView(
   // 3. Analysis Corridor Guide (Subtle boundary lines)
   const swathHalfWidthM = Math.max(400, Math.min(2500, groundDistM * 0.035));
   ctx.save();
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+  ctx.strokeStyle = 'rgba(184, 172, 151, 0.25)';
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 4]);
 
@@ -1573,7 +1559,7 @@ export function renderTerrainTopView(
   const pAcnX = viewport.xToCanvas(acn[0], layout);
   const pAcnY = viewport.yToCanvas(acn[1], layout);
 
-  ctx.strokeStyle = '#94a3b8';
+  ctx.strokeStyle = HIGHLAND_THEME.text.muted;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(pNodeX, pNodeY);
@@ -1592,7 +1578,7 @@ export function renderTerrainTopView(
     const backAngle1 = angle + Math.PI - 0.55;
     const backAngle2 = angle + Math.PI + 0.55;
 
-    ctx.strokeStyle = '#cbd5e1';
+    ctx.strokeStyle = HIGHLAND_THEME.text.primary;
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(px + Math.cos(backAngle1) * chevLen, py - Math.sin(backAngle1) * chevLen);
@@ -1611,12 +1597,12 @@ export function renderTerrainTopView(
       const px = viewport.xToCanvas(ox, layout);
       const py = viewport.yToCanvas(oy, layout);
 
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.40)';
+      ctx.fillStyle = HIGHLAND_THEME.signal.vermilionSoft;
       ctx.beginPath();
       ctx.arc(px, py, 7, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = '#ef4444';
+      ctx.strokeStyle = HIGHLAND_THEME.signal.vermilion;
       ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(px - 4, py - 4);
@@ -1643,7 +1629,7 @@ export function renderTerrainTopView(
     const px = viewport.xToCanvas(node[0] + frac * dx, layout);
     const py = viewport.yToCanvas(node[1] + frac * dy, layout);
 
-    ctx.fillStyle = '#f59e0b';
+    ctx.fillStyle = HIGHLAND_THEME.signal.ochre;
     ctx.beginPath();
     ctx.moveTo(px, py - 9);
     ctx.lineTo(px - 5, py + 2);
@@ -1651,8 +1637,8 @@ export function renderTerrainTopView(
     ctx.closePath();
     ctx.fill();
 
-    ctx.font = '600 9px ui-monospace, monospace';
-    ctx.fillStyle = '#fbbf24';
+    ctx.font = `600 9px ${HIGHLAND_THEME.font.mono}`;
+    ctx.fillStyle = HIGHLAND_THEME.signal.amberBright;
     ctx.textAlign = 'center';
     ctx.fillText(`▲ ${Math.round(maxElev)}m`, px, py - 12);
   }
@@ -1666,16 +1652,16 @@ export function renderTerrainTopView(
       const px = viewport.xToCanvas(ox, layout);
       const py = viewport.yToCanvas(oy, layout);
 
-      ctx.fillStyle = 'rgba(249, 115, 22, 0.45)';
-      ctx.strokeStyle = '#f97316';
+      ctx.fillStyle = HIGHLAND_THEME.signal.copperSoft;
+      ctx.strokeStyle = HIGHLAND_THEME.signal.copper;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(px, py, 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      ctx.font = '600 8.5px ui-monospace, monospace';
-      ctx.fillStyle = '#f97316';
+      ctx.font = `600 8.5px ${HIGHLAND_THEME.font.mono}`;
+      ctx.fillStyle = HIGHLAND_THEME.signal.copper;
       ctx.textAlign = 'center';
       ctx.fillText(`[${obs.obstacleId}]`, px, py + 14);
     }
@@ -1685,8 +1671,8 @@ export function renderTerrainTopView(
   const isMcp = options?.selectedNode?.node_type === 'mcp' || (profile.nodeName && profile.nodeName.includes('MCP'));
   drawTerminalDiamond(ctx, pNodeX, pNodeY, Boolean(isMcp), 6.5);
 
-  ctx.font = '700 10.5px ui-monospace, monospace';
-  ctx.fillStyle = isMcp ? '#38bdf8' : '#4fd1a1';
+  ctx.font = `700 10.5px ${HIGHLAND_THEME.font.mono}`;
+  ctx.fillStyle = isMcp ? HIGHLAND_THEME.signal.amber : HIGHLAND_THEME.signal.sage;
   ctx.textAlign = 'left';
   ctx.fillText(`${profile.nodeName || 'Terminal'} [${Math.round(node[2])}m MSL]`, pNodeX + 9, pNodeY + 4);
 
@@ -1695,14 +1681,14 @@ export function renderTerrainTopView(
   drawAircraftChevron(ctx, pAcnX, pAcnY, acnHdg);
 
   const acnText = `ACN [${Math.round(acn[2])}m MSL] · HDG ${Math.round(acnHdg)}°`;
-  ctx.font = '700 10.5px ui-monospace, monospace';
+  ctx.font = `700 10.5px ${HIGHLAND_THEME.font.mono}`;
   const acnTw = ctx.measureText(acnText).width;
-  ctx.fillStyle = 'rgba(7, 13, 20, 0.82)';
+  ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
   ctx.fillRect(pAcnX - 16 - acnTw - 6, pAcnY - 8, acnTw + 8, 16);
-  ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+  ctx.strokeStyle = HIGHLAND_THEME.signal.amberStrokeSoft;
   ctx.lineWidth = 1.0;
   ctx.strokeRect(pAcnX - 16 - acnTw - 6, pAcnY - 8, acnTw + 8, 16);
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = HIGHLAND_THEME.signal.amber;
   ctx.textAlign = 'right';
   ctx.fillText(acnText, pAcnX - 16, pAcnY + 4);
 
@@ -1718,8 +1704,8 @@ export function renderTerrainTopView(
   const distKm = groundDistM / 1000;
   const zoomText = viewport.isUserModified ? ` · Zoom ${viewport.zoomFactor.toFixed(1)}×` : '';
 
-  ctx.font = '10.5px ui-monospace, monospace';
-  ctx.fillStyle = '#9aa8b3';
+  ctx.font = `10.5px ${HIGHLAND_THEME.font.mono}`;
+  ctx.fillStyle = HIGHLAND_THEME.text.muted;
   ctx.textAlign = 'left';
   ctx.fillText(
     `PLAN VIEW · Path ${distKm.toFixed(1)} km · Bearing ${bearingDeg.toFixed(0)}° · Peak ${Math.round(maxElev)}m MSL${zoomText}`,
@@ -1730,15 +1716,6 @@ export function renderTerrainTopView(
 
 /**
  * Renders the RF Path Profile in TOP VIEW (Plan View) mode with authentic DEM terrain.
- *
- * Displays:
- *  - Authentic Ladakh DEM relief & hypsometric elevation shading across surrounding terrain.
- *  - 1st Fresnel zone horizontal ground footprint as a translucent cyan swath over mountains.
- *  - Unified communication link status line (connected green, marginal yellow, outage red).
- *  - Highlighted terrain-obstructed and obstacle-blocked segments.
- *  - Clear visual distinction between carrier link establishment and active payload transmission.
- *  - Tactical ACN chevron and Terminal diamond endpoints.
- *  - Elevation legend.
  */
 export function renderRfTopView(
   ctx: CanvasRenderingContext2D,
@@ -1758,14 +1735,14 @@ export function renderRfTopView(
 
   // Background
   const bg = ctx.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, '#090e14');
-  bg.addColorStop(1, '#06090d');
+  bg.addColorStop(0, HIGHLAND_THEME.substrate.bg);
+  bg.addColorStop(1, HIGHLAND_THEME.substrate.void);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
   if (!profile || !profile.valid || profile.samples.length < 2) {
-    ctx.fillStyle = '#7d8c99';
-    ctx.font = '12px ui-monospace, monospace';
+    ctx.fillStyle = HIGHLAND_THEME.text.faint;
+    ctx.font = `12px ${HIGHLAND_THEME.font.mono}`;
     ctx.textAlign = 'center';
     ctx.fillText(profile && profile.invalidReason === 'NO_NODES_REGISTERED' ? 'ACN RELAY ONLY · NO GROUND TERMINALS CONNECTED' : 'Waiting for RF link profile data…', w / 2, h / 2);
     return;
@@ -1820,7 +1797,7 @@ export function renderRfTopView(
 
   const samples = profile.samples;
 
-  // 3. 1st Fresnel Zone Horizontal Footprint (Translucent Cyan/Blue Swath over DEM Terrain)
+  // 3. 1st Fresnel Zone Horizontal Footprint (0.6 F1 swath over terrain)
   ctx.beginPath();
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
@@ -1839,13 +1816,13 @@ export function renderRfTopView(
     ctx.lineTo(px, py);
   }
   ctx.closePath();
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.18)'; // Translucent cyan sheen letting terrain ridges show through
+  ctx.fillStyle = HIGHLAND_THEME.signal.ochreSoft;
   ctx.fill();
 
   // Dashed Fresnel boundary lines
   ctx.save();
   ctx.setLineDash([4, 4]);
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+  ctx.strokeStyle = HIGHLAND_THEME.signal.ochreStrokeSoft;
   ctx.lineWidth = 1.2;
 
   ctx.beginPath();
@@ -1907,7 +1884,7 @@ export function renderRfTopView(
       const y2 = viewport.yToCanvas(node[1] + frac2 * dy, layout);
 
       ctx.save();
-      ctx.strokeStyle = '#ef4444';
+      ctx.strokeStyle = HIGHLAND_THEME.signal.vermilion;
       ctx.lineWidth = 4.5;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
@@ -1926,7 +1903,7 @@ export function renderRfTopView(
       const y2 = viewport.yToCanvas(node[1] + obs.exitFraction * dy, layout);
 
       ctx.save();
-      ctx.strokeStyle = '#f97316';
+      ctx.strokeStyle = HIGHLAND_THEME.signal.copper;
       ctx.lineWidth = 5.0;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
@@ -1935,8 +1912,8 @@ export function renderRfTopView(
 
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2;
-      ctx.font = '600 8.5px ui-monospace, monospace';
-      ctx.fillStyle = '#f97316';
+      ctx.font = `600 8.5px ${HIGHLAND_THEME.font.mono}`;
+      ctx.fillStyle = HIGHLAND_THEME.signal.copper;
       ctx.textAlign = 'center';
       ctx.fillText(`⊘ ${obs.obstacleId}`, midX, midY - 8);
       ctx.restore();
@@ -1952,7 +1929,7 @@ export function renderRfTopView(
       const px = viewport.xToCanvas(node[0] + pulseFrac * dx, layout);
       const py = viewport.yToCanvas(node[1] + pulseFrac * dy, layout);
 
-      ctx.fillStyle = '#38bdf8';
+      ctx.fillStyle = HIGHLAND_THEME.signal.sage;
       ctx.beginPath();
       ctx.arc(px, py, 3.5, 0, Math.PI * 2);
       ctx.fill();
@@ -1963,8 +1940,8 @@ export function renderRfTopView(
   const isMcp = options?.selectedNode?.node_type === 'mcp' || (profile.nodeName && profile.nodeName.includes('MCP'));
   drawTerminalDiamond(ctx, pNodeX, pNodeY, Boolean(isMcp), 6.5);
 
-  ctx.font = '700 10.5px ui-monospace, monospace';
-  ctx.fillStyle = isMcp ? '#38bdf8' : '#4fd1a1';
+  ctx.font = `700 10.5px ${HIGHLAND_THEME.font.mono}`;
+  ctx.fillStyle = isMcp ? HIGHLAND_THEME.signal.amber : HIGHLAND_THEME.signal.sage;
   ctx.textAlign = 'left';
   ctx.fillText(profile.nodeName || 'Terminal', pNodeX + 9, pNodeY + 4);
 
@@ -1973,14 +1950,14 @@ export function renderRfTopView(
   drawAircraftChevron(ctx, pAcnX, pAcnY, acnHdg);
 
   const acnRfText = `ACN · HDG ${Math.round(acnHdg)}°`;
-  ctx.font = '700 10.5px ui-monospace, monospace';
+  ctx.font = `700 10.5px ${HIGHLAND_THEME.font.mono}`;
   const acnRfTw = ctx.measureText(acnRfText).width;
-  ctx.fillStyle = 'rgba(7, 13, 20, 0.82)';
+  ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
   ctx.fillRect(pAcnX - 16 - acnRfTw - 6, pAcnY - 8, acnRfTw + 8, 16);
-  ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+  ctx.strokeStyle = HIGHLAND_THEME.signal.amberStrokeSoft;
   ctx.lineWidth = 1.0;
   ctx.strokeRect(pAcnX - 16 - acnRfTw - 6, pAcnY - 8, acnRfTw + 8, 16);
-  ctx.fillStyle = '#38bdf8';
+  ctx.fillStyle = HIGHLAND_THEME.signal.amber;
   ctx.textAlign = 'right';
   ctx.fillText(acnRfText, pAcnX - 16, pAcnY + 4);
 
@@ -1999,8 +1976,8 @@ export function renderRfTopView(
     ? ` · [PAYLOAD TX ACTIVE: ${transferState?.activeType ?? 'BURST'}]`
     : (statusKey === 'CONNECTED' ? ' · [CARRIER IDLE: NO ACTIVE TX]' : '');
 
-  ctx.font = '10.5px ui-monospace, monospace';
-  ctx.fillStyle = '#9aa8b3';
+  ctx.font = `10.5px ${HIGHLAND_THEME.font.mono}`;
+  ctx.fillStyle = HIGHLAND_THEME.text.muted;
   ctx.textAlign = 'left';
   ctx.fillText(
     `RF TOP VIEW · ${statusKey}${snrText}${modcodText}${txText}`,

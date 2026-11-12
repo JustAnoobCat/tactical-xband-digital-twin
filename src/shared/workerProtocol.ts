@@ -313,6 +313,7 @@ export interface TelemetryFrame {
   readonly tdma_frame_config?: ITdmaFrameConfig;
   readonly batch_spatial_snapshots?: readonly SpatialFrameSnapshot[];
   readonly completed_superframes?: readonly TimelineCommunicationRecord[];
+  readonly simulation_run_id?: number;
 }
 
 // ----------------------------------------------------------------------------
@@ -382,10 +383,16 @@ export interface SchedulerEpochMetrics {
   readonly droppedOverflowBytes: number | null;
   readonly totalDroppedBytes: number | null;
   readonly ulUtilizationPct: number;
+
+  // Phase 0 Additive Queue Instrumentation (Strictly independent per scheduler)
+  readonly endQueueDepthPkts?: number;
+  readonly endBacklogBytes?: number;
+  readonly meanHeadOfLineSojournMs?: number | null;
 }
 
 export interface SuperframeEpochRecord {
   readonly recordType: 'EPOCH';
+  readonly simulationRunId?: number;
   readonly epochIndex: number;
   readonly startTimeS: number;
   readonly endTimeS: number;
@@ -393,6 +400,7 @@ export interface SuperframeEpochRecord {
   readonly configuredDurationMs: number;
   readonly nominalSimTimeS: number;
   readonly associatedSimulationFrameIndex: number;
+  readonly coveredFrameRange?: readonly [number, number];
   readonly staticMetrics: SchedulerEpochMetrics;
   readonly tacMetrics: SchedulerEpochMetrics;
   readonly activeSchedulerMode: 'tac_tad' | 'static';
@@ -400,6 +408,7 @@ export interface SuperframeEpochRecord {
 
 export interface SuperframeDiscontinuityRecord {
   readonly recordType: 'DISCONTINUITY';
+  readonly simulationRunId?: number;
   readonly discontinuityIndex: number;
   readonly epochIndex?: number;
   readonly startTimeS: number;
@@ -410,9 +419,42 @@ export interface SuperframeDiscontinuityRecord {
   readonly newDurationMs: number;
   readonly nominalSimTimeS: number;
   readonly reason: 'RECONFIGURATION_RESET';
+  readonly reconfigurationReason?: string;
 }
 
-export type TimelineCommunicationRecord = SuperframeEpochRecord | SuperframeDiscontinuityRecord;
+export type EvictionSchedulerId = 'STATIC_TDMA' | 'TAC_TAD';
+
+export interface FinalDropCaptureResult {
+  readonly captured: boolean;
+  readonly droppedDelayPkts: number;
+  readonly droppedOverflowPkts: number;
+  readonly totalDroppedPkts: number;
+  readonly droppedDelayBytes: number;
+  readonly droppedOverflowBytes: number;
+  readonly totalDroppedBytes: number;
+}
+
+export interface EvictionDropFinalizationRecord {
+  readonly recordType: 'NODE_EVICTION_FINALIZATION';
+  readonly simulationRunId?: number;
+  readonly finalizationIndex: number;
+  readonly schedulerId: EvictionSchedulerId;
+  readonly nodeId: number;
+  readonly timestampS: number;
+  readonly associatedSimulationFrameIndex: number;
+  readonly droppedDelayPkts: number;
+  readonly droppedOverflowPkts: number;
+  readonly totalDroppedPkts: number;
+  readonly droppedDelayBytes: number;
+  readonly droppedOverflowBytes: number;
+  readonly totalDroppedBytes: number;
+  readonly reason: 'NODE_DELETE';
+}
+
+export type TimelineCommunicationRecord =
+  | SuperframeEpochRecord
+  | SuperframeDiscontinuityRecord
+  | EvictionDropFinalizationRecord;
 
 /**
  * Authoritative Simulation Telemetry Frame contract alias.
@@ -463,6 +505,8 @@ export interface WorkerCommandResult {
     readonly is_coverage_complete?: boolean;
     readonly coverage_note?: string;
   }[];
+  readonly simulation_run_id?: number;
+  readonly eviction_finalizations?: readonly EvictionDropFinalizationRecord[];
 }
 
 // ----------------------------------------------------------------------------

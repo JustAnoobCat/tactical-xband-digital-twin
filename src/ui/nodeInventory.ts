@@ -147,7 +147,7 @@ export function validateNodeTacticalPriority(priority: unknown): NodeValidationR
 
 export function validateNodeColorHex(colorHex: unknown): NodeValidationResult {
   if (typeof colorHex !== 'string' || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(colorHex.trim())) {
-    return { valid: false, error: 'Node colour must be a valid hex code (e.g. #38bdf8).' };
+    return { valid: false, error: 'Node colour must be a valid hex code (e.g. #e09f3e).' };
   }
   return { valid: true };
 }

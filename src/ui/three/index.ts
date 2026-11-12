@@ -42,6 +42,16 @@ export interface ThreeStageController {
     maxElevationM?: number;
   }): void;
   getControls(): OrbitControls | null;
+  applyLayerVisibility(visibility: {
+    readonly baseTerrain?: boolean;
+    readonly datumGrid?: boolean;
+    readonly acn?: boolean;
+    readonly groundNodes?: boolean;
+    readonly labels?: boolean;
+    readonly trajectory?: boolean;
+    readonly links?: boolean;
+    readonly transmissions?: boolean;
+  }): void;
   dispose(): void;
 }
 
@@ -67,6 +77,7 @@ export function createThreeStageController(config: ThreeRendererConfig): ThreeSt
     resetCamera: (preset?: CameraPresetConfig) => sceneManager.resetCamera(preset),
     centerOnBounds: (bounds) => sceneManager.centerOnBounds(bounds),
     getControls: () => sceneManager.getControls(),
+    applyLayerVisibility: (visibility) => sceneManager.applyLayerVisibility(visibility),
     dispose: () => sceneManager.dispose(),
   };
 }

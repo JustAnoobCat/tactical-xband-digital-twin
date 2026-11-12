@@ -93,6 +93,8 @@ import type {
   SuperframeEpochRecord,
   SuperframeDiscontinuityRecord,
   SchedulerEpochMetrics,
+  EvictionDropFinalizationRecord,
+  EvictionSchedulerId,
 } from '../shared/workerProtocol';
 import {
   HillshadeGenerator,
@@ -150,6 +152,19 @@ export type {
 const ANTENNA_HEIGHT_M = 2.0;
 const NUM_NODES = GROUND_NODE_IDS.length;
 
+/**
+ * Resolves the authoritative simulation frame index associated with a synchronous NODE_DELETE eviction.
+ */
+export function resolveDeletionFrameAssociation(simTimeS: number, frameIndex: number): number {
+  if (frameIndex <= 0) return 1;
+  const expectedTickEndS = frameIndex * FRAME_DT;
+  if (simTimeS > expectedTickEndS + 1e-9) {
+    // Defensive branch (pure-helper unit-tested only; unreachable under current worker tick entry)
+    return frameIndex + Math.max(1, Math.ceil((simTimeS - expectedTickEndS - 1e-9) / FRAME_DT));
+  }
+  return frameIndex;
+}
+
 export class SimulationWorkerManager {
   public rfConfig: RFConfig;
   public envConfig: EnvironmentConfig;
@@ -198,6 +213,8 @@ export class SimulationWorkerManager {
   public tdmaSimTimeS: number = 0.0;
   public superframeEpochIndex: number = 0;
   public discontinuityIndex: number = 0;
+  public simulationRunId: number = 1;
+  private evictionFinalizationIndex: number = 0;
   public pendingTimelineRecords: TimelineCommunicationRecord[] = [];
 
   public getLiveAcnPosition(): [number, number, number] {
@@ -312,6 +329,7 @@ export class SimulationWorkerManager {
     };
 
     this.initNodes();
+    this.registerActiveNodesWithSchedulers();
     this.initTransfers();
   }
 
@@ -319,6 +337,53 @@ export class SimulationWorkerManager {
     const { nodesStatic, nodesTac } = NodeLifecycleManager.initNodes(this.nodeRegistry, this.terrainEngine);
     this.nodesStatic = nodesStatic;
     this.nodesTac = nodesTac;
+  }
+
+  private registerActiveNodesWithSchedulers(): void {
+    for (let i = 0; i < this.nodesStatic.length; i++) {
+      this.staticScheduler.registerNode(this.nodesStatic[i]);
+    }
+    for (let i = 0; i < this.nodesTac.length; i++) {
+      this.tacScheduler.registerNode(this.nodesTac[i]);
+    }
+  }
+
+  private preparePresetRunReset(): void {
+    this.simulationRunId += 1;
+    this.evictionFinalizationIndex = 0;
+    this.pendingTimelineRecords = [];
+    this.batchSpatialSnapshots = [];
+  }
+
+  private captureEvictionFinalization(
+    schedulerId: EvictionSchedulerId,
+    scheduler: LegacyStaticScheduler | TerrainAwareDynamicScheduler,
+    nodeId: number,
+    node: GroundNodeTrafficSubsystem | undefined,
+    associatedSimulationFrameIndex: number
+  ): EvictionDropFinalizationRecord | null {
+    const capture = node ? scheduler.capturePendingDropsBeforeEviction(node) : null;
+    const evictResult = scheduler.evictNode(nodeId, node);
+    const finalCapture = capture && capture.captured ? capture : evictResult;
+    if (!finalCapture || (finalCapture.totalDroppedBytes <= 0 && finalCapture.totalDroppedPkts <= 0)) {
+      return null;
+    }
+    return {
+      recordType: 'NODE_EVICTION_FINALIZATION',
+      simulationRunId: this.simulationRunId,
+      finalizationIndex: this.evictionFinalizationIndex++,
+      schedulerId,
+      nodeId,
+      timestampS: this.simTimeS,
+      associatedSimulationFrameIndex,
+      droppedDelayPkts: finalCapture.droppedDelayPkts,
+      droppedOverflowPkts: finalCapture.droppedOverflowPkts,
+      totalDroppedPkts: finalCapture.totalDroppedPkts,
+      droppedDelayBytes: finalCapture.droppedDelayBytes,
+      droppedOverflowBytes: finalCapture.droppedOverflowBytes,
+      totalDroppedBytes: finalCapture.totalDroppedBytes,
+      reason: 'NODE_DELETE',
+    };
   }
 
   /** Re-derive each ground node's MSL altitude from the currently active terrain and its AGL. */
@@ -688,7 +753,32 @@ export class SimulationWorkerManager {
     };
   }
 
-  private extractSchedulerEpochMetrics(report: FrameScheduleReport | null): SchedulerEpochMetrics {
+  private extractSchedulerEpochMetrics(
+    report: FrameScheduleReport | null,
+    nodes: readonly GroundNodeTrafficSubsystem[],
+    simTimeS: number
+  ): SchedulerEpochMetrics {
+    let endQueueDepthPkts = 0;
+    let endBacklogBytes = 0;
+    let totalHolDelayS = 0;
+    let holCount = 0;
+    const qosList = [69, 65, 67, 70];
+
+    for (let i = 0; i < nodes.length; i++) {
+      const q = nodes[i].queue;
+      endQueueDepthPkts += q.getTotalPackets();
+      endBacklogBytes += q.getTotalBacklogBytes();
+      for (let j = 0; j < 4; j++) {
+        const qos = qosList[j];
+        if (q.getClassPacketCount(qos) > 0) {
+          holCount++;
+          totalHolDelayS += q.getHolDelayS(qos, simTimeS);
+        }
+      }
+    }
+
+    const meanHeadOfLineSojournMs = holCount > 0 ? (totalHolDelayS / holCount) * 1000.0 : null;
+
     if (!report) {
       return {
         transmittedNonOutageBits: 0,
@@ -701,6 +791,9 @@ export class SimulationWorkerManager {
         droppedOverflowBytes: 0,
         totalDroppedBytes: 0,
         ulUtilizationPct: 0,
+        endQueueDepthPkts,
+        endBacklogBytes,
+        meanHeadOfLineSojournMs,
       };
     }
     return {
@@ -710,16 +803,23 @@ export class SimulationWorkerManager {
       droppedDelayPkts: report.packetsDroppedDelayThisFrame,
       droppedOverflowPkts: report.packetsDroppedOverflowThisFrame,
       totalDroppedPkts: report.packetsDroppedDelayThisFrame + report.packetsDroppedOverflowThisFrame,
-      droppedDelayBytes: report.droppedDelayBytes,
-      droppedOverflowBytes: report.droppedOverflowBytes,
-      totalDroppedBytes: report.totalDroppedBytes,
+      droppedDelayBytes: report.droppedDelayBytesThisFrame ?? report.droppedDelayBytes,
+      droppedOverflowBytes: report.droppedOverflowBytesThisFrame ?? report.droppedOverflowBytes,
+      totalDroppedBytes: report.totalDroppedBytesThisFrame ?? report.totalDroppedBytes,
       ulUtilizationPct: report.totalUlUtilizationPct,
+      endQueueDepthPkts,
+      endBacklogBytes,
+      meanHeadOfLineSojournMs,
     };
   }
 
   private recordSuperframeEpoch(durationS: number): void {
+    const startFrame = Math.floor(this.tdmaSimTimeS / FRAME_DT + 1e-6) + 1;
+    const endFrame = Math.max(startFrame, Math.ceil((this.tdmaSimTimeS + durationS) / FRAME_DT - 1e-6));
+
     const epochRecord: SuperframeEpochRecord = {
       recordType: 'EPOCH',
+      simulationRunId: this.simulationRunId,
       epochIndex: this.superframeEpochIndex++,
       startTimeS: this.tdmaSimTimeS,
       endTimeS: this.tdmaSimTimeS + durationS,
@@ -727,8 +827,9 @@ export class SimulationWorkerManager {
       configuredDurationMs: this.tdmaConfig.frameDurationMs,
       nominalSimTimeS: this.simTimeS,
       associatedSimulationFrameIndex: this.frameIndex,
-      staticMetrics: this.extractSchedulerEpochMetrics(this.lastReportStatic),
-      tacMetrics: this.extractSchedulerEpochMetrics(this.lastReportTac),
+      coveredFrameRange: [startFrame, endFrame],
+      staticMetrics: this.extractSchedulerEpochMetrics(this.lastReportStatic, this.nodesStatic, this.simTimeS),
+      tacMetrics: this.extractSchedulerEpochMetrics(this.lastReportTac, this.nodesTac, this.simTimeS),
       activeSchedulerMode: this.schedulerMode === 'static' ? 'static' : 'tac_tad',
     };
     this.pendingTimelineRecords.push(epochRecord);
@@ -1014,6 +1115,8 @@ export class SimulationWorkerManager {
    * scheduler adaptation state and per-run counters are not.
    */
   public resetSimulationState(): void {
+    this.simulationRunId += 1;
+    this.evictionFinalizationIndex = 0;
     this.speed = PLAYBACK_SPEED.defaultValue;
     this.achievedSpeed = 1.0;
     this.simDebtMs = 0.0;
@@ -1036,6 +1139,7 @@ export class SimulationWorkerManager {
     this.staticScheduler.setTdmaConfig(this.tdmaConfig);
     this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
     this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+    this.registerActiveNodesWithSchedulers();
     this.tdmaAccumulatorS = 0.0;
     this.tdmaSimTimeS = 0.0;
     this.superframeEpochIndex = 0;
@@ -1113,6 +1217,7 @@ export class SimulationWorkerManager {
         ...(commandType === 'OBSTACLES_REPLACE' ? { obstacle_set: this.terrainEngine.obstacleField.all } : {}),
         ...(commandType === 'OBSTACLES_REPLACE' ? { obstruction_state: this.getObstructionStateSnapshot() } : {}),
         ...(reason ? { reason } : {}), spatial_locked: this.spatialLocked,
+        simulation_run_id: this.simulationRunId,
       };
       this.emitHostMessage(response);
       return response;
@@ -1208,6 +1313,7 @@ export class SimulationWorkerManager {
         if (this.spatialLocked && (isOcclusion || isReset || isAcnOnly || is16Nodes)) return locked();
 
         if (isAcnOnly) {
+          this.preparePresetRunReset();
           this.currentScenarioPreset = 'ACN_ONLY';
           this.registrationLifecycle.clear();
           this.nodeRegistry = new NodeRegistry(this.seedOffset);
@@ -1217,6 +1323,7 @@ export class SimulationWorkerManager {
           this.staticScheduler.setTdmaConfig(this.tdmaConfig);
           this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
           this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+          this.registerActiveNodesWithSchedulers();
           this.selectedNodeId = -1;
           this.spatialRevision++;
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
@@ -1225,6 +1332,7 @@ export class SimulationWorkerManager {
         }
 
         if (is16Nodes) {
+          this.preparePresetRunReset();
           this.currentScenarioPreset = '16_NODES';
           this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
           this.registrationLifecycle.clear();
@@ -1235,6 +1343,7 @@ export class SimulationWorkerManager {
           this.staticScheduler.setTdmaConfig(this.tdmaConfig);
           this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
           this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+          this.registerActiveNodesWithSchedulers();
           this.selectedNodeId = 4;
           this.resampleGroundNodeAltitudes();
           this.spatialRevision++;
@@ -1565,6 +1674,7 @@ export class SimulationWorkerManager {
           if (residualS > 1e-6) {
             const discontinuityRecord: SuperframeDiscontinuityRecord = {
               recordType: 'DISCONTINUITY',
+              simulationRunId: this.simulationRunId,
               discontinuityIndex: this.discontinuityIndex++,
               epochIndex: this.superframeEpochIndex++,
               startTimeS: this.tdmaSimTimeS,
@@ -1575,6 +1685,7 @@ export class SimulationWorkerManager {
               newDurationMs,
               nominalSimTimeS: this.simTimeS,
               reason: 'RECONFIGURATION_RESET',
+              reconfigurationReason: `Waveform switched from ${oldDurationMs}ms to ${newDurationMs}ms`,
             };
             this.pendingTimelineRecords.push(discontinuityRecord);
             this.tdmaSimTimeS = this.tdmaSimTimeS + residualS;
@@ -1678,6 +1789,8 @@ export class SimulationWorkerManager {
         const nid = outcome.entity!.identity.nodeId;
         this.nodesStatic.push(outcome.nodePair![0]);
         this.nodesTac.push(outcome.nodePair![1]);
+        this.staticScheduler.registerNode(outcome.nodePair![0]);
+        this.tacScheduler.registerNode(outcome.nodePair![1]);
 
         this.transferManager.registerNode(nid);
 
@@ -1701,6 +1814,7 @@ export class SimulationWorkerManager {
           nodes_count: this.nodeRegistry.size,
           spatial_locked: this.spatialLocked,
           request_id: msg.request_id,
+          simulation_run_id: this.simulationRunId,
         };
         this.emitHostMessage(res);
         return res;
@@ -1719,11 +1833,37 @@ export class SimulationWorkerManager {
         }
 
         const nid = outcome.deletedNodeId!;
+        const staticNode = this.nodesStatic.find((n) => n.nodeId === nid);
+        const tacNode = this.nodesTac.find((n) => n.nodeId === nid);
+        const associatedFrame = resolveDeletionFrameAssociation(this.simTimeS, this.frameIndex);
+
+        const evictionRecords: EvictionDropFinalizationRecord[] = [];
+        const staticEviction = this.captureEvictionFinalization(
+          'STATIC_TDMA',
+          this.staticScheduler,
+          nid,
+          staticNode,
+          associatedFrame
+        );
+        if (staticEviction) {
+          evictionRecords.push(staticEviction);
+        }
+        const tacEviction = this.captureEvictionFinalization(
+          'TAC_TAD',
+          this.tacScheduler,
+          nid,
+          tacNode,
+          associatedFrame
+        );
+        if (tacEviction) {
+          evictionRecords.push(tacEviction);
+        }
+        if (evictionRecords.length > 0) {
+          this.pendingTimelineRecords.push(...evictionRecords);
+        }
+
         this.nodesStatic = this.nodesStatic.filter(n => n.nodeId !== nid);
         this.nodesTac = this.nodesTac.filter(n => n.nodeId !== nid);
-
-        this.staticScheduler.evictNode(nid);
-        this.tacScheduler.evictNode(nid);
 
         this.linkStatuses.delete(nid);
         this.predStates.delete(nid);
@@ -1755,6 +1895,8 @@ export class SimulationWorkerManager {
           nodes_count: this.nodeRegistry.size,
           spatial_locked: this.spatialLocked,
           request_id: msg.request_id,
+          simulation_run_id: this.simulationRunId,
+          eviction_finalizations: evictionRecords,
         };
         this.emitHostMessage(res);
         return res;
@@ -1776,6 +1918,8 @@ export class SimulationWorkerManager {
         const nid = outcome.entity!.identity.nodeId;
         this.nodesStatic.push(outcome.nodePair![0]);
         this.nodesTac.push(outcome.nodePair![1]);
+        this.staticScheduler.registerNode(outcome.nodePair![0]);
+        this.tacScheduler.registerNode(outcome.nodePair![1]);
 
         this.transferManager.registerNode(nid);
 
@@ -1796,6 +1940,7 @@ export class SimulationWorkerManager {
           nodes_count: this.nodeRegistry.size,
           spatial_locked: this.spatialLocked,
           request_id: msg.request_id,
+          simulation_run_id: this.simulationRunId,
         };
         this.emitHostMessage(res);
         return res;
@@ -1830,6 +1975,7 @@ export class SimulationWorkerManager {
           node_id: outcome.nodeId!,
           spatial_locked: this.spatialLocked,
           request_id: msg.request_id,
+          simulation_run_id: this.simulationRunId,
         };
         this.emitHostMessage(res);
         return res;

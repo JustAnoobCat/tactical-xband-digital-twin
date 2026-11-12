@@ -39,3 +39,13 @@ benchmark_results/generated/*.csv
 !benchmark_results/generated/typescript-benchmark-2026-10-27T06-51-55-930Z.*
 benchmark_results/generated/quarantine_superseded_m01/*.json
 benchmark_results/generated/quarantine_superseded_m01/*.csv
+
+# Local Agent Tooling, Knowledge Graph & Scratch Artifacts
+.agents/
+.superpowers/
+AGENTS.md
+benchmarks/
+graphify-out/
+skills-lock.json
+screenshot-*.png
+sidebar-computed-*.json

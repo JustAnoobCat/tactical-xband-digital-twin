@@ -69,6 +69,8 @@ export class ThreeSceneManager {
   private skirtMesh: THREE.Mesh | null = null;
   private datumGrid: THREE.Group | null = null;
   private hillshadeTexture: THREE.CanvasTexture | null = null;
+  private terrainVisible: boolean = true;
+  private datumGridVisible: boolean = true;
 
   constructor(config: ThreeRendererConfig) {
     this.container = config.container;
@@ -496,6 +498,41 @@ export class ThreeSceneManager {
   }
 
   /**
+   * Synchronizes 3D scene group and terrain/grid visibility with the MapLayerRegistry.
+   */
+  public applyLayerVisibility(visibility: {
+    readonly baseTerrain?: boolean;
+    readonly datumGrid?: boolean;
+    readonly acn?: boolean;
+    readonly groundNodes?: boolean;
+    readonly labels?: boolean;
+    readonly trajectory?: boolean;
+    readonly links?: boolean;
+    readonly transmissions?: boolean;
+  }): void {
+    if (visibility.baseTerrain !== undefined) {
+      this.terrainVisible = visibility.baseTerrain;
+      if (this.terrainMesh) this.terrainMesh.visible = this.terrainVisible;
+      if (this.skirtMesh) this.skirtMesh.visible = this.terrainVisible;
+    }
+    if (visibility.datumGrid !== undefined) {
+      this.datumGridVisible = visibility.datumGrid;
+      if (this.datumGrid) this.datumGrid.visible = this.datumGridVisible;
+    }
+    this.tacticalEntityManager.applyLayerVisibility({
+      acn: visibility.acn,
+      groundNodes: visibility.groundNodes,
+      labels: visibility.labels,
+      trajectory: visibility.trajectory,
+      links: visibility.links,
+      transmissions: visibility.transmissions,
+    });
+    if (this.viewMode === '3d' && !this.isRunning && !this.isContextLost) {
+      this.render();
+    }
+  }
+
+  /**
    * Handles container resize and adjusts camera aspect and WebGL viewport
    */
   public handleResize(width?: number, height?: number): void {
@@ -764,6 +801,7 @@ export class ThreeSceneManager {
 
     this.terrainMesh = new THREE.Mesh(set.meshGeometry, terrainMaterial);
     this.terrainMesh.name = `terrainMesh_${this.terrainResolution}`;
+    this.terrainMesh.visible = this.terrainVisible;
     this.worldGroup.add(this.terrainMesh);
 
     // 3. Perimeter skirts (real DEM only down to 1,700m MSL)
@@ -777,6 +815,7 @@ export class ThreeSceneManager {
 
       this.skirtMesh = new THREE.Mesh(set.skirtGeometry, skirtMaterial);
       this.skirtMesh.name = `terrainSkirt_${this.terrainResolution}`;
+      this.skirtMesh.visible = this.terrainVisible;
       this.worldGroup.add(this.skirtMesh);
     }
 
@@ -786,6 +825,7 @@ export class ThreeSceneManager {
       600000.0,
       this.cachedTerrainData.bounds
     );
+    this.datumGrid.visible = this.datumGridVisible;
     this.worldGroup.add(this.datumGrid);
 
     // If 3D is active, trigger an immediate render

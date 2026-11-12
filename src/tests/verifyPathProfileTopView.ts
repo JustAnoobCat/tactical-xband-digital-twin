@@ -757,11 +757,11 @@ function runPathProfileTopViewVerification(): void {
     const tCtx = new MockCanvasContext2D();
     renderTerrainTopView(tCtx as any, standardLayout, vp, profilePristine, topOpts);
 
-    // Restrained route: narrow dark keyline followed by muted aviation cyan.
-    const tUnderlay = tCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('7, 13, 20'));
+    // Restrained route: narrow dark keyline followed by Highland warm contour stone.
+    const tUnderlay = tCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('17, 19, 22'));
     assert.ok(tUnderlay, 'Terrain Top View must draw a narrow dark route keyline');
-    const tCore = tCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#79c8d5');
-    assert.ok(tCore, 'Terrain Top View must draw the restrained aviation-cyan route');
+    const tCore = tCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#c9bfa9');
+    assert.ok(tCore, 'Terrain Top View must draw the restrained warm contour route');
 
     // Aircraft marker heading label
     assert.ok(tCtx.textCalls.some(t => t.text.includes('ACN') && t.text.includes('HDG')), 'ACN aircraft marker must render heading annotation');
@@ -791,10 +791,10 @@ function runPathProfileTopViewVerification(): void {
       topOpts
     );
 
-    const rUnderlay = rCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('7, 13, 20'));
+    const rUnderlay = rCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('17, 19, 22'));
     assert.ok(rUnderlay, 'RF Top View must draw a narrow dark route keyline');
-    const rCore = rCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#79c8d5');
-    assert.ok(rCore, 'RF Top View must draw the restrained aviation-cyan route');
+    const rCore = rCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#c9bfa9');
+    assert.ok(rCore, 'RF Top View must draw the restrained warm contour route');
 
     assert.ok(rCtx.textCalls.some(t => t.text === 'WP1'), 'RF Top View must render WP1 waypoint label');
     assert.ok(rCtx.textCalls.some(t => t.text.includes('ACN') && t.text.includes('HDG')), 'RF Top View must render ACN heading annotation');
@@ -817,23 +817,23 @@ function runPathProfileTopViewVerification(): void {
       acnScreenPos: { x: 100, y: 100 }
     });
 
-    const darkUnderlay = cvsCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('7, 13, 20'));
+    const darkUnderlay = cvsCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 3.5 && String(c.strokeStyle).includes('17, 19, 22'));
     assert.ok(darkUnderlay, 'Must draw a narrow dark route keyline');
-    const coreStroke = cvsCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#79c8d5');
-    assert.ok(coreStroke, 'Must draw the muted aviation-cyan route');
+    const coreStroke = cvsCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#c9bfa9');
+    assert.ok(coreStroke, 'Must draw the muted warm contour route');
 
-    const chevronUnderlays = cvsCtx.drawCalls.filter(c => c.method === 'stroke' && c.lineWidth === 3.2 && String(c.strokeStyle).includes('7, 13, 20'));
+    const chevronUnderlays = cvsCtx.drawCalls.filter(c => c.method === 'stroke' && c.lineWidth === 3.2 && String(c.strokeStyle).includes('17, 19, 22'));
     assert.ok(chevronUnderlays.length >= 1 && chevronUnderlays.length <= 8, 'Must render sparse directional markers');
-    const chevronCores = cvsCtx.drawCalls.filter(c => c.method === 'stroke' && c.lineWidth === 1.2 && c.strokeStyle === '#b9edf2');
+    const chevronCores = cvsCtx.drawCalls.filter(c => c.method === 'stroke' && c.lineWidth === 1.2 && c.strokeStyle === '#f2efe9');
     assert.ok(chevronCores.length >= 1, 'Must render directional marker cores');
 
-    // 2. Draft Trajectory (unapplied route in dashed amber)
+    // 2. Draft Trajectory (unapplied route in dashed ochre)
     const draftCtx = new MockCanvasContext2D();
     drawDraftTrajectory(draftCtx as any, testPoints, true);
-    const draftUnderlay = draftCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 5.0 && String(c.strokeStyle).includes('7, 13, 20'));
+    const draftUnderlay = draftCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 5.0 && String(c.strokeStyle).includes('17, 19, 22'));
     assert.ok(draftUnderlay, 'Draft trajectory must retain a dark contrast keyline');
-    const draftLine = draftCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#e5ad58');
-    assert.ok(draftLine, 'Draft trajectory must render a restrained amber dashed line');
+    const draftLine = draftCtx.drawCalls.find(c => c.method === 'stroke' && c.lineWidth === 1.8 && c.strokeStyle === '#e9c46a');
+    assert.ok(draftLine, 'Draft trajectory must render a restrained ochre dashed line');
 
     // 3. Tactical Waypoints (WP1, WP2, WP3, WP4 with selected waypoint highlight)
     const wpCtx = new MockCanvasContext2D();

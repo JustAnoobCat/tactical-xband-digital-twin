@@ -21,6 +21,7 @@ import {
   LinkCommunicationStatus,
 } from '../../core/linkStatusClassifier';
 import { MAP_LINK_STYLES } from '../mapLinkStyles';
+import { HIGHLAND_THEME } from '../workbench/chartTheme';
 
 /**
  * Assumed physical dimensions for tactical equipment (strictly 1x scale).
@@ -134,7 +135,7 @@ function createAcnChevronTexture(): THREE.CanvasTexture {
     // Outer tactical surveillance ring
     ctx.beginPath();
     ctx.arc(64, 64, 52, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+    ctx.strokeStyle = HIGHLAND_THEME.signal.amberStrokeSoft;
     ctx.lineWidth = 3;
     ctx.stroke();
 
@@ -144,7 +145,7 @@ function createAcnChevronTexture(): THREE.CanvasTexture {
     ctx.lineTo(60, 14);
     ctx.lineTo(68, 14);
     ctx.closePath();
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = HIGHLAND_THEME.signal.amber;
     ctx.fill();
 
     // Symmetrical aircraft silhouette / delta chevron pointing UP (+Y)
@@ -156,16 +157,16 @@ function createAcnChevronTexture(): THREE.CanvasTexture {
     ctx.lineTo(40, 96);          // Left trailing notch
     ctx.lineTo(18, 88);          // Left wingtip
     ctx.closePath();
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = HIGHLAND_THEME.signal.amber;
     ctx.fill();
-    ctx.strokeStyle = '#0284c7';
+    ctx.strokeStyle = HIGHLAND_THEME.signal.amberDeep;
     ctx.lineWidth = 3;
     ctx.stroke();
 
     // Center cockpit core pip
     ctx.beginPath();
     ctx.arc(64, 46, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = HIGHLAND_THEME.text.primary;
     ctx.fill();
   }
 
@@ -189,9 +190,9 @@ function createMcpCommandTexture(): THREE.CanvasTexture {
     ctx.lineTo(64, 114);
     ctx.lineTo(14, 64);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(8, 12, 16, 0.88)';
+    ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
     ctx.fill();
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = HIGHLAND_THEME.signal.amber;
     ctx.lineWidth = 4;
     ctx.stroke();
 
@@ -202,7 +203,7 @@ function createMcpCommandTexture(): THREE.CanvasTexture {
     ctx.lineTo(64, 104);
     ctx.lineTo(24, 64);
     ctx.closePath();
-    ctx.strokeStyle = 'rgba(2, 132, 199, 0.7)';
+    ctx.strokeStyle = HIGHLAND_THEME.signal.amberStrokeSoft;
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -210,14 +211,14 @@ function createMcpCommandTexture(): THREE.CanvasTexture {
     ctx.beginPath();
     ctx.moveTo(64, 94);
     ctx.lineTo(64, 40);
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = HIGHLAND_THEME.text.primary;
     ctx.lineWidth = 4;
     ctx.stroke();
 
     // Parabolic dish symbol at top
     ctx.beginPath();
     ctx.arc(64, 40, 16, Math.PI * 0.85, Math.PI * 0.15, true);
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = HIGHLAND_THEME.signal.amber;
     ctx.lineWidth = 4;
     ctx.stroke();
 
@@ -298,7 +299,7 @@ function createReticleTexture(): THREE.CanvasTexture {
     ctx.clearRect(0, 0, 128, 128);
 
     // 4 corner brackets
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = HIGHLAND_THEME.signal.amber;
     ctx.lineWidth = 5;
     ctx.lineCap = 'square';
 
@@ -331,7 +332,7 @@ function createReticleTexture(): THREE.CanvasTexture {
     ctx.stroke();
 
     // Center reticle crosshair dots
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = HIGHLAND_THEME.signal.amber;
     ctx.fillRect(62, 14, 4, 8);
     ctx.fillRect(62, 106, 4, 8);
     ctx.fillRect(14, 62, 8, 4);
@@ -477,6 +478,7 @@ export class TacticalEntityManager {
     maxY: 0,
   }));
   private declutterAcceptedCount: number = 0;
+  private labelsVisible: boolean = true;
 
   constructor() {
     this.rootGroup = new THREE.Group();
@@ -520,10 +522,10 @@ export class TacticalEntityManager {
     this.soldierMarkerTexture = createSoldierRoundelTexture();
     this.reticleTexture = createReticleTexture();
 
-    this.callsignTextures.set('ACN', createCallsignTexture('ACN', '#38bdf8'));
-    this.callsignTextures.set('MCP', createCallsignTexture('MCP', '#0284c7'));
+    this.callsignTextures.set('ACN', createCallsignTexture('ACN', HIGHLAND_THEME.signal.amber));
+    this.callsignTextures.set('MCP', createCallsignTexture('MCP', HIGHLAND_THEME.signal.amberDeep));
     for (let i = 1; i < 16; i++) {
-      this.callsignTextures.set(`S${i}`, createCallsignTexture(`S${i}`, '#38bdf8'));
+      this.callsignTextures.set(`S${i}`, createCallsignTexture(`S${i}`, HIGHLAND_THEME.signal.sage));
     }
   }
 
@@ -598,7 +600,7 @@ export class TacticalEntityManager {
     if (match) {
       return (parseInt(match[1], 10) << 16) | (parseInt(match[2], 10) << 8) | parseInt(match[3], 10);
     }
-    return 0x38bdf8;
+    return 0x52b788;
   }
 
   /**
@@ -619,10 +621,10 @@ export class TacticalEntityManager {
     fuseGeo.translate(0, p.fuselageLengthM * 0.25, 0);
 
     const acnMat = new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
+      color: 0xe09f3e,
       roughness: 0.35,
       metalness: 0.7,
-      emissive: 0x0369a1,
+      emissive: 0x996515,
       emissiveIntensity: 0.45,
     });
     const fuselage = new THREE.Mesh(fuseGeo, acnMat);
@@ -642,7 +644,7 @@ export class TacticalEntityManager {
 
     const wingGeo = new THREE.ShapeGeometry(wingShape);
     const wingMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
+      color: 0xb87e28,
       roughness: 0.4,
       metalness: 0.6,
       side: THREE.DoubleSide,
@@ -717,11 +719,11 @@ export class TacticalEntityManager {
     }
     const ringGeo = new THREE.BufferGeometry().setFromPoints(ringPoints);
     const ringMat = new THREE.LineDashedMaterial({
-      color: 0x38bdf8,
+      color: 0xe09f3e,
       dashSize: 1500,
       gapSize: 1000,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.32,
     });
     this.acnCoverageLine = new THREE.LineLoop(ringGeo, ringMat);
     this.acnCoverageLine.computeLineDistances();
@@ -737,7 +739,7 @@ export class TacticalEntityManager {
     this.trajectoryGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
     const trajectoryMat = new THREE.LineDashedMaterial({
-      color: 0x38bdf8,
+      color: 0xc9bfa9,
       dashSize: 1200,
       gapSize: 800,
       transparent: true,
@@ -786,7 +788,7 @@ export class TacticalEntityManager {
 
     // Plumb line material
     const plumbMat = new THREE.LineBasicMaterial({
-      color: 0x38bdf8,
+      color: 0xe09f3e,
       transparent: true,
       opacity: 0.6,
       depthTest: true,
@@ -806,10 +808,10 @@ export class TacticalEntityManager {
       visualGroup.name = `nodeVisual_${i}`;
 
       const nodeMat = new THREE.MeshStandardMaterial({
-        color: isMcp ? 0x38bdf8 : 0x10b981,
+        color: isMcp ? 0xe09f3e : 0x52b788,
         roughness: 0.3,
         metalness: 0.7,
-        emissive: isMcp ? 0x0284c7 : 0x059669,
+        emissive: isMcp ? 0x996515 : 0x2d6a4f,
         emissiveIntensity: 0.4,
       });
 
@@ -856,7 +858,7 @@ export class TacticalEntityManager {
         polygonOffsetUnits: -4.0,
         transparent: true,
         opacity: 1.0,
-        color: isMcp ? 0xffffff : 0x10b981,
+        color: isMcp ? 0xf2efe9 : 0x52b788,
       });
       const markerSprite = new THREE.Sprite(markerMat);
       markerSprite.name = `markerSprite_${i}`;
@@ -945,7 +947,7 @@ export class TacticalEntityManager {
     ];
     const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
     const lineMat = new THREE.LineDashedMaterial({
-      color: 0xa855f7, // Muted purple UNKNOWN indicator
+      color: 0x8a95e6, // Quartz indigo UNKNOWN indicator
       dashSize: 200,
       gapSize: 200,
       transparent: true,
@@ -957,7 +959,7 @@ export class TacticalEntityManager {
     g.add(plumbLine);
 
     // Schematic alert badge positioned at mid-height (3,350m)
-    const alertTexture = createCallsignTexture(`[S${nodeId} UNMAPPED]`, '#a855f7');
+    const alertTexture = createCallsignTexture(`[S${nodeId} UNMAPPED]`, HIGHLAND_THEME.signal.indigo);
     const alertMat = new THREE.SpriteMaterial({
       map: alertTexture,
       sizeAttenuation: false,
@@ -1042,10 +1044,10 @@ export class TacticalEntityManager {
     visualGroup.name = `nodeVisual_${nodeId}`;
 
     const nodeMat = new THREE.MeshStandardMaterial({
-      color: isMcp ? 0x38bdf8 : 0x10b981,
+      color: isMcp ? 0xe09f3e : 0x52b788,
       roughness: 0.3,
       metalness: 0.7,
-      emissive: isMcp ? 0x0284c7 : 0x059669,
+      emissive: isMcp ? 0x996515 : 0x2d6a4f,
       emissiveIntensity: 0.4,
     });
 
@@ -1066,7 +1068,7 @@ export class TacticalEntityManager {
     nodeGroup.add(visualGroup);
 
     const plumbMat = new THREE.LineBasicMaterial({
-      color: 0x38bdf8,
+      color: 0xe09f3e,
       transparent: true,
       opacity: 0.6,
       depthTest: true,
@@ -1095,7 +1097,7 @@ export class TacticalEntityManager {
       polygonOffsetUnits: -4.0,
       transparent: true,
       opacity: 1.0,
-      color: isMcp ? 0xffffff : 0x10b981,
+      color: isMcp ? 0xf2efe9 : 0x52b788,
     });
     const markerSprite = new THREE.Sprite(markerMat);
     markerSprite.name = `markerSprite_${nodeId}`;
@@ -1124,7 +1126,7 @@ export class TacticalEntityManager {
     const callsignLabel = callsign || (isMcp ? 'MCP' : `S${nodeId}`);
     let cTex = this.callsignTextures.get(callsignLabel);
     if (!cTex) {
-      cTex = createCallsignTexture(callsignLabel, isMcp ? '#38bdf8' : '#10b981');
+      cTex = createCallsignTexture(callsignLabel, isMcp ? HIGHLAND_THEME.signal.amber : HIGHLAND_THEME.signal.sage);
       this.callsignTextures.set(callsignLabel, cTex);
     }
     const callsignMat = new THREE.SpriteMaterial({
@@ -1179,7 +1181,7 @@ export class TacticalEntityManager {
   private initBulkTransferPacket(): void {
     const packetGeo = new THREE.SphereGeometry(150.0, 12, 8);
     const packetMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
+      color: 0xe09f3e,
       wireframe: true,
     });
     this.bulkPacketMesh = new THREE.Mesh(packetGeo, packetMat);
@@ -1263,7 +1265,7 @@ export class TacticalEntityManager {
         const isMcp = node.node_type === 'mcp';
         const item = this.getOrCreateNodeItem(node.node_id, isMcp, node.name);
         const targetCallsign = node.name || (isMcp ? 'MCP' : `S${node.node_id}`);
-        const nodeColorHex = node.color_hex || (isMcp ? '#38bdf8' : '#10b981');
+        const nodeColorHex = node.color_hex || (isMcp ? HIGHLAND_THEME.signal.amber : HIGHLAND_THEME.signal.sage);
         const callsignKey = `${targetCallsign}_${nodeColorHex}`;
         if (item.currentCallsign !== callsignKey) {
           item.currentCallsign = callsignKey;
@@ -1554,6 +1556,15 @@ export class TacticalEntityManager {
    */
   private declutterLabels(camera: THREE.PerspectiveCamera, vW: number, vH: number): void {
     this.declutterCandidateCount = 0;
+
+    if (!this.labelsVisible) {
+      this.acnCallsignSprite.visible = false;
+      for (let i = 0; i < 16; i++) {
+        this.nodeItems[i].callsignSprite.visible = false;
+      }
+      this.declutterAcceptedCount = 0;
+      return;
+    }
 
     // Evaluate ACN callsign candidate
     const acnRoot = this.scratchVecA.set(
@@ -1875,6 +1886,52 @@ export class TacticalEntityManager {
 
   public getBulkTransferMesh(): THREE.Mesh {
     return this.bulkPacketMesh;
+  }
+
+  public setLabelsVisible(visible: boolean): void {
+    this.labelsVisible = visible;
+    if (!visible) {
+      this.acnCallsignSprite.visible = false;
+      for (let i = 0; i < 16; i++) {
+        this.nodeItems[i].callsignSprite.visible = false;
+      }
+    }
+  }
+
+  public areLabelsVisible(): boolean {
+    return this.labelsVisible;
+  }
+
+  public getAcnCallsignSprite(): THREE.Sprite {
+    return this.acnCallsignSprite;
+  }
+
+  public applyLayerVisibility(visibility: {
+    readonly acn?: boolean;
+    readonly groundNodes?: boolean;
+    readonly labels?: boolean;
+    readonly trajectory?: boolean;
+    readonly links?: boolean;
+    readonly transmissions?: boolean;
+  }): void {
+    if (visibility.acn !== undefined) {
+      this.acnGroup.visible = visibility.acn;
+    }
+    if (visibility.groundNodes !== undefined) {
+      this.groundNodesGroup.visible = visibility.groundNodes;
+    }
+    if (visibility.trajectory !== undefined) {
+      this.trajectoryGroup.visible = visibility.trajectory;
+    }
+    if (visibility.links !== undefined) {
+      this.linksGroup.visible = visibility.links;
+    }
+    if (visibility.transmissions !== undefined) {
+      this.trafficGroup.visible = visibility.transmissions;
+    }
+    if (visibility.labels !== undefined) {
+      this.setLabelsVisible(visibility.labels);
+    }
   }
 
   /**

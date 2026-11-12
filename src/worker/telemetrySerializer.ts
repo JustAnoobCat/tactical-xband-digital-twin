@@ -131,6 +131,7 @@ export interface TelemetrySimulationState {
   readonly staticGoodputTracker: RollingGoodputTracker;
   readonly tacGoodputTracker: RollingGoodputTracker;
   readonly tdmaConfig: TdmaFrameConfig;
+  readonly simulationRunId?: number;
 }
 
 /**
@@ -642,6 +643,7 @@ export class TelemetrySerializer {
         : THEATER_HALF_M / 1000,
       terrain_bounds: state.terrainEngine.getTerrainBoundsTelemetry(),
       tdma_frame_config: state.tdmaConfig ? state.tdmaConfig.toObject() : undefined,
+      ...(typeof state.simulationRunId === 'number' ? { simulation_run_id: state.simulationRunId } : {}),
     };
   }
 

@@ -11,10 +11,13 @@
  *    - Predictive pre-occlusion queue evacuation (Phi_evac surge to 5.0x).
  */
 
+import { FinalDropCaptureResult } from '../shared/workerProtocol';
 import { LinkStatus } from './linkBudget';
 import { GroundNodeTrafficSubsystem, QOS_PROFILES } from './queues';
 import { NodeTerrainState, PredictiveState } from './trajectory';
 import { TdmaFrameConfig } from './tdmaConfig';
+
+export type { FinalDropCaptureResult };
 
 export const T_FRAME_S: number = 0.02; // 20 ms superframe
 export const T_CTRL_S: number = 0.001; // 1 ms control subframe
@@ -59,6 +62,18 @@ export interface FrameScheduleReport {
   /** New drops that occurred during this frame. */
   readonly packetsDroppedDelayThisFrame: number;
   readonly packetsDroppedOverflowThisFrame: number;
+  /** Per-frame dropped bytes across all nodes (matches *ThisFrame). */
+  readonly droppedDelayBytes: number;
+  readonly droppedOverflowBytes: number;
+  readonly totalDroppedBytes: number;
+  /** Per-frame dropped bytes that occurred during this frame. */
+  readonly droppedDelayBytesThisFrame: number;
+  readonly droppedOverflowBytesThisFrame: number;
+  readonly totalDroppedBytesThisFrame: number;
+  /** Cumulative dropped bytes accumulated across the simulation run (including evicted nodes). */
+  readonly runDroppedDelayBytes: number;
+  readonly runDroppedOverflowBytes: number;
+  readonly runTotalDroppedBytes: number;
   /** Queue backlog remaining after this frame, in bits. */
   readonly totalBacklogBits: number;
   /** Authoritative superframe duration in seconds (Resolving Audit Finding 5). */
@@ -71,33 +86,110 @@ export interface FrameScheduleReport {
   readonly ulAvailableDurationS: number;
 }
 
+interface NodeDropCounters {
+  readonly delayPkts: number;
+  readonly overflowPkts: number;
+  readonly delayBytes: number;
+  readonly overflowBytes: number;
+  readonly totalBytes: number;
+}
+
+const ZERO_NODE_DROP_COUNTERS: NodeDropCounters = {
+  delayPkts: 0,
+  overflowPkts: 0,
+  delayBytes: 0,
+  overflowBytes: 0,
+  totalBytes: 0,
+};
+
+const ZERO_DROP_CAPTURE: FinalDropCaptureResult = {
+  captured: false,
+  droppedDelayPkts: 0,
+  droppedOverflowPkts: 0,
+  totalDroppedPkts: 0,
+  droppedDelayBytes: 0,
+  droppedOverflowBytes: 0,
+  totalDroppedBytes: 0,
+};
+
 interface DropMetrics {
   delayTotal: number;
   overflowTotal: number;
   delayThisFrame: number;
   overflowThisFrame: number;
+  droppedDelayBytes: number;
+  droppedOverflowBytes: number;
+  totalDroppedBytes: number;
+  droppedDelayBytesThisFrame: number;
+  droppedOverflowBytesThisFrame: number;
+  totalDroppedBytesThisFrame: number;
 }
 
-/** Queue counters are cumulative, so report both totals and non-negative per-frame deltas. */
+function diffDropCounter(curr: number, prev: number): number {
+  return curr >= prev ? curr - prev : curr;
+}
+
+function captureNodeDropCounters(node: GroundNodeTrafficSubsystem): NodeDropCounters {
+  const q = node.queue as unknown as {
+    droppedDelayCount: number;
+    droppedOverflowCount: number;
+    droppedDelayBytes: number;
+    droppedOverflowBytes: number;
+    totalDroppedBytes: number;
+    monotonicDroppedDelayCount?: number;
+    monotonicDroppedOverflowCount?: number;
+    monotonicDroppedDelayBytes?: number;
+    monotonicDroppedOverflowBytes?: number;
+    monotonicTotalDroppedBytes?: number;
+  };
+  return {
+    delayPkts: q.monotonicDroppedDelayCount ?? q.droppedDelayCount,
+    overflowPkts: q.monotonicDroppedOverflowCount ?? q.droppedOverflowCount,
+    delayBytes: q.monotonicDroppedDelayBytes ?? q.droppedDelayBytes,
+    overflowBytes: q.monotonicDroppedOverflowBytes ?? q.droppedOverflowBytes,
+    totalBytes: q.monotonicTotalDroppedBytes ?? q.totalDroppedBytes,
+  };
+}
+
+/** Queue counters are cumulative, so report cumulative totals plus non-negative per-frame deltas. */
 function collectDropMetrics(
   nodes: readonly GroundNodeTrafficSubsystem[],
-  previous: Map<number, { delay: number; overflow: number }>
+  previous: Map<number, NodeDropCounters>
 ): DropMetrics {
   let delayTotal = 0;
   let overflowTotal = 0;
   let delayThisFrame = 0;
   let overflowThisFrame = 0;
+  let droppedDelayBytesThisFrame = 0;
+  let droppedOverflowBytesThisFrame = 0;
+  let totalDroppedBytesThisFrame = 0;
   for (const node of nodes) {
-    const delay = node.queue.droppedDelayCount;
-    const overflow = node.queue.droppedOverflowCount;
-    const prev = previous.get(node.nodeId) ?? { delay: 0, overflow: 0 };
-    delayTotal += delay;
-    overflowTotal += overflow;
-    delayThisFrame += Math.max(0, delay - prev.delay);
-    overflowThisFrame += Math.max(0, overflow - prev.overflow);
-    previous.set(node.nodeId, { delay, overflow });
+    const curr = captureNodeDropCounters(node);
+    const prev = previous.get(node.nodeId) ?? ZERO_NODE_DROP_COUNTERS;
+    delayTotal += curr.delayPkts;
+    overflowTotal += curr.overflowPkts;
+    delayThisFrame += diffDropCounter(curr.delayPkts, prev.delayPkts);
+    overflowThisFrame += diffDropCounter(curr.overflowPkts, prev.overflowPkts);
+    const dDelayBytes = diffDropCounter(curr.delayBytes, prev.delayBytes);
+    const dOverflowBytes = diffDropCounter(curr.overflowBytes, prev.overflowBytes);
+    const dTotalBytes = diffDropCounter(curr.totalBytes, prev.totalBytes);
+    droppedDelayBytesThisFrame += dDelayBytes;
+    droppedOverflowBytesThisFrame += dOverflowBytes;
+    totalDroppedBytesThisFrame += dTotalBytes;
+    previous.set(node.nodeId, curr);
   }
-  return { delayTotal, overflowTotal, delayThisFrame, overflowThisFrame };
+  return {
+    delayTotal,
+    overflowTotal,
+    delayThisFrame,
+    overflowThisFrame,
+    droppedDelayBytes: droppedDelayBytesThisFrame,
+    droppedOverflowBytes: droppedOverflowBytesThisFrame,
+    totalDroppedBytes: totalDroppedBytesThisFrame,
+    droppedDelayBytesThisFrame,
+    droppedOverflowBytesThisFrame,
+    totalDroppedBytesThisFrame,
+  };
 }
 
 function totalBacklogBits(nodes: readonly GroundNodeTrafficSubsystem[]): number {
@@ -114,7 +206,179 @@ export interface BaseScheduler {
     predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
     dlBacklogBytes?: number
   ): FrameScheduleReport;
-  evictNode?(nodeId: number): void;
+  registerNode?(node: GroundNodeTrafficSubsystem): void;
+  capturePendingDropsBeforeEviction?(node: GroundNodeTrafficSubsystem): FinalDropCaptureResult;
+  evictNode?(nodeId: number, node?: GroundNodeTrafficSubsystem): FinalDropCaptureResult | null;
+  getRunDropTotals?(): {
+    readonly droppedDelayBytes: number;
+    readonly droppedOverflowBytes: number;
+    readonly totalDroppedBytes: number;
+  };
+  hasDropBaseline?(nodeId: number): boolean;
+  hasTrackedNode?(nodeId: number): boolean;
+}
+
+abstract class DropTrackingScheduler implements BaseScheduler {
+  public abstract readonly schedulerName: string;
+  protected config: TdmaFrameConfig = new TdmaFrameConfig();
+  protected readonly previousDropCounts = new Map<number, NodeDropCounters>();
+  private readonly trackedNodes = new Map<number, GroundNodeTrafficSubsystem>();
+  private readonly retiredNodeInstances = new WeakSet<GroundNodeTrafficSubsystem>();
+  private _runDroppedDelayBytes: number = 0;
+  private _runDroppedOverflowBytes: number = 0;
+
+  protected get runDroppedDelayBytes(): number {
+    return this._runDroppedDelayBytes;
+  }
+
+  protected get runDroppedOverflowBytes(): number {
+    return this._runDroppedOverflowBytes;
+  }
+
+  protected get runTotalDroppedBytes(): number {
+    return this._runDroppedDelayBytes + this._runDroppedOverflowBytes;
+  }
+
+  public setTdmaConfig(config: TdmaFrameConfig): void {
+    this.config = config;
+  }
+
+  public registerNode(node: GroundNodeTrafficSubsystem): void {
+    if (this.retiredNodeInstances.has(node)) {
+      return;
+    }
+    const existing = this.trackedNodes.get(node.nodeId);
+    if (!this.previousDropCounts.has(node.nodeId) || existing !== node) {
+      this.previousDropCounts.set(node.nodeId, captureNodeDropCounters(node));
+    }
+    this.trackedNodes.set(node.nodeId, node);
+  }
+
+  protected trackScheduledNodes(nodes: readonly GroundNodeTrafficSubsystem[]): void {
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (!this.retiredNodeInstances.has(node)) {
+        this.trackedNodes.set(node.nodeId, node);
+      }
+    }
+  }
+
+  protected applyFrameDropMetrics(drops: DropMetrics): void {
+    this._runDroppedDelayBytes += drops.droppedDelayBytesThisFrame;
+    this._runDroppedOverflowBytes += drops.droppedOverflowBytesThisFrame;
+  }
+
+  public capturePendingDropsBeforeEviction(node: GroundNodeTrafficSubsystem): FinalDropCaptureResult {
+    if (this.retiredNodeInstances.has(node)) {
+      return ZERO_DROP_CAPTURE;
+    }
+    const curr = captureNodeDropCounters(node);
+    const prev = this.previousDropCounts.get(node.nodeId) ?? ZERO_NODE_DROP_COUNTERS;
+    const droppedDelayPkts = diffDropCounter(curr.delayPkts, prev.delayPkts);
+    const droppedOverflowPkts = diffDropCounter(curr.overflowPkts, prev.overflowPkts);
+    const droppedDelayBytes = diffDropCounter(curr.delayBytes, prev.delayBytes);
+    const droppedOverflowBytes = diffDropCounter(curr.overflowBytes, prev.overflowBytes);
+    const totalDroppedBytes = diffDropCounter(curr.totalBytes, prev.totalBytes);
+    this._runDroppedDelayBytes += droppedDelayBytes;
+    this._runDroppedOverflowBytes += droppedOverflowBytes;
+    this.previousDropCounts.set(node.nodeId, curr);
+    this.retiredNodeInstances.add(node);
+    return {
+      captured: true,
+      droppedDelayPkts,
+      droppedOverflowPkts,
+      totalDroppedPkts: droppedDelayPkts + droppedOverflowPkts,
+      droppedDelayBytes,
+      droppedOverflowBytes,
+      totalDroppedBytes,
+    };
+  }
+
+  public evictNode(nodeId: number, node?: GroundNodeTrafficSubsystem): FinalDropCaptureResult | null {
+    const hadBaseline = this.previousDropCounts.has(nodeId);
+    const hadTracked = this.trackedNodes.has(nodeId);
+    if (!hadBaseline && !hadTracked) {
+      return null;
+    }
+    const target = node ?? this.trackedNodes.get(nodeId);
+    let result: FinalDropCaptureResult = ZERO_DROP_CAPTURE;
+    if (target && !this.retiredNodeInstances.has(target)) {
+      result = this.capturePendingDropsBeforeEviction(target);
+    }
+    this.previousDropCounts.delete(nodeId);
+    this.trackedNodes.delete(nodeId);
+    this.onNodeEvicted(nodeId);
+    return result;
+  }
+
+  protected onNodeEvicted(_nodeId: number): void {
+    // Optional subclass cleanup
+  }
+
+  public getRunDropTotals(): {
+    readonly droppedDelayBytes: number;
+    readonly droppedOverflowBytes: number;
+    readonly totalDroppedBytes: number;
+  } {
+    return {
+      droppedDelayBytes: this._runDroppedDelayBytes,
+      droppedOverflowBytes: this._runDroppedOverflowBytes,
+      totalDroppedBytes: this.runTotalDroppedBytes,
+    };
+  }
+
+  public hasDropBaseline(nodeId: number): boolean {
+    return this.previousDropCounts.has(nodeId);
+  }
+
+  public hasTrackedNode(nodeId: number): boolean {
+    return this.trackedNodes.has(nodeId);
+  }
+
+  protected buildEmptyDropFields() {
+    return {
+      packetsDroppedDelay: 0,
+      packetsDroppedOverflow: 0,
+      packetsDroppedDelayThisFrame: 0,
+      packetsDroppedOverflowThisFrame: 0,
+      droppedDelayBytes: 0,
+      droppedOverflowBytes: 0,
+      totalDroppedBytes: 0,
+      droppedDelayBytesThisFrame: 0,
+      droppedOverflowBytesThisFrame: 0,
+      totalDroppedBytesThisFrame: 0,
+      runDroppedDelayBytes: this._runDroppedDelayBytes,
+      runDroppedOverflowBytes: this._runDroppedOverflowBytes,
+      runTotalDroppedBytes: this.runTotalDroppedBytes,
+    };
+  }
+
+  protected buildDropReportFields(drops: DropMetrics) {
+    return {
+      packetsDroppedDelay: drops.delayTotal,
+      packetsDroppedOverflow: drops.overflowTotal,
+      packetsDroppedDelayThisFrame: drops.delayThisFrame,
+      packetsDroppedOverflowThisFrame: drops.overflowThisFrame,
+      droppedDelayBytes: drops.droppedDelayBytes,
+      droppedOverflowBytes: drops.droppedOverflowBytes,
+      totalDroppedBytes: drops.totalDroppedBytes,
+      droppedDelayBytesThisFrame: drops.droppedDelayBytesThisFrame,
+      droppedOverflowBytesThisFrame: drops.droppedOverflowBytesThisFrame,
+      totalDroppedBytesThisFrame: drops.totalDroppedBytesThisFrame,
+      runDroppedDelayBytes: this._runDroppedDelayBytes,
+      runDroppedOverflowBytes: this._runDroppedOverflowBytes,
+      runTotalDroppedBytes: this.runTotalDroppedBytes,
+    };
+  }
+
+  public abstract scheduleFrame(
+    frameIndex: number,
+    currentSimTimeS: number,
+    nodes: readonly GroundNodeTrafficSubsystem[],
+    linkStatuses: ReadonlyMap<number, LinkStatus> | Record<number, LinkStatus>,
+    predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
+    dlBacklogBytes?: number
+  ): FrameScheduleReport;
 }
 
 /**
@@ -124,18 +388,8 @@ export interface BaseScheduler {
  *   tauSlot = (T_UL_NOMINAL_S - N * TAU_GUARD_S) / N (exactly 988 us for N=16)
  * Blindly transmits into mountain shadow obstacles, wasting up to 33% of frame time.
  */
-export class LegacyStaticScheduler implements BaseScheduler {
+export class LegacyStaticScheduler extends DropTrackingScheduler {
   public readonly schedulerName: string = 'Legacy_Static_TDMA';
-  private config: TdmaFrameConfig = new TdmaFrameConfig();
-  private readonly previousDropCounts = new Map<number, { delay: number; overflow: number }>();
-
-  public setTdmaConfig(config: TdmaFrameConfig): void {
-    this.config = config;
-  }
-
-  public evictNode(nodeId: number): void {
-    this.previousDropCounts.delete(nodeId);
-  }
 
   public scheduleFrame(
     frameIndex: number,
@@ -163,10 +417,7 @@ export class LegacyStaticScheduler implements BaseScheduler {
         totalPayloadBitsDequeued: 0,
         totalBitsTransmitted: 0,
         totalBitsWastedOnOutage: 0,
-        packetsDroppedDelay: 0,
-        packetsDroppedOverflow: 0,
-        packetsDroppedDelayThisFrame: 0,
-        packetsDroppedOverflowThisFrame: 0,
+        ...this.buildEmptyDropFields(),
         totalBacklogBits: 0,
         superframeDurationS: this.config.frameDurationS,
         ctrlDurationS: this.config.ctrlDurationS,
@@ -262,7 +513,9 @@ export class LegacyStaticScheduler implements BaseScheduler {
       }
     }
 
+    this.trackScheduledNodes(nodes);
     const drops = collectDropMetrics(nodes, this.previousDropCounts);
+    this.applyFrameDropMetrics(drops);
     const backlogBits = totalBacklogBits(nodes);
     const utilPct = (usedTimeS / tUlAvailable) * 100.0;
 
@@ -278,10 +531,7 @@ export class LegacyStaticScheduler implements BaseScheduler {
       totalPayloadBitsDequeued,
       totalBitsTransmitted: totalBitsTx,
       totalBitsWastedOnOutage: totalBitsWasted,
-      packetsDroppedDelay: drops.delayTotal,
-      packetsDroppedOverflow: drops.overflowTotal,
-      packetsDroppedDelayThisFrame: drops.delayThisFrame,
-      packetsDroppedOverflowThisFrame: drops.overflowThisFrame,
+      ...this.buildDropReportFields(drops),
       totalBacklogBits: backlogBits,
       superframeDurationS: this.config.frameDurationS,
       ctrlDurationS: this.config.ctrlDurationS,
@@ -294,11 +544,9 @@ export class LegacyStaticScheduler implements BaseScheduler {
 /**
  * Terrain-Aware Dynamic Scheduler (Tac-TAD).
  */
-export class TerrainAwareDynamicScheduler implements BaseScheduler {
+export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
   public readonly schedulerName: string = 'Tac_TAD';
   public readonly tauMaxNormalS: number;
-  private config: TdmaFrameConfig = new TdmaFrameConfig();
-  private readonly previousDropCounts = new Map<number, { delay: number; overflow: number }>();
 
   private readonly rAvg: Map<number, number> = new Map();
   private readonly alphaPf: number = 0.05;
@@ -310,15 +558,11 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
   };
 
   constructor(tauMaxNormalS: number = 0.008) {
+    super();
     this.tauMaxNormalS = tauMaxNormalS;
   }
 
-  public setTdmaConfig(config: TdmaFrameConfig): void {
-    this.config = config;
-  }
-
-  public evictNode(nodeId: number): void {
-    this.previousDropCounts.delete(nodeId);
+  protected override onNodeEvicted(nodeId: number): void {
     this.rAvg.delete(nodeId);
   }
 
@@ -350,10 +594,7 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
         totalPayloadBitsDequeued: 0,
         totalBitsTransmitted: 0,
         totalBitsWastedOnOutage: 0,
-        packetsDroppedDelay: 0,
-        packetsDroppedOverflow: 0,
-        packetsDroppedDelayThisFrame: 0,
-        packetsDroppedOverflowThisFrame: 0,
+        ...this.buildEmptyDropFields(),
         totalBacklogBits: 0,
         superframeDurationS: this.config.frameDurationS,
         ctrlDurationS: this.config.ctrlDurationS,
@@ -527,7 +768,9 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
       }
     }
 
+    this.trackScheduledNodes(nodes);
     const drops = collectDropMetrics(nodes, this.previousDropCounts);
+    this.applyFrameDropMetrics(drops);
     const backlogBits = totalBacklogBits(nodes);
     const utilPct = (usedTimeS / tUlAvailable) * 100.0;
 
@@ -544,10 +787,7 @@ export class TerrainAwareDynamicScheduler implements BaseScheduler {
       totalBitsTransmitted: totalBitsTx,
       // Tac-TAD filters unusable links before dequeue, so no dequeued payload is wasted on outage.
       totalBitsWastedOnOutage: 0,
-      packetsDroppedDelay: drops.delayTotal,
-      packetsDroppedOverflow: drops.overflowTotal,
-      packetsDroppedDelayThisFrame: drops.delayThisFrame,
-      packetsDroppedOverflowThisFrame: drops.overflowThisFrame,
+      ...this.buildDropReportFields(drops),
       totalBacklogBits: backlogBits,
       superframeDurationS: this.config.frameDurationS,
       ctrlDurationS: this.config.ctrlDurationS,

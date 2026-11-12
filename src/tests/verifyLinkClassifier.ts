@@ -669,37 +669,37 @@ function testStatusBadgeAgreementAcrossSurfaces(): void {
       status: 'CONNECTED',
       badgeClass: 'kpi-badge badge-cyan',
       badgeText: 'CONNECTED',
-      badgeColor: '#38bdf8',
+      badgeColor: '#52b788',
     },
     {
       status: 'DEGRADED',
       badgeClass: 'kpi-badge badge-amber',
       badgeText: 'DEGRADED',
-      badgeColor: '#f59e0b',
+      badgeColor: '#e9c46a',
     },
     {
       status: 'BLOCKED_TERRAIN',
       badgeClass: 'kpi-badge badge-crimson',
       badgeText: 'BLOCKED (TERRAIN)',
-      badgeColor: '#ef4444',
+      badgeColor: '#e05347',
     },
     {
       status: 'BLOCKED_OBSTACLE',
       badgeClass: 'kpi-badge badge-amber',
       badgeText: 'BLOCKED (OBSTACLE)',
-      badgeColor: '#f97316',
+      badgeColor: '#d97736',
     },
     {
       status: 'OUTAGE_DISCONNECTED',
       badgeClass: 'kpi-badge badge-slate',
       badgeText: 'OUTAGE (DISCONNECTED)',
-      badgeColor: '#94a3b8',
+      badgeColor: '#747c88',
     },
     {
       status: 'UNKNOWN',
       badgeClass: 'kpi-badge badge-neutral',
       badgeText: 'UNKNOWN (UNVERIFIED)',
-      badgeColor: '#64748b',
+      badgeColor: '#646c78',
     },
   ];
 

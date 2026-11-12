@@ -9,7 +9,7 @@
  * - CONNECTED:           Solid line []
  * - DEGRADED:            Long-dashed line [7, 3]
  * - BLOCKED_TERRAIN:     Medium-dashed line [4, 4]
- * - BLOCKED_OBSTACLE:    Short-dotted line [2, 3]
+ * - BLOCKED_OBSTACLE:    Short-dotted line [2, 4]
  * - OUTAGE_DISCONNECTED: Spaced-dashed line [3, 6]
  * - UNKNOWN:             Sparse-dotted line [1, 5]
  */
@@ -20,6 +20,7 @@ import {
   LinkStatusClassification,
   LinkStatusTelemetryInput,
 } from '../core/linkStatusClassifier';
+import { HIGHLAND_THEME } from './workbench/chartTheme';
 
 export interface MapLinkStyle {
   readonly status: LinkCommunicationStatus;
@@ -49,79 +50,79 @@ export interface MapLinkStyle {
 export const MAP_LINK_STYLES: Readonly<Record<LinkCommunicationStatus, MapLinkStyle>> = Object.freeze({
   CONNECTED: Object.freeze({
     status: 'CONNECTED',
-    strokeColor: 'rgba(56, 189, 248, 0.45)', // Clear cyan
-    selectedStrokeColor: '#38bdf8',           // Solid intense cyan
+    strokeColor: HIGHLAND_THEME.signal.sageStrokeSoft,
+    selectedStrokeColor: HIGHLAND_THEME.signal.sageBright,
     lineWidth: 1.2,
     selectedLineWidth: 2.6,
-    lineDash: Object.freeze([]),              // Solid line
-    nodeColor: '#10b981',                     // Emerald healthy terminal
+    lineDash: HIGHLAND_THEME.dash.solid,
+    nodeColor: HIGHLAND_THEME.signal.sage,
     statusLabel: 'CONNECTED',
-    badgeColor: '#38bdf8',
+    badgeColor: HIGHLAND_THEME.signal.sage,
     patternDescription: 'Solid line',
   }),
 
   DEGRADED: Object.freeze({
     status: 'DEGRADED',
-    strokeColor: 'rgba(245, 158, 11, 0.65)', // Amber
-    selectedStrokeColor: '#fbbf24',           // Solid bright amber
+    strokeColor: HIGHLAND_THEME.signal.ochreStrokeSoft,
+    selectedStrokeColor: HIGHLAND_THEME.signal.amberBright,
     lineWidth: 1.4,
     selectedLineWidth: 2.8,
-    lineDash: Object.freeze([7, 3]),          // Long dash
-    nodeColor: '#f59e0b',                     // Amber terminal
+    lineDash: HIGHLAND_THEME.dash.degraded,
+    nodeColor: HIGHLAND_THEME.signal.ochre,
     statusLabel: 'DEGRADED',
-    badgeColor: '#f59e0b',
+    badgeColor: HIGHLAND_THEME.signal.ochre,
     patternDescription: 'Long-dashed line',
   }),
 
   BLOCKED_TERRAIN: Object.freeze({
     status: 'BLOCKED_TERRAIN',
-    strokeColor: 'rgba(239, 68, 68, 0.65)',  // Red
-    selectedStrokeColor: '#f87171',           // Bright red
+    strokeColor: HIGHLAND_THEME.signal.vermilionStrokeSoft,
+    selectedStrokeColor: HIGHLAND_THEME.signal.vermilionBright,
     lineWidth: 1.3,
     selectedLineWidth: 2.6,
-    lineDash: Object.freeze([4, 4]),          // Medium dash
-    nodeColor: '#ef4444',                     // Crimson terminal
+    lineDash: HIGHLAND_THEME.dash.blockedTerrain,
+    nodeColor: HIGHLAND_THEME.signal.vermilion,
     statusLabel: 'BLOCKED (TERRAIN)',
-    badgeColor: '#ef4444',
+    badgeColor: HIGHLAND_THEME.signal.vermilion,
     patternDescription: 'Medium-dashed line',
   }),
 
   BLOCKED_OBSTACLE: Object.freeze({
     status: 'BLOCKED_OBSTACLE',
-    strokeColor: 'rgba(249, 115, 22, 0.70)', // Orange
-    selectedStrokeColor: '#fb923c',           // Bright tactical orange
+    strokeColor: HIGHLAND_THEME.signal.copperStrokeSoft,
+    selectedStrokeColor: HIGHLAND_THEME.signal.copperBright,
     lineWidth: 1.5,
     selectedLineWidth: 2.8,
-    lineDash: Object.freeze([2, 3]),          // Short dots
-    nodeColor: '#f97316',                     // Orange terminal
+    lineDash: HIGHLAND_THEME.dash.blockedObstacle,
+    nodeColor: HIGHLAND_THEME.signal.copper,
     statusLabel: 'BLOCKED (OBSTACLE)',
-    badgeColor: '#f97316',
+    badgeColor: HIGHLAND_THEME.signal.copper,
     patternDescription: 'Dotted line',
   }),
 
   OUTAGE_DISCONNECTED: Object.freeze({
     status: 'OUTAGE_DISCONNECTED',
-    strokeColor: 'rgba(100, 116, 139, 0.45)', // Muted slate grey
-    selectedStrokeColor: '#94a3b8',           // Slate grey
+    strokeColor: HIGHLAND_THEME.signal.ashStrokeSoft,
+    selectedStrokeColor: '#9ca3af',
     lineWidth: 1.1,
     selectedLineWidth: 2.2,
-    lineDash: Object.freeze([3, 6]),          // Spaced dash
-    nodeColor: '#64748b',                     // Muted grey terminal
+    lineDash: HIGHLAND_THEME.dash.outage,
+    nodeColor: HIGHLAND_THEME.signal.ash,
     statusLabel: 'OUTAGE (DISCONNECTED)',
-    badgeColor: '#94a3b8',
+    badgeColor: HIGHLAND_THEME.signal.ash,
     patternDescription: 'Spaced-dashed line',
   }),
 
   UNKNOWN: Object.freeze({
     status: 'UNKNOWN',
-    strokeColor: 'rgba(71, 85, 105, 0.35)',  // Neutral dark steel
-    selectedStrokeColor: '#64748b',           // Steel grey
+    strokeColor: HIGHLAND_THEME.signal.slateStrokeSoft,
+    selectedStrokeColor: HIGHLAND_THEME.text.faint,
     lineWidth: 1.0,
     selectedLineWidth: 2.0,
-    lineDash: Object.freeze([1, 5]),          // Sparse dots
-    nodeColor: '#475569',                     // Dark neutral
+    lineDash: HIGHLAND_THEME.dash.unknown,
+    nodeColor: HIGHLAND_THEME.signal.slate,
     statusLabel: 'UNKNOWN (UNVERIFIED)',
-    badgeColor: '#64748b',
+    badgeColor: '#646c78',
     patternDescription: 'Sparse-dotted line',
   }),
 });

@@ -25,6 +25,7 @@
 import { ActiveTransferTelemetry } from '../core/transferMetrics';
 import type { ITdmaFrameConfig } from '../core/tdmaConfig';
 import type { Point2D } from '../shared/types';
+import { HIGHLAND_THEME } from './workbench/chartTheme';
 
 export type { Point2D };
 
@@ -189,6 +190,8 @@ export interface DataCommRenderOptions {
   readonly isPaused?: boolean;
   readonly isVisualPaused?: boolean;
   readonly visualTimeMs?: number; // Optional explicit visual time for unit testing
+  readonly showVisualOverlay?: boolean;
+  readonly opacityMultiplier?: number;
 }
 
 // Backward-compatibility interfaces for existing callers & tests
@@ -1364,6 +1367,8 @@ export class DataCommVisualizer {
     let speed: number = 1.0;
     let isPaused: boolean = false;
     let manualVisualTimeMs: number | undefined;
+    let showVisualOverlay = true;
+    let opacityMultiplier = 1.0;
 
     if ('snapshot' in inputOrOptions) {
       snapshot = inputOrOptions.snapshot;
@@ -1372,6 +1377,11 @@ export class DataCommVisualizer {
       speed = inputOrOptions.speed ?? 1.0;
       isPaused = Boolean(inputOrOptions.isPaused);
       manualVisualTimeMs = inputOrOptions.visualTimeMs;
+      showVisualOverlay = inputOrOptions.showVisualOverlay ?? true;
+      const rawOpacity = inputOrOptions.opacityMultiplier;
+      opacityMultiplier = (typeof rawOpacity === 'number' && Number.isFinite(rawOpacity))
+        ? Math.max(0, Math.min(1, rawOpacity))
+        : 1.0;
     } else {
       // Legacy input wrapper: construct snapshot and extract screen positions
       const legacy = inputOrOptions as DataCommFrameInput;
@@ -1465,6 +1475,15 @@ export class DataCommVisualizer {
 
     ctx.save();
 
+    if (!showVisualOverlay || opacityMultiplier <= 0.001) {
+      ctx.restore();
+      return;
+    }
+
+    if (opacityMultiplier < 1.0) {
+      ctx.globalAlpha *= opacityMultiplier;
+    }
+
     // 6. Render Subframe Phase Activity
     if (activeSlot.phase === 'CONTROL_BROADCAST') {
       this.renderControlBroadcast(ctx, acnScreenPos, activeSlot);
@@ -1512,13 +1531,13 @@ export class DataCommVisualizer {
 
       ctx.beginPath();
       ctx.arc(acnPos.x, acnPos.y, ringRadius, 0, DataCommVisualizer.TAU);
-      ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+      ctx.strokeStyle = `rgba(138, 149, 230, ${alpha})`;
       ctx.lineWidth = 1.4;
       ctx.setLineDash([4, 4]);
       ctx.stroke();
     }
 
-    this.renderTacticalBadge(ctx, acnPos.x, acnPos.y - 14, 'SYNC TX [ACN → ALL]', '#38bdf8');
+    this.renderTacticalBadge(ctx, acnPos.x, acnPos.y - 14, 'SYNC TX [ACN → ALL]', HIGHLAND_THEME.signal.indigo);
     ctx.restore();
   }
 
@@ -1544,12 +1563,12 @@ export class DataCommVisualizer {
 
       ctx.beginPath();
       ctx.arc(acnPos.x, acnPos.y, ringRadius, 0, DataCommVisualizer.TAU);
-      ctx.strokeStyle = `rgba(251, 191, 36, ${alpha})`;
+      ctx.strokeStyle = `rgba(224, 159, 62, ${alpha})`;
       ctx.lineWidth = 1.6;
       ctx.stroke();
     }
 
-    this.renderTacticalBadge(ctx, acnPos.x, acnPos.y - 14, 'DL TX [ACN → ALL]', '#fbbf24');
+    this.renderTacticalBadge(ctx, acnPos.x, acnPos.y - 14, 'DL TX [ACN → ALL]', HIGHLAND_THEME.signal.amberBright);
     ctx.restore();
   }
 
@@ -1579,8 +1598,8 @@ export class DataCommVisualizer {
     // Case 1: Static TDMA wasting airtime into a severed link
     if (schedulerMode === 'static' && isSevered && activeSlot.capacityBits > 0) {
       this.drawStaticWastedAirtimeStream(ctx, nPos, acnPos, activeSlot.slotProgress);
-      this.renderTransmitterRing(ctx, nPos.x, nPos.y, activeSlot.slotProgress, '#ef4444');
-      this.renderTacticalBadge(ctx, nPos.x, nPos.y - 10, 'TX [WASTE]', '#ef4444');
+      this.renderTransmitterRing(ctx, nPos.x, nPos.y, activeSlot.slotProgress, HIGHLAND_THEME.signal.vermilion);
+      this.renderTacticalBadge(ctx, nPos.x, nPos.y - 10, 'TX [WASTE]', HIGHLAND_THEME.signal.vermilion);
       // ACN is NOT receiving on a severed link
     }
     // Case 2: Severed link in dynamic scheduling (suppressed / reclaimed)
@@ -1593,7 +1612,7 @@ export class DataCommVisualizer {
       this.drawActiveUplinkStream(ctx, nPos, acnPos, targetNode, activeSlot);
       const isFlush = activeSlot.isPreOcclusionFlush;
       const isDegraded = targetNode.isDegraded;
-      const themeColor = isFlush ? '#fbbf24' : (isDegraded ? '#f59e0b' : '#38bdf8');
+      const themeColor = isFlush ? HIGHLAND_THEME.signal.amberBright : (isDegraded ? HIGHLAND_THEME.signal.ochre : HIGHLAND_THEME.signal.sage);
       const txBadge = isFlush ? 'TX [FLUSH]' : (isDegraded ? 'TX [DEGRADED]' : 'TX');
       const rxBadge = isFlush ? 'RX [FLUSH]' : 'RX';
 
@@ -1607,19 +1626,19 @@ export class DataCommVisualizer {
     // Case 4: Valid allocation with ZERO payload activity (unutilized carrier)
     else if (activeSlot.capacityBits > 0) {
       this.drawUnutilizedCarrierStream(ctx, nPos, acnPos, targetNode);
-      this.renderTransmitterRing(ctx, nPos.x, nPos.y, activeSlot.slotProgress, 'rgba(56, 189, 248, 0.35)');
-      this.renderTacticalBadge(ctx, nPos.x, nPos.y - 10, 'TX [IDLE]', 'rgba(56, 189, 248, 0.65)');
+      this.renderTransmitterRing(ctx, nPos.x, nPos.y, activeSlot.slotProgress, 'rgba(179, 175, 167, 0.35)');
+      this.renderTacticalBadge(ctx, nPos.x, nPos.y - 10, 'TX [IDLE]', 'rgba(179, 175, 167, 0.72)');
 
       // ACN is Receiver (RX [IDLE])
-      this.renderReceiverReticle(ctx, acnPos.x, acnPos.y, activeSlot.slotProgress, 'rgba(56, 189, 248, 0.35)');
-      this.renderTacticalBadge(ctx, acnPos.x, acnPos.y - 14, 'RX [IDLE]', 'rgba(56, 189, 248, 0.65)');
+      this.renderReceiverReticle(ctx, acnPos.x, acnPos.y, activeSlot.slotProgress, 'rgba(179, 175, 167, 0.35)');
+      this.renderTacticalBadge(ctx, acnPos.x, acnPos.y - 14, 'RX [IDLE]', 'rgba(179, 175, 167, 0.72)');
     }
     // Case 5: 0-capacity or unallocated
     else {
       ctx.beginPath();
       ctx.moveTo(nPos.x, nPos.y);
       ctx.lineTo(acnPos.x, acnPos.y);
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+      ctx.strokeStyle = HIGHLAND_THEME.line.strong;
       ctx.lineWidth = 1.0;
       ctx.stroke();
     }
@@ -1645,10 +1664,10 @@ export class DataCommVisualizer {
     const isFlush = activeSlot.isPreOcclusionFlush;
     const isDegraded = node.isDegraded;
     const glowColor = isFlush
-      ? 'rgba(251, 191, 36, 0.85)'
-      : (isDegraded ? 'rgba(245, 158, 11, 0.75)' : 'rgba(56, 189, 248, 0.85)');
-    const packetColor = isFlush ? '#fbbf24' : (isDegraded ? '#f59e0b' : '#67e8f9');
-    const coreColor = '#ffffff';
+      ? 'rgba(224, 159, 62, 0.85)'
+      : (isDegraded ? 'rgba(233, 196, 106, 0.75)' : 'rgba(82, 183, 136, 0.85)');
+    const packetColor = isFlush ? HIGHLAND_THEME.signal.amberBright : (isDegraded ? HIGHLAND_THEME.signal.ochre : HIGHLAND_THEME.signal.sageBright);
+    const coreColor = HIGHLAND_THEME.text.primary;
 
     ctx.save();
 
@@ -1711,7 +1730,7 @@ export class DataCommVisualizer {
     ctx.beginPath();
     ctx.moveTo(nodePos.x, nodePos.y);
     ctx.lineTo(acnPos.x, acnPos.y);
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+    ctx.strokeStyle = 'rgba(179, 175, 167, 0.25)';
     ctx.lineWidth = node.isSelected ? 1.8 : 1.2;
     ctx.setLineDash([3, 4]);
     ctx.stroke();
@@ -1741,7 +1760,7 @@ export class DataCommVisualizer {
     ctx.beginPath();
     ctx.moveTo(nodePos.x, nodePos.y);
     ctx.lineTo(barrierPoint.x, barrierPoint.y);
-    ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
+    ctx.strokeStyle = 'rgba(224, 83, 71, 0.48)';
     ctx.lineWidth = 1.6;
     ctx.setLineDash([3, 3]);
     ctx.stroke();
@@ -1759,19 +1778,19 @@ export class DataCommVisualizer {
     particles.forEach((p) => {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 2.5, 0, DataCommVisualizer.TAU);
-      ctx.fillStyle = '#ef4444';
+      ctx.fillStyle = HIGHLAND_THEME.signal.vermilion;
       ctx.fill();
     });
 
     ctx.beginPath();
     ctx.arc(barrierPoint.x, barrierPoint.y, 4.0, 0, DataCommVisualizer.TAU);
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+    ctx.fillStyle = 'rgba(224, 83, 71, 0.88)';
     ctx.fill();
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = HIGHLAND_THEME.text.primary;
     ctx.lineWidth = 1.0;
     ctx.stroke();
 
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = HIGHLAND_THEME.text.primary;
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.moveTo(barrierPoint.x - 2.5, barrierPoint.y - 2.5);
@@ -1849,7 +1868,7 @@ export class DataCommVisualizer {
     const boxX = x - boxW / 2;
     const boxY = y - boxH / 2;
 
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+    ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.0;
     ctx.beginPath();
@@ -1879,22 +1898,22 @@ export class DataCommVisualizer {
       const nodeLabel = `S${node.nodeId}`;
       const status = trans.status;
 
-      let badgeBorder = '#38bdf8';
+      let badgeBorder: string = HIGHLAND_THEME.signal.sage;
       let badgeText = `${nodeLabel} | ${type} | ${pct.toFixed(0)}%`;
 
       if (status === 'TRANSMITTING') {
         const rateMbps = trans.current_rate_mbps ? trans.current_rate_mbps.toFixed(1) : '0.0';
         badgeText = `${nodeLabel} | ${type} | ${pct.toFixed(0)}% | ${rateMbps}M | UL`;
-        badgeBorder = node.isDegraded ? '#f59e0b' : '#38bdf8';
+        badgeBorder = node.isDegraded ? HIGHLAND_THEME.signal.ochre : HIGHLAND_THEME.signal.sage;
       } else if (status === 'BLOCKED_NLOS') {
         badgeText = `${nodeLabel} | ${type} | ${pct.toFixed(0)}% | BLOCKED | UL`;
-        badgeBorder = '#f59e0b';
+        badgeBorder = HIGHLAND_THEME.signal.ochre;
       } else if (status === 'ACKNOWLEDGED') {
         badgeText = `${nodeLabel} | ${type} | [✓ COMPLETE] | UL`;
-        badgeBorder = '#10b981';
+        badgeBorder = HIGHLAND_THEME.signal.sage;
       } else if (status === 'FAILED_DROPPED') {
         badgeText = `${nodeLabel} | ${type} | [✕ QUEUE EXPIRED] | UL`;
-        badgeBorder = '#ef4444';
+        badgeBorder = HIGHLAND_THEME.signal.vermilion;
       }
 
       ctx.save();
@@ -1905,7 +1924,7 @@ export class DataCommVisualizer {
       const boxX = pos.x + 8;
       const boxY = pos.y + 10;
 
-      ctx.fillStyle = 'rgba(11, 16, 21, 0.90)';
+      ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
       ctx.fillRect(boxX, boxY, boxW, boxH);
 
       ctx.strokeStyle = badgeBorder;
@@ -1918,7 +1937,7 @@ export class DataCommVisualizer {
 
       ctx.beginPath();
       ctx.arc(arcCenterX, arcCenterY, arcR, 0, DataCommVisualizer.TAU);
-      ctx.strokeStyle = 'rgba(71, 85, 105, 0.5)';
+      ctx.strokeStyle = HIGHLAND_THEME.line.strong;
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
@@ -1932,7 +1951,7 @@ export class DataCommVisualizer {
         ctx.stroke();
       }
 
-      ctx.fillStyle = '#f8fafc';
+      ctx.fillStyle = HIGHLAND_THEME.text.primary;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeText, boxX + 16, boxY + boxH / 2);
@@ -1949,8 +1968,8 @@ export class DataCommVisualizer {
     speed: number = 1.0
   ): void {
     ctx.save();
-    const bannerX = 14;
-    const bannerY = 14;
+    const bannerX = 10;
+    const bannerY = 42;
     const bannerH = 18;
 
     let phaseLabel: string;
@@ -1958,13 +1977,13 @@ export class DataCommVisualizer {
 
     if (this.playbackMode === 'stepped' && this.steppedLifecycle === 'complete') {
       phaseLabel = `STEP COMPLETE // HOLDING (${subframeOffsetMs.toFixed(1)}ms)`;
-      phaseColor = '#38bdf8';
+      phaseColor = HIGHLAND_THEME.signal.amber;
     } else if (activeSlot.phase === 'CONTROL_BROADCAST') {
       phaseLabel = `CTRL SYNC [ACN → ALL] (${subframeOffsetMs.toFixed(1)}ms)`;
-      phaseColor = '#38bdf8';
+      phaseColor = HIGHLAND_THEME.signal.indigo;
     } else if (activeSlot.phase === 'DOWNLINK_BROADCAST') {
       phaseLabel = `DL BROADCAST [ACN → ALL] (${subframeOffsetMs.toFixed(1)}ms)`;
-      phaseColor = '#fbbf24';
+      phaseColor = HIGHLAND_THEME.signal.amberBright;
     } else if (activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId !== null) {
       const scheduledNode = snapshot.nodes.find((n) => n.nodeId === activeSlot.scheduledNodeId);
       const isSevered = Boolean(scheduledNode && (scheduledNode.isBlocked || scheduledNode.isOutage));
@@ -1976,32 +1995,32 @@ export class DataCommVisualizer {
 
       if (isWasting) {
         phaseLabel = `UL SLOT S${activeSlot.scheduledNodeId} [WASTED AIRTIME // SEVERED] (${subframeOffsetMs.toFixed(1)}ms)`;
-        phaseColor = '#ef4444';
+        phaseColor = HIGHLAND_THEME.signal.vermilion;
       } else if (isFlush && isPayloadActive) {
         phaseLabel = `UL SLOT S${activeSlot.scheduledNodeId} [PRE-OCCLUSION FLUSH] (${subframeOffsetMs.toFixed(1)}ms) | MODELED SERVICE`;
-        phaseColor = '#fbbf24';
+        phaseColor = HIGHLAND_THEME.signal.amberBright;
       } else if (isPayloadActive) {
         phaseLabel = `UL SLOT S${activeSlot.scheduledNodeId} [S${activeSlot.scheduledNodeId} → ACN] (${subframeOffsetMs.toFixed(1)}ms) | MODELED SERVICE`;
-        phaseColor = scheduledNode?.isDegraded ? '#f59e0b' : '#10b981';
+        phaseColor = scheduledNode?.isDegraded ? HIGHLAND_THEME.signal.ochre : HIGHLAND_THEME.signal.sage;
       } else if (activeSlot.capacityBits > 0) {
         phaseLabel = `UL SLOT S${activeSlot.scheduledNodeId} [UNUTILIZED CARRIER] (${subframeOffsetMs.toFixed(1)}ms)`;
-        phaseColor = '#64748b';
+        phaseColor = HIGHLAND_THEME.text.faint;
       } else {
         phaseLabel = `UL SLOT S${activeSlot.scheduledNodeId} (${subframeOffsetMs.toFixed(1)}ms)`;
-        phaseColor = '#64748b';
+        phaseColor = HIGHLAND_THEME.text.faint;
       }
     } else if (activeSlot.phase === 'CONFLICT') {
       phaseLabel = `OVERLAP CONFLICT [INTEGRITY ERROR] (${subframeOffsetMs.toFixed(1)}ms)`;
-      phaseColor = '#ef4444';
+      phaseColor = HIGHLAND_THEME.signal.vermilion;
     } else if (activeSlot.phase === 'GUARD') {
       phaseLabel = `GUARD INTERVAL (${subframeOffsetMs.toFixed(1)}ms)`;
-      phaseColor = '#64748b';
+      phaseColor = HIGHLAND_THEME.text.faint;
     } else if (activeSlot.phase === 'IDLE_RECLAIMED') {
       phaseLabel = `IDLE AIRTIME [RECLAIMED] (${subframeOffsetMs.toFixed(1)}ms)`;
-      phaseColor = '#34d399';
+      phaseColor = HIGHLAND_THEME.signal.sage;
     } else {
       phaseLabel = `IDLE AIRTIME (${subframeOffsetMs.toFixed(1)}ms)`;
-      phaseColor = '#64748b';
+      phaseColor = HIGHLAND_THEME.text.faint;
     }
 
     const modeTag = this.playbackMode === 'stepped'
@@ -2013,7 +2032,7 @@ export class DataCommVisualizer {
     const textWidth = ctx.measureText(title).width;
     const bannerW = textWidth + 16;
 
-    ctx.fillStyle = 'rgba(11, 16, 21, 0.88)';
+    ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
     ctx.strokeStyle = phaseColor;
     ctx.lineWidth = 1.0;
     ctx.beginPath();

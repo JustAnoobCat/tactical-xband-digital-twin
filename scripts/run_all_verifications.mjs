@@ -32,7 +32,7 @@ const bailOnError = process.argv.includes('--bail');
 const outputDir = resolve(process.cwd(), getArg('--out-dir', 'benchmark_results/generated'));
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (46 Total Suites)
+// Verification Suites Registry (54 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -86,7 +86,11 @@ const REGISTERED_SUITES = [
   { id: 'verify:variable-altitude', name: 'UAV Variable Altitude System (ALT-T1–T10)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVariableAltitude.ts'], category: 'trajectory' },
   { id: 'verify:variable-tdma', name: 'Variable TDMA Frame System (TDMA-T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVariableTdma.ts'], category: 'tdma' },
   { id: 'verify:simulation-timeline', name: 'Simulation Timeline System (TL-CLK1–T16)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifySimulationTimeline.ts'], category: 'timeline' },
-  { id: 'verify:lookahead-decoupling', name: 'M1 Predictive Lookahead Decoupling (T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyLookaheadDecoupling.ts'], category: 'trajectory' }
+  { id: 'verify:timeline-e2e', name: 'Simulation Timeline Browser & Map E2E', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTimelineBrowserE2E.ts'], category: 'timeline' },
+  { id: 'verify:lookahead-decoupling', name: 'M1 Predictive Lookahead Decoupling (T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyLookaheadDecoupling.ts'], category: 'trajectory' },
+  { id: 'verify:map-layers', name: 'Map Layer System & RF Overlays', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMapLayerSystem.ts'], category: 'ui' },
+  { id: 'verify:timeline-enhancement', name: 'Simulation Timeline Enhancement (TL-ENH-A1–M2)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTimelineEnhancement.ts'], category: 'timeline' },
+  { id: 'verify:timeline-corrective', name: 'Simulation Timeline Corrective Fixes (REV14)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTimelineCorrective.ts'], category: 'timeline' }
 ];
 
 // -----------------------------------------------------------------------------

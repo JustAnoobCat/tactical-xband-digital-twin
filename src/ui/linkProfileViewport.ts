@@ -8,6 +8,7 @@
  */
 
 import type { LinkProfile, LinkProfileObstacleInterval, LinkProfileSample } from '../core/linkProfile';
+import { HIGHLAND_THEME } from './workbench/chartTheme';
 
 export interface ViewportBounds {
   readonly minDKm: number;
@@ -401,15 +402,15 @@ export function renderLinkProfileViewport(
 
   // Background sky
   const sky = ctx.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, '#0f1a27');
-  sky.addColorStop(1, '#0b1015');
+  sky.addColorStop(0, HIGHLAND_THEME.substrate.bg);
+  sky.addColorStop(1, HIGHLAND_THEME.substrate.void);
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, w, h);
 
   const samples = profile && profile.valid && profile.samples.length >= 2 ? profile.samples : null;
   if (!samples && (!legacyPoints || legacyPoints.length < 2)) {
-    ctx.fillStyle = '#7d8c99';
-    ctx.font = '12px ui-monospace, monospace';
+    ctx.fillStyle = HIGHLAND_THEME.text.faint;
+    ctx.font = `12px ${HIGHLAND_THEME.font.mono}`;
     ctx.textAlign = 'center';
     ctx.fillText('Waiting for link profile data…', w / 2, h / 2);
     return;
@@ -424,20 +425,20 @@ export function renderLinkProfileViewport(
   const altStep = calcNiceStep(altSpan, 5);
 
   ctx.lineWidth = 1;
-  ctx.font = '10px ui-monospace, monospace';
+  ctx.font = `10px ${HIGHLAND_THEME.font.mono}`;
 
   // Horizontal elevation gridlines
   const startAlt = Math.ceil(bounds.minAltM / altStep) * altStep;
   for (let alt = startAlt; alt <= bounds.maxAltM + 1e-6; alt += altStep) {
     const y = Math.round(viewport.yToCanvas(alt, layout)) + 0.5;
     if (y >= padT && y <= padT + plotH) {
-      ctx.strokeStyle = 'rgba(120, 140, 160, 0.14)';
+      ctx.strokeStyle = HIGHLAND_THEME.line.grid;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(w - padR, y);
       ctx.stroke();
 
-      ctx.fillStyle = '#7d8c99';
+      ctx.fillStyle = HIGHLAND_THEME.text.faint;
       ctx.textAlign = 'right';
       ctx.fillText(`${Math.round(alt)} m`, padL - 8, y + 3);
     }
@@ -448,19 +449,19 @@ export function renderLinkProfileViewport(
   for (let d = startD; d <= bounds.maxDKm + 1e-6; d += dStep) {
     const x = Math.round(viewport.xToCanvas(d, layout)) + 0.5;
     if (x >= padL && x <= padL + plotW) {
-      ctx.strokeStyle = 'rgba(120, 140, 160, 0.10)';
+      ctx.strokeStyle = HIGHLAND_THEME.line.grid;
       ctx.beginPath();
       ctx.moveTo(x, padT);
       ctx.lineTo(x, padT + plotH);
       ctx.stroke();
 
-      ctx.fillStyle = '#7d8c99';
+      ctx.fillStyle = HIGHLAND_THEME.text.faint;
       ctx.textAlign = 'center';
       ctx.fillText(String(+d.toFixed(1)), x, padT + plotH + 14);
     }
   }
 
-  ctx.fillStyle = '#7d8c99';
+  ctx.fillStyle = HIGHLAND_THEME.text.faint;
   ctx.textAlign = 'right';
   ctx.fillText('km from terminal', w - padR, h - 5);
 
@@ -476,8 +477,8 @@ export function renderLinkProfileViewport(
   } else if (legacyPoints && legacyPoints.length > 0) {
     drawLegacyProfileContent(ctx, layout, viewport, legacyPoints);
   } else {
-    ctx.font = '12px ui-monospace, monospace';
-    ctx.fillStyle = '#64748b';
+    ctx.font = `12px ${HIGHLAND_THEME.font.mono}`;
+    ctx.fillStyle = HIGHLAND_THEME.text.faint;
     ctx.textAlign = 'center';
     ctx.fillText('NO GROUND TERMINAL SELECTED · ACN RELAY STANDBY', padL + plotW / 2, padT + plotH / 2);
   }
@@ -491,13 +492,14 @@ export function renderLinkProfileViewport(
   const diffLossText = profile && profile.diffractionLossDb > 0 ? ` · DiffLoss ${profile.diffractionLossDb.toFixed(1)} dB` : '';
   const prefix = options?.titlePrefix ? `${options.titlePrefix} · ` : '';
 
-  ctx.font = '10.5px ui-monospace, monospace';
-  ctx.fillStyle = '#9aa8b3';
+  ctx.font = `10px ${HIGHLAND_THEME.font.mono}`;
+  ctx.fillStyle = HIGHLAND_THEME.text.muted;
   ctx.textAlign = 'left';
   ctx.fillText(
     `${prefix}Ground path ${dTotalKm.toFixed(1)} km · Slant ${slantTotalKm.toFixed(1)} km${diffLossText}${zoomText}`,
     padL + 4,
-    16
+    16,
+    Math.max(120, plotW - 8)
   );
 }
 
@@ -532,13 +534,13 @@ function drawTypedProfileContent(
       ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fillStyle = 'rgba(243, 181, 74, 0.12)';
+    ctx.fillStyle = 'rgba(233, 196, 106, 0.12)';
     ctx.fill();
 
     // Dashed Fresnel upper and lower boundary lines
     ctx.save();
     ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = 'rgba(243, 181, 74, 0.60)';
+    ctx.strokeStyle = 'rgba(233, 196, 106, 0.62)';
     ctx.lineWidth = 1;
 
     ctx.beginPath();
@@ -556,6 +558,19 @@ function drawTypedProfileContent(
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
+
+    // Label 0.6 F₁ boundary near midpoint
+    const midSample = samples[Math.floor(samples.length * 0.52)];
+    if (midSample) {
+      const fx = viewport.xToCanvas(midSample.horizontalGroundDistanceM / 1000, layout);
+      const fy = viewport.yToCanvas(midSample.lowerFresnelElevationMslM, layout);
+      if (fy > padT + 14 && fy < base - 10) {
+        ctx.font = `600 8.5px ${HIGHLAND_THEME.font.mono}`;
+        ctx.fillStyle = HIGHLAND_THEME.signal.ochre;
+        ctx.textAlign = 'center';
+        ctx.fillText('0.6 F₁', fx, fy + 10);
+      }
+    }
     ctx.restore();
   }
 
@@ -567,10 +582,10 @@ function drawTypedProfileContent(
       const bandWidth = Math.max(3, x2 - x1);
 
       // Vertical obstruction band
-      ctx.fillStyle = 'rgba(255, 68, 68, 0.22)';
+      ctx.fillStyle = HIGHLAND_THEME.signal.copperSoft;
       ctx.fillRect(x1, padT, bandWidth, plotH);
 
-      ctx.strokeStyle = 'rgba(255, 80, 80, 0.85)';
+      ctx.strokeStyle = HIGHLAND_THEME.signal.copperStrokeSoft;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(x1, padT);
@@ -580,8 +595,8 @@ function drawTypedProfileContent(
       ctx.stroke();
 
       // Top label
-      ctx.font = '600 9.5px ui-monospace, monospace';
-      ctx.fillStyle = '#ff8888';
+      ctx.font = `600 9.5px ${HIGHLAND_THEME.font.mono}`;
+      ctx.fillStyle = HIGHLAND_THEME.signal.copperBright;
       ctx.textAlign = 'center';
       const labelX = Math.max(layout.padL + 20, Math.min(layout.width - layout.padR - 20, x1 + bandWidth / 2));
       ctx.fillText(`⊘ ${obs.obstacleId}`, labelX, padT + 12);
@@ -590,8 +605,8 @@ function drawTypedProfileContent(
 
   // 3. Terrain body: Effective terrain (incorporating Earth curvature)
   const tg = ctx.createLinearGradient(0, padT, 0, base);
-  tg.addColorStop(0, '#33465a');
-  tg.addColorStop(1, '#141c26');
+  tg.addColorStop(0, HIGHLAND_THEME.cartography.terrainTopGrad);
+  tg.addColorStop(1, HIGHLAND_THEME.cartography.terrainBottomGrad);
 
   ctx.beginPath();
   ctx.moveTo(viewport.xToCanvas(samples[0].horizontalGroundDistanceM / 1000, layout), base);
@@ -608,7 +623,7 @@ function drawTypedProfileContent(
   // Bare DEM elevation line (subtle dashed line below effective terrain)
   ctx.save();
   ctx.setLineDash([2, 3]);
-  ctx.strokeStyle = 'rgba(140, 160, 180, 0.40)';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.terrainBareDem;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let i = 0; i < samples.length; i++) {
@@ -638,7 +653,7 @@ function drawTypedProfileContent(
         ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.fillStyle = 'rgba(255, 112, 112, 0.42)';
+      ctx.fillStyle = 'rgba(224, 83, 71, 0.42)';
       ctx.fill();
 
       idx = j;
@@ -649,7 +664,7 @@ function drawTypedProfileContent(
 
   // Effective terrain stroke outline
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = !profile.terrainIsLos ? '#ff7070' : '#7f9ab5';
+  ctx.strokeStyle = !profile.terrainIsLos ? HIGHLAND_THEME.signal.vermilionBright : HIGHLAND_THEME.cartography.terrainStrokeLos;
   ctx.lineWidth = 1.8;
   ctx.beginPath();
   for (let i = 0; i < samples.length; i++) {
@@ -659,6 +674,29 @@ function drawTypedProfileContent(
   }
   ctx.stroke();
 
+  // Dominant crest callout (truthfully sampled max elevation along path)
+  let peakIdx = -1;
+  let peakElevM = -Infinity;
+  for (let k = 1; k < samples.length - 1; k++) {
+    if (samples[k].terrainElevationMslM > peakElevM) {
+      peakElevM = samples[k].terrainElevationMslM;
+      peakIdx = k;
+    }
+  }
+  if (peakIdx >= 0 && Number.isFinite(peakElevM)) {
+    const px = viewport.xToCanvas(samples[peakIdx].horizontalGroundDistanceM / 1000, layout);
+    const py = viewport.yToCanvas(samples[peakIdx].effectiveTerrainElevationMslM, layout);
+    if (py > padT + 12 && py < base - 8) {
+      ctx.fillStyle = HIGHLAND_THEME.signal.ochre;
+      ctx.beginPath();
+      ctx.moveTo(px, py - 5);
+      ctx.lineTo(px - 3.5, py + 1.5);
+      ctx.lineTo(px + 3.5, py + 1.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
   // 4. Direct Line of Sight (LOS) Ray
   const firstSample = samples[0];
   const lastSample = samples.at(-1)!;
@@ -667,7 +705,7 @@ function drawTypedProfileContent(
   const pAcnX = viewport.xToCanvas(lastSample.horizontalGroundDistanceM / 1000, layout);
   const pAcnY = viewport.yToCanvas(lastSample.losElevationMslM, layout);
 
-  ctx.strokeStyle = !profile.terrainIsLos ? '#ff7070' : '#9db4ff';
+  ctx.strokeStyle = !profile.terrainIsLos ? HIGHLAND_THEME.signal.vermilionBright : HIGHLAND_THEME.signal.sage;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(pNodeX, pNodeY);
@@ -680,16 +718,16 @@ function drawTypedProfileContent(
     ctx.beginPath();
     ctx.arc(x, y, 4.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#0b1015';
+    ctx.strokeStyle = HIGHLAND_THEME.substrate.void;
     ctx.lineWidth = 1.5;
     ctx.stroke();
   };
-  drawEndpointDot(pNodeX, pNodeY, '#4fd1a1');
-  drawEndpointDot(pAcnX, pAcnY, '#38bdf8');
+  drawEndpointDot(pNodeX, pNodeY, HIGHLAND_THEME.signal.sage);
+  drawEndpointDot(pAcnX, pAcnY, HIGHLAND_THEME.signal.amber);
 
   // Endpoint labels
-  ctx.font = '600 10.5px ui-monospace, monospace';
-  ctx.fillStyle = '#e8ecef';
+  ctx.font = `600 10.5px ${HIGHLAND_THEME.font.mono}`;
+  ctx.fillStyle = HIGHLAND_THEME.text.primary;
   ctx.textAlign = 'left';
   ctx.fillText(profile.nodeName || 'Terminal', pNodeX + 8, pNodeY - 8);
   ctx.textAlign = 'right';
@@ -713,7 +751,7 @@ function drawTypedProfileContent(
     const cyLos = viewport.yToCanvas(critSample.losElevationMslM, layout);
 
     const isClear = minClearance >= 0;
-    const markerColor = isClear ? '#4fd1a1' : '#ff7070';
+    const markerColor = isClear ? HIGHLAND_THEME.signal.sage : HIGHLAND_THEME.signal.vermilionBright;
 
     ctx.strokeStyle = markerColor;
     ctx.lineWidth = 1.4;
@@ -724,12 +762,12 @@ function drawTypedProfileContent(
 
     const sign = isClear ? '+' : '';
     const txt = `${sign}${minClearance.toFixed(0)} m`;
-    ctx.font = '600 10.5px ui-monospace, monospace';
+    ctx.font = `600 10.5px ${HIGHLAND_THEME.font.mono}`;
     const textWidth = ctx.measureText(txt).width + 10;
     const badgeX = cx + textWidth + 12 < layout.width - layout.padR ? cx + 6 : cx - 6 - textWidth;
     const badgeY = (cyTerrain + cyLos) / 2 - 8;
 
-    ctx.fillStyle = 'rgba(11, 16, 21, 0.88)';
+    ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
     ctx.fillRect(badgeX, badgeY, textWidth, 16);
     ctx.strokeStyle = markerColor;
     ctx.lineWidth = 1;
@@ -763,7 +801,7 @@ function drawLegacyProfileContent(
     ctx.lineTo(viewport.xToCanvas(pts[i][0], layout), viewport.yToCanvas(pts[i][3], layout));
   }
   ctx.closePath();
-  ctx.fillStyle = 'rgba(243, 181, 74, 0.10)';
+  ctx.fillStyle = 'rgba(233, 196, 106, 0.12)';
   ctx.fill();
 
   // Terrain body
@@ -772,7 +810,7 @@ function drawLegacyProfileContent(
   pts.forEach(p => ctx.lineTo(viewport.xToCanvas(p[0], layout), viewport.yToCanvas(p[1], layout)));
   ctx.lineTo(viewport.xToCanvas(pts[last][0], layout), base);
   ctx.closePath();
-  ctx.fillStyle = '#33465a';
+  ctx.fillStyle = HIGHLAND_THEME.cartography.terrainTopGrad;
   ctx.fill();
 
   // LOS Ray
@@ -781,7 +819,7 @@ function drawLegacyProfileContent(
   const pAX = viewport.xToCanvas(pts[last][0], layout);
   const pAY = viewport.yToCanvas(pts[last][2], layout);
 
-  ctx.strokeStyle = '#9db4ff';
+  ctx.strokeStyle = HIGHLAND_THEME.signal.sage;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(pNX, pNY);

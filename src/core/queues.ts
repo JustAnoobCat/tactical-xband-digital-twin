@@ -54,6 +54,67 @@ export class FQCoDelQueue {
   public droppedDelayCount: number = 0;
   public droppedOverflowCount: number = 0;
 
+  private _droppedDelayBytes: number = 0;
+  private _droppedOverflowBytes: number = 0;
+  private _totalDroppedBytes: number = 0;
+
+  // Monotonic per-instance drop counters (survive FQCoDelQueue.reset() for eviction reconciliation)
+  private _monotonicDroppedDelayCount: number = 0;
+  private _monotonicDroppedOverflowCount: number = 0;
+  private _monotonicDroppedDelayBytes: number = 0;
+  private _monotonicDroppedOverflowBytes: number = 0;
+  private _monotonicTotalDroppedBytes: number = 0;
+
+  public get droppedDelayBytes(): number {
+    return this._droppedDelayBytes;
+  }
+
+  public get droppedOverflowBytes(): number {
+    return this._droppedOverflowBytes;
+  }
+
+  public get totalDroppedBytes(): number {
+    return this._totalDroppedBytes;
+  }
+
+  public get monotonicDroppedDelayCount(): number {
+    return this._monotonicDroppedDelayCount;
+  }
+
+  public get monotonicDroppedOverflowCount(): number {
+    return this._monotonicDroppedOverflowCount;
+  }
+
+  public get monotonicDroppedDelayBytes(): number {
+    return this._monotonicDroppedDelayBytes;
+  }
+
+  public get monotonicDroppedOverflowBytes(): number {
+    return this._monotonicDroppedOverflowBytes;
+  }
+
+  public get monotonicTotalDroppedBytes(): number {
+    return this._monotonicTotalDroppedBytes;
+  }
+
+  private recordOverflowDrop(bytes: number, count: number = 1): void {
+    this.droppedOverflowCount += count;
+    this._droppedOverflowBytes += bytes;
+    this._totalDroppedBytes += bytes;
+    this._monotonicDroppedOverflowCount += count;
+    this._monotonicDroppedOverflowBytes += bytes;
+    this._monotonicTotalDroppedBytes += bytes;
+  }
+
+  private recordDelayDrop(bytes: number, count: number = 1): void {
+    this.droppedDelayCount += count;
+    this._droppedDelayBytes += bytes;
+    this._totalDroppedBytes += bytes;
+    this._monotonicDroppedDelayCount += count;
+    this._monotonicDroppedDelayBytes += bytes;
+    this._monotonicTotalDroppedBytes += bytes;
+  }
+
   private readonly subqueues: Map<number, Packet[]>;
 
   constructor(maxBufferPackets: number = 400, maxC2Packets: number = 120) {
@@ -149,7 +210,9 @@ export class FQCoDelQueue {
       }
 
       targetQ.push(packet);
-      this.droppedOverflowCount += evicted.length;
+      for (let i = 0; i < evicted.length; i++) {
+        this.recordOverflowDrop(evicted[i].sizeBytes, 1);
+      }
       return [true, evicted];
     }
 
@@ -167,13 +230,15 @@ export class FQCoDelQueue {
       if (!dropped) {
         // Only C2 in buffer, cannot evict C2 for lower priority
         evicted.push(packet);
-        this.droppedOverflowCount += 1;
+        this.recordOverflowDrop(packet.sizeBytes, 1);
         return [false, evicted];
       }
     }
 
     targetQ.push(packet);
-    this.droppedOverflowCount += evicted.length;
+    for (let i = 0; i < evicted.length; i++) {
+      this.recordOverflowDrop(evicted[i].sizeBytes, 1);
+    }
     return [true, evicted];
   }
 
@@ -192,7 +257,7 @@ export class FQCoDelQueue {
         // Non-C2 packets that expired at head-of-line are discarded
         if (qos !== 69 && currentSimTimeS >= pkt.deadlineS) {
           q.shift();
-          this.droppedDelayCount += 1;
+          this.recordDelayDrop(pkt.sizeBytes, 1);
           continue;
         }
 
@@ -226,7 +291,7 @@ export class FQCoDelQueue {
         const pkt = q[i];
         if (currentSimTimeS >= pkt.deadlineS) {
           pruned.push(pkt);
-          this.droppedDelayCount += 1;
+          this.recordDelayDrop(pkt.sizeBytes, 1);
         } else {
           survivors.push(pkt);
         }
@@ -235,6 +300,18 @@ export class FQCoDelQueue {
     }
 
     return pruned;
+  }
+
+  public reset(): void {
+    for (const q of this.subqueues.values()) {
+      q.length = 0;
+    }
+    this.totalEnqueued = 0;
+    this.droppedDelayCount = 0;
+    this.droppedOverflowCount = 0;
+    this._droppedDelayBytes = 0;
+    this._droppedOverflowBytes = 0;
+    this._totalDroppedBytes = 0;
   }
 }
 

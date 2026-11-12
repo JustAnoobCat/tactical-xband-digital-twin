@@ -3252,7 +3252,7 @@ console.log('\n[54/54] Verifying live SimulationWorkerManager telemetry frame ti
   // Node 4 must render TX [FLUSH] and ACN must render RX [FLUSH]
   const flushTx = rec4.filledTexts.find(t => t.text === 'TX [FLUSH]');
   assert.ok(flushTx !== undefined, 'Node 4 must render TX [FLUSH] badge during flush allocation');
-  assert.equal(flushTx!.fillStyle, '#fbbf24', 'TX [FLUSH] badge must use amber gold theme');
+  assert.equal(flushTx!.fillStyle, '#f0b85c', 'TX [FLUSH] badge must use amber gold theme');
   const flushRx = rec4.filledTexts.find(t => t.text === 'RX [FLUSH]');
   assert.ok(flushRx !== undefined, 'ACN must render RX [FLUSH] badge during flush allocation');
   // HUD reports PRE-OCCLUSION FLUSH | MODELED SERVICE
@@ -3343,7 +3343,7 @@ console.log('\n[54/54] Verifying live SimulationWorkerManager telemetry frame ti
   // ACN renders SYNC TX [ACN → ALL] badge
   const syncBadge = recCtrl.filledTexts.find(t => t.text === 'SYNC TX [ACN → ALL]');
   assert.ok(syncBadge !== undefined, 'ACN must render SYNC TX [ACN → ALL] badge during CTRL subframe');
-  assert.equal(syncBadge!.fillStyle, '#38bdf8', 'SYNC badge must use cyan theme');
+  assert.equal(syncBadge!.fillStyle, '#8a95e6', 'SYNC badge must use Highland Quartz Indigo control accent');
   // HUD reports CTRL SYNC [ACN → ALL]
   assert.ok(recCtrl.filledTexts.some(t => t.text.includes('CTRL SYNC [ACN → ALL]')), 'HUD must report CTRL SYNC');
   // Wavefront circles radiate from ACN
@@ -3367,7 +3367,7 @@ console.log('\n[54/54] Verifying live SimulationWorkerManager telemetry frame ti
   // ACN renders DL TX [ACN → ALL] badge
   const dlBadge = recDl.filledTexts.find(t => t.text === 'DL TX [ACN → ALL]');
   assert.ok(dlBadge !== undefined, 'ACN must render DL TX [ACN → ALL] badge during DL subframe');
-  assert.equal(dlBadge!.fillStyle, '#fbbf24', 'DL badge must use amber theme');
+  assert.equal(dlBadge!.fillStyle, '#f0b85c', 'DL badge must use amber theme');
   // HUD reports DL BROADCAST [ACN → ALL]
   assert.ok(recDl.filledTexts.some(t => t.text.includes('DL BROADCAST [ACN → ALL]')), 'HUD must report DL BROADCAST');
   // Wavefront circles radiate from ACN in solid amber

@@ -10,6 +10,7 @@
  */
 
 import { TerrainBoundsTelemetry, REAL_LADAKH_DEM_METADATA } from '../core/terrain';
+import { HIGHLAND_THEME } from './workbench/chartTheme';
 
 export interface RadarGeometry {
   readonly centerX: number;
@@ -238,8 +239,23 @@ export function computeDemBoundaryGeometry(
 
   const badgeW = 148;
   const badgeH = 26;
-  const badgeX = Math.max(10, Math.min(canvasWidth - badgeW - 10, tl.x + 8));
-  const badgeY = Math.max(10, Math.min(canvasHeight - badgeH - 10, tl.y + 8));
+  const rawBadgeX = tl.x + 8;
+  const rawBadgeY = tl.y + 8;
+  let badgeX = Math.max(10, Math.min(canvasWidth - badgeW - 10, rawBadgeX));
+  let badgeY = Math.max(10, Math.min(canvasHeight - badgeH - 10, rawBadgeY));
+
+  // De-conflict with top-left #terrain-toolbox-toggle-btn (x: 10..158, y: 10..40) and
+  // TDMA banner (y: 42..70). Prefer shifting horizontally to x >= 166 at y = 10 unless
+  // narrow stage forces falling back cleanly below y = 74.
+  if (rawBadgeY < 46 && rawBadgeX < 166) {
+    const shiftedX = Math.max(166, Math.min(canvasWidth - badgeW - 10, rawBadgeX));
+    if (shiftedX + badgeW <= canvasWidth - 110) {
+      badgeX = shiftedX;
+      badgeY = 10;
+    } else {
+      badgeY = Math.max(10, Math.min(canvasHeight - badgeH - 10, Math.max(74, rawBadgeY)));
+    }
+  }
 
   const badge = {
     x: badgeX,
@@ -256,7 +272,10 @@ export function computeDemBoundaryGeometry(
     const dimW = 160;
     const dimH = 15;
     const dimX = Math.max(10, Math.min(canvasWidth - dimW - 10, br.x - dimW - 8));
-    const dimY = Math.max(20, Math.min(canvasHeight - dimH - 8, br.y - dimH - 6));
+    const maxDimY = (dimX + dimW > canvasWidth - 130)
+      ? canvasHeight - dimH - 48
+      : canvasHeight - dimH - 8;
+    const dimY = Math.max(20, Math.min(maxDimY, br.y - dimH - 6));
     dimensionsTag = {
       x: dimX,
       y: dimY,
@@ -285,14 +304,14 @@ export function renderDemCoverageBoundary(
   ctx.save();
 
   // 1. Dashed coverage boundary
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.demBoundary;
   ctx.lineWidth = 1.2;
   ctx.setLineDash([8, 5]);
   ctx.strokeRect(geom.rect.x, geom.rect.y, geom.rect.w, geom.rect.h);
   ctx.setLineDash([]);
 
   // 2. Solid corner brackets
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.90)';
+  ctx.strokeStyle = HIGHLAND_THEME.cartography.demBracket;
   ctx.lineWidth = 1.6;
 
   for (const b of [geom.brackets.tl, geom.brackets.tr, geom.brackets.bl, geom.brackets.br]) {
@@ -305,31 +324,31 @@ export function renderDemCoverageBoundary(
 
   // 3. Identification badge
   const b = geom.badge;
-  ctx.fillStyle = 'rgba(11, 14, 20, 0.88)';
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.50)';
+  ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
+  ctx.strokeStyle = HIGHLAND_THEME.signal.amberStrokeSoft;
   ctx.lineWidth = 1;
   ctx.fillRect(b.x, b.y, b.w, b.h);
   ctx.strokeRect(b.x, b.y, b.w, b.h);
 
   ctx.font = `bold 9px ${monoFont}`;
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.95)';
+  ctx.fillStyle = HIGHLAND_THEME.signal.amber;
   ctx.fillText(b.title, b.x + 7, b.y + 11);
 
   ctx.font = `8px ${monoFont}`;
-  ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
+  ctx.fillStyle = HIGHLAND_THEME.text.muted;
   ctx.fillText(b.subtitle, b.x + 7, b.y + 21);
 
   // 4. Subtle dimensions tag at bottom-right
   if (geom.dimensionsTag) {
     const d = geom.dimensionsTag;
-    ctx.fillStyle = 'rgba(11, 14, 20, 0.85)';
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
+    ctx.strokeStyle = HIGHLAND_THEME.signal.amberStrokeSoft;
     ctx.lineWidth = 1;
     ctx.fillRect(d.x, d.y, d.w, d.h);
     ctx.strokeRect(d.x, d.y, d.w, d.h);
 
     ctx.font = `8px ${monoFont}`;
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.90)';
+    ctx.fillStyle = HIGHLAND_THEME.text.muted;
     ctx.fillText(d.text, d.x + 4, d.y + 11);
   }
 
