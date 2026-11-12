@@ -90,7 +90,8 @@ const REGISTERED_SUITES = [
   { id: 'verify:lookahead-decoupling', name: 'M1 Predictive Lookahead Decoupling (T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyLookaheadDecoupling.ts'], category: 'trajectory' },
   { id: 'verify:map-layers', name: 'Map Layer System & RF Overlays', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMapLayerSystem.ts'], category: 'ui' },
   { id: 'verify:timeline-enhancement', name: 'Simulation Timeline Enhancement (TL-ENH-A1–M2)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTimelineEnhancement.ts'], category: 'timeline' },
-  { id: 'verify:timeline-corrective', name: 'Simulation Timeline Corrective Fixes (REV14)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTimelineCorrective.ts'], category: 'timeline' }
+  { id: 'verify:timeline-corrective', name: 'Simulation Timeline Corrective Fixes (REV14)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTimelineCorrective.ts'], category: 'timeline' },
+  { id: 'verify:terrain-toolbox', name: 'Scientific Terrain Toolbox (SPEC-TERRAIN-TOOLBOX-SCI-01-REV2)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTerrainToolboxSci.ts'], category: 'ui' }
 ];
 
 // -----------------------------------------------------------------------------

@@ -20,6 +20,7 @@ export interface MapLayersPanelOptions {
   container: HTMLElement;
   registry: MapLayerRegistry;
   onChanged?: () => void;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const PRESET_ORDER: readonly MapLayerPresetId[] = ['operational', 'rf_analysis', 'minimal', 'all'];
@@ -28,6 +29,7 @@ export class MapLayersPanel {
   private readonly container: HTMLElement;
   private readonly registry: MapLayerRegistry;
   private readonly onChanged?: () => void;
+  private readonly onOpenChange?: (open: boolean) => void;
 
   private readonly buttonEl: HTMLButtonElement;
   private readonly buttonLabelEl: HTMLSpanElement;
@@ -54,6 +56,9 @@ export class MapLayersPanel {
     this.container = options.container;
     this.registry = options.registry;
     this.onChanged = options.onChanged;
+    this.onOpenChange = options.onOpenChange;
+
+    this.syncOpenAttributes(false);
 
     // 1. Trigger button (#map-layers-btn)
     this.buttonEl = document.createElement('button');
@@ -318,6 +323,12 @@ export class MapLayersPanel {
     return this.open;
   }
 
+  private syncOpenAttributes(open: boolean): void {
+    const val = open ? 'true' : 'false';
+    this.container.setAttribute('data-layers-open', val);
+    this.container.closest('#radar-stage')?.setAttribute('data-layers-open', val);
+  }
+
   setOpen(open: boolean): void {
     if (this.open === open) return;
     this.open = open;
@@ -325,6 +336,8 @@ export class MapLayersPanel {
     this.popoverEl.setAttribute('aria-hidden', open ? 'false' : 'true');
     this.buttonEl.classList.toggle('is-active', open);
     this.buttonEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+    this.syncOpenAttributes(open);
+    this.onOpenChange?.(open);
   }
 
   sync(): void {

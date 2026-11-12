@@ -1968,7 +1968,8 @@ export class DataCommVisualizer {
     speed: number = 1.0
   ): void {
     ctx.save();
-    const bannerX = 10;
+    // Clear the 36px left-edge Terrain Toolbox icon rail (8px inset + 36px rail + 8px gap = 52px).
+    const bannerX = 52;
     const bannerY = 42;
     const bannerH = 18;
 
@@ -2029,8 +2030,26 @@ export class DataCommVisualizer {
     const speedTag = speed !== 1.0 ? ` ${speed.toFixed(1)}x` : '';
     const title = `TDMA 50x EXPANDED${modeTag}${speedTag} | SF #${snapshot.frameIndex} (T+${snapshot.simulationTimeS.toFixed(2)}s) | ${phaseLabel}`;
     ctx.font = 'bold 9px monospace';
-    const textWidth = ctx.measureText(title).width;
-    const bannerW = textWidth + 16;
+    const canvasRef = (ctx as { canvas?: { clientWidth?: number; width?: number } }).canvas;
+    const canvasWidth = canvasRef?.clientWidth || canvasRef?.width || 0;
+    const maxBannerW = canvasWidth > 0 ? Math.max(120, canvasWidth - bannerX - 12) : Number.POSITIVE_INFINITY;
+
+    let displayTitle = title;
+    let textWidth = ctx.measureText(displayTitle).width;
+    if (textWidth + 16 > maxBannerW) {
+      const maxTextW = Math.max(24, maxBannerW - 16);
+      let lo = 0;
+      let hi = title.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        const candidate = `${title.slice(0, mid)}…`;
+        if (ctx.measureText(candidate).width <= maxTextW) lo = mid;
+        else hi = mid - 1;
+      }
+      displayTitle = lo > 0 ? `${title.slice(0, lo)}…` : '…';
+      textWidth = ctx.measureText(displayTitle).width;
+    }
+    const bannerW = Math.min(maxBannerW, textWidth + 16);
 
     ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
     ctx.strokeStyle = phaseColor;
@@ -2043,7 +2062,7 @@ export class DataCommVisualizer {
     ctx.fillStyle = phaseColor;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(title, bannerX + 8, bannerY + bannerH / 2);
+    ctx.fillText(displayTitle, bannerX + 8, bannerY + bannerH / 2);
 
     ctx.restore();
   }

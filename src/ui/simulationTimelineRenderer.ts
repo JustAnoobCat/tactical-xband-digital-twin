@@ -122,6 +122,14 @@ export class SimulationTimelineRenderer {
     return res;
   }
 
+  /**
+   * Resizes the backing canvas to its current container and redraws immediately.
+   */
+  public resize(): void {
+    this.syncCanvas();
+    this.render();
+  }
+
   // ==========================================================================
   // Coordinate Projections
   // ==========================================================================
@@ -337,10 +345,10 @@ export class SimulationTimelineRenderer {
       this.viewStartTimeS = this.playheadTimeS - this.viewDurationS / 2;
     }
 
-    // Partition layout heights
-    const rulerH = 24;
-    const commH = 80;
-    const sparkH = Math.max(16, h - rulerH - commH);
+    // Partition layout heights dynamically across timeline resize bounds
+    const rulerH = h >= 72 ? 24 : Math.max(18, Math.floor(h * 0.34));
+    const sparkH = h >= 72 ? Math.min(20, Math.max(16, Math.round(h * 0.14))) : Math.max(14, Math.floor(h * 0.24));
+    const commH = Math.max(18, h - rulerH - sparkH);
 
     // 1. Render Track 1: Time Ruler & Status Ribbon
     this.renderRuler(ctx, 0, 0, w, rulerH);
@@ -352,14 +360,16 @@ export class SimulationTimelineRenderer {
     this.renderCommunicationTrack(ctx, 0, rulerH, w, commH);
 
     // 3. Render Track 3: Spatial Kinematics & Node Inventory
-    this.renderSpatialRibbon(ctx, 0, rulerH + commH, w, sparkH);
+    if (sparkH >= 12) {
+      this.renderSpatialRibbon(ctx, 0, rulerH + commH, w, sparkH);
+    }
 
     // 3.5 Render Future Lookahead Grid (t > t_newest)
     const tNewest = this.spatialBuffer.count > 0 ? this.spatialBuffer.newestSimulationTimeS : this.playheadTimeS;
     if (this.isLive || tNewest < this.viewStartTimeS + this.viewDurationS) {
       const xFuture = this.timeToX(tNewest);
       if (xFuture < w) {
-        this.renderFutureLookahead(ctx, Math.max(0, xFuture), 0, w - Math.max(0, xFuture), h);
+        this.renderFutureLookahead(ctx, Math.max(0, xFuture), 0, w - Math.max(0, xFuture), h, rulerH);
       }
     }
 
@@ -367,7 +377,14 @@ export class SimulationTimelineRenderer {
     this.renderPlayhead(ctx, w, h);
   }
 
-  private renderFutureLookahead(ctx: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number): void {
+  private renderFutureLookahead(
+    ctx: CanvasRenderingContext2D,
+    x0: number,
+    y0: number,
+    w: number,
+    h: number,
+    rulerH: number
+  ): void {
     if (w <= 0 || h <= 0) return;
     ctx.save();
     ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
@@ -390,12 +407,19 @@ export class SimulationTimelineRenderer {
       ctx.setLineDash([]);
     }
 
-    if (w >= 90) {
-      ctx.fillStyle = 'rgba(173, 181, 189, 0.40)';
-      ctx.font = `8px ${HIGHLAND_THEME.font.mono}`;
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'top';
-      ctx.fillText('LOOKAHEAD HORIZON', x0 + w - 8, y0 + 6);
+    if (w >= 110 && h >= rulerH + 26) {
+      const totalW = x0 + w;
+      const px = this.timeToX(this.playheadTimeS);
+      const collidesRightBadge = px >= totalW - 84;
+      const shiftOrSkip = collidesRightBadge || px >= totalW - 120;
+      const labelY = y0 + rulerH + (shiftOrSkip ? 30 : 10);
+      if (labelY + 10 <= y0 + h) {
+        ctx.fillStyle = 'rgba(173, 181, 189, 0.40)';
+        ctx.font = `8px ${HIGHLAND_THEME.font.mono}`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText('LOOKAHEAD HORIZON', x0 + w - 8, labelY);
+      }
     }
     ctx.restore();
   }
@@ -481,9 +505,9 @@ export class SimulationTimelineRenderer {
 
     // Status Badge (LIVE vs HISTORICAL)
     const badgeW = 74;
-    const badgeH = 16;
+    const badgeH = Math.min(16, Math.max(12, h - 2));
     const badgeX = x0 + w - badgeW - 6;
-    const badgeY = y0 + 4;
+    const badgeY = y0 + Math.max(1, Math.floor((h - badgeH) / 2));
 
     ctx.fillStyle = this.isLive ? HIGHLAND_THEME.signal.sageSoft : HIGHLAND_THEME.signal.ochreSoft;
     ctx.strokeStyle = this.isLive ? HIGHLAND_THEME.signal.sage : HIGHLAND_THEME.signal.ochre;
@@ -696,8 +720,10 @@ export class SimulationTimelineRenderer {
     }
 
     // Lane labels with protective backdrop
-    this.renderLaneLabel(ctx, 6, staticY + 4, 'STATIC TDMA');
-    this.renderLaneLabel(ctx, 6, tacY + 4, 'TAC-TAD');
+    if (laneH >= 14) {
+      this.renderLaneLabel(ctx, 6, staticY + 4, 'STATIC TDMA');
+      this.renderLaneLabel(ctx, 6, tacY + 4, 'TAC-TAD');
+    }
 
     // Active in-flight right boundary indicator when live
     if (this.isLive) {
@@ -775,6 +801,7 @@ export class SimulationTimelineRenderer {
   }
 
   private renderSpatialRibbon(ctx: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number): void {
+    if (h < 12) return;
     ctx.save();
     ctx.fillStyle = HIGHLAND_THEME.substrate.bg;
     ctx.fillRect(x0, y0, w, h);

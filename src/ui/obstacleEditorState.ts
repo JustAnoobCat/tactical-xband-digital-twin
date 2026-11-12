@@ -98,12 +98,14 @@ export class ObstacleEditorState {
   public mode: ObstacleMapMode = 'navigate';
   public placementShape: Obstacle['shape'] = 'cuboid';
   public message = 'Obstacle edits are previews until applied.';
+  private modeChangeListeners = new Set<(mode: ObstacleMapMode) => void>();
 
   public get committed(): readonly Obstacle[] { return cloneSet(this.committedSet); }
   public get draft(): readonly Obstacle[] { return cloneSet(this.draftSet); }
   public get selectedId(): string | null { return this.selected; }
   public get pendingRequestId(): string | null { return this.pending; }
   public get spatialLocked(): boolean { return this.locked; }
+  public get isEditModeActive(): boolean { return this.mode !== 'navigate'; }
   public get obstructionSnapshot(): readonly ObstructionSnapshot[] { return cloneSnapshot(this.obstructionSet); }
   public get obstructionSnapshotIsCurrent(): boolean { return this.obstructionIsCurrent; }
   public get dirty(): boolean { return JSON.stringify(this.committedSet) !== JSON.stringify(this.draftSet); }
@@ -112,13 +114,22 @@ export class ObstacleEditorState {
     return obstacle ? cloneObstacle(obstacle) : null;
   }
 
+  public onModeChange(listener: (mode: ObstacleMapMode) => void): () => void {
+    this.modeChangeListeners.add(listener);
+    return () => { this.modeChangeListeners.delete(listener); };
+  }
+
   public setSpatialLock(locked: boolean): void {
     if (this.locked === locked) return;
     this.locked = locked;
     this.message = locked ? 'Spatial lock is on. Draft is read-only until unlocked.' : 'Spatial lock is off.';
   }
 
-  public setMode(mode: ObstacleMapMode): void { this.mode = mode; }
+  public setMode(mode: ObstacleMapMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    for (const listener of this.modeChangeListeners) listener(mode);
+  }
   public setPlacementShape(shape: Obstacle['shape']): void { this.placementShape = shape; }
 
   public select(id: string | null): void {

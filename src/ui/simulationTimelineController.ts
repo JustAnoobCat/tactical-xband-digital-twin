@@ -403,6 +403,13 @@ export class SimulationTimelineController {
   }
 
   /**
+   * Resizes the timeline renderer canvas and triggers a redraw.
+   */
+  public resize(): void {
+    this.renderer.resize();
+  }
+
+  /**
    * Advances historical playback by delta wall time.
    */
   public advanceHistoricalPlayback(dtS: number): void {

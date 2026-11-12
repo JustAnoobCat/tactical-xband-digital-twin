@@ -45,6 +45,9 @@ export class TrajectoryEditorState {
   public get preview(): TrajectoryDraft { return cloneTrajectoryDraft(this.drafts.get(this.activeMode)!); }
   public get committedActive(): TrajectoryDraft { return cloneTrajectoryDraft(this.committed.get(this.activeMode)!); }
   public get dirty(): boolean { return JSON.stringify(this.preview) !== JSON.stringify(this.committedActive); }
+  public isMapPlacementActive(waypointPlacementArmed: boolean): boolean {
+    return this.activeMode === 'waypoints' && waypointPlacementArmed;
+  }
 
   public setMode(mode: TrajectoryMode): void {
     this.activeMode = mode;

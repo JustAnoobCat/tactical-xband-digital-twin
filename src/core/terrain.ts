@@ -293,6 +293,36 @@ export function generateSpectralElevationGrid(
   return out;
 }
 
+/**
+ * Computes authoritative min, max, and void count over an elevation raster.
+ * Treats non-finite samples and SRTM sentinel -32768 as voids.
+ */
+export function computeDemGridStats(grid: Float32Array): {
+  minElevationM: number;
+  maxElevationM: number;
+  voidCount: number;
+} {
+  let minElevationM = Number.POSITIVE_INFINITY;
+  let maxElevationM = Number.NEGATIVE_INFINITY;
+  let voidCount = 0;
+
+  for (let i = 0; i < grid.length; i++) {
+    const v = grid[i];
+    if (!Number.isFinite(v) || v === -32768) {
+      voidCount++;
+    } else {
+      if (v < minElevationM) minElevationM = v;
+      if (v > maxElevationM) maxElevationM = v;
+    }
+  }
+
+  return {
+    minElevationM: Number.isFinite(minElevationM) ? minElevationM : 0,
+    maxElevationM: Number.isFinite(maxElevationM) ? maxElevationM : 0,
+    voidCount,
+  };
+}
+
 let _cachedSynthGrid: Float32Array | null = null;
 function getCachedSynthGrid(): Float32Array {
   if (!_cachedSynthGrid) {
@@ -373,6 +403,8 @@ const candidateUrls = url
           const buffer = await response.arrayBuffer();
           if (buffer.byteLength >= 512 * 512 * 4) {
             this.realDemGrid = new Float32Array(buffer, 0, 512 * 512);
+            const stats = computeDemGridStats(this.realDemGrid);
+            this.demMetadata = Object.freeze({ ...REAL_LADAKH_DEM_METADATA, ...stats });
             this.hasRealDem = true;
             this.terrainMode = 'real';
             console.log(`[TerrainEngine] Loaded real satellite DEM from: ${targetUrl}`);
@@ -391,8 +423,24 @@ const candidateUrls = url
   }
 
   public loadCustomDem(data: Float32Array | ArrayBuffer, metadata?: DemGeographicMetadata): boolean {
-    this.realDemGrid = data instanceof Float32Array ? data : new Float32Array(data);
-    this.demMetadata = metadata ? Object.freeze({ ...metadata }) : REAL_LADAKH_DEM_METADATA;
+    const grid = data instanceof Float32Array ? data : new Float32Array(data);
+    this.realDemGrid = grid;
+    const baseMeta = metadata ? metadata : REAL_LADAKH_DEM_METADATA;
+    const needsStats =
+      !Number.isFinite(baseMeta.minElevationM) ||
+      !Number.isFinite(baseMeta.maxElevationM) ||
+      !Number.isFinite(baseMeta.voidCount);
+    if (needsStats) {
+      const stats = computeDemGridStats(grid);
+      this.demMetadata = Object.freeze({
+        ...baseMeta,
+        minElevationM: Number.isFinite(baseMeta.minElevationM) ? baseMeta.minElevationM : stats.minElevationM,
+        maxElevationM: Number.isFinite(baseMeta.maxElevationM) ? baseMeta.maxElevationM : stats.maxElevationM,
+        voidCount: Number.isFinite(baseMeta.voidCount) ? baseMeta.voidCount : stats.voidCount,
+      });
+    } else {
+      this.demMetadata = Object.freeze({ ...baseMeta });
+    }
     this.hasRealDem = true;
     this.terrainMode = 'real';
     return true;
