@@ -32,7 +32,7 @@ const bailOnError = process.argv.includes('--bail');
 const outputDir = resolve(process.cwd(), getArg('--out-dir', 'benchmark_results/generated'));
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (54 Total Suites)
+// Verification Suites Registry (58 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -91,7 +91,10 @@ const REGISTERED_SUITES = [
   { id: 'verify:map-layers', name: 'Map Layer System & RF Overlays', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMapLayerSystem.ts'], category: 'ui' },
   { id: 'verify:timeline-enhancement', name: 'Simulation Timeline Enhancement (TL-ENH-A1–M2)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTimelineEnhancement.ts'], category: 'timeline' },
   { id: 'verify:timeline-corrective', name: 'Simulation Timeline Corrective Fixes (REV14)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTimelineCorrective.ts'], category: 'timeline' },
-  { id: 'verify:terrain-toolbox', name: 'Scientific Terrain Toolbox (SPEC-TERRAIN-TOOLBOX-SCI-01-REV2)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTerrainToolboxSci.ts'], category: 'ui' }
+  { id: 'verify:terrain-toolbox', name: 'Scientific Terrain Toolbox (SPEC-TERRAIN-TOOLBOX-SCI-01-REV2)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTerrainToolboxSci.ts'], category: 'ui' },
+  { id: 'verify:quad-antenna', name: 'Body-Fixed 4-Sector ACN Antenna Array (QSA-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyQuadSectorAntenna.ts'], category: 'antenna' },
+  { id: 'verify:itu-physics', name: 'First-Principles ITU-R Physics & Terrain', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyItuFirstPrinciples.ts'], category: 'physics' },
+  { id: 'verify:ablation', name: 'Diffraction Scheduling & Ablation Baseline (ABL-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyAblationAndDiffraction.ts'], category: 'scheduler' }
 ];
 
 // -----------------------------------------------------------------------------

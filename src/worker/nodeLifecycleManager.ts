@@ -57,7 +57,7 @@ export interface AddNodeOutcome {
   accepted: boolean;
   reason?: string;
   entity?: GroundNodeEntity;
-  nodePair?: [GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem];
+  nodePair?: [GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem];
 }
 
 export interface DeleteNodeParams {
@@ -88,13 +88,14 @@ export interface DuplicateNodeOutcome {
   reason?: string;
   entity?: GroundNodeEntity;
   sourceNodeId?: number;
-  nodePair?: [GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem];
+  nodePair?: [GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem];
 }
 
 export interface UpdateNodeParams {
   msg: Extract<WorkerInboundCommand, { type: 'NODE_UPDATE' }>;
   nodesStatic: GroundNodeTrafficSubsystem[];
   nodesTac: GroundNodeTrafficSubsystem[];
+  nodesReactive?: GroundNodeTrafficSubsystem[];
   nodeRegistry: NodeRegistry;
   terrainEngine: TerrainEngine;
   spatialLocked: boolean;
@@ -114,7 +115,7 @@ export class NodeLifecycleManager {
   public static createNodePair(
     entity: GroundNodeEntity,
     terrainEngine: TerrainEngine
-  ): [GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem] {
+  ): [GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem] {
     const nid = entity.identity.nodeId;
     const [x, y] = entity.position;
     const terrainMsl = terrainEngine.getElevation(x, y);
@@ -136,29 +137,43 @@ export class NodeLifecycleManager {
       entity.trafficOptions,
       entity.identity
     );
+    const reactiveNode = new GroundNodeTrafficSubsystem(
+      nid,
+      entity.identity.role,
+      [x, y, z],
+      entity.seed,
+      entity.trafficOptions,
+      entity.identity
+    );
 
     staticNode.aglM = entity.aglM;
     tacNode.aglM = entity.aglM;
+    reactiveNode.aglM = entity.aglM;
     staticNode.txPowerDbm = entity.txPowerDbm;
     tacNode.txPowerDbm = entity.txPowerDbm;
+    reactiveNode.txPowerDbm = entity.txPowerDbm;
 
     const defaultCapacity = entity.identity.role === 'mcp' ? 20000 : 5000;
     staticNode.batteryCapacityMah = entity.batteryCapacityMah ?? defaultCapacity;
     tacNode.batteryCapacityMah = entity.batteryCapacityMah ?? defaultCapacity;
+    reactiveNode.batteryCapacityMah = entity.batteryCapacityMah ?? defaultCapacity;
 
     const batteryLevel = entity.batteryLevelPct ?? 100.0;
     staticNode.batteryLevelPct = batteryLevel;
     tacNode.batteryLevelPct = batteryLevel;
+    reactiveNode.batteryLevelPct = batteryLevel;
 
     const priority = entity.tacticalPriority ?? 1.0;
     staticNode.tacticalPriority = priority;
     tacNode.tacticalPriority = priority;
+    reactiveNode.tacticalPriority = priority;
 
     const depleted = batteryLevel <= 0;
     staticNode.isDepleted = depleted;
     tacNode.isDepleted = depleted;
+    reactiveNode.isDepleted = depleted;
 
-    return [staticNode, tacNode];
+    return [staticNode, tacNode, reactiveNode];
   }
 
   /**
@@ -170,17 +185,20 @@ export class NodeLifecycleManager {
   ): {
     nodesStatic: GroundNodeTrafficSubsystem[];
     nodesTac: GroundNodeTrafficSubsystem[];
+    nodesReactive: GroundNodeTrafficSubsystem[];
   } {
     const nodesStatic: GroundNodeTrafficSubsystem[] = [];
     const nodesTac: GroundNodeTrafficSubsystem[] = [];
+    const nodesReactive: GroundNodeTrafficSubsystem[] = [];
 
     for (const entity of nodeRegistry.getAll()) {
-      const [staticNode, tacNode] = this.createNodePair(entity, terrainEngine);
+      const [staticNode, tacNode, reactiveNode] = this.createNodePair(entity, terrainEngine);
       nodesStatic.push(staticNode);
       nodesTac.push(tacNode);
+      nodesReactive.push(reactiveNode);
     }
 
-    return { nodesStatic, nodesTac };
+    return { nodesStatic, nodesTac, nodesReactive };
   }
 
   /**
@@ -191,9 +209,11 @@ export class NodeLifecycleManager {
     nodesStatic: GroundNodeTrafficSubsystem[],
     nodesTac: GroundNodeTrafficSubsystem[],
     nodeRegistry: NodeRegistry,
-    terrainEngine: TerrainEngine
+    terrainEngine: TerrainEngine,
+    nodesReactive?: GroundNodeTrafficSubsystem[]
   ): void {
-    for (const nodes of [nodesStatic, nodesTac]) {
+    const lists = nodesReactive ? [nodesStatic, nodesTac, nodesReactive] : [nodesStatic, nodesTac];
+    for (const nodes of lists) {
       for (const node of nodes) {
         const [x, y] = node.position;
         const elev = terrainEngine.getElevation(x, y);
@@ -409,6 +429,7 @@ export class NodeLifecycleManager {
 
     const staticNode = nodesStatic.find(n => n.nodeId === nid);
     const tacNode = nodesTac.find(n => n.nodeId === nid);
+    const reactiveNode = params.nodesReactive?.find(n => n.nodeId === nid);
     const entity = nodeRegistry.getByNodeId(nid);
     if (!staticNode || !tacNode || !entity) {
       return { accepted: false, reason: 'Target node was not found.' };
@@ -453,30 +474,40 @@ export class NodeLifecycleManager {
 
     staticNode.position = [nextX, nextY, nextZ];
     tacNode.position = [nextX, nextY, nextZ];
+    if (reactiveNode) reactiveNode.position = [nextX, nextY, nextZ];
     staticNode.aglM = nextAgl;
     tacNode.aglM = nextAgl;
+    if (reactiveNode) reactiveNode.aglM = nextAgl;
 
     if (msg.role !== undefined) {
       staticNode.nodeType = msg.role;
       tacNode.nodeType = msg.role;
+      if (reactiveNode) reactiveNode.nodeType = msg.role;
     }
     if (msg.tx_power_dbm !== undefined) {
       staticNode.txPowerDbm = msg.tx_power_dbm;
       tacNode.txPowerDbm = msg.tx_power_dbm;
+      if (reactiveNode) reactiveNode.txPowerDbm = msg.tx_power_dbm;
     }
     if (msg.battery_capacity_mah !== undefined) {
       staticNode.batteryCapacityMah = msg.battery_capacity_mah;
       tacNode.batteryCapacityMah = msg.battery_capacity_mah;
+      if (reactiveNode) reactiveNode.batteryCapacityMah = msg.battery_capacity_mah;
     }
     if (msg.battery_level_pct !== undefined) {
       staticNode.batteryLevelPct = msg.battery_level_pct;
       tacNode.batteryLevelPct = msg.battery_level_pct;
       staticNode.isDepleted = msg.battery_level_pct <= 0;
       tacNode.isDepleted = msg.battery_level_pct <= 0;
+      if (reactiveNode) {
+        reactiveNode.batteryLevelPct = msg.battery_level_pct;
+        reactiveNode.isDepleted = msg.battery_level_pct <= 0;
+      }
     }
     if (msg.tactical_priority !== undefined) {
       staticNode.tacticalPriority = msg.tactical_priority;
       tacNode.tacticalPriority = msg.tactical_priority;
+      if (reactiveNode) reactiveNode.tacticalPriority = msg.tactical_priority;
     }
 
     nodeRegistry.updateEntity(nid, {

@@ -51,6 +51,10 @@ export interface LinkProfile {
   readonly obstacleBlocked: boolean;
   readonly obstacleIntervals: readonly LinkProfileObstacleInterval[];
   readonly samples: readonly LinkProfileSample[];
+  /** First-principles ITU-R P.526-15 physical parameters */
+  readonly crestRadiusM?: number;
+  readonly curvatureLossDb?: number;
+  readonly bullingtonApexDistM?: number;
   /** False only when profile inputs are numerically invalid or traverse out-of-coverage terrain; no sample is emitted in that case. */
   readonly valid: boolean;
   /** Explicit terrain coverage status; false if any sample along the propagation profile is unmapped. */
@@ -183,6 +187,9 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
     terrainMinimumClearanceM: Number.isFinite(input.obstruction.minClearanceM) ? input.obstruction.minClearanceM : 0,
     terrainCriticalFresnelRadiusM: Number.isFinite(input.obstruction.fresnelRadiusM) ? input.obstruction.fresnelRadiusM : 0,
     diffractionLossDb: Number.isFinite(input.obstruction.diffractionLossDb) ? input.obstruction.diffractionLossDb : 0,
+    crestRadiusM: input.obstruction.crestRadiusM,
+    curvatureLossDb: input.obstruction.curvatureLossDb,
+    bullingtonApexDistM: input.obstruction.bullingtonApexDistM,
     obstacleBlocked: input.obstruction.obstacleBlocked === true,
     obstacleIntervals: intervals,
     samples,

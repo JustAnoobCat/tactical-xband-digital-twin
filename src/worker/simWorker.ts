@@ -19,6 +19,7 @@ import {
   SPEED_OF_LIGHT,
 } from '../core/config';
 import { LinkBudgetEngine, LinkStatus } from '../core/linkBudget';
+import { QuadSectorAntennaEngine } from '../core/antennaArray';
 import { Obstacle } from '../core/obstacles';
 import {
   GroundNodeTrafficSubsystem,
@@ -29,6 +30,7 @@ import {
   BaseScheduler,
   FrameScheduleReport,
   LegacyStaticScheduler,
+  ReactiveMlwdfScheduler,
   SlotAllocation,
   TerrainAwareDynamicScheduler,
   T_FRAME_S,
@@ -171,6 +173,7 @@ export class SimulationWorkerManager {
   public flightConfig: ACNFlightConfig;
   public terrainEngine: TerrainEngine;
   public linkEngine: LinkBudgetEngine;
+  public readonly antennaEngine: QuadSectorAntennaEngine = new QuadSectorAntennaEngine();
   public trajectoryEngine: ACNTrajectory;
   public lookaheadEngine: PredictiveLookAheadEngine;
   public lookaheadIntervalFrames: number = 5; // Default: 10 Hz (every 5th frame) at 50 Hz physics
@@ -192,6 +195,7 @@ export class SimulationWorkerManager {
 
   public staticScheduler: LegacyStaticScheduler;
   public tacScheduler: TerrainAwareDynamicScheduler;
+  public reactiveScheduler: ReactiveMlwdfScheduler;
   public tdmaConfig: TdmaFrameConfig = new TdmaFrameConfig();
   private tdmaAccumulatorS: number = 0.0;
 
@@ -225,6 +229,7 @@ export class SimulationWorkerManager {
   public nodeRegistry: NodeRegistry;
   public nodesStatic: GroundNodeTrafficSubsystem[] = [];
   public nodesTac: GroundNodeTrafficSubsystem[] = [];
+  public nodesReactive: GroundNodeTrafficSubsystem[] = [];
   public linkStatuses: Map<number, LinkStatus> = new Map();
   public predStates: Map<number, PredictiveState> = new Map();
   public obstructionResults: Map<number, TerrainObstruction> = new Map();
@@ -248,6 +253,7 @@ export class SimulationWorkerManager {
   private node4Frozen: boolean = false;
   public lastReportStatic: FrameScheduleReport | null = null;
   public lastReportTac: FrameScheduleReport | null = null;
+  public lastReportReactive: FrameScheduleReport | null = null;
   /** Monotone counter incremented on every profile emission; used for stale-response detection. */
   private profileSerial: number = 0;
 
@@ -295,37 +301,52 @@ export class SimulationWorkerManager {
 
     this.staticScheduler = new LegacyStaticScheduler();
     this.staticScheduler.setTdmaConfig(this.tdmaConfig);
+    this.staticScheduler.enableMultiSector = true;
     this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
     this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+    this.reactiveScheduler = new ReactiveMlwdfScheduler(0.008);
+    this.reactiveScheduler.setTdmaConfig(this.tdmaConfig);
     this.tdmaAccumulatorS = 0.0;
 
     this.metrics = {
       staticGoodputBits: 0,
       tacGoodputBits: 0,
+      reactiveGoodputBits: 0,
       staticWastedBits: 0,
       tacWastedBits: 0,
+      reactiveWastedBits: 0,
       staticDroppedPkts: 0,
       tacDroppedPkts: 0,
+      reactiveDroppedPkts: 0,
       staticEnqueuedPkts: 0,
       tacEnqueuedPkts: 0,
+      reactiveEnqueuedPkts: 0,
       node4PreShadowBacklogKb: 0,
       staticNode4PreShadowBacklogKb: 0,
       lastStaticUtilPct: 0,
       lastTacUtilPct: 0,
+      lastReactiveUtilPct: 0,
       staticScheduledUlTimeS: 0,
       tacScheduledUlTimeS: 0,
+      reactiveScheduledUlTimeS: 0,
       staticAvailableUlTimeS: 0,
       tacAvailableUlTimeS: 0,
+      reactiveAvailableUlTimeS: 0,
       staticUnusedUlTimeS: 0,
       tacUnusedUlTimeS: 0,
+      reactiveUnusedUlTimeS: 0,
       staticPayloadBitsDequeued: 0,
       tacPayloadBitsDequeued: 0,
+      reactivePayloadBitsDequeued: 0,
       staticDelayDropsThisRun: 0,
       tacDelayDropsThisRun: 0,
+      reactiveDelayDropsThisRun: 0,
       staticOverflowDropsThisRun: 0,
       tacOverflowDropsThisRun: 0,
+      reactiveOverflowDropsThisRun: 0,
       staticFinalBacklogBits: 0,
       tacFinalBacklogBits: 0,
+      reactiveFinalBacklogBits: 0,
     };
 
     this.initNodes();
@@ -334,9 +355,10 @@ export class SimulationWorkerManager {
   }
 
   private initNodes(): void {
-    const { nodesStatic, nodesTac } = NodeLifecycleManager.initNodes(this.nodeRegistry, this.terrainEngine);
+    const { nodesStatic, nodesTac, nodesReactive } = NodeLifecycleManager.initNodes(this.nodeRegistry, this.terrainEngine);
     this.nodesStatic = nodesStatic;
     this.nodesTac = nodesTac;
+    this.nodesReactive = nodesReactive;
   }
 
   private registerActiveNodesWithSchedulers(): void {
@@ -345,6 +367,9 @@ export class SimulationWorkerManager {
     }
     for (let i = 0; i < this.nodesTac.length; i++) {
       this.tacScheduler.registerNode(this.nodesTac[i]);
+    }
+    for (let i = 0; i < this.nodesReactive.length; i++) {
+      this.reactiveScheduler.registerNode(this.nodesReactive[i]);
     }
   }
 
@@ -392,7 +417,8 @@ export class SimulationWorkerManager {
       this.nodesStatic,
       this.nodesTac,
       this.nodeRegistry,
-      this.terrainEngine
+      this.terrainEngine,
+      this.nodesReactive
     );
   }
 
@@ -521,11 +547,14 @@ export class SimulationWorkerManager {
       for (let i = 0; i < this.nodesStatic.length; i++) {
         const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT);
         const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT);
+        const rPkts = this.nodesReactive[i]?.generateTraffic(t, FRAME_DT) ?? [];
         this.metrics.staticEnqueuedPkts += sPkts.length;
         this.metrics.tacEnqueuedPkts += tPkts.length;
+        this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
 
         this.nodesStatic[i].queue.pruneExpiredPackets(t);
         this.nodesTac[i].queue.pruneExpiredPackets(t);
+        this.nodesReactive[i]?.queue.pruneExpiredPackets(t);
       }
       this.executeTdmaSuperframe(t, FRAME_DT);
       this.recordSuperframeEpoch(FRAME_DT);
@@ -537,11 +566,14 @@ export class SimulationWorkerManager {
         for (let i = 0; i < this.nodesStatic.length; i++) {
           const sPkts = this.nodesStatic[i].generateTraffic(t, tFrame);
           const tPkts = this.nodesTac[i].generateTraffic(t, tFrame);
+          const rPkts = this.nodesReactive[i]?.generateTraffic(t, tFrame) ?? [];
           this.metrics.staticEnqueuedPkts += sPkts.length;
           this.metrics.tacEnqueuedPkts += tPkts.length;
+          this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
 
           this.nodesStatic[i].queue.pruneExpiredPackets(t);
           this.nodesTac[i].queue.pruneExpiredPackets(t);
+          this.nodesReactive[i]?.queue.pruneExpiredPackets(t);
         }
         this.executeTdmaSuperframe(t, tFrame);
         this.recordSuperframeEpoch(tFrame);
@@ -553,11 +585,14 @@ export class SimulationWorkerManager {
       for (let i = 0; i < this.nodesStatic.length; i++) {
         const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT);
         const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT);
+        const rPkts = this.nodesReactive[i]?.generateTraffic(t, FRAME_DT) ?? [];
         this.metrics.staticEnqueuedPkts += sPkts.length;
         this.metrics.tacEnqueuedPkts += tPkts.length;
+        this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
 
         this.nodesStatic[i].queue.pruneExpiredPackets(t);
         this.nodesTac[i].queue.pruneExpiredPackets(t);
+        this.nodesReactive[i]?.queue.pruneExpiredPackets(t);
       }
       if (this.tdmaAccumulatorS >= tFrame - 1e-6) {
         this.executeTdmaSuperframe(t, tFrame);
@@ -604,9 +639,17 @@ export class SimulationWorkerManager {
       this.linkStatuses,
       this.predStates
     );
+    const reportReactive = this.reactiveScheduler.scheduleFrame(
+      this.frameIndex,
+      t,
+      this.nodesReactive,
+      this.linkStatuses,
+      this.predStates
+    );
 
     this.lastReportStatic = reportStatic;
     this.lastReportTac = reportTac;
+    this.lastReportReactive = reportReactive;
 
     // Rolling goodput sampling (M7.3: 200 superframes of completed payload delivery)
     this.staticGoodputTracker.recordSuperframeDeliveredBits(reportStatic.totalBitsTransmitted, tFrame);
@@ -617,24 +660,35 @@ export class SimulationWorkerManager {
     this.metrics.staticWastedBits += reportStatic.totalBitsWastedOnOutage;
     this.metrics.tacGoodputBits += reportTac.totalBitsTransmitted;
     this.metrics.tacWastedBits += reportTac.totalBitsWastedOnOutage;
+    this.metrics.reactiveGoodputBits = (this.metrics.reactiveGoodputBits ?? 0) + reportReactive.totalBitsTransmitted;
+    this.metrics.reactiveWastedBits = (this.metrics.reactiveWastedBits ?? 0) + reportReactive.totalBitsWastedOnOutage;
     this.metrics.staticDroppedPkts = reportStatic.packetsDroppedDelay + reportStatic.packetsDroppedOverflow;
     this.metrics.tacDroppedPkts = reportTac.packetsDroppedDelay + reportTac.packetsDroppedOverflow;
+    this.metrics.reactiveDroppedPkts = reportReactive.packetsDroppedDelay + reportReactive.packetsDroppedOverflow;
     this.metrics.lastStaticUtilPct = reportStatic.totalUlUtilizationPct;
     this.metrics.lastTacUtilPct = reportTac.totalUlUtilizationPct;
+    this.metrics.lastReactiveUtilPct = reportReactive.totalUlUtilizationPct;
     this.metrics.staticScheduledUlTimeS += reportStatic.totalUlScheduledS;
     this.metrics.tacScheduledUlTimeS += reportTac.totalUlScheduledS;
+    this.metrics.reactiveScheduledUlTimeS = (this.metrics.reactiveScheduledUlTimeS ?? 0) + reportReactive.totalUlScheduledS;
     this.metrics.staticAvailableUlTimeS += reportStatic.totalUlAvailableS;
     this.metrics.tacAvailableUlTimeS += reportTac.totalUlAvailableS;
+    this.metrics.reactiveAvailableUlTimeS = (this.metrics.reactiveAvailableUlTimeS ?? 0) + reportReactive.totalUlAvailableS;
     this.metrics.staticUnusedUlTimeS += reportStatic.totalUlUnusedS;
     this.metrics.tacUnusedUlTimeS += reportTac.totalUlUnusedS;
+    this.metrics.reactiveUnusedUlTimeS = (this.metrics.reactiveUnusedUlTimeS ?? 0) + reportReactive.totalUlUnusedS;
     this.metrics.staticPayloadBitsDequeued += reportStatic.totalPayloadBitsDequeued;
     this.metrics.tacPayloadBitsDequeued += reportTac.totalPayloadBitsDequeued;
+    this.metrics.reactivePayloadBitsDequeued = (this.metrics.reactivePayloadBitsDequeued ?? 0) + reportReactive.totalPayloadBitsDequeued;
     this.metrics.staticDelayDropsThisRun += reportStatic.packetsDroppedDelayThisFrame;
     this.metrics.tacDelayDropsThisRun += reportTac.packetsDroppedDelayThisFrame;
+    this.metrics.reactiveDelayDropsThisRun = (this.metrics.reactiveDelayDropsThisRun ?? 0) + reportReactive.packetsDroppedDelayThisFrame;
     this.metrics.staticOverflowDropsThisRun += reportStatic.packetsDroppedOverflowThisFrame;
     this.metrics.tacOverflowDropsThisRun += reportTac.packetsDroppedOverflowThisFrame;
+    this.metrics.reactiveOverflowDropsThisRun = (this.metrics.reactiveOverflowDropsThisRun ?? 0) + reportReactive.packetsDroppedOverflowThisFrame;
     this.metrics.staticFinalBacklogBits = reportStatic.totalBacklogBits;
     this.metrics.tacFinalBacklogBits = reportTac.totalBacklogBits;
+    this.metrics.reactiveFinalBacklogBits = reportReactive.totalBacklogBits;
 
     // 4. Track Node 4 pre-shadow backlog
     const n4Pred = this.predStates.get(4);
@@ -676,9 +730,11 @@ export class SimulationWorkerManager {
 
       nodeTac.batteryLevelPct = nextLevelPct;
       nodeStat.batteryLevelPct = nextLevelPct;
+      if (this.nodesReactive[i]) this.nodesReactive[i].batteryLevelPct = nextLevelPct;
       const depleted = nextLevelPct <= 0.0;
       nodeTac.isDepleted = depleted;
       nodeStat.isDepleted = depleted;
+      if (this.nodesReactive[i]) this.nodesReactive[i].isDepleted = depleted;
       this.nodeRegistry.updateBatteryLevel(nid, nextLevelPct);
     }
   }
@@ -693,6 +749,8 @@ export class SimulationWorkerManager {
     const pitchDeg = (Math.atan2(vz, vHoriz) * 180.0) / Math.PI;
     const terrainZ = this.terrainEngine.getElevation(acnPos[0], acnPos[1]);
     const altitudeAglM = this.liveAltitudeM - terrainZ;
+    const acnVel: [number, number, number] = [vx, vy, vz];
+    const attitude = this.antennaEngine.computeAcnAttitude(acnVel, this.simTimeS, false);
 
     const nodesSnapshot: SpatialNodeSnapshot[] = this.nodesTac.map((n) => {
       const obs = this.obstructionResults.get(n.nodeId);
@@ -710,6 +768,8 @@ export class SimulationWorkerManager {
         isObstacleBlocked: ls?.obstacleBlocked ?? false,
         snrDb: ls?.snrDb ?? 0.0,
         currentState: ps?.currentState ?? NodeTerrainState.NORMAL_LOS,
+        active_sector_id: ls?.activeSectorId,
+        pattern_rolloff_db: ls?.patternRollOffDb,
       };
     });
 
@@ -750,6 +810,8 @@ export class SimulationWorkerManager {
       },
       nodes: nodesSnapshot,
       selectedLinkBudget,
+      acn_heading_deg: attitude.headingDeg,
+      acn_bank_deg: attitude.bankDeg,
     };
   }
 
@@ -846,6 +908,10 @@ export class SimulationWorkerManager {
     const numNodes = this.nodesTac.length;
     const interval = Math.max(1, this.lookaheadIntervalFrames);
 
+    const rawVel = this.trajectoryEngine.getAcnVelocity(timeS);
+    const acnVel: [number, number, number] = [rawVel[0], rawVel[1], this.liveVzMps];
+    const acnAttitude = this.antennaEngine.computeAcnAttitude(acnVel, timeS, true);
+
     // 1. Authoritative 50 Hz Physical Obstruction Evaluation for ALL nodes
     for (let i = 0; i < numNodes; i++) {
       const node = this.nodesTac[i];
@@ -853,8 +919,17 @@ export class SimulationWorkerManager {
       const obstruction = this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
       const [nx, ny, nz] = node.position;
       const slantM = Math.hypot(acnPos[0] - nx, acnPos[1] - ny, acnPos[2] - nz);
+      const sectorEval = this.antennaEngine.evaluateNodeSector(
+        nid,
+        acnPos,
+        acnVel,
+        node.position,
+        this.rfConfig.acnAntennaGainDbi,
+        true,
+        acnAttitude
+      );
       nextObstructions.set(nid, obstruction);
-      nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm));
+      nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm, sectorEval, node.position[2], acnPos[2]));
       // Traffic-generation shadow is current geometry, independent of a predicted re-emergence label.
       nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked);
     }
@@ -866,7 +941,7 @@ export class SimulationWorkerManager {
         const node = this.nodesTac[i];
         const nid = node.nodeId;
         const obstruction = nextObstructions.get(nid)!;
-        const prediction = this.lookaheadEngine.evaluatePredictiveState(node.position, timeS, obstruction);
+        const prediction = this.lookaheadEngine.evaluatePredictiveState(node.position, timeS, obstruction, nid, this.antennaEngine, nextLinks.get(nid));
         nextPredictions.set(nid, prediction);
         this.lookaheadEngine.storeCachedEntry(nid, {
           nodeId: nid,
@@ -953,7 +1028,7 @@ export class SimulationWorkerManager {
         const obstruction = nextObstructions.get(nid)!;
 
         if (nodesToCompute.has(nid)) {
-          const prediction = this.lookaheadEngine.evaluatePredictiveState(node.position, timeS, obstruction);
+          const prediction = this.lookaheadEngine.evaluatePredictiveState(node.position, timeS, obstruction, nid, this.antennaEngine, nextLinks.get(nid));
           nextPredictions.set(nid, prediction);
           this.lookaheadEngine.storeCachedEntry(nid, {
             nodeId: nid,
@@ -971,7 +1046,8 @@ export class SimulationWorkerManager {
             const reconciled = this.lookaheadEngine.reconcilePredictiveState(
               cached.rawPrediction,
               dtElapsed,
-              obstruction
+              obstruction,
+              nextLinks.get(nid)
             );
             nextPredictions.set(nid, reconciled);
           } else {
@@ -979,6 +1055,9 @@ export class SimulationWorkerManager {
             // to generate a safe default prediction without running an expensive 30-step raycast.
             // Node is deferred to upcoming frames within the strict per-frame budget.
             const isPhysicallyBlocked = !obstruction.isLos || (obstruction.obstacleBlocked ?? false);
+            const curLs = nextLinks.get(nid);
+            const isWorkingLink = Boolean(curLs && !curLs.isOutage && curLs.bitrateBps > 0 && !curLs.obstacleBlocked);
+            const isHardShadow = isWorkingLink ? false : isPhysicallyBlocked;
             const fallbackPrediction: PredictiveState = {
               currentState: isPhysicallyBlocked ? NodeTerrainState.HARD_SHADOW_CUTOFF : NodeTerrainState.NORMAL_LOS,
               timeToOcclusionS: Number.POSITIVE_INFINITY,
@@ -987,6 +1066,7 @@ export class SimulationWorkerManager {
               fresnelRateOfChangeMps: 0.0,
               predictedOutageDurationS: 0.0,
               obstacleBlocked: obstruction.obstacleBlocked ?? false,
+              isHardShadow,
             };
             nextPredictions.set(nid, fallbackPrediction);
             this.deferredEmergencyQueue.add(nid);
@@ -1003,6 +1083,7 @@ export class SimulationWorkerManager {
       const isShad = nextShadow.get(nid) ?? false;
       this.nodesTac[i].isShadowed = isShad;
       this.nodesStatic[i].isShadowed = isShad;
+      if (this.nodesReactive[i]) this.nodesReactive[i].isShadowed = isShad;
     }
   }
 
@@ -1045,7 +1126,7 @@ export class SimulationWorkerManager {
     let linkStatus = this.linkStatuses.get(node.nodeId);
     if (!linkStatus) {
       const slantM = Math.hypot(acnPos[0] - node.position[0], acnPos[1] - node.position[1], acnPos[2] - node.position[2]);
-      linkStatus = this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm);
+      linkStatus = this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm, undefined, node.position[2], acnPos[2]);
       this.linkStatuses.set(node.nodeId, linkStatus);
     }
     let predState = this.predStates.get(node.nodeId);
@@ -1135,10 +1216,14 @@ export class SimulationWorkerManager {
     }
     this.initNodes();
     this.initTransfers();
+    this.antennaEngine.reset();
     this.staticScheduler = new LegacyStaticScheduler();
     this.staticScheduler.setTdmaConfig(this.tdmaConfig);
+    this.staticScheduler.enableMultiSector = true;
     this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
     this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+    this.reactiveScheduler = new ReactiveMlwdfScheduler(0.008);
+    this.reactiveScheduler.setTdmaConfig(this.tdmaConfig);
     this.registerActiveNodesWithSchedulers();
     this.tdmaAccumulatorS = 0.0;
     this.tdmaSimTimeS = 0.0;
@@ -1156,6 +1241,7 @@ export class SimulationWorkerManager {
     this.activeStepRequestId = undefined;
     this.lastReportStatic = null;
     this.lastReportTac = null;
+    this.lastReportReactive = null;
     this.staticGoodputTracker.reset();
     this.tacGoodputTracker.reset();
     this.liveAltitudeM = this.flightConfig.altitudeMslM;
@@ -1170,30 +1256,42 @@ export class SimulationWorkerManager {
     this.metrics = {
       staticGoodputBits: 0,
       tacGoodputBits: 0,
+      reactiveGoodputBits: 0,
       staticWastedBits: 0,
       tacWastedBits: 0,
+      reactiveWastedBits: 0,
       staticDroppedPkts: 0,
       tacDroppedPkts: 0,
+      reactiveDroppedPkts: 0,
       staticEnqueuedPkts: 0,
       tacEnqueuedPkts: 0,
+      reactiveEnqueuedPkts: 0,
       node4PreShadowBacklogKb: 0,
       staticNode4PreShadowBacklogKb: 0,
       lastStaticUtilPct: 0,
       lastTacUtilPct: 0,
+      lastReactiveUtilPct: 0,
       staticScheduledUlTimeS: 0,
       tacScheduledUlTimeS: 0,
+      reactiveScheduledUlTimeS: 0,
       staticAvailableUlTimeS: 0,
       tacAvailableUlTimeS: 0,
+      reactiveAvailableUlTimeS: 0,
       staticUnusedUlTimeS: 0,
       tacUnusedUlTimeS: 0,
+      reactiveUnusedUlTimeS: 0,
       staticPayloadBitsDequeued: 0,
       tacPayloadBitsDequeued: 0,
+      reactivePayloadBitsDequeued: 0,
       staticDelayDropsThisRun: 0,
       tacDelayDropsThisRun: 0,
+      reactiveDelayDropsThisRun: 0,
       staticOverflowDropsThisRun: 0,
       tacOverflowDropsThisRun: 0,
+      reactiveOverflowDropsThisRun: 0,
       staticFinalBacklogBits: 0,
       tacFinalBacklogBits: 0,
+      reactiveFinalBacklogBits: 0,
     };
   }
 
@@ -1321,6 +1419,7 @@ export class SimulationWorkerManager {
           this.initTransfers();
           this.staticScheduler = new LegacyStaticScheduler();
           this.staticScheduler.setTdmaConfig(this.tdmaConfig);
+          this.staticScheduler.enableMultiSector = true;
           this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
           this.tacScheduler.setTdmaConfig(this.tdmaConfig);
           this.registerActiveNodesWithSchedulers();
@@ -1341,6 +1440,7 @@ export class SimulationWorkerManager {
           this.initTransfers();
           this.staticScheduler = new LegacyStaticScheduler();
           this.staticScheduler.setTdmaConfig(this.tdmaConfig);
+          this.staticScheduler.enableMultiSector = true;
           this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
           this.tacScheduler.setTdmaConfig(this.tdmaConfig);
           this.registerActiveNodesWithSchedulers();
@@ -1789,6 +1889,10 @@ export class SimulationWorkerManager {
         const nid = outcome.entity!.identity.nodeId;
         this.nodesStatic.push(outcome.nodePair![0]);
         this.nodesTac.push(outcome.nodePair![1]);
+        if (outcome.nodePair![2]) {
+          this.nodesReactive.push(outcome.nodePair![2]);
+          this.reactiveScheduler.registerNode(outcome.nodePair![2]);
+        }
         this.staticScheduler.registerNode(outcome.nodePair![0]);
         this.tacScheduler.registerNode(outcome.nodePair![1]);
 
@@ -1864,6 +1968,7 @@ export class SimulationWorkerManager {
 
         this.nodesStatic = this.nodesStatic.filter(n => n.nodeId !== nid);
         this.nodesTac = this.nodesTac.filter(n => n.nodeId !== nid);
+        this.nodesReactive = this.nodesReactive.filter(n => n.nodeId !== nid);
 
         this.linkStatuses.delete(nid);
         this.predStates.delete(nid);
@@ -1871,6 +1976,7 @@ export class SimulationWorkerManager {
         this.lookaheadEngine.invalidateNode(nid);
         this.deferredEmergencyQueue.delete(nid);
         this.transferManager.evictNode(nid);
+        this.antennaEngine.evictNode(nid);
 
         if (this.selectedNodeId === nid) {
           if (this.nodesTac.length > 0) {
@@ -1918,6 +2024,10 @@ export class SimulationWorkerManager {
         const nid = outcome.entity!.identity.nodeId;
         this.nodesStatic.push(outcome.nodePair![0]);
         this.nodesTac.push(outcome.nodePair![1]);
+        if (outcome.nodePair![2]) {
+          this.nodesReactive.push(outcome.nodePair![2]);
+          this.reactiveScheduler.registerNode(outcome.nodePair![2]);
+        }
         this.staticScheduler.registerNode(outcome.nodePair![0]);
         this.tacScheduler.registerNode(outcome.nodePair![1]);
 
@@ -1951,6 +2061,7 @@ export class SimulationWorkerManager {
           msg,
           nodesStatic: this.nodesStatic,
           nodesTac: this.nodesTac,
+          nodesReactive: this.nodesReactive,
           nodeRegistry: this.nodeRegistry,
           terrainEngine: this.terrainEngine,
           spatialLocked: this.spatialLocked,

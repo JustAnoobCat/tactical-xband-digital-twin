@@ -57,6 +57,7 @@ import {
   PredictiveState,
 } from '../core/trajectory';
 import { PROFILE_FRESNEL_FRACTION } from '../core/profileEngine';
+import type { QuadSectorAntennaEngine } from '../core/antennaArray';
 
 export { PROFILE_FRESNEL_FRACTION };
 export type { NodeTransferState };
@@ -89,6 +90,18 @@ export interface RunningMetrics {
   tacOverflowDropsThisRun: number;
   staticFinalBacklogBits: number;
   tacFinalBacklogBits: number;
+  reactiveGoodputBits?: number;
+  reactiveWastedBits?: number;
+  reactiveDroppedPkts?: number;
+  reactiveEnqueuedPkts?: number;
+  lastReactiveUtilPct?: number;
+  reactiveScheduledUlTimeS?: number;
+  reactiveAvailableUlTimeS?: number;
+  reactiveUnusedUlTimeS?: number;
+  reactivePayloadBitsDequeued?: number;
+  reactiveDelayDropsThisRun?: number;
+  reactiveOverflowDropsThisRun?: number;
+  reactiveFinalBacklogBits?: number;
 }
 
 
@@ -110,6 +123,7 @@ export interface TelemetrySimulationState {
 
   readonly nodesStatic: readonly GroundNodeTrafficSubsystem[];
   readonly nodesTac: readonly GroundNodeTrafficSubsystem[];
+  readonly nodesReactive?: readonly GroundNodeTrafficSubsystem[];
   readonly nodeRegistry: NodeRegistry;
   readonly registrationLifecycle: RegistrationLifecycle;
 
@@ -128,10 +142,12 @@ export interface TelemetrySimulationState {
   readonly metrics: RunningMetrics;
   readonly lastReportStatic: FrameScheduleReport | null;
   readonly lastReportTac: FrameScheduleReport | null;
+  readonly lastReportReactive?: FrameScheduleReport | null;
   readonly staticGoodputTracker: RollingGoodputTracker;
   readonly tacGoodputTracker: RollingGoodputTracker;
   readonly tdmaConfig: TdmaFrameConfig;
   readonly simulationRunId?: number;
+  readonly antennaEngine?: QuadSectorAntennaEngine;
 }
 
 /**
@@ -205,6 +221,7 @@ export function normalizeSlotAllocationToFrame(
     photo_bytes: 0,
     is_pre_occlusion_flush: a.isPreOcclusionFlush,
     is_out_of_frame: isOutOfFrame,
+    sector_id: a.sectorId,
   };
 }
 
@@ -249,15 +266,16 @@ export class TelemetrySerializer {
       const trans = state.nodeTransfers.get(node.nodeId);
       const isOutage = ls?.isOutage ?? true;
       const isObstacleBlocked = ls?.obstacleBlocked ?? false;
-      const isTerrainBlocked = !(obstruction?.isLos ?? true);
-      const isBlocked = isTerrainBlocked || isObstacleBlocked;
-      const isHardShadow = ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF;
+      const isHardShadow = ps?.isHardShadow !== undefined
+        ? ps.isHardShadow
+        : (ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF);
+      const isBlocked = isObstacleBlocked || isHardShadow;
       const hasSlotCapacity = alloc !== undefined && alloc.capacityBits > 0 && alloc.durationS > 0;
-      const isTransmitting = !isOutage && !isBlocked && !isHardShadow && (
+      const isTransmitting = !isOutage && !isBlocked && (
         (trans !== undefined && trans.status === 'TRANSMITTING') ||
         (hasSlotCapacity && q.getTotalBacklogBytes() > 0)
       );
-      const isWastingAirtime = Boolean(hasSlotCapacity && (isOutage || isBlocked || isHardShadow));
+      const isWastingAirtime = Boolean(hasSlotCapacity && (isOutage || isBlocked));
 
       const transRemaining = trans ? Math.max(0, trans.totalBytes - trans.deliveredBytes) : 0;
       const transEta = trans ? calculateTransferEtaSeconds(transRemaining, trans.currentRateBps, trans.status, state.isPaused) : { etaS: null, etaStatus: 'STANDBY' };
@@ -341,6 +359,14 @@ export class TelemetrySerializer {
         registration_completion_time_s: registration.completion_time_s,
         registration_elapsed_s: registration.start_time_s === null ? null : Math.max(0, state.simTimeS - registration.start_time_s),
         communication_eligible: registration.state === 'REGISTERED',
+        active_sector_id: ls?.activeSectorId,
+        sector_boresight_deg: ls?.sectorBoresightDeg,
+        body_azimuth_deg: ls?.bodyAzimuthDeg,
+        off_boresight_deg: ls?.offBoresightAzDeg,
+        pattern_rolloff_db: ls?.patternRollOffDb,
+        sector_gains_dbi: ls?.allSectorGainsDbi,
+        is_crossover_zone: ls?.isCrossoverZone,
+        handover_count: ls?.handoverCount,
       };
     });
   }
@@ -380,6 +406,17 @@ export class TelemetrySerializer {
     const vz = state.liveVzMps !== undefined ? state.liveVzMps : (vzTraj ?? 0.0);
     const vHoriz = Math.hypot(vx, vy);
     const pitchDeg = (Math.atan2(vz, vHoriz) * 180.0) / Math.PI;
+
+    const attitude = state.antennaEngine
+      ? state.antennaEngine.computeAcnAttitude([vx, vy, vz], state.simTimeS, false)
+      : {
+          headingDeg: vHoriz > 1e-3 ? ((Math.atan2(vx, vy) * 180.0) / Math.PI + 360.0) % 360.0 : 0.0,
+          pitchDeg,
+          bankDeg: 0.0,
+        };
+    const acnHeadingDeg = attitude.headingDeg;
+    const acnBankDeg = attitude.bankDeg;
+
     const terrainElevMsl = state.terrainEngine.getElevation(acnPos[0], acnPos[1]);
     const terrainElevSafe = Number.isFinite(terrainElevMsl) ? terrainElevMsl : 0.0;
     const aglM = acnPos[2] - terrainElevSafe;
@@ -611,6 +648,8 @@ export class TelemetrySerializer {
         vel_y: vy,
         vel_z: vz,
         pitch_deg: pitchDeg,
+        bank_deg: acnBankDeg,
+        heading_deg: acnHeadingDeg,
         altitude_msl_m: acnPos[2],
         altitude_agl_m: aglM,
         terrain_elevation_msl_m: terrainElevSafe,
@@ -632,6 +671,7 @@ export class TelemetrySerializer {
       active_gantt_allocations: allocations,
       static_gantt_allocations: (state.lastReportStatic?.allocations ?? []).map(mapAllocStatic),
       tac_gantt_allocations: (state.lastReportTac?.allocations ?? []).map(mapAllocTac),
+      reactive_gantt_allocations: (state.lastReportReactive?.allocations ?? []).map(mapAllocTac),
       comparative_kpi_dashboard: kpi,
       static_p50_bps: state.staticGoodputTracker.p50Bps,
       static_p95_bps: state.staticGoodputTracker.p95Bps,
@@ -654,6 +694,20 @@ export class TelemetrySerializer {
       terrain_bounds: state.terrainEngine.getTerrainBoundsTelemetry(),
       tdma_frame_config: state.tdmaConfig ? state.tdmaConfig.toObject() : undefined,
       ...(typeof state.simulationRunId === 'number' ? { simulation_run_id: state.simulationRunId } : {}),
+      acn_heading_deg: acnHeadingDeg,
+      acn_bank_deg: acnBankDeg,
+      sector_node_counts: state.lastReportTac?.sectorNodeCounts ?? state.lastReportStatic?.sectorNodeCounts ?? [0, 0, 0, 0],
+      static_sector_util_pct: state.lastReportStatic?.sectorUtilizationPct ?? [0, 0, 0, 0],
+      tac_sector_util_pct: state.lastReportTac?.sectorUtilizationPct ?? [0, 0, 0, 0],
+      tac_sector_goodput_mbps: state.lastReportTac?.sectorGoodputBits
+        ? [
+            state.lastReportTac.sectorGoodputBits[0] / (state.tdmaConfig.frameDurationS * 1e6),
+            state.lastReportTac.sectorGoodputBits[1] / (state.tdmaConfig.frameDurationS * 1e6),
+            state.lastReportTac.sectorGoodputBits[2] / (state.tdmaConfig.frameDurationS * 1e6),
+            state.lastReportTac.sectorGoodputBits[3] / (state.tdmaConfig.frameDurationS * 1e6),
+          ]
+        : [0, 0, 0, 0],
+      total_sector_handovers: state.antennaEngine ? state.antennaEngine.getTotalHandovers() : 0,
     };
   }
 

@@ -25,6 +25,7 @@ export interface TerrainObstruction {
   readonly fresnelRadiusM: number;
   readonly diffractionLossDb: number;
   readonly isLos: boolean;
+  readonly isHardShadow?: boolean;
   /** Explicit coverage tracking: true if every sample along path has genuine, valid DEM elevation. */
   readonly isCoverageComplete?: boolean;
   /** Structural geometry result; independent of terrain LOS and terrain diffraction. */
@@ -32,6 +33,10 @@ export interface TerrainObstruction {
   readonly obstacleIntersections: readonly ObstacleIntersection[];
   /** Detailed reason when terrain coverage is incomplete along propagation path. */
   readonly coverageNote?: string;
+  // First-principles ITU-R P.526-15 physical parameters
+  readonly crestRadiusM?: number;
+  readonly curvatureLossDb?: number;
+  readonly bullingtonApexDistM?: number;
 }
 
 // Regional 1,200 x 1,200 km Theater Extent (+/- 600 km from origin)
@@ -793,12 +798,77 @@ const candidateUrls = url
     return { slantRangeM: d3D, elevationDeg, tauPropS, timingAdvanceS };
   }
 
+  /**
+   * ITU-R P.526-15 §4.2 Rounded-Crest Curvature Attenuation T(m, n) (dB).
+   */
+  public static computeCrestCurvatureLossDb(
+    crestRadiusM: number,
+    d1M: number,
+    d2M: number,
+    hObsM: number,
+    wavelengthM: number
+  ): number {
+    if (d1M <= 0.0 || d2M <= 0.0 || wavelengthM <= 0.0) {
+      return 0.0;
+    }
+    const rCrest = Math.max(0.5, Math.min(2000.0, crestRadiusM));
+    const hObs = Math.max(0.0, hObsM);
+    const m = Math.pow(rCrest, 2.0 / 3.0) * ((d1M + d2M) / (d1M * d2M)) * Math.pow(wavelengthM / Math.PI, 1.0 / 3.0);
+    const n = hObs * Math.pow(rCrest, -1.0 / 3.0) * Math.pow(Math.PI / wavelengthM, 2.0 / 3.0);
+    const mn = m * n;
+    let tVal: number;
+    if (mn <= 4.0) {
+      tVal = 7.2 * Math.sqrt(m) - (2.0 - 12.5 * n) * m + 3.6 * Math.pow(m, 1.5) - 0.8 * m * m;
+    } else {
+      tVal = -6.0 - 20.0 * Math.log10(Math.max(mn, 1e-9)) + 7.2 * Math.sqrt(m) - (2.0 - 17.0 * n) * m + 3.6 * Math.pow(m, 1.5) - 0.8 * m * m;
+    }
+    return Math.max(0.0, Math.min(20.0, tVal));
+  }
+
+  /**
+   * ITU-R P.526-15 Single knife-edge diffraction loss J(nu) (dB).
+   */
+  public static computeKnifeEdgeLossDb(
+    hPenetrationM: number,
+    d1M: number,
+    d2M: number,
+    wavelengthM: number
+  ): number {
+    const nu = hPenetrationM * Math.sqrt((2.0 / wavelengthM) * (1.0 / d1M + 1.0 / d2M));
+    const arg = Math.sqrt(Math.pow(nu - 0.1, 2) + 1.0) + (nu - 0.1);
+    return 6.9 + 20.0 * Math.log10(Math.max(arg, 1e-9));
+  }
+
+  /**
+   * ITU-R P.526-15 §4.5.1 Bullington Horizon Tangent Intersection Apex.
+   */
+  public static computeBullingtonApex(
+    zTx: number,
+    zRx: number,
+    d3D: number,
+    sTxMax: number,
+    sRxMax: number,
+    sTxDistM: number,
+    sRxDistM: number
+  ): { sBull: number; zBull: number; hBull: number } {
+    const denom = Math.max(sTxMax + sRxMax, 1e-9);
+    let sBull = (zRx - zTx + sRxMax * d3D) / denom;
+    const sMin = Math.min(sTxDistM, sRxDistM);
+    const sMax = Math.max(sTxDistM, sRxDistM);
+    sBull = Math.max(sMin, Math.min(sMax, sBull));
+    const zBull = zTx + sTxMax * sBull;
+    const zLosBull = zTx + (sBull / d3D) * (zRx - zTx);
+    const hBull = zBull - zLosBull;
+    return { sBull, zBull, hBull };
+  }
+
   public evaluateTerrainObstruction(
     nodePos: Position3D,
     acnPos: Position3D,
     rf: RFConfig,
     env: EnvironmentConfig,
-    stepIntervalM: number = 100.0
+    stepIntervalM: number = 100.0,
+    elevationPerturbationStdM: number = 0.0
   ): TerrainObstruction {
     const [nx, ny, nz] = nodePos;
     const [ax, ay, az] = acnPos;
@@ -849,6 +919,7 @@ const candidateUrls = url
         fresnelRadiusM: Number.NaN,
         diffractionLossDb: Number.NaN,
         isLos: false,
+        isHardShadow: true,
         isCoverageComplete: false,
         obstacleBlocked,
         obstacleIntersections,
@@ -865,6 +936,7 @@ const candidateUrls = url
           fresnelRadiusM: Number.NaN,
           diffractionLossDb: Number.NaN,
           isLos: false,
+          isHardShadow: true,
           isCoverageComplete: false,
           obstacleBlocked,
           obstacleIntersections,
@@ -877,6 +949,7 @@ const candidateUrls = url
         fresnelRadiusM: 0.0,
         diffractionLossDb: 0.0,
         isLos: hClear >= 0.0,
+        isHardShadow: hClear < 0.0,
         isCoverageComplete: true,
         obstacleBlocked,
         obstacleIntersections,
@@ -889,6 +962,15 @@ const candidateUrls = url
     let critFresnelRadiusM = 0.0;
     let critD1 = d3D * 0.5;
     let critD2 = d3D * 0.5;
+    let iPeak = -1;
+    let totalSteps = 0;
+
+    let sTxMax = Number.NEGATIVE_INFINITY;
+    let sRxMax = Number.NEGATIVE_INFINITY;
+    let sTxDistM = 0.0;
+    let sRxDistM = 0.0;
+    let iTx = -1;
+    let iRx = -1;
 
     if (d3D <= stepIntervalM * 2.0) {
       // Single midpoint sample for very short baseline
@@ -899,7 +981,12 @@ const candidateUrls = url
       const sampleX = nx + fraction * dx;
       const sampleY = ny + fraction * dy;
 
-      const hTerrain = this.getElevation(sampleX, sampleY);
+      let hTerrain = this.getElevation(sampleX, sampleY);
+      if (elevationPerturbationStdM > 0.0 && Number.isFinite(hTerrain)) {
+        hTerrain += elevationPerturbationStdM *
+          Math.sin(0.013 * sampleX + 0.017 * sampleY) *
+          Math.cos(0.011 * sampleX - 0.019 * sampleY);
+      }
       if (!Number.isFinite(hTerrain)) {
         isCoverageComplete = false;
         coverageNote = 'OUT_OF_COVERAGE: Propagation path traverses unmapped terrain outside DEM coverage';
@@ -915,17 +1002,34 @@ const candidateUrls = url
         critFresnelRadiusM = r1;
         critD1 = d1;
         critD2 = d2;
+        iPeak = 1;
+        totalSteps = 1;
+
+        sTxMax = (hTerrainEff - nz) / d1;
+        sTxDistM = d1;
+        iTx = 1;
+
+        sRxMax = (hTerrainEff - az) / d2;
+        sRxDistM = d1;
+        iRx = 1;
       }
     } else {
       // Standard stepped ray-marching without array allocation
+      let stepIdx = 0;
       for (let d1 = stepIntervalM; d1 < d3D; d1 += stepIntervalM) {
+        stepIdx++;
         const d2 = d3D - d1;
         const fraction = d1 / d3D;
 
         const sampleX = nx + fraction * dx;
         const sampleY = ny + fraction * dy;
 
-        const hTerrain = this.getElevation(sampleX, sampleY);
+        let hTerrain = this.getElevation(sampleX, sampleY);
+        if (elevationPerturbationStdM > 0.0 && Number.isFinite(hTerrain)) {
+          hTerrain += elevationPerturbationStdM *
+            Math.sin(0.013 * sampleX + 0.017 * sampleY) *
+            Math.cos(0.011 * sampleX - 0.019 * sampleY);
+        }
         if (!Number.isFinite(hTerrain)) {
           isCoverageComplete = false;
           coverageNote = 'OUT_OF_COVERAGE: Propagation path traverses unmapped terrain outside DEM coverage';
@@ -947,8 +1051,24 @@ const candidateUrls = url
           critFresnelRadiusM = r1;
           critD1 = d1;
           critD2 = d2;
+          iPeak = stepIdx;
+        }
+
+        const sTx = (hTerrainEff - nz) / d1;
+        if (sTx > sTxMax) {
+          sTxMax = sTx;
+          sTxDistM = d1;
+          iTx = stepIdx;
+        }
+
+        const sRx = (hTerrainEff - az) / d2;
+        if (sRx > sRxMax) {
+          sRxMax = sRx;
+          sRxDistM = d1;
+          iRx = stepIdx;
         }
       }
+      totalSteps = stepIdx;
     }
 
     if (!isCoverageComplete) {
@@ -957,6 +1077,7 @@ const candidateUrls = url
         fresnelRadiusM: Number.NaN,
         diffractionLossDb: Number.NaN,
         isLos: false,
+        isHardShadow: true,
         isCoverageComplete: false,
         obstacleBlocked,
         obstacleIntersections,
@@ -966,6 +1087,9 @@ const candidateUrls = url
 
     let diffractionLossDb: number;
     let isLos: boolean;
+    let crestRadiusM: number | undefined = undefined;
+    let curvatureLossDb: number | undefined = undefined;
+    let bullingtonApexDistM: number | undefined = undefined;
 
     if (minClearanceRatio >= 0.6) {
       diffractionLossDb = 0.0;
@@ -975,24 +1099,109 @@ const candidateUrls = url
       isLos = true;
     } else {
       isLos = false;
-      const nu = -minClearanceM * Math.sqrt(
-        (2.0 / wavelength) * (1.0 / critD1 + 1.0 / critD2)
-      );
-      const arg = Math.sqrt(Math.pow(nu - 0.1, 2) + 1.0) + (nu - 0.1);
-      const knifeEdgeLoss = 6.9 + 20.0 * Math.log10(Math.max(arg, 1e-9));
-      const fockPenaltyDb = 12.0;
-      diffractionLossDb = knifeEdgeLoss + fockPenaltyDb;
+
+      // 1. Knife-edge diffraction: Bullington multi-ridge or single dominant peak
+      let knifeEdgeLoss = 0.0;
+      let usedBullington = false;
+
+      if (iTx !== iRx && iTx !== -1 && iRx !== -1) {
+        const apex = TerrainEngine.computeBullingtonApex(nz, az, d3D, sTxMax, sRxMax, sTxDistM, sRxDistM);
+        if (apex.hBull > 0.0) {
+          knifeEdgeLoss = TerrainEngine.computeKnifeEdgeLossDb(apex.hBull, apex.sBull, d3D - apex.sBull, wavelength);
+          bullingtonApexDistM = apex.sBull;
+          usedBullington = true;
+        }
+      }
+
+      if (!usedBullington) {
+        knifeEdgeLoss = TerrainEngine.computeKnifeEdgeLossDb(-minClearanceM, critD1, critD2, wavelength);
+        bullingtonApexDistM = critD1;
+      }
+
+      // 2. Physical radius of curvature and rounded-crest loss T(m, n) at iPeak
+      // Reviewer Condition 1: Boundary check for centered differences
+      if (
+        iPeak <= 1 ||
+        iPeak >= totalSteps ||
+        critD1 - stepIntervalM <= 0.0 ||
+        critD1 + stepIntervalM >= d3D
+      ) {
+        crestRadiusM = 2000.0;
+        curvatureLossDb = 0.0;
+      } else {
+        const sPrev = critD1 - stepIntervalM;
+        const sNext = critD1 + stepIntervalM;
+        const xPrev = nx + (sPrev / d3D) * dx;
+        const yPrev = ny + (sPrev / d3D) * dy;
+        const xNext = nx + (sNext / d3D) * dx;
+        const yNext = ny + (sNext / d3D) * dy;
+        const xPeak = nx + (critD1 / d3D) * dx;
+        const yPeak = ny + (critD1 / d3D) * dy;
+
+        let zTerrPrev = this.getElevation(xPrev, yPrev);
+        let zTerrPeak = this.getElevation(xPeak, yPeak);
+        let zTerrNext = this.getElevation(xNext, yNext);
+
+        if (elevationPerturbationStdM > 0.0) {
+          if (Number.isFinite(zTerrPrev)) zTerrPrev += elevationPerturbationStdM * Math.sin(0.013 * xPrev + 0.017 * yPrev) * Math.cos(0.011 * xPrev - 0.019 * yPrev);
+          if (Number.isFinite(zTerrPeak)) zTerrPeak += elevationPerturbationStdM * Math.sin(0.013 * xPeak + 0.017 * yPeak) * Math.cos(0.011 * xPeak - 0.019 * yPeak);
+          if (Number.isFinite(zTerrNext)) zTerrNext += elevationPerturbationStdM * Math.sin(0.013 * xNext + 0.017 * yNext) * Math.cos(0.011 * xNext - 0.019 * yNext);
+        }
+
+        if (
+          !Number.isFinite(zTerrPrev) ||
+          !Number.isFinite(zTerrPeak) ||
+          !Number.isFinite(zTerrNext)
+        ) {
+          crestRadiusM = 2000.0;
+          curvatureLossDb = 0.0;
+        } else {
+          const zPrev = zTerrPrev + TerrainEngine.computeEarthBulge(sPrev, d3D - sPrev, rEff);
+          const zPeak = zTerrPeak + TerrainEngine.computeEarthBulge(critD1, critD2, rEff);
+          const zNext = zTerrNext + TerrainEngine.computeEarthBulge(sNext, d3D - sNext, rEff);
+
+          const deltaS = stepIntervalM;
+          const zPrime = (zNext - zPrev) / (2.0 * deltaS);
+          const zDoublePrime = (zPrev - 2.0 * zPeak + zNext) / (deltaS * deltaS);
+
+          if (zDoublePrime < 0.0) {
+            const denomCurv = Math.max(-zDoublePrime, 5e-4);
+            const rVal = Math.pow(1.0 + zPrime * zPrime, 1.5) / denomCurv;
+            crestRadiusM = Math.max(0.5, Math.min(2000.0, rVal));
+
+            const hObs = Math.max(-minClearanceM, 0.0);
+            curvatureLossDb = TerrainEngine.computeCrestCurvatureLossDb(
+              crestRadiusM,
+              critD1,
+              critD2,
+              hObs,
+              wavelength
+            );
+          } else {
+            crestRadiusM = 2000.0;
+            curvatureLossDb = 0.0;
+          }
+        }
+      }
+
+      diffractionLossDb = knifeEdgeLoss + curvatureLossDb;
     }
+
+    const isHardShadow = !isLos;
 
     return {
       minClearanceM,
       fresnelRadiusM: critFresnelRadiusM,
       diffractionLossDb,
       isLos,
+      isHardShadow,
       isCoverageComplete: true,
       obstacleBlocked,
       obstacleIntersections,
       coverageNote: undefined,
+      crestRadiusM,
+      curvatureLossDb,
+      bullingtonApexDistM,
     };
   }
 }

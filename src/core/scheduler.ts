@@ -12,6 +12,7 @@
  */
 
 import { FinalDropCaptureResult } from '../shared/workerProtocol';
+import { SPEED_OF_LIGHT } from './config';
 import { LinkStatus } from './linkBudget';
 import { GroundNodeTrafficSubsystem, QOS_PROFILES } from './queues';
 import { NodeTerrainState, PredictiveState } from './trajectory';
@@ -36,6 +37,7 @@ export interface SlotAllocation {
   readonly spectralEfficiency: number;
   readonly capacityBits: number;
   readonly isPreOcclusionFlush: boolean;
+  readonly sectorId?: 0 | 1 | 2 | 3;
 }
 
 export interface FrameScheduleReport {
@@ -84,6 +86,12 @@ export interface FrameScheduleReport {
   readonly dlDurationS: number;
   /** Authoritative available uplink duration in seconds (Resolving Audit Finding 5). */
   readonly ulAvailableDurationS: number;
+  readonly sectorScheduledUlS?: readonly [number, number, number, number];
+  readonly sectorAvailableUlS?: readonly [number, number, number, number];
+  readonly sectorUnusedUlS?: readonly [number, number, number, number];
+  readonly sectorUtilizationPct?: readonly [number, number, number, number];
+  readonly sectorNodeCounts?: readonly [number, number, number, number];
+  readonly sectorGoodputBits?: readonly [number, number, number, number];
 }
 
 interface NodeDropCounters {
@@ -390,6 +398,7 @@ abstract class DropTrackingScheduler implements BaseScheduler {
  */
 export class LegacyStaticScheduler extends DropTrackingScheduler {
   public readonly schedulerName: string = 'Legacy_Static_TDMA';
+  public enableMultiSector: boolean = false;
 
   public scheduleFrame(
     frameIndex: number,
@@ -401,6 +410,142 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
   ): FrameScheduleReport {
     const numNodes = nodes.length;
     const tUlAvailable = this.config.frameDurationS - this.config.ctrlDurationS - this.config.dlMinDurationS;
+
+    const getLink = (id: number): LinkStatus | undefined =>
+      linkStatuses instanceof Map
+        ? linkStatuses.get(id)
+        : (linkStatuses as Record<number, LinkStatus>)[id];
+
+    const getPred = (id: number): PredictiveState | undefined => {
+      if (predictiveStates instanceof Map) {
+        return predictiveStates.get(id);
+      }
+
+      return (predictiveStates as Record<number, PredictiveState>)[id];
+    };
+
+    const isMultiSectorActive = this.enableMultiSector && nodes.some(n => getLink(n.nodeId)?.activeSectorId !== undefined);
+
+    if (isMultiSectorActive) {
+      const sectorBuckets: GroundNodeTrafficSubsystem[][] = [[], [], [], []];
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const secId = (getLink(node.nodeId)?.activeSectorId ?? 0) as 0 | 1 | 2 | 3;
+        sectorBuckets[secId].push(node);
+      }
+
+      const sectorScheduledUlS: [number, number, number, number] = [0, 0, 0, 0];
+      const sectorAvailableUlS: [number, number, number, number] = [tUlAvailable, tUlAvailable, tUlAvailable, tUlAvailable];
+      const sectorUnusedUlS: [number, number, number, number] = [tUlAvailable, tUlAvailable, tUlAvailable, tUlAvailable];
+      const sectorUtilizationPct: [number, number, number, number] = [0, 0, 0, 0];
+      const sectorNodeCounts: [number, number, number, number] = [
+        sectorBuckets[0].length,
+        sectorBuckets[1].length,
+        sectorBuckets[2].length,
+        sectorBuckets[3].length,
+      ];
+      const sectorGoodputBits: [number, number, number, number] = [0, 0, 0, 0];
+
+      const allocations: SlotAllocation[] = [];
+      let totalBitsTx = 0;
+      let totalBitsWasted = 0;
+      let totalPayloadBitsDequeued = 0;
+
+      for (let k = 0; k < 4; k++) {
+        const bucket = sectorBuckets[k];
+        if (bucket.length === 0) continue;
+
+        const secK = bucket.length;
+        const secTauSlot = (tUlAvailable - secK * this.config.guardIntervalS) / secK;
+        let secUsedTimeS = 0.0;
+        let secSlotStartS = currentSimTimeS + this.config.ctrlDurationS + this.config.dlMinDurationS;
+        let secBitsTx = 0;
+
+        for (let i = 0; i < bucket.length; i++) {
+          const node = bucket[i];
+          const ls = getLink(node.nodeId);
+          const ps = getPred(node.nodeId);
+
+          const isDepleted = node.batteryLevelPct <= 0 || node.isDepleted;
+          const rate = (!isDepleted && ls && ls.bitrateBps > 0) ? ls.bitrateBps : (isDepleted ? 0 : 4.95e6);
+          const capBits = isDepleted ? 0 : Math.floor(secTauSlot * rate);
+          const capBytes = Math.floor(capBits / 8);
+
+          allocations.push({
+            nodeId: node.nodeId,
+            slotStartS: secSlotStartS,
+            durationS: secTauSlot,
+            timingAdvanceS: (ls && ls.slantRangeM > 0) ? (2.0 * ls.slantRangeM) / SPEED_OF_LIGHT : 0.001,
+            modcodName: isDepleted ? 'DEPLETED_OUTAGE' : (ls?.modcodName ?? 'LINK_OUTAGE'),
+            spectralEfficiency: isDepleted ? 0.0 : (ls?.spectralEfficiency ?? 0.0),
+            capacityBits: capBits,
+            isPreOcclusionFlush: false,
+            sectorId: k as 0 | 1 | 2 | 3,
+          });
+
+          secUsedTimeS += secTauSlot + this.config.guardIntervalS;
+          secSlotStartS += secTauSlot + this.config.guardIntervalS;
+
+          if (!isDepleted) {
+            const served = node.queue.dequeue(capBytes, currentSimTimeS);
+            let bitsServed = 0;
+            for (let p = 0; p < served.length; p++) {
+              bitsServed += served[p].sizeBits;
+            }
+
+            totalPayloadBitsDequeued += bitsServed;
+            if (ls?.isOutage || !ls || ls.bitrateBps <= 0) {
+              totalBitsWasted += bitsServed;
+            } else {
+              totalBitsTx += bitsServed;
+              secBitsTx += bitsServed;
+            }
+          }
+        }
+
+        sectorScheduledUlS[k] = secUsedTimeS;
+        sectorAvailableUlS[k] = tUlAvailable;
+        sectorUnusedUlS[k] = Math.max(0, tUlAvailable - secUsedTimeS);
+        sectorUtilizationPct[k] = tUlAvailable > 0 ? (secUsedTimeS / tUlAvailable) * 100.0 : 0.0;
+        sectorGoodputBits[k] = secBitsTx;
+      }
+
+      this.trackScheduledNodes(nodes);
+      const drops = collectDropMetrics(nodes, this.previousDropCounts);
+      this.applyFrameDropMetrics(drops);
+      const backlogBits = totalBacklogBits(nodes);
+
+      const totalUlAvailableS = 4 * tUlAvailable;
+      const totalUlScheduledS = sectorScheduledUlS.reduce((a, b) => a + b, 0);
+      const totalUlUnusedS = Math.max(0, totalUlAvailableS - totalUlScheduledS);
+      const totalUlUtilizationPct = totalUlAvailableS > 0 ? (totalUlScheduledS / totalUlAvailableS) * 100.0 : 0.0;
+
+      return {
+        frameIndex,
+        timestampS: currentSimTimeS,
+        schedulerName: this.schedulerName,
+        allocations,
+        totalUlScheduledS,
+        totalUlAvailableS,
+        totalUlUnusedS,
+        totalUlUtilizationPct,
+        totalPayloadBitsDequeued,
+        totalBitsTransmitted: totalBitsTx,
+        totalBitsWastedOnOutage: totalBitsWasted,
+        ...this.buildDropReportFields(drops),
+        totalBacklogBits: backlogBits,
+        superframeDurationS: this.config.frameDurationS,
+        ctrlDurationS: this.config.ctrlDurationS,
+        dlDurationS: this.config.dlMinDurationS,
+        ulAvailableDurationS: tUlAvailable,
+        sectorScheduledUlS,
+        sectorAvailableUlS,
+        sectorUnusedUlS,
+        sectorUtilizationPct,
+        sectorNodeCounts,
+        sectorGoodputBits,
+      };
+    }
 
     const K = this.config.fixedSlotCount ?? numNodes;
 
@@ -423,6 +568,12 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         ctrlDurationS: this.config.ctrlDurationS,
         dlDurationS: this.config.dlMinDurationS,
         ulAvailableDurationS: tUlAvailable,
+        sectorScheduledUlS: [0, 0, 0, 0],
+        sectorAvailableUlS: [tUlAvailable, 0, 0, 0],
+        sectorUnusedUlS: [tUlAvailable, 0, 0, 0],
+        sectorUtilizationPct: [0, 0, 0, 0],
+        sectorNodeCounts: [0, 0, 0, 0],
+        sectorGoodputBits: [0, 0, 0, 0],
       };
     }
 
@@ -434,19 +585,6 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
     let totalPayloadBitsDequeued = 0;
     let usedTimeS = 0.0;
     let slotStartS = currentSimTimeS + this.config.ctrlDurationS + this.config.dlMinDurationS;
-
-    const getLink = (id: number): LinkStatus | undefined =>
-      linkStatuses instanceof Map
-        ? linkStatuses.get(id)
-        : (linkStatuses as Record<number, LinkStatus>)[id];
-
-    const getPred = (id: number): PredictiveState | undefined => {
-      if (predictiveStates instanceof Map) {
-        return predictiveStates.get(id);
-      }
-
-      return (predictiveStates as Record<number, PredictiveState>)[id];
-    };
 
     for (let i = 0; i < K; i++) {
       let node: GroundNodeTrafficSubsystem | undefined;
@@ -487,7 +625,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         nodeId: node.nodeId,
         slotStartS,
         durationS: tauSlot,
-        timingAdvanceS: 0.001,
+        timingAdvanceS: (ls && ls.slantRangeM > 0) ? (2.0 * ls.slantRangeM) / SPEED_OF_LIGHT : 0.001,
         modcodName: isDepleted ? 'DEPLETED_OUTAGE' : (ls?.modcodName ?? 'LINK_OUTAGE'),
         spectralEfficiency: isDepleted ? 0.0 : (ls?.spectralEfficiency ?? 0.0),
         capacityBits: capBits,
@@ -505,7 +643,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         }
 
         totalPayloadBitsDequeued += bitsServed;
-        if (ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF || ls?.isOutage) {
+        if (ls?.isOutage || !ls || ls.bitrateBps <= 0) {
           totalBitsWasted += bitsServed;
         } else {
           totalBitsTx += bitsServed;
@@ -537,6 +675,12 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
       ctrlDurationS: this.config.ctrlDurationS,
       dlDurationS: this.config.dlMinDurationS,
       ulAvailableDurationS: tUlAvailable,
+      sectorScheduledUlS: [usedTimeS, 0, 0, 0],
+      sectorAvailableUlS: [tUlAvailable, 0, 0, 0],
+      sectorUnusedUlS: [Math.max(0, tUlAvailable - usedTimeS), 0, 0, 0],
+      sectorUtilizationPct: [utilPct, 0, 0, 0],
+      sectorNodeCounts: [numNodes, 0, 0, 0],
+      sectorGoodputBits: [totalBitsTx, 0, 0, 0],
     };
   }
 }
@@ -547,6 +691,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
 export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
   public readonly schedulerName: string = 'Tac_TAD';
   public readonly tauMaxNormalS: number;
+  public enablePredictiveLookahead: boolean;
 
   private readonly rAvg: Map<number, number> = new Map();
   private readonly alphaPf: number = 0.05;
@@ -557,9 +702,10 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
     70: 1.0,
   };
 
-  constructor(tauMaxNormalS: number = 0.008) {
+  constructor(tauMaxNormalS: number = 0.008, enablePredictiveLookahead: boolean = true) {
     super();
     this.tauMaxNormalS = tauMaxNormalS;
+    this.enablePredictiveLookahead = enablePredictiveLookahead;
   }
 
   protected override onNodeEvicted(nodeId: number): void {
@@ -600,6 +746,12 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         ctrlDurationS: this.config.ctrlDurationS,
         dlDurationS: tDl,
         ulAvailableDurationS: tUlAvailable,
+        sectorScheduledUlS: [0, 0, 0, 0],
+        sectorAvailableUlS: [tUlAvailable, 0, 0, 0],
+        sectorUnusedUlS: [tUlAvailable, 0, 0, 0],
+        sectorUtilizationPct: [0, 0, 0, 0],
+        sectorNodeCounts: [0, 0, 0, 0],
+        sectorGoodputBits: [0, 0, 0, 0],
       };
     }
 
@@ -613,6 +765,308 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         ? predictiveStates.get(id)
         : (predictiveStates as Record<number, PredictiveState>)[id];
 
+    const isMultiSectorActive = nodes.some(n => getLink(n.nodeId)?.activeSectorId !== undefined);
+
+    if (isMultiSectorActive) {
+      const sectorBuckets: GroundNodeTrafficSubsystem[][] = [[], [], [], []];
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const secId = (getLink(node.nodeId)?.activeSectorId ?? 0) as 0 | 1 | 2 | 3;
+        sectorBuckets[secId].push(node);
+      }
+
+      const sectorScheduledUlS: [number, number, number, number] = [0, 0, 0, 0];
+      const sectorAvailableUlS: [number, number, number, number] = [tUlAvailable, tUlAvailable, tUlAvailable, tUlAvailable];
+      const sectorUnusedUlS: [number, number, number, number] = [tUlAvailable, tUlAvailable, tUlAvailable, tUlAvailable];
+      const sectorUtilizationPct: [number, number, number, number] = [0, 0, 0, 0];
+      const sectorNodeCounts: [number, number, number, number] = [
+        sectorBuckets[0].length,
+        sectorBuckets[1].length,
+        sectorBuckets[2].length,
+        sectorBuckets[3].length,
+      ];
+      const sectorGoodputBits: [number, number, number, number] = [0, 0, 0, 0];
+
+      const allocations: SlotAllocation[] = [];
+      let totalBitsTx = 0;
+      let totalPayloadBitsDequeued = 0;
+      const scheduledIds = new Set<number>();
+
+      for (let k = 0; k < 4; k++) {
+        const secNodes = sectorBuckets[k];
+        if (secNodes.length === 0) continue;
+
+        // Step 1: Reclaim 100% time on severed links (Filter out hard shadow or 0 rate nodes)
+        const candidateNodes: GroundNodeTrafficSubsystem[] = [];
+        for (let i = 0; i < secNodes.length; i++) {
+          const node = secNodes[i];
+          const ps = getPred(node.nodeId);
+          const ls = getLink(node.nodeId);
+
+          const isHardShadow = ps?.isHardShadow !== undefined
+            ? ps.isHardShadow
+            : (ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF);
+
+          if (
+            isHardShadow ||
+            (ls && (ls.bitrateBps <= 0 || ls.isOutage))
+          ) {
+            continue; // Do not dequeue payload or allocate airtime to an unusable link.
+          }
+
+          if (node.batteryLevelPct <= 0 || node.isDepleted) {
+            continue; // Depleted battery cannot transmit.
+          }
+
+          if (
+            node.queue.getTotalBacklogBits() === 0 &&
+            ps?.currentState !== NodeTerrainState.PRE_OCCLUSION_FLUSH
+          ) {
+            continue;
+          }
+
+          candidateNodes.push(node);
+        }
+
+        // Step 2: Compute Lyapunov Composite Metric Psi_i
+        const ranked: Array<{ psi: number; node: GroundNodeTrafficSubsystem }> = [];
+        for (let i = 0; i < candidateNodes.length; i++) {
+          const node = candidateNodes[i];
+          const nid = node.nodeId;
+          const ps = getPred(nid);
+          const ls = getLink(nid);
+          const q = node.queue;
+          const qTotalBits = q.getTotalBacklogBits();
+
+          // Urgency metric & HoL delay ratio
+          let urgency = 0.0;
+          let maxHolRatio = 0.0;
+          for (const [qidStr, weight] of Object.entries(this.weights)) {
+            const qid = Number(qidStr);
+            if (q.getClassBacklogBytes(qid) > 0) {
+              const hol = q.getHolDelayS(qid, currentSimTimeS);
+              const pdb = QOS_PROFILES[qid]?.pdbS ?? 0.1;
+              const ratio = hol / pdb;
+              if (ratio > maxHolRatio) maxHolRatio = ratio;
+              urgency += weight * Math.exp(Math.min(8.0, ratio));
+            }
+          }
+          if (urgency === 0.0) urgency = 0.1;
+
+          // Exponential HoL delay urgency boost when approaching PDB (>= 50% PDB elapsed)
+          const holDelayBoost = maxHolRatio >= 0.5 ? Math.exp(Math.min(6.0, 3.0 * maxHolRatio)) : 1.0;
+
+          // Proportional fairness
+          const rInst = ls?.bitrateBps ?? 1e6;
+          const rPrev = this.rAvg.get(nid) ?? 100000.0;
+          const pfTerm = rInst / Math.max(1000.0, rPrev);
+
+          // Backlog utility
+          const backlogUtility = Math.max(1.0, Math.log2(1.0 + qTotalBits / 8000.0));
+
+          // Predictive evacuation boost (strictly gated by enablePredictiveLookahead)
+          let phiEvac = 1.0;
+          if (this.enablePredictiveLookahead) {
+            if (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
+              const warning = 3.0;
+              const tOcc = ps.timeToOcclusionS;
+              const evacRatio = Math.max(0.0, (warning - tOcc) / warning);
+              phiEvac = 1.0 + 5.0 * evacRatio * Math.min(1.0, qTotalBits / 20000.0);
+            } else if (ps?.currentState === NodeTerrainState.RE_EMERGENCE_BURST) {
+              phiEvac = 4.0;
+            }
+
+            // Crossover boundary pre-flush boost (1.25x boost if isCrossoverZone === true)
+            if (ls?.isCrossoverZone) {
+              phiEvac *= 1.25;
+            }
+          }
+
+          const priorityMultiplier = Math.max(0.1, Math.min(5.0, node.tacticalPriority ?? 1.0));
+          const psi = phiEvac * urgency * holDelayBoost * pfTerm * backlogUtility * priorityMultiplier;
+          ranked.push({ psi, node });
+        }
+
+        ranked.sort((a, b) => b.psi - a.psi);
+
+        // Step 3: Work-Conserving Multi-Pass Slot Sizing for Sector k
+        const candidatePlan: Array<{
+          node: GroundNodeTrafficSubsystem;
+          nid: number;
+          ls: LinkStatus | undefined;
+          ps: PredictiveState | undefined;
+          rInst: number;
+          tauSlot: number;
+          isFlush: boolean;
+          remainingBacklogBits: number;
+        }> = [];
+
+        let secRemainingUlTimeS = tUlAvailable;
+
+        // Pass 1: Primary allocation up to tauMaxNormalS (or flush duration)
+        for (let i = 0; i < ranked.length; i++) {
+          if (secRemainingUlTimeS < this.config.minSlotDurationS + this.config.guardIntervalS) break;
+
+          const node = ranked[i].node;
+          const nid = node.nodeId;
+          const ps = getPred(nid);
+          const ls = getLink(nid);
+          const rInst = ls?.bitrateBps ?? 1e6;
+          const qTotalBits = node.queue.getTotalBacklogBits();
+          if (qTotalBits === 0) continue;
+
+          const tauReq = qTotalBits / rInst;
+          const maxAvailSlot = secRemainingUlTimeS - this.config.guardIntervalS;
+          let tauSlot: number;
+          let isFlush = false;
+
+          if (this.enablePredictiveLookahead && ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
+            tauSlot = Math.min(maxAvailSlot, Math.max(tauReq, this.config.minSlotDurationS));
+            isFlush = true;
+          } else {
+            const maxSlot = Math.min(this.tauMaxNormalS, this.config.maxSlotDurationS);
+            tauSlot = Math.min(tauReq, maxSlot, maxAvailSlot);
+          }
+
+          if (tauSlot < this.config.minSlotDurationS) continue;
+
+          const capBits = Math.floor(tauSlot * rInst);
+          const remainingBacklog = Math.max(0, qTotalBits - capBits);
+
+          candidatePlan.push({
+            node,
+            nid,
+            ls,
+            ps,
+            rInst,
+            tauSlot,
+            isFlush,
+            remainingBacklogBits: remainingBacklog,
+          });
+
+          secRemainingUlTimeS -= (tauSlot + this.config.guardIntervalS);
+        }
+
+        // Pass 2: Work-Conserving Deficit Drainage
+        // Redistribute leftover sector airtime to backlogged candidates without adding guard intervals
+        if (secRemainingUlTimeS > 0.0001) {
+          for (let i = 0; i < candidatePlan.length && secRemainingUlTimeS > 0.0001; i++) {
+            const plan = candidatePlan[i];
+            if (plan.remainingBacklogBits <= 0) continue;
+
+            const extraTauReq = plan.remainingBacklogBits / plan.rInst;
+            const maxAddTau = Math.min(
+              this.config.maxSlotDurationS - plan.tauSlot,
+              secRemainingUlTimeS
+            );
+            const addTau = Math.min(extraTauReq, maxAddTau);
+
+            if (addTau > 0.00001) {
+              plan.tauSlot += addTau;
+              secRemainingUlTimeS -= addTau;
+              const additionalBits = Math.floor(addTau * plan.rInst);
+              plan.remainingBacklogBits = Math.max(0, plan.remainingBacklogBits - additionalBits);
+            }
+          }
+        }
+
+        // Step 4: Dequeue and materialize allocations for Sector k
+        let secUsedTimeS = 0.0;
+        let secSlotStartS = currentSimTimeS + this.config.ctrlDurationS + tDl;
+        let secBitsTx = 0;
+
+        for (let i = 0; i < candidatePlan.length; i++) {
+          const plan = candidatePlan[i];
+          const tauSlot = plan.tauSlot;
+          const capBits = Math.floor(tauSlot * plan.rInst);
+          const capBytes = Math.floor(capBits / 8);
+
+          allocations.push({
+            nodeId: plan.nid,
+            slotStartS: secSlotStartS,
+            durationS: tauSlot,
+            timingAdvanceS: (plan.ls && plan.ls.slantRangeM > 0) ? (2.0 * plan.ls.slantRangeM) / SPEED_OF_LIGHT : 0.001,
+            modcodName: plan.ls?.modcodName ?? 'LINK_OUTAGE',
+            spectralEfficiency: plan.ls?.spectralEfficiency ?? 0.0,
+            capacityBits: capBits,
+            isPreOcclusionFlush: plan.isFlush,
+            sectorId: k as 0 | 1 | 2 | 3,
+          });
+
+          scheduledIds.add(plan.nid);
+
+          const served = plan.node.queue.dequeue(capBytes, currentSimTimeS);
+          let bitsServed = 0;
+          for (let p = 0; p < served.length; p++) {
+            bitsServed += served[p].sizeBits;
+          }
+          totalPayloadBitsDequeued += bitsServed;
+          totalBitsTx += bitsServed;
+          secBitsTx += bitsServed;
+
+          // Update Proportional Fairness moving average using variable superframe duration
+          const rAchieved = bitsServed / this.config.frameDurationS;
+          const rPrev = this.rAvg.get(plan.nid) ?? 100000.0;
+          this.rAvg.set(plan.nid, (1.0 - this.alphaPf) * rPrev + this.alphaPf * rAchieved);
+
+          const consumed = tauSlot + this.config.guardIntervalS;
+          secUsedTimeS += consumed;
+          secSlotStartS += consumed;
+        }
+
+        sectorScheduledUlS[k] = secUsedTimeS;
+        sectorAvailableUlS[k] = tUlAvailable;
+        sectorUnusedUlS[k] = Math.max(0, tUlAvailable - secUsedTimeS);
+        sectorUtilizationPct[k] = tUlAvailable > 0 ? (secUsedTimeS / tUlAvailable) * 100.0 : 0.0;
+        sectorGoodputBits[k] = secBitsTx;
+      }
+
+      // Decay PF throughput for unscheduled candidate nodes
+      for (let i = 0; i < nodes.length; i++) {
+        const nid = nodes[i].nodeId;
+        if (!scheduledIds.has(nid)) {
+          const rPrev = this.rAvg.get(nid) ?? 100000.0;
+          this.rAvg.set(nid, (1.0 - this.alphaPf) * rPrev);
+        }
+      }
+
+      this.trackScheduledNodes(nodes);
+      const drops = collectDropMetrics(nodes, this.previousDropCounts);
+      this.applyFrameDropMetrics(drops);
+      const backlogBits = totalBacklogBits(nodes);
+
+      const totalUlAvailableS = 4 * tUlAvailable;
+      const totalUlScheduledS = sectorScheduledUlS.reduce((a, b) => a + b, 0);
+      const totalUlUnusedS = Math.max(0, totalUlAvailableS - totalUlScheduledS);
+      const utilPct = totalUlAvailableS > 0 ? (totalUlScheduledS / totalUlAvailableS) * 100.0 : 0.0;
+
+      return {
+        frameIndex,
+        timestampS: currentSimTimeS,
+        schedulerName: this.schedulerName,
+        allocations,
+        totalUlScheduledS,
+        totalUlAvailableS,
+        totalUlUnusedS,
+        totalUlUtilizationPct: utilPct,
+        totalPayloadBitsDequeued,
+        totalBitsTransmitted: totalBitsTx,
+        totalBitsWastedOnOutage: 0,
+        ...this.buildDropReportFields(drops),
+        totalBacklogBits: backlogBits,
+        superframeDurationS: this.config.frameDurationS,
+        ctrlDurationS: this.config.ctrlDurationS,
+        dlDurationS: tDl,
+        ulAvailableDurationS: tUlAvailable,
+        sectorScheduledUlS,
+        sectorAvailableUlS,
+        sectorUnusedUlS,
+        sectorUtilizationPct,
+        sectorNodeCounts,
+        sectorGoodputBits,
+      };
+    }
+
     // Step 1: Reclaim 100% time on severed links (Filter out hard shadow or 0 rate nodes)
     const candidateNodes: GroundNodeTrafficSubsystem[] = [];
     for (let i = 0; i < nodes.length; i++) {
@@ -620,8 +1074,12 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       const ps = getPred(node.nodeId);
       const ls = getLink(node.nodeId);
 
+      const isHardShadow = ps?.isHardShadow !== undefined
+        ? ps.isHardShadow
+        : (ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF);
+
       if (
-        ps?.currentState === NodeTerrainState.HARD_SHADOW_CUTOFF ||
+        isHardShadow ||
         (ls && (ls.bitrateBps <= 0 || ls.isOutage))
       ) {
         continue; // Do not dequeue payload or allocate airtime to an unusable link.
@@ -651,17 +1109,23 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       const q = node.queue;
       const qTotalBits = q.getTotalBacklogBits();
 
-      // Urgency metric
+      // Urgency metric & HoL delay ratio
       let urgency = 0.0;
+      let maxHolRatio = 0.0;
       for (const [qidStr, weight] of Object.entries(this.weights)) {
         const qid = Number(qidStr);
         if (q.getClassBacklogBytes(qid) > 0) {
           const hol = q.getHolDelayS(qid, currentSimTimeS);
           const pdb = QOS_PROFILES[qid]?.pdbS ?? 0.1;
-          urgency += weight * Math.exp(Math.min(8.0, hol / pdb));
+          const ratio = hol / pdb;
+          if (ratio > maxHolRatio) maxHolRatio = ratio;
+          urgency += weight * Math.exp(Math.min(8.0, ratio));
         }
       }
       if (urgency === 0.0) urgency = 0.1;
+
+      // Exponential HoL delay urgency boost when approaching PDB (>= 50% PDB elapsed)
+      const holDelayBoost = maxHolRatio >= 0.5 ? Math.exp(Math.min(6.0, 3.0 * maxHolRatio)) : 1.0;
 
       // Proportional fairness
       const rInst = ls?.bitrateBps ?? 1e6;
@@ -671,35 +1135,43 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       // Backlog utility
       const backlogUtility = Math.max(1.0, Math.log2(1.0 + qTotalBits / 8000.0));
 
-      // Predictive evacuation boost
+      // Predictive evacuation boost (strictly gated by enablePredictiveLookahead)
       let phiEvac = 1.0;
-      if (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
-        const warning = 3.0;
-        const tOcc = ps.timeToOcclusionS;
-        const evacRatio = Math.max(0.0, (warning - tOcc) / warning);
-        phiEvac = 1.0 + 5.0 * evacRatio * Math.min(1.0, qTotalBits / 20000.0);
-      } else if (ps?.currentState === NodeTerrainState.RE_EMERGENCE_BURST) {
-        phiEvac = 4.0;
+      if (this.enablePredictiveLookahead) {
+        if (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
+          const warning = 3.0;
+          const tOcc = ps.timeToOcclusionS;
+          const evacRatio = Math.max(0.0, (warning - tOcc) / warning);
+          phiEvac = 1.0 + 5.0 * evacRatio * Math.min(1.0, qTotalBits / 20000.0);
+        } else if (ps?.currentState === NodeTerrainState.RE_EMERGENCE_BURST) {
+          phiEvac = 4.0;
+        }
       }
 
       const priorityMultiplier = Math.max(0.1, Math.min(5.0, node.tacticalPriority ?? 1.0));
-      const psi = phiEvac * urgency * pfTerm * backlogUtility * priorityMultiplier;
+      const psi = phiEvac * urgency * holDelayBoost * pfTerm * backlogUtility * priorityMultiplier;
       ranked.push({ psi, node });
     }
 
     ranked.sort((a, b) => b.psi - a.psi);
 
-    // Step 3: Exact-Fit Slot Sizing
-    const allocations: SlotAllocation[] = [];
-    let totalBitsTx = 0;
-    let totalPayloadBitsDequeued = 0;
-    let usedTimeS = 0.0;
-    let remainingUlTimeS = tUlAvailable;
-    let slotStartS = currentSimTimeS + this.config.ctrlDurationS + tDl;
-    const scheduledIds = new Set<number>();
+    // Step 3: Work-Conserving Multi-Pass Slot Sizing
+    const candidatePlan: Array<{
+      node: GroundNodeTrafficSubsystem;
+      nid: number;
+      ls: LinkStatus | undefined;
+      ps: PredictiveState | undefined;
+      rInst: number;
+      tauSlot: number;
+      isFlush: boolean;
+      remainingBacklogBits: number;
+    }> = [];
 
+    let remainingUlTimeS = tUlAvailable;
+
+    // Pass 1: Primary allocation up to tauMaxNormalS (or flush duration)
     for (let i = 0; i < ranked.length; i++) {
-      if (remainingUlTimeS < this.config.minSlotDurationS) break;
+      if (remainingUlTimeS < this.config.minSlotDurationS + this.config.guardIntervalS) break;
 
       const node = ranked[i].node;
       const nid = node.nodeId;
@@ -710,36 +1182,87 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       if (qTotalBits === 0) continue;
 
       const tauReq = qTotalBits / rInst;
+      const maxAvailSlot = remainingUlTimeS - this.config.guardIntervalS;
       let tauSlot: number;
       let isFlush = false;
 
-      if (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
-        tauSlot = Math.min(remainingUlTimeS - this.config.guardIntervalS, Math.max(tauReq, this.config.minSlotDurationS));
+      if (this.enablePredictiveLookahead && ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
+        tauSlot = Math.min(maxAvailSlot, Math.max(tauReq, this.config.minSlotDurationS));
         isFlush = true;
       } else {
         const maxSlot = Math.min(this.tauMaxNormalS, this.config.maxSlotDurationS);
-        tauSlot = Math.min(tauReq, maxSlot, remainingUlTimeS - this.config.guardIntervalS);
+        tauSlot = Math.min(tauReq, maxSlot, maxAvailSlot);
       }
 
       if (tauSlot < this.config.minSlotDurationS) continue;
 
       const capBits = Math.floor(tauSlot * rInst);
+      const remainingBacklog = Math.max(0, qTotalBits - capBits);
+
+      candidatePlan.push({
+        node,
+        nid,
+        ls,
+        ps,
+        rInst,
+        tauSlot,
+        isFlush,
+        remainingBacklogBits: remainingBacklog,
+      });
+
+      remainingUlTimeS -= (tauSlot + this.config.guardIntervalS);
+    }
+
+    // Pass 2: Work-Conserving Deficit Drainage
+    if (remainingUlTimeS > 0.0001) {
+      for (let i = 0; i < candidatePlan.length && remainingUlTimeS > 0.0001; i++) {
+        const plan = candidatePlan[i];
+        if (plan.remainingBacklogBits <= 0) continue;
+
+        const extraTauReq = plan.remainingBacklogBits / plan.rInst;
+        const maxAddTau = Math.min(
+          this.config.maxSlotDurationS - plan.tauSlot,
+          remainingUlTimeS
+        );
+        const addTau = Math.min(extraTauReq, maxAddTau);
+
+        if (addTau > 0.00001) {
+          plan.tauSlot += addTau;
+          remainingUlTimeS -= addTau;
+          const additionalBits = Math.floor(addTau * plan.rInst);
+          plan.remainingBacklogBits = Math.max(0, plan.remainingBacklogBits - additionalBits);
+        }
+      }
+    }
+
+    // Step 4: Dequeue and materialize allocations
+    const allocations: SlotAllocation[] = [];
+    let totalBitsTx = 0;
+    let totalPayloadBitsDequeued = 0;
+    let usedTimeS = 0.0;
+    let slotStartS = currentSimTimeS + this.config.ctrlDurationS + tDl;
+    const scheduledIds = new Set<number>();
+
+    for (let i = 0; i < candidatePlan.length; i++) {
+      const plan = candidatePlan[i];
+      const tauSlot = plan.tauSlot;
+      const capBits = Math.floor(tauSlot * plan.rInst);
       const capBytes = Math.floor(capBits / 8);
 
       allocations.push({
-        nodeId: nid,
+        nodeId: plan.nid,
         slotStartS,
         durationS: tauSlot,
-        timingAdvanceS: 0.001,
-        modcodName: ls?.modcodName ?? 'LINK_OUTAGE',
-        spectralEfficiency: ls?.spectralEfficiency ?? 0.0,
+        timingAdvanceS: (plan.ls && plan.ls.slantRangeM > 0) ? (2.0 * plan.ls.slantRangeM) / SPEED_OF_LIGHT : 0.001,
+        modcodName: plan.ls?.modcodName ?? 'LINK_OUTAGE',
+        spectralEfficiency: plan.ls?.spectralEfficiency ?? 0.0,
         capacityBits: capBits,
-        isPreOcclusionFlush: isFlush,
+        isPreOcclusionFlush: plan.isFlush,
       });
 
-      scheduledIds.add(nid);
+      scheduledIds.add(plan.nid);
 
-      const served = node.queue.dequeue(capBytes, currentSimTimeS);
+      const served = plan.node.queue.dequeue(capBytes, currentSimTimeS);
       let bitsServed = 0;
       for (let p = 0; p < served.length; p++) {
         bitsServed += served[p].sizeBits;
@@ -750,13 +1273,12 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
       // Update Proportional Fairness moving average using variable superframe duration
       const rAchieved = bitsServed / this.config.frameDurationS;
-      const rPrev = this.rAvg.get(nid) ?? 100000.0;
-      this.rAvg.set(nid, (1.0 - this.alphaPf) * rPrev + this.alphaPf * rAchieved);
+      const rPrev = this.rAvg.get(plan.nid) ?? 100000.0;
+      this.rAvg.set(plan.nid, (1.0 - this.alphaPf) * rPrev + this.alphaPf * rAchieved);
 
       const consumed = tauSlot + this.config.guardIntervalS;
       usedTimeS += consumed;
       slotStartS += consumed;
-      remainingUlTimeS -= consumed;
     }
 
     // Decay PF throughput for unscheduled candidate nodes
@@ -793,6 +1315,23 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       ctrlDurationS: this.config.ctrlDurationS,
       dlDurationS: tDl,
       ulAvailableDurationS: tUlAvailable,
+      sectorScheduledUlS: [usedTimeS, 0, 0, 0],
+      sectorAvailableUlS: [tUlAvailable, 0, 0, 0],
+      sectorUnusedUlS: [Math.max(0, tUlAvailable - usedTimeS), 0, 0, 0],
+      sectorUtilizationPct: [utilPct, 0, 0, 0],
+      sectorNodeCounts: [nodes.length, 0, 0, 0],
+      sectorGoodputBits: [totalBitsTx, 0, 0, 0],
     };
+  }
+}
+
+/**
+ * Reactive M-LWDF Scheduler (ablation baseline: lookahead disabled, Phi_evac = 1.0).
+ */
+export class ReactiveMlwdfScheduler extends TerrainAwareDynamicScheduler {
+  public override readonly schedulerName: string = 'Reactive_M_LWDF';
+
+  constructor(tauMaxNormalS: number = 0.008) {
+    super(tauMaxNormalS, false);
   }
 }

@@ -393,6 +393,9 @@ export class SpatialSnapshotBuffer {
       if (n.isObstacleBlocked) flags |= 4;
       const stCode = STATE_TO_CODE[n.currentState] ?? 0;
       flags |= (stCode & 7) << 3;
+      if (typeof n.active_sector_id === 'number') {
+        flags |= ((n.active_sector_id & 3) << 6);
+      }
       this.nodeFlags[slot] = flags;
     }
 
@@ -466,6 +469,7 @@ export class SpatialSnapshotBuffer {
       const isObstacleBlocked = (flags & 4) !== 0;
       const stCode = (flags >> 3) & 7;
       const currentState = CODE_TO_STATE[stCode] ?? NodeTerrainState.NORMAL_LOS;
+      const activeSectorId = ((flags >> 6) & 3) as 0 | 1 | 2 | 3;
 
       const posX = this.nodePosX[slot];
       const posY = this.nodePosY[slot];
@@ -485,6 +489,7 @@ export class SpatialSnapshotBuffer {
         isObstacleBlocked,
         snrDb,
         currentState,
+        active_sector_id: activeSectorId,
       };
     }
 
@@ -504,6 +509,10 @@ export class SpatialSnapshotBuffer {
       };
     }
 
+    const acnHdgDeg = Number.isFinite(this.acnHeadingRad[idx])
+      ? (((this.acnHeadingRad[idx] * 180.0 / Math.PI) % 360) + 360) % 360
+      : 0;
+
     return {
       frameIndex,
       simulationTimeS,
@@ -512,6 +521,8 @@ export class SpatialSnapshotBuffer {
       acn,
       nodes,
       selectedLinkBudget,
+      acn_heading_deg: acnHdgDeg,
+      acn_bank_deg: 0,
     };
   }
 

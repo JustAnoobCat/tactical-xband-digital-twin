@@ -48,6 +48,7 @@ export interface SnapshotSlotAllocation {
   readonly modcodName?: string;
   readonly spectralEfficiency?: number;
   readonly isPreOcclusionFlush: boolean;
+  readonly sectorId?: number;
 }
 
 /**
@@ -131,6 +132,8 @@ export interface ResolvedTimelineSegment {
   readonly spectralEfficiency?: number;
   readonly direction: CommDirection;
   readonly isWastedAirtime?: boolean;
+  readonly sectorId?: number;
+  readonly allocation?: SnapshotSlotAllocation;
 }
 
 export interface ActiveSlotState {
@@ -314,6 +317,7 @@ export function normalizeSnapshotAllocations(
     modcodName: a.modcodName ?? a.modcod_name,
     spectralEfficiency: a.spectralEfficiency ?? a.spectral_efficiency,
     isPreOcclusionFlush: Boolean(a.isPreOcclusionFlush ?? a.is_pre_occlusion_flush),
+    sectorId: typeof a.sectorId === 'number' ? a.sectorId : (typeof a.sector_id === 'number' ? a.sector_id : undefined),
   }));
 }
 
@@ -610,6 +614,10 @@ export function resolveSuperframeTimeline(
       if (b.startMs >= aEnd - EPSILON) {
         break; // Sorted by startMs; no subsequent allocations can overlap a
       }
+      // Distinct directional sectors operate in parallel and do not conflict
+      if (a.sectorId !== undefined && b.sectorId !== undefined && a.sectorId !== b.sectorId) {
+        continue;
+      }
       const overlapStart = Math.max(a.startMs, b.startMs);
       const overlapEnd = Math.min(aEnd, b.startMs + b.durationMs);
       const diag = `[Timeline Resolver Diagnostic] Overlapping allocations detected: Node ${a.nodeId} [${a.startMs.toFixed(3)}..${aEnd.toFixed(3)}) ms overlaps with Node ${b.nodeId} [${b.startMs.toFixed(3)}..${(b.startMs + b.durationMs).toFixed(3)}) ms`;
@@ -719,6 +727,8 @@ export function resolveSuperframeTimeline(
       spectralEfficiency: alloc.spectralEfficiency,
       direction: 'UL',
       isWastedAirtime: isNodeWasted(alloc.nodeId),
+      sectorId: alloc.sectorId,
+      allocation: alloc,
     });
 
     cursorMs = Math.max(cursorMs, allocEnd);

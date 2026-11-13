@@ -28,7 +28,11 @@ function parseNonNegativeInt(value: string, name: string): number {
   return parsed;
 }
 
-const frames = parsePositiveInt(argValue('--frames', '500'), '--frames');
+const durationArg = argValue('--duration', '');
+const frames = durationArg
+  ? Math.max(1, Math.round(Number(durationArg) / 0.020))
+  : parsePositiveInt(argValue('--frames', '500'), '--frames');
+const demLookaheadErrorStdM = Number(argValue('--dem-error-m', '0.0'));
 const seedsRaw = argValue('--seeds', '1,2,3,4,5');
 const seeds: number[] = seedsRaw.split(',').map(s => parsePositiveInt(s.trim(), '--seeds entry'));
 const warmupFrames = parseNonNegativeInt(argValue('--warmup', '0'), '--warmup');
@@ -92,6 +96,9 @@ const benchmarkStartMs = performance.now();
 for (const seed of seeds) {
   const setupStart = performance.now();
   const manager = new SimulationWorkerManager(seed * 100_000);
+  if (demLookaheadErrorStdM > 0) {
+    manager.envConfig.demLookaheadErrorStdM = demLookaheadErrorStdM;
+  }
 
   if (requestedTerrainMode === 'real' && realDemBuffer) {
     const demArray = new Float32Array(realDemBuffer.buffer, realDemBuffer.byteOffset, 512 * 512);
@@ -139,32 +146,46 @@ for (const seed of seeds) {
     step_min_ms: Number(minStep.toFixed(4)),
     step_max_ms: Number(maxStep.toFixed(4)),
     static_goodput_bits: Math.round(m.staticGoodputBits), tac_goodput_bits: Math.round(m.tacGoodputBits),
+    reactive_goodput_bits: Math.round(m.reactiveGoodputBits ?? 0),
     static_goodput_mbps_avg: Number((m.staticGoodputBits / simDurationS / 1e6).toFixed(6)),
     tac_goodput_mbps_avg: Number((m.tacGoodputBits / simDurationS / 1e6).toFixed(6)),
+    reactive_goodput_mbps_avg: Number(((m.reactiveGoodputBits ?? 0) / simDurationS / 1e6).toFixed(6)),
     goodput_ratio_tac_over_static: Number((m.tacGoodputBits / Math.max(1, m.staticGoodputBits)).toFixed(6)),
+    goodput_ratio_tac_over_reactive: Number((m.tacGoodputBits / Math.max(1, m.reactiveGoodputBits ?? 1)).toFixed(6)),
     static_dropped_packets_final: m.staticDroppedPkts, tac_dropped_packets_final: m.tacDroppedPkts,
+    reactive_dropped_packets_final: m.reactiveDroppedPkts ?? 0,
     static_delay_drops_observed: m.staticDelayDropsThisRun,
     tac_delay_drops_observed: m.tacDelayDropsThisRun,
+    reactive_delay_drops_observed: m.reactiveDelayDropsThisRun ?? 0,
     static_overflow_drops_observed: m.staticOverflowDropsThisRun,
     tac_overflow_drops_observed: m.tacOverflowDropsThisRun,
+    reactive_overflow_drops_observed: m.reactiveOverflowDropsThisRun ?? 0,
     static_payload_bits_dequeued: Math.round(m.staticPayloadBitsDequeued),
     tac_payload_bits_dequeued: Math.round(m.tacPayloadBitsDequeued),
+    reactive_payload_bits_dequeued: Math.round(m.reactivePayloadBitsDequeued ?? 0),
     static_wasted_bits_on_outage: Math.round(m.staticWastedBits),
     tac_wasted_bits_on_outage: Math.round(m.tacWastedBits),
+    reactive_wasted_bits_on_outage: Math.round(m.reactiveWastedBits ?? 0),
     static_scheduled_ul_time_s: Number(m.staticScheduledUlTimeS.toFixed(9)),
     tac_scheduled_ul_time_s: Number(m.tacScheduledUlTimeS.toFixed(9)),
+    reactive_scheduled_ul_time_s: Number((m.reactiveScheduledUlTimeS ?? 0).toFixed(9)),
     static_available_ul_time_s: Number(m.staticAvailableUlTimeS.toFixed(9)),
     tac_available_ul_time_s: Number(m.tacAvailableUlTimeS.toFixed(9)),
+    reactive_available_ul_time_s: Number((m.reactiveAvailableUlTimeS ?? 0).toFixed(9)),
     static_unused_ul_time_s: Number(m.staticUnusedUlTimeS.toFixed(9)),
     tac_unused_ul_time_s: Number(m.tacUnusedUlTimeS.toFixed(9)),
+    reactive_unused_ul_time_s: Number((m.reactiveUnusedUlTimeS ?? 0).toFixed(9)),
     static_run_ul_utilization_pct: Number((100 * m.staticScheduledUlTimeS / Math.max(m.staticAvailableUlTimeS, 1e-12)).toFixed(6)),
     tac_run_ul_utilization_pct: Number((100 * m.tacScheduledUlTimeS / Math.max(m.tacAvailableUlTimeS, 1e-12)).toFixed(6)),
+    reactive_run_ul_utilization_pct: Number((100 * (m.reactiveScheduledUlTimeS ?? 0) / Math.max(m.reactiveAvailableUlTimeS ?? 1, 1e-12)).toFixed(6)),
     static_final_frame_ul_utilization_pct: Number(m.lastStaticUtilPct.toFixed(6)),
     tac_final_frame_ul_utilization_pct: Number(m.lastTacUtilPct.toFixed(6)),
+    reactive_final_frame_ul_utilization_pct: Number((m.lastReactiveUtilPct ?? 0).toFixed(6)),
     static_final_backlog_bits: Math.round(m.staticFinalBacklogBits),
     tac_final_backlog_bits: Math.round(m.tacFinalBacklogBits),
+    reactive_final_backlog_bits: Math.round(m.reactiveFinalBacklogBits ?? 0),
   });
-  console.log(`seed=${seed} mode=${manager.terrainEngine.terrain_mode} frames=${frames} setup=${setupPhaseMs.toFixed(2)}ms Tac-TAD/static ratio=${rows[rows.length - 1].goodput_ratio_tac_over_static} (p50=${p50.toFixed(3)}ms, p95=${p95.toFixed(3)}ms)`);
+  console.log(`seed=${seed} mode=${manager.terrainEngine.terrain_mode} frames=${frames} setup=${setupPhaseMs.toFixed(2)}ms Tac=${(m.tacGoodputBits / 1e6).toFixed(2)}Mb/drops(${m.tacDelayDropsThisRun}d/${m.tacOverflowDropsThisRun}o) Static=${(m.staticGoodputBits / 1e6).toFixed(2)}Mb/drops(${m.staticDelayDropsThisRun}d/${m.staticOverflowDropsThisRun}o) Reactive=${((m.reactiveGoodputBits ?? 0) / 1e6).toFixed(2)}Mb/drops(${m.reactiveDelayDropsThisRun ?? 0}d/${m.reactiveOverflowDropsThisRun ?? 0}o) (p50=${p50.toFixed(3)}ms, p95=${p95.toFixed(3)}ms)`);
 }
 
 const totalWallElapsedMs = performance.now() - benchmarkStartMs;
@@ -207,6 +228,7 @@ writeFileSync(jsonPath, JSON.stringify({
     frames_per_run: frames,
     seeds,
     terrain_mode: requestedTerrainMode,
+    dem_lookahead_error_std_m: demLookaheadErrorStdM,
     terrain_asset_checksum_sha256: terrainAssetChecksum,
     simulation_timestep_s: 0.020,
     warmup_frames: warmupFrames,

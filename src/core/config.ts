@@ -34,6 +34,12 @@ export interface IRFConfig {
   readonly cableLossDb: number;
   readonly speedOfLight: number;
   readonly boltzmannConstant: number;
+  readonly acnSectorCount?: number;
+  readonly acnSectorBoresightsDeg?: readonly [0, 90, 180, 270];
+  readonly acnSectorHpbwAzDeg?: number;
+  readonly acnSectorHpbwElDeg?: number;
+  readonly acnSectorDowntiltDeg?: number;
+  readonly acnHandoverHysteresisDb?: number;
 }
 
 export class RFConfig implements IRFConfig {
@@ -50,12 +56,18 @@ export class RFConfig implements IRFConfig {
   public readonly cableLossDb: number;
   public readonly speedOfLight: number;
   public readonly boltzmannConstant: number;
+  public readonly acnSectorCount: number = 4;
+  public readonly acnSectorBoresightsDeg: readonly [0, 90, 180, 270] = [0, 90, 180, 270] as const;
+  public readonly acnSectorHpbwAzDeg: number = 90.0;
+  public readonly acnSectorHpbwElDeg: number = 65.0;
+  public readonly acnSectorDowntiltDeg: number = -15.0;
+  public readonly acnHandoverHysteresisDb: number = 1.5;
 
   constructor(init?: Partial<IRFConfig>) {
     this.carrierFrequencyHz = init?.carrierFrequencyHz ?? 8.0e9; // 8.0 GHz Tactical X-band
     this.channelBandwidthHz = init?.channelBandwidthHz ?? 1.0e6; // 1.0 MHz shared channel
     this.acnTxPowerDbm = init?.acnTxPowerDbm ?? 40.0; // 10 W RF power amplifier
-    this.acnAntennaGainDbi = init?.acnAntennaGainDbi ?? 15.0; // Steerable array / horn
+    this.acnAntennaGainDbi = init?.acnAntennaGainDbi ?? 16.0; // Directional horn / quad-sector array
     this.acnNoiseFigureDb = init?.acnNoiseFigureDb ?? 5.0; // Low-noise receiver front-end
     this.soldierTxPowerDbm = init?.soldierTxPowerDbm ?? 36.0; // 4.0 W manpack PA
     this.soldierAntennaGainDbi = init?.soldierAntennaGainDbi ?? 3.0; // Omni whip antenna
@@ -65,6 +77,12 @@ export class RFConfig implements IRFConfig {
     this.cableLossDb = init?.cableLossDb ?? 1.5; // RF feedline & connector loss
     this.speedOfLight = init?.speedOfLight ?? SPEED_OF_LIGHT;
     this.boltzmannConstant = init?.boltzmannConstant ?? BOLTZMANN_CONSTANT;
+    this.acnSectorCount = init?.acnSectorCount ?? 4;
+    this.acnSectorBoresightsDeg = init?.acnSectorBoresightsDeg ?? ([0, 90, 180, 270] as const);
+    this.acnSectorHpbwAzDeg = init?.acnSectorHpbwAzDeg ?? 90.0;
+    this.acnSectorHpbwElDeg = init?.acnSectorHpbwElDeg ?? 65.0;
+    this.acnSectorDowntiltDeg = init?.acnSectorDowntiltDeg ?? -15.0;
+    this.acnHandoverHysteresisDb = init?.acnHandoverHysteresisDb ?? 1.5;
 
     if (!Number.isFinite(this.channelBandwidthHz) || this.channelBandwidthHz < 0.1e6 || this.channelBandwidthHz > 50.0e6) {
       throw new Error('channelBandwidthHz must be finite and in [0.1, 50.0] MHz.');
@@ -123,6 +141,7 @@ export interface IEnvironmentConfig {
   readonly rainRateMmH: number;
   readonly rainCellLengthKm: number;
   readonly atmosphericTemperatureK: number;
+  readonly demLookaheadErrorStdM?: number;
 }
 
 export class EnvironmentConfig implements IEnvironmentConfig {
@@ -131,6 +150,7 @@ export class EnvironmentConfig implements IEnvironmentConfig {
   public readonly rainRateMmH: number;
   public readonly rainCellLengthKm: number;
   public readonly atmosphericTemperatureK: number;
+  public readonly demLookaheadErrorStdM: number;
 
   constructor(init?: Partial<IEnvironmentConfig>) {
     this.effectiveEarthRadiusFactor = init?.effectiveEarthRadiusFactor ?? 4.0 / 3.0; // ITU-R P.834 k-factor
@@ -138,6 +158,7 @@ export class EnvironmentConfig implements IEnvironmentConfig {
     this.rainRateMmH = init?.rainRateMmH ?? 0.0; // Precipitation rate (mm/h)
     this.rainCellLengthKm = init?.rainCellLengthKm ?? 10.0; // Convective cell extent
     this.atmosphericTemperatureK = init?.atmosphericTemperatureK ?? 290.0; // Ambient noise temperature (K)
+    this.demLookaheadErrorStdM = init?.demLookaheadErrorStdM ?? 0.0; // SRTM DEM vertical uncertainty for lookahead probes
   }
 
   /**

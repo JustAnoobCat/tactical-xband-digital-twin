@@ -52,6 +52,8 @@ export interface AcnTelemetry {
   readonly vel_y: number;
   readonly vel_z?: number;
   readonly pitch_deg?: number;
+  readonly bank_deg?: number;
+  readonly heading_deg?: number;
   readonly altitude_msl_m?: number;
   readonly altitude_agl_m?: number;
   readonly terrain_elevation_msl_m?: number;
@@ -145,6 +147,14 @@ export interface NodeTelemetryItem {
   readonly registration_completion_time_s: number | null;
   readonly registration_elapsed_s: number | null;
   readonly communication_eligible: boolean;
+  readonly active_sector_id?: 0 | 1 | 2 | 3;
+  readonly sector_boresight_deg?: 0 | 90 | 180 | 270;
+  readonly body_azimuth_deg?: number;
+  readonly off_boresight_deg?: number;
+  readonly pattern_rolloff_db?: number;
+  readonly sector_gains_dbi?: readonly [number, number, number, number];
+  readonly is_crossover_zone?: boolean;
+  readonly handover_count?: number;
   readonly [key: string]: unknown;
 }
 
@@ -163,6 +173,7 @@ export interface TelemetryGanttAllocation {
   readonly photo_bytes: number;
   readonly is_pre_occlusion_flush: boolean;
   readonly is_out_of_frame?: boolean;
+  readonly sector_id?: 0 | 1 | 2 | 3;
 }
 
 export interface SelectedLinkBudgetTelemetry {
@@ -192,6 +203,11 @@ export interface SelectedLinkBudgetTelemetry {
   readonly terrain_is_los: boolean;
   readonly earth_bulge_m: number;
   readonly channel_bandwidth_hz?: number;
+  readonly crest_radius_m?: number;
+  readonly curvature_loss_db?: number;
+  readonly bullington_apex_dist_m?: number;
+  readonly sky_noise_increase_db?: number;
+  readonly sky_temperature_k?: number;
   readonly is_coverage_complete?: boolean;
   readonly isCoverageComplete?: boolean;
   readonly coverage_note?: string;
@@ -212,6 +228,9 @@ export interface FresnelSliceTelemetry {
   readonly obstacle_blocked: boolean;
   readonly obstacle_intersections: TerrainObstruction['obstacleIntersections'];
   readonly state_name?: NodeTerrainState | string;
+  readonly crest_radius_m?: number;
+  readonly curvature_loss_db?: number;
+  readonly bullington_apex_dist_m?: number;
   readonly link_budget: SelectedLinkBudgetTelemetry;
   readonly profile_points: readonly [number, number, number, number][];
   readonly is_coverage_complete?: boolean;
@@ -297,6 +316,7 @@ export interface TelemetryFrame {
   readonly active_gantt_allocations: readonly TelemetryGanttAllocation[];
   readonly static_gantt_allocations: readonly TelemetryGanttAllocation[];
   readonly tac_gantt_allocations: readonly TelemetryGanttAllocation[];
+  readonly reactive_gantt_allocations?: readonly TelemetryGanttAllocation[];
   readonly comparative_kpi_dashboard: ComparativeKpiDashboard;
   readonly static_p50_bps: number | null;
   readonly static_p95_bps: number | null;
@@ -314,6 +334,13 @@ export interface TelemetryFrame {
   readonly batch_spatial_snapshots?: readonly SpatialFrameSnapshot[];
   readonly completed_superframes?: readonly TimelineCommunicationRecord[];
   readonly simulation_run_id?: number;
+  readonly acn_heading_deg?: number;
+  readonly acn_bank_deg?: number;
+  readonly sector_node_counts?: readonly [number, number, number, number];
+  readonly static_sector_util_pct?: readonly [number, number, number, number];
+  readonly tac_sector_util_pct?: readonly [number, number, number, number];
+  readonly tac_sector_goodput_mbps?: readonly [number, number, number, number];
+  readonly total_sector_handovers?: number;
 }
 
 // ----------------------------------------------------------------------------
@@ -347,6 +374,8 @@ export interface SpatialNodeSnapshot {
   readonly isObstacleBlocked: boolean;
   readonly snrDb: number;
   readonly currentState: NodeTerrainState | string;
+  readonly active_sector_id?: 0 | 1 | 2 | 3;
+  readonly pattern_rolloff_db?: number;
 }
 
 export interface SpatialLinkBudgetSnapshot {
@@ -370,6 +399,8 @@ export interface SpatialFrameSnapshot {
   readonly acn: SpatialAcnSnapshot;
   readonly nodes: readonly SpatialNodeSnapshot[];
   readonly selectedLinkBudget: SpatialLinkBudgetSnapshot | null;
+  readonly acn_heading_deg?: number;
+  readonly acn_bank_deg?: number;
 }
 
 export interface SchedulerEpochMetrics {

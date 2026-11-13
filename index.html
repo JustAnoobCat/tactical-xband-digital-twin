@@ -1167,6 +1167,44 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         </div>
       </div>
 
+      <!-- 4-Sector Array Status & Parallel TDMA Utilization Card -->
+      <div class="panel" id="sector-array-panel">
+        <div class="panel-head">
+          <span class="sec-title">4-Sector Quadrant Array &amp; Parallel TDMA</span>
+          <span class="badge-sub" id="sector-attitude-badge">ACN HDG --° · BANK --° · HANDOVERS 0</span>
+        </div>
+        <div class="inspector-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));" id="sector-cards-grid">
+          <div class="inspector-metric" id="sector-card-0">
+            <span>S0 · 0° FWD (Nose)</span>
+            <strong id="sector-s0-nodes">0 Terminals</strong>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              Util: <b id="sector-s0-util" class="c-acc">0.0%</b> · <span id="sector-s0-rate">0.00 Mbps</span>
+            </div>
+          </div>
+          <div class="inspector-metric" id="sector-card-1">
+            <span>S1 · 90° STBD (Right)</span>
+            <strong id="sector-s1-nodes">0 Terminals</strong>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              Util: <b id="sector-s1-util" class="c-acc">0.0%</b> · <span id="sector-s1-rate">0.00 Mbps</span>
+            </div>
+          </div>
+          <div class="inspector-metric" id="sector-card-2">
+            <span>S2 · 180° AFT (Tail)</span>
+            <strong id="sector-s2-nodes">0 Terminals</strong>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              Util: <b id="sector-s2-util" class="c-acc">0.0%</b> · <span id="sector-s2-rate">0.00 Mbps</span>
+            </div>
+          </div>
+          <div class="inspector-metric" id="sector-card-3">
+            <span>S3 · 270° PORT (Left)</span>
+            <strong id="sector-s3-nodes">0 Terminals</strong>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              Util: <b id="sector-s3-util" class="c-acc">0.0%</b> · <span id="sector-s3-rate">0.00 Mbps</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="panel waterfall-card">
         <div class="panel-head"><span class="sec-title" id="waterfall-superframe-label">Superframe airtime allocation (20.0 ms)</span></div>
         <div class="legend">
@@ -3976,7 +4014,7 @@ const mapLibreSourceHashes = new Map();
 
 function isMapLibreDynamicSourceBusy() {
   if (!mapLibreInstance || !mapLibreInitialized) return false;
-  const ids = ['maplibre-acn', 'maplibre-acn-vector', 'maplibre-nodes', 'maplibre-links', 'maplibre-transmissions', 'maplibre-travelled'];
+  const ids = ['maplibre-acn', 'maplibre-acn-vector', 'maplibre-acn-sectors', 'maplibre-nodes', 'maplibre-links', 'maplibre-transmissions', 'maplibre-travelled'];
   return ids.some(id => {
     const src = mapLibreInstance.getSource(id);
     const q = src?._workerUpdates;
@@ -5277,6 +5315,8 @@ function renderSelectedNodeDetails() {
         snr_db: hNode.snrDb,
         state_name: hNode.currentState,
         is_transmitting: false,
+        active_sector_id: hNode.active_sector_id,
+        pattern_rolloff_db: hNode.pattern_rolloff_db,
       };
     }
   } else {
@@ -5314,6 +5354,9 @@ function renderSelectedNodeDetails() {
     ['Battery', typeof node.battery_level_pct === 'number' ? `${node.battery_level_pct.toFixed(1)}%${typeof node.battery_capacity_mah === 'number' ? ` · ${node.battery_capacity_mah.toFixed(0)} mAh` : ''}` : null],
     ['Queue', typeof node.total_backlog_bytes === 'number' ? `${(node.total_backlog_bytes / 1024).toFixed(1)} KB` : null],
     ['Priority', typeof node.tactical_priority === 'number' ? node.tactical_priority.toFixed(1) : null],
+    ['Antenna sector', typeof node.active_sector_id === 'number' ? `S${node.active_sector_id} (${node.sector_boresight_deg ?? (node.active_sector_id * 90)}° boresight)` : null],
+    ['Off-boresight', typeof node.off_boresight_deg === 'number' ? `${node.off_boresight_deg.toFixed(1)}° (-${(node.pattern_rolloff_db ?? 0).toFixed(1)} dB)` : null],
+    ['Sector handovers', typeof node.handover_count === 'number' ? `${node.handover_count}` : null],
   ].filter(([, value]) => value !== null && value !== undefined);
   content.innerHTML = `<h3>${mapEscape(node.name || `Node ${node.node_id}`)} <span class="muted">#${node.node_id}</span></h3><div class="detail-sub">${mapEscape(isTimelineHist ? `Historical #${histSnap.frameIndex}` : (node.registration_state || 'Registration unavailable'))} · ${mapEscape(nodeLinkLabel(node))}</div><div class="detail-grid">${rows.map(([label, value]) => `<span>${mapEscape(label)}</span><span>${mapEscape(value)}</span>`).join('')}</div>`;
   const moveButton = $('map-node-details')?.querySelector('[data-map-action="move"]');
@@ -6413,6 +6456,9 @@ function applyMapLibreLayerState() {
   setMapLibreLayerVisibility('maplibre-acn-vector-line', visAcn);
   setMapLibreLayerVisibility('maplibre-acn-vector-tag', visAcn);
   setMapLibreLayerVisibility('maplibre-acn-label', visAcn && visLabels);
+  setMapLibreLayerVisibility('maplibre-acn-sectors-crossover', visAcn);
+  setMapLibreLayerVisibility('maplibre-acn-sectors-boresight', visAcn);
+  setMapLibreLayerVisibility('maplibre-acn-sectors-label', visAcn);
   setMapLibreLayerVisibility('maplibre-acn-circle', false);
   setMapLibreLayerVisibility('maplibre-acn-heading', false);
 
@@ -6632,6 +6678,61 @@ function updateMapLibreOverlay() {
       properties: { label: '+30s' },
     }
   ] : [];
+
+  const acnHdg = (histSnap && histSnap.acn_heading_deg !== undefined)
+    ? histSnap.acn_heading_deg
+    : ((latestTelemetry && latestTelemetry.acn_heading_deg !== undefined)
+        ? latestTelemetry.acn_heading_deg
+        : headingDeg);
+
+  const acnSectorFeatures = [];
+  const rayLenM = 8000;
+  const boreLenM = 5000;
+  const lblLenM = 5600;
+
+  // 4 dashed -3 dB sector boundary rays at true bearings acnHdg + 45°, 135°, 225°, 315°
+  const crossoverAngles = [45, 135, 225, 315];
+  for (const offset of crossoverAngles) {
+    const bearing = (acnHdg + offset) % 360;
+    const rad = (bearing * Math.PI) / 180;
+    const dx = rayLenM * Math.sin(rad);
+    const dy = rayLenM * Math.cos(rad);
+    const endCoord = mapLibreCoordinate(acnX + dx, acnY + dy);
+    acnSectorFeatures.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [acnCoordinate, endCoord] },
+      properties: { type: 'boundary' },
+    });
+  }
+
+  // 4 boresight vectors and labels: 0° (FWD), 90° (STBD), 180° (AFT), 270° (PORT)
+  const sectorConfigs = [
+    { label: 'S0', offset: 0 },
+    { label: 'S1', offset: 90 },
+    { label: 'S2', offset: 180 },
+    { label: 'S3', offset: 270 },
+  ];
+  for (const sec of sectorConfigs) {
+    const bearing = (acnHdg + sec.offset) % 360;
+    const rad = (bearing * Math.PI) / 180;
+    const dxBore = boreLenM * Math.sin(rad);
+    const dyBore = boreLenM * Math.cos(rad);
+    const boreCoord = mapLibreCoordinate(acnX + dxBore, acnY + dyBore);
+    acnSectorFeatures.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [acnCoordinate, boreCoord] },
+      properties: { type: 'boresight' },
+    });
+
+    const dxLbl = lblLenM * Math.sin(rad);
+    const dyLbl = lblLenM * Math.cos(rad);
+    const lblCoord = mapLibreCoordinate(acnX + dxLbl, acnY + dyLbl);
+    acnSectorFeatures.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: lblCoord },
+      properties: { type: 'label', label: sec.label },
+    });
+  }
   const transmissionFeatures = [];
   const nowMs = performance.now();
   rawNodes.forEach(node => {
@@ -6769,6 +6870,7 @@ function updateMapLibreOverlay() {
 
   setMapLibreSourceData('maplibre-acn', { type: 'FeatureCollection', features: [acnFeature] }, false);
   setMapLibreSourceData('maplibre-acn-vector', { type: 'FeatureCollection', features: acnVectorFeatures }, false);
+  setMapLibreSourceData('maplibre-acn-sectors', { type: 'FeatureCollection', features: acnSectorFeatures }, false);
   setMapLibreSourceData('maplibre-nodes', { type: 'FeatureCollection', features: nodeFeatures }, false);
   setMapLibreSourceData('maplibre-links', { type: 'FeatureCollection', features: linkFeatures }, false);
   setMapLibreSourceData('maplibre-transmissions', { type: 'FeatureCollection', features: transmissionFeatures }, false);
@@ -7022,6 +7124,7 @@ function initializeMapLibre() {
     const sourceDefinitions = {
       'maplibre-acn': emptyFeatureCollection(),
       'maplibre-acn-vector': emptyFeatureCollection(),
+      'maplibre-acn-sectors': emptyFeatureCollection(),
       'maplibre-nodes': emptyFeatureCollection(),
       'maplibre-links': emptyFeatureCollection(),
       'maplibre-transmissions': emptyFeatureCollection(),
@@ -7137,6 +7240,43 @@ function initializeMapLibre() {
     // 6. ACN Airborne Relay (Delta Chevron Marker + Heading + Forward Vector Tape + HUD Badge)
     mapLibreInstance.addLayer({ id: 'maplibre-acn-vector-line', type: 'line', source: 'maplibre-acn-vector', paint: { 'line-color': HIGHLAND_THEME.signal.amberStrokeSoft, 'line-width': 1.2, 'line-dasharray': [4, 4] } });
     mapLibreInstance.addLayer({ id: 'maplibre-acn-vector-tag', type: 'symbol', source: 'maplibre-acn-vector', layout: { 'text-field': '+30s', 'text-size': 9, 'text-anchor': 'left', 'text-offset': [0.6, 0] }, paint: { 'text-color': HIGHLAND_THEME.signal.amber, 'text-halo-color': HIGHLAND_THEME.substrate.void, 'text-halo-width': 1 } });
+    mapLibreInstance.addLayer({
+      id: 'maplibre-acn-sectors-crossover',
+      type: 'line',
+      source: 'maplibre-acn-sectors',
+      filter: ['==', ['get', 'type'], 'boundary'],
+      paint: {
+        'line-color': 'rgba(224, 159, 62, 0.35)',
+        'line-width': 1.2,
+        'line-dasharray': [3, 3],
+      },
+    });
+    mapLibreInstance.addLayer({
+      id: 'maplibre-acn-sectors-boresight',
+      type: 'line',
+      source: 'maplibre-acn-sectors',
+      filter: ['==', ['get', 'type'], 'boresight'],
+      paint: {
+        'line-color': 'rgba(224, 159, 62, 0.65)',
+        'line-width': 1.5,
+      },
+    });
+    mapLibreInstance.addLayer({
+      id: 'maplibre-acn-sectors-label',
+      type: 'symbol',
+      source: 'maplibre-acn-sectors',
+      filter: ['==', ['get', 'type'], 'label'],
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-size': 10,
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'text-color': HIGHLAND_THEME.signal.amberBright,
+        'text-halo-color': 'rgba(17, 19, 22, 0.95)',
+        'text-halo-width': 2.0,
+      },
+    });
     mapLibreInstance.addLayer({ id: 'maplibre-acn-marker', type: 'symbol', source: 'maplibre-acn', layout: { 'icon-image': 'acn-tactical-marker', 'icon-rotate': ['get', 'headingDeg'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
     mapLibreInstance.addLayer({ id: 'maplibre-acn-label', type: 'symbol', source: 'maplibre-acn', layout: { 'text-field': ['get', 'badgeText'], 'text-size': 9.5, 'text-offset': [0, 2.0], 'text-anchor': 'top' }, paint: { 'text-color': HIGHLAND_THEME.signal.amberBright, 'text-halo-color': 'rgba(17, 19, 22, 0.95)', 'text-halo-width': 2.5 } });
 
@@ -11377,7 +11517,7 @@ function experimentMetadata() {
   return {
     schema_version: '1.0',
     artifact: 'Tactical X-Band Network Digital Twin',
-    frontend_package_version: '1.1.1',
+    frontend_package_version: '1.2.0',
     engine: 'TypeScript WebWorker',
     run_id: experimentCapture.runId,
     label: experimentElement('experiment-run-label')?.value || 'unnamed-run',
@@ -11660,7 +11800,8 @@ function updateDashboardDOM(frame, force = false) {
   const allocatedSeconds = selectedAllocations.reduce((sum, a) => sum + Math.max(0, Number(a.duration_s ?? ((Number(a.duration_ms) || 0) / 1000)) || 0), 0);
   if (!schedHistoryController.isInspecting && !(simTimelineController?.isHistoricalInspecting)) {
     if (hasSelected) {
-      setText('alloc-node-label', selNode ? `Node ${selectedNodeId} · ${selNode.name || 'Terminal'}` : `Node ${selectedNodeId}`);
+      const secTag = (typeof selNode?.active_sector_id === 'number') ? ` · Sector S${selNode.active_sector_id}` : '';
+      setText('alloc-node-label', selNode ? `Node ${selectedNodeId} · ${selNode.name || 'Terminal'}${secTag}` : `Node ${selectedNodeId}`);
       setText('alloc-airtime', `${(allocatedSeconds * 1000).toFixed(2)} ms`);
       setText('alloc-segments', String(selectedAllocations.length));
       setText('alloc-inspector-note', selectedAllocations.length
@@ -11671,6 +11812,24 @@ function updateDashboardDOM(frame, force = false) {
       setText('alloc-airtime', '--');
       setText('alloc-segments', '--');
       setText('alloc-inspector-note', 'No terminal selected. Select a terminal to inspect its allocations.');
+    }
+  }
+
+  // 4-Sector Quadrant Array & Parallel TDMA status
+  if (frame.acn_heading_deg !== undefined || frame.sector_node_counts) {
+    const hdg = typeof frame.acn_heading_deg === 'number' ? Math.round(frame.acn_heading_deg) : '--';
+    const bank = typeof frame.acn_bank_deg === 'number' ? frame.acn_bank_deg.toFixed(1) : '--';
+    const ho = typeof frame.total_sector_handovers === 'number' ? frame.total_sector_handovers : 0;
+    setText('sector-attitude-badge', `ACN HDG ${hdg}° · BANK ${bank}° · HANDOVERS ${ho}`);
+
+    const counts = frame.sector_node_counts || [0, 0, 0, 0];
+    const utils = frame.tac_sector_util_pct || frame.static_sector_util_pct || [0, 0, 0, 0];
+    const rates = frame.tac_sector_goodput_mbps || [0, 0, 0, 0];
+
+    for (let k = 0; k < 4; k++) {
+      setText(`sector-s${k}-nodes`, `${counts[k]} Terminal${counts[k] === 1 ? '' : 's'}`);
+      setText(`sector-s${k}-util`, `${utils[k].toFixed(1)}%`);
+      setText(`sector-s${k}-rate`, `${rates[k].toFixed(2)} Mbps`);
     }
   }
   if (selNode) {
@@ -12379,6 +12538,8 @@ function drawRadar() {
           state_name: hNode.currentState,
           is_transmitting: isHist ? false : (liveNode?.is_transmitting ?? false),
           registration_state: liveNode?.registration_state,
+          active_sector_id: hNode.active_sector_id,
+          pattern_rolloff_db: hNode.pattern_rolloff_db,
         };
       } else {
         const node = nodeRaw;
@@ -12840,6 +13001,57 @@ function drawRadar() {
 
     // 8. ACN aircraft marker, heading, and Priority-1 telemetry tag
     if (visAcn) {
+      // 4-Sector Directional Antenna Array Overlay
+      const acnHdg = (histSnap && histSnap.acn_heading_deg !== undefined)
+        ? histSnap.acn_heading_deg
+        : ((latestTelemetry && latestTelemetry.acn_heading_deg !== undefined)
+            ? latestTelemetry.acn_heading_deg
+            : headingDeg);
+
+      ctx.save();
+      const rayLen = 95;
+      const crossoverAngles = [45, 135, 225, 315];
+      ctx.strokeStyle = 'rgba(224, 159, 62, 0.28)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      for (const offset of crossoverAngles) {
+        const worldAngle = (acnHdg + offset) % 360;
+        const rad = ((worldAngle - 90) * Math.PI) / 180;
+        ctx.beginPath();
+        ctx.moveTo(acnPos.x, acnPos.y);
+        ctx.lineTo(acnPos.x + Math.cos(rad) * rayLen, acnPos.y + Math.sin(rad) * rayLen);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      const sectors = [
+        { id: 'S0', offset: 0, label: 'S0' },
+        { id: 'S1', offset: 90, label: 'S1' },
+        { id: 'S2', offset: 180, label: 'S2' },
+        { id: 'S3', offset: 270, label: 'S3' },
+      ];
+      ctx.font = `600 10px ${MONO}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const sec of sectors) {
+        const worldAngle = (acnHdg + sec.offset) % 360;
+        const rad = ((worldAngle - 90) * Math.PI) / 180;
+        // Boresight tick
+        ctx.strokeStyle = 'rgba(224, 159, 62, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(acnPos.x + Math.cos(rad) * 45, acnPos.y + Math.sin(rad) * 45);
+        ctx.lineTo(acnPos.x + Math.cos(rad) * 55, acnPos.y + Math.sin(rad) * 55);
+        ctx.stroke();
+
+        // Sector label
+        const lx = acnPos.x + Math.cos(rad) * 68;
+        const ly = acnPos.y + Math.sin(rad) * 68;
+        ctx.fillStyle = 'rgba(224, 159, 62, 0.75)';
+        ctx.fillText(sec.label, lx, ly);
+      }
+      ctx.restore();
+
       drawAircraftChevron(ctx, acnPos.x, acnPos.y, headingDeg);
 
       if (visLabels && acnTagPlacement) {
@@ -13292,14 +13504,6 @@ function drawWaterfall() {
           ? latestTelemetry.tdma_frame_config.frameDurationMs
           : 20.0)));
 
-    const FP = superframeDurationMs / 1000.0, padL = 118, padR = 18, padT = 22, padB = 24, gap = 18;
-    const plotW = Math.max(60, w - padL - padR);
-    const trackH = Math.max(34, Math.min(64, (h - padT - padB - gap) / 2));
-    const yStatic = padT, yTac = padT + trackH + gap;
-    const xOf = s => padL + (s / FP) * plotW;
-    const xOfMs = ms => padL + (ms / superframeDurationMs) * plotW;
-    const sel = typeof selectedNodeId === 'number' ? selectedNodeId : -1;
-
     const waterfallTitle = $('waterfall-superframe-label');
     if (waterfallTitle) {
       waterfallTitle.textContent = `Superframe airtime allocation (${superframeDurationMs.toFixed(1)} ms)`;
@@ -13329,6 +13533,18 @@ function drawWaterfall() {
       histSchedRec ? (histSchedRec.tacAllocations || (schedMode !== 'static' ? (histSchedRec.activeAllocations || []) : []))
         : (isHistorical ? [] : (latestTelemetry?.tac_gantt_allocations || (schedMode !== 'static' ? (latestTelemetry?.active_gantt_allocations || []) : [])))
     );
+
+    const isStaticMulti = Array.isArray(staticAllocations) && staticAllocations.some(a => (a.sector_id ?? a.sectorId) !== undefined);
+    const isTacMulti = Array.isArray(tacAllocations) && tacAllocations.some(a => (a.sector_id ?? a.sectorId) !== undefined);
+    const isMultiSector = isStaticMulti || isTacMulti;
+
+    const FP = superframeDurationMs / 1000.0, padL = isMultiSector ? 136 : 118, padR = 18, padT = 22, padB = 24, gap = 18;
+    const plotW = Math.max(60, w - padL - padR);
+    const trackH = Math.max(34, Math.min(64, (h - padT - padB - gap) / 2));
+    const yStatic = padT, yTac = padT + trackH + gap;
+    const xOf = s => padL + (s / FP) * plotW;
+    const xOfMs = ms => padL + (ms / superframeDurationMs) * plotW;
+    const sel = typeof selectedNodeId === 'number' ? selectedNodeId : -1;
 
     // Authoritative Shared Timeline Resolution
     const staticTimeline = resolveSuperframeTimeline({
@@ -13366,21 +13582,90 @@ function drawWaterfall() {
 
     const trackLabel = (title, sub, y, col) => {
       g.textAlign = 'right';
-      g.fillStyle = col; g.font = `600 11px ${MONO}`; g.fillText(title, padL - 12, y + trackH / 2 - 1);
-      g.fillStyle = HIGHLAND_THEME.text.faint; g.font = `10px ${MONO}`; g.fillText(sub, padL - 12, y + trackH / 2 + 12);
+      const labelX = isMultiSector ? (padL - 24) : (padL - 12);
+      g.fillStyle = col; g.font = `600 11px ${MONO}`; g.fillText(title, labelX, y + trackH / 2 - 1);
+      g.fillStyle = HIGHLAND_THEME.text.faint; g.font = `10px ${MONO}`; g.fillText(sub, labelX, y + trackH / 2 + 12);
     };
     const staticSlotCount = staticTimeline.allocations.length || 16;
     trackLabel('STATIC TDMA', `${staticSlotCount} slots`, yStatic, HIGHLAND_THEME.text.primary);
     trackLabel('TAC-TAD', 'dynamic slots', yTac, HIGHLAND_THEME.signal.ochre);
+
+    const drawSectorSubLanes = (yTrack) => {
+      const subLaneH = trackH / 4;
+      g.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+      g.lineWidth = 1;
+      for (let s = 1; s < 4; s++) {
+        const yDiv = Math.round(yTrack + s * subLaneH) + 0.5;
+        g.beginPath();
+        g.moveTo(padL, yDiv);
+        g.lineTo(padL + plotW, yDiv);
+        g.stroke();
+      }
+      g.font = `10px ${MONO}`;
+      g.textAlign = 'right';
+      g.fillStyle = HIGHLAND_THEME.text.faint;
+      for (let s = 0; s < 4; s++) {
+        const ySec = yTrack + s * subLaneH + subLaneH / 2 + 3.5;
+        g.fillText(`S${s}`, padL - 6, ySec);
+      }
+    };
 
     // ─────────────────────────────────────────────────────────────────────────
     // 1. Static track (Authoritative segments from staticTimeline)
     // ─────────────────────────────────────────────────────────────────────────
     gfxRRect(g, padL, yStatic, plotW, trackH, 4);
     g.fillStyle = HIGHLAND_THEME.substrate.void; g.fill(); g.strokeStyle = HIGHLAND_THEME.line.frame; g.lineWidth = 1; g.stroke();
+    if (isStaticMulti) {
+      drawSectorSubLanes(yStatic);
+    }
 
     const staticUlSegments = staticTimeline.segments.filter(s => s.phase === 'UPLINK_SLOT');
-    if (staticUlSegments.length > 0) {
+    if (isStaticMulti && staticAllocations && staticAllocations.length > 0) {
+      const ctrlSeg = staticTimeline.segments.find(s => s.phase === 'CONTROL_BROADCAST');
+      if (ctrlSeg && ctrlSeg.durationMs > 0) {
+        const cx = xOfMs(ctrlSeg.startMs), cw = Math.max(1, (ctrlSeg.durationMs / superframeDurationMs) * plotW);
+        g.fillStyle = HIGHLAND_THEME.signal.indigoSoft; g.fillRect(cx, yStatic + 1, cw, trackH - 2);
+        g.fillStyle = HIGHLAND_THEME.signal.indigo; g.font = `9px ${MONO}`; g.textAlign = 'left';
+        g.fillText('CTRL', cx + 1, yStatic - 5);
+      }
+      const dlSeg = staticTimeline.segments.find(s => s.phase === 'DOWNLINK_BROADCAST');
+      if (dlSeg && dlSeg.durationMs > 0) {
+        const dx = xOfMs(dlSeg.startMs), dw = Math.max(1, (dlSeg.durationMs / superframeDurationMs) * plotW);
+        g.fillStyle = HIGHLAND_THEME.signal.amberSoft; g.fillRect(dx, yStatic + 1, dw, trackH - 2);
+        g.fillStyle = HIGHLAND_THEME.signal.amberBright; g.font = `9px ${MONO}`; g.textAlign = 'left';
+        g.fillText('DL', dx + 2, yStatic - 5);
+      }
+
+      const subLaneH = trackH / 4;
+      staticAllocations.forEach(alloc => {
+        const nid = alloc.node_id ?? alloc.nodeId ?? -1;
+        const startMs = alloc.start_ms ?? alloc.startMs ?? 0;
+        const durMs = alloc.duration_ms ?? alloc.durationMs ?? 0;
+        const secId = alloc.sector_id ?? alloc.sectorId ?? 0;
+        const sx = xOfMs(startMs) + 0.5, sw = Math.max(2, (durMs / superframeDurationMs) * plotW - 1);
+        const sy = yStatic + secId * subLaneH + 1.5, sh = Math.max(3, subLaneH - 3);
+
+        const n = nodes.find(nd => (nd.node_id ?? nd.nodeId) === nid);
+        const out = !!n && ((n.state_name ?? n.stateName) === 'HARD_SHADOW_CUTOFF' || n.linkOutage || n.link_outage || n.isOutage || n.isBlocked);
+        const isActiveStatic = schedMode === 'static' && activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId === nid;
+
+        gfxRRect(g, sx, sy, sw, sh, 2);
+        g.fillStyle = out ? HIGHLAND_THEME.signal.vermilionSoft : HIGHLAND_THEME.signal.ashSoft; g.fill();
+        if (out) {
+          g.save(); g.clip();
+          g.strokeStyle = HIGHLAND_THEME.signal.vermilionStrokeSoft; g.lineWidth = 1;
+          for (let k = -sh; k < sw + sh; k += 6) { g.beginPath(); g.moveTo(sx + k, sy + sh); g.lineTo(sx + k + sh, sy); g.stroke(); }
+          g.restore();
+        }
+        gfxRRect(g, sx, sy, sw, sh, 2);
+        g.strokeStyle = isActiveStatic ? HIGHLAND_THEME.signal.amberBright : (nid === sel ? '#ffffff' : (out ? HIGHLAND_THEME.signal.vermilionBright : HIGHLAND_THEME.signal.ashStrokeSoft));
+        g.lineWidth = isActiveStatic ? 2.0 : (nid === sel ? 1.8 : 1); g.stroke();
+        if (sw > 16) {
+          g.fillStyle = out ? HIGHLAND_THEME.signal.vermilionBright : (isActiveStatic ? HIGHLAND_THEME.signal.amberBright : HIGHLAND_THEME.text.muted); g.font = `10px ${MONO}`; g.textAlign = 'center';
+          g.fillText(`S${nid}`, sx + sw / 2, sy + sh / 2 + 3.5);
+        }
+      });
+    } else if (staticUlSegments.length > 0) {
       const ctrlSeg = staticTimeline.segments.find(s => s.phase === 'CONTROL_BROADCAST');
       if (ctrlSeg && ctrlSeg.durationMs > 0) {
         const cx = xOfMs(ctrlSeg.startMs), cw = Math.max(1, (ctrlSeg.durationMs / superframeDurationMs) * plotW);
@@ -13456,6 +13741,9 @@ function drawWaterfall() {
     // ─────────────────────────────────────────────────────────────────────────
     gfxRRect(g, padL, yTac, plotW, trackH, 4);
     g.fillStyle = HIGHLAND_THEME.substrate.void; g.fill(); g.strokeStyle = HIGHLAND_THEME.line.frame; g.lineWidth = 1; g.stroke();
+    if (isTacMulti) {
+      drawSectorSubLanes(yTac);
+    }
 
     const ctrlSeg = tacTimeline.segments.find(s => s.phase === 'CONTROL_BROADCAST');
     if (ctrlSeg && ctrlSeg.durationMs > 0) {
@@ -13472,56 +13760,133 @@ function drawWaterfall() {
       g.fillText('DL', dx + 2, yTac - 5);
     }
 
-    const tacUlSegments = tacTimeline.segments.filter(s => s.phase === 'UPLINK_SLOT');
-    tacUlSegments.forEach(seg => {
-      const nid = seg.scheduledNodeId ?? -1;
-      const ax = xOfMs(seg.startMs), aw = Math.max(2, (seg.durationMs / superframeDurationMs) * plotW);
-      const y = yTac + 3, sh = trackH - 6;
-      const isActiveTac = schedMode !== 'static' && activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId === nid;
+    if (isTacMulti && tacAllocations && tacAllocations.length > 0) {
+      const subLaneH = trackH / 4;
+      tacAllocations.forEach(alloc => {
+        const nid = alloc.node_id ?? alloc.nodeId ?? -1;
+        const startMs = alloc.start_ms ?? alloc.startMs ?? 0;
+        const durMs = alloc.duration_ms ?? alloc.durationMs ?? 0;
+        const secId = alloc.sector_id ?? alloc.sectorId ?? 0;
+        const ax = xOfMs(startMs), aw = Math.max(2, (durMs / superframeDurationMs) * plotW);
+        const y = yTac + secId * subLaneH + 1.5, sh = Math.max(3, subLaneH - 3);
+        const isActiveTac = schedMode !== 'static' && activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId === nid;
 
-      let col = HIGHLAND_THEME.signal.sage;
-      if (seg.isPreOcclusionFlush) col = HIGHLAND_THEME.signal.amberBright;
-      else if (nid === 15) col = HIGHLAND_THEME.signal.amber;
+        let col = HIGHLAND_THEME.signal.sage;
+        if (alloc.is_pre_occlusion_flush ?? alloc.isPreOcclusionFlush) col = HIGHLAND_THEME.signal.amberBright;
+        else if (nid === 15) col = HIGHLAND_THEME.signal.amber;
 
-      gfxRRect(g, ax, y, Math.max(1.5, aw - 1), sh, 3);
-      const grad = g.createLinearGradient(0, y, 0, y + sh);
-      grad.addColorStop(0, col); grad.addColorStop(1, col + 'bb');
-      g.fillStyle = grad; g.fill();
+        gfxRRect(g, ax, y, Math.max(1.5, aw - 1), sh, 2);
+        const grad = g.createLinearGradient(0, y, 0, y + sh);
+        grad.addColorStop(0, col); grad.addColorStop(1, col + 'bb');
+        g.fillStyle = grad; g.fill();
 
-      if (isActiveTac) {
-        g.strokeStyle = '#ffffff'; g.lineWidth = 2.2; g.stroke();
-      } else if (nid === sel) {
-        g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke();
-      }
-      if (aw > 20) {
-        g.fillStyle = HIGHLAND_THEME.substrate.void; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
-        g.fillText(`S${nid}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
-      }
-    });
+        if (isActiveTac) {
+          g.strokeStyle = '#ffffff'; g.lineWidth = 2.0; g.stroke();
+        } else if (nid === sel) {
+          g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke();
+        }
+        if (aw > 20) {
+          g.fillStyle = HIGHLAND_THEME.substrate.void; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
+          g.fillText(`S${nid}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
+        }
+      });
 
-    const tacReclaimedSegments = tacTimeline.segments.filter(s => s.phase === 'IDLE_RECLAIMED');
-    tacReclaimedSegments.forEach(seg => {
-      const rx = xOfMs(seg.startMs), rw = Math.max(2, (seg.durationMs / superframeDurationMs) * plotW - 1);
-      const ry = yTac + 3, rh = trackH - 6;
-      gfxRRect(g, rx, ry, rw, rh, 3);
-      g.fillStyle = 'rgba(82, 183, 136, 0.08)'; g.fill();
-      g.save(); g.clip();
-      g.strokeStyle = 'rgba(82, 183, 136, 0.24)'; g.lineWidth = 1;
-      for (let k = -rh; k < rw + rh; k += 8) {
-        g.beginPath(); g.moveTo(rx + k, ry + rh); g.lineTo(rx + k + rh, ry); g.stroke();
+      // Draw reclaimed gaps per sector sub-lane
+      const drawReclaimedGap = (startMs, durMs, sy, sh) => {
+        const rx = xOfMs(startMs), rw = Math.max(2, (durMs / superframeDurationMs) * plotW - 1);
+        gfxRRect(g, rx, sy, rw, sh, 2);
+        g.fillStyle = 'rgba(82, 183, 136, 0.08)'; g.fill();
+        g.save(); g.clip();
+        g.strokeStyle = 'rgba(82, 183, 136, 0.24)'; g.lineWidth = 1;
+        for (let k = -sh; k < rw + sh; k += 8) {
+          g.beginPath(); g.moveTo(rx + k, sy + sh); g.lineTo(rx + k + sh, sy); g.stroke();
+        }
+        g.restore();
+        gfxRRect(g, rx, sy, rw, sh, 2);
+        g.strokeStyle = HIGHLAND_THEME.signal.sageStrokeSoft; g.lineWidth = 1;
+        g.stroke();
+        if (rw > 50) {
+          g.fillStyle = HIGHLAND_THEME.signal.sageBright; g.font = `600 8.5px ${MONO}`; g.textAlign = 'center';
+          g.fillText('RECLAIMED', rx + rw / 2, sy + sh / 2 + 3);
+        }
+      };
+
+      const ulStartMs = ctrlDurationMs + dlDurationMs;
+      for (let s = 0; s < 4; s++) {
+        const secAllocs = tacAllocations
+          .filter(a => (a.sector_id ?? a.sectorId ?? 0) === s)
+          .sort((a, b) => (a.start_ms ?? a.startMs ?? 0) - (b.start_ms ?? b.startMs ?? 0));
+        let cursor = ulStartMs;
+        const sy = yTac + s * subLaneH + 1.5;
+        const sh = Math.max(3, subLaneH - 3);
+        for (const a of secAllocs) {
+          const aStart = a.start_ms ?? a.startMs ?? 0;
+          const aDur = a.duration_ms ?? a.durationMs ?? 0;
+          if (aStart > cursor + 0.05) {
+            drawReclaimedGap(cursor, aStart - cursor, sy, sh);
+          }
+          cursor = Math.max(cursor, aStart + aDur);
+        }
+        if (cursor < superframeDurationMs - 0.05) {
+          drawReclaimedGap(cursor, superframeDurationMs - cursor, sy, sh);
+        }
       }
-      g.restore();
-      gfxRRect(g, rx, ry, rw, rh, 3);
-      g.strokeStyle = HIGHLAND_THEME.signal.sageStrokeSoft; g.lineWidth = 1;
-      g.stroke();
-      if (rw > 60) {
-        g.fillStyle = HIGHLAND_THEME.signal.sageBright; g.font = `600 9px ${MONO}`; g.textAlign = 'center';
-        g.fillText('RECLAIMED AIRTIME', rx + rw / 2, ry + rh / 2 + 3);
-      } else if (rw > 28) {
-        g.fillStyle = HIGHLAND_THEME.signal.sageBright; g.font = `600 8.5px ${MONO}`; g.textAlign = 'center';
-        g.fillText('RECLAIMED', rx + rw / 2, ry + rh / 2 + 3);
-      }
-    });
+    } else {
+      const tacUlSegments = tacTimeline.segments.filter(s => s.phase === 'UPLINK_SLOT');
+      tacUlSegments.forEach(seg => {
+        const nid = seg.scheduledNodeId ?? -1;
+        const ax = xOfMs(seg.startMs), aw = Math.max(2, (seg.durationMs / superframeDurationMs) * plotW);
+        const y = yTac + 3, sh = trackH - 6;
+        const isActiveTac = schedMode !== 'static' && activeSlot.phase === 'UPLINK_SLOT' && activeSlot.scheduledNodeId === nid;
+
+        let col = HIGHLAND_THEME.signal.sage;
+        if (seg.isPreOcclusionFlush) col = HIGHLAND_THEME.signal.amberBright;
+        else if (nid === 15) col = HIGHLAND_THEME.signal.amber;
+
+        gfxRRect(g, ax, y, Math.max(1.5, aw - 1), sh, 3);
+        const grad = g.createLinearGradient(0, y, 0, y + sh);
+        grad.addColorStop(0, col); grad.addColorStop(1, col + 'bb');
+        g.fillStyle = grad; g.fill();
+
+        if (isActiveTac) {
+          g.strokeStyle = '#ffffff'; g.lineWidth = 2.2; g.stroke();
+        } else if (nid === sel) {
+          g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke();
+        }
+        const secId = seg.allocation?.sector_id ?? seg.sector_id ?? seg.sectorId;
+        if (aw > 36 && secId !== undefined) {
+          g.fillStyle = HIGHLAND_THEME.substrate.void; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
+          g.fillText(`S${nid}·sec${secId}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
+        } else if (aw > 20) {
+          g.fillStyle = HIGHLAND_THEME.substrate.void; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
+          g.fillText(`S${nid}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
+        }
+      });
+
+      const tacReclaimedSegments = tacTimeline.segments.filter(s => s.phase === 'IDLE_RECLAIMED');
+      tacReclaimedSegments.forEach(seg => {
+        const rx = xOfMs(seg.startMs), rw = Math.max(2, (seg.durationMs / superframeDurationMs) * plotW - 1);
+        const ry = yTac + 3, rh = trackH - 6;
+        gfxRRect(g, rx, ry, rw, rh, 3);
+        g.fillStyle = 'rgba(82, 183, 136, 0.08)'; g.fill();
+        g.save(); g.clip();
+        g.strokeStyle = 'rgba(82, 183, 136, 0.24)'; g.lineWidth = 1;
+        for (let k = -rh; k < rw + rh; k += 8) {
+          g.beginPath(); g.moveTo(rx + k, ry + rh); g.lineTo(rx + k + rh, ry); g.stroke();
+        }
+        g.restore();
+        gfxRRect(g, rx, ry, rw, rh, 3);
+        g.strokeStyle = HIGHLAND_THEME.signal.sageStrokeSoft; g.lineWidth = 1;
+        g.stroke();
+        if (rw > 60) {
+          g.fillStyle = HIGHLAND_THEME.signal.sageBright; g.font = `600 9px ${MONO}`; g.textAlign = 'center';
+          g.fillText('RECLAIMED AIRTIME', rx + rw / 2, ry + rh / 2 + 3);
+        } else if (rw > 28) {
+          g.fillStyle = HIGHLAND_THEME.signal.sageBright; g.font = `600 8.5px ${MONO}`; g.textAlign = 'center';
+          g.fillText('RECLAIMED', rx + rw / 2, ry + rh / 2 + 3);
+        }
+      });
+    }
 
     const renderTrackConflicts = (conflicts, yTrack) => {
       conflicts.forEach(conf => {

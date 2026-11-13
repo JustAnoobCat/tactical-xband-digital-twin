@@ -11,6 +11,7 @@
  */
 
 import { EnvironmentConfig, NodeType, RFConfig } from './config';
+import type { AcnSectorEvaluation, AcnSectorId } from './antennaArray';
 
 export interface ModCodEntry {
   readonly name: string;
@@ -56,6 +57,20 @@ export interface LinkStatus {
   readonly isOutage: boolean;
   /** True when geometry intersects a screening-only obstacle; no attenuation is inferred. */
   readonly obstacleBlocked?: boolean;
+  readonly timingAdvanceS?: number;
+  readonly skyNoiseIncreaseDb?: number;
+  readonly skyTemperatureK?: number;
+  readonly activeSectorId?: AcnSectorId;
+  readonly sectorBoresightDeg?: 0 | 90 | 180 | 270;
+  readonly acnHeadingDeg?: number;
+  readonly bodyAzimuthDeg?: number;
+  readonly offBoresightAzDeg?: number;
+  readonly elevationAngleDeg?: number;
+  readonly patternRollOffDb?: number;
+  readonly allSectorGainsDbi?: readonly [number, number, number, number];
+  readonly isCrossoverZone?: boolean;
+  readonly handoverOccurred?: boolean;
+  readonly handoverCount?: number;
 }
 
 export class LinkBudgetEngine {
@@ -75,28 +90,90 @@ export class LinkBudgetEngine {
   }
 
   /**
-   * ITU-R P.676 Gaseous Absorption for 8.0 GHz Tactical X-band.
-   * Specific attenuation gamma_g = 0.012 dB/km in clear alpine troposphere.
+   * ITU-R P.676-13 / P.835-6 Altitude-Integrated Gaseous Absorption for 8.0 GHz Tactical X-band.
+   * Specific attenuation gamma_o,0 = 0.0072 dB/km (oxygen, scale height ho = 6000 m).
+   * Specific attenuation gamma_w,0 = 0.0028 dB/km (water vapor, scale height hw = 2000 m).
+   *
+   * Exact fallback: If nodeAltM === undefined || acnAltM === undefined,
+   * returns legacy constant: 0.012 * (Math.max(slantRangeM, 1.0) / 1000.0).
    */
-  public static computeGaseousAttenuationDb(slantRangeM: number): number {
-    return 0.012 * (slantRangeM / 1000.0);
+  public static computeGaseousAttenuationDb(
+    slantRangeM: number,
+    nodeAltM?: number,
+    acnAltM?: number,
+    carrierFreqHz: number = 8.0e9
+  ): number {
+    const rangeM = Math.max(slantRangeM, 1.0);
+    if (nodeAltM === undefined || acnAltM === undefined) {
+      return 0.012 * (rangeM / 1000.0);
+    }
+
+    const z1 = Math.min(nodeAltM, acnAltM);
+    const z2 = Math.max(nodeAltM, acnAltM);
+    const ho = 6000.0;
+    const gammaO0 = 0.0072;
+    const hw = 2000.0;
+    const gammaW0 = 0.0028;
+
+    const eta = (alt1: number, alt2: number, H: number): number => {
+      const deltaZ = Math.abs(alt2 - alt1);
+      if (deltaZ > 10.0) {
+        return (H / deltaZ) * (Math.exp(-alt1 / H) - Math.exp(-alt2 / H));
+      } else {
+        return Math.exp(-(alt1 + alt2) / (2.0 * H));
+      }
+    };
+
+    const etaO = eta(z1, z2, ho);
+    const etaW = eta(z1, z2, hw);
+    const aGas = (gammaO0 * etaO + gammaW0 * etaW) * (rangeM / 1000.0);
+    return Math.max(0.0, aGas);
   }
 
   /**
-   * ITU-R P.838-3 Hydrometeor Rain Attenuation for 8.0 GHz (Horizontal polarization).
+   * ITU-R P.838-3 / P.839-4 Hydrometeor Rain Attenuation for 8.0 GHz (Horizontal polarization).
    * k_H = 0.00411, alpha_H = 1.390
    * gamma_R = k_H * (rainRate ^ alpha_H) dB/km
-   * Effective path capped by rain cell extent.
+   * Freezing ceiling h_R = 4800.0 m MSL (34.5°N Ladakh).
+   *
+   * Exact fallback: If nodeAltM === undefined || acnAltM === undefined,
+   * returns legacy formula without altitude partitioning.
    */
-  public static computeRainAttenuationDb(slantRangeM: number, env: EnvironmentConfig): number {
-    if (env.rainRateMmH <= 0.0) {
+  public static computeRainAttenuationDb(
+    slantRangeM: number,
+    env: EnvironmentConfig,
+    nodeAltM?: number,
+    acnAltM?: number
+  ): number {
+    const rainRate = env.rainRateMmH ?? 0.0;
+    if (rainRate <= 0.0 || slantRangeM <= 0.0) {
       return 0.0;
     }
     const kH = 0.00411;
     const alphaH = 1.39;
-    const gammaR = kH * Math.pow(env.rainRateMmH, alphaH);
-    const rainPathKm = Math.min(slantRangeM / 1000.0, env.rainCellLengthKm);
-    return gammaR * rainPathKm;
+    const gammaR = kH * Math.pow(rainRate, alphaH);
+    const rainPathKm = Math.min(slantRangeM / 1000.0, env.rainCellLengthKm ?? 10.0);
+
+    if (nodeAltM === undefined || acnAltM === undefined) {
+      return gammaR * rainPathKm;
+    }
+
+    const z1 = Math.min(nodeAltM, acnAltM);
+    const z2 = Math.max(nodeAltM, acnAltM);
+    const hR = 4800.0; // Freezing ceiling in meters MSL
+
+    let fLiquid: number;
+    if (z1 >= hR) {
+      fLiquid = 0.0;
+    } else if (z2 <= hR) {
+      fLiquid = 1.0;
+    } else {
+      const deltaZ = Math.abs(z2 - z1);
+      fLiquid = deltaZ > 0.0 ? Math.max(0.0, Math.min(1.0, (hR - z1) / deltaZ)) : 1.0;
+    }
+
+    const aRain = gammaR * rainPathKm * (fLiquid + 0.08 * (1.0 - fLiquid));
+    return Math.max(0.0, aRain);
   }
 
   /**
@@ -143,11 +220,14 @@ export class LinkBudgetEngine {
     rf: RFConfig,
     env: EnvironmentConfig,
     obstacleBlocked: boolean = false,
-    customTxPowerDbm?: number
+    customTxPowerDbm?: number,
+    sectorEval?: AcnSectorEvaluation,
+    nodeAltM?: number,
+    acnAltM?: number
   ): LinkStatus {
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
-    const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM);
-    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, env);
+    const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
+    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, env, nodeAltM, acnAltM);
 
     // Sum channel losses
     const cableLossDb = rf.cableLossDb;
@@ -163,18 +243,34 @@ export class LinkBudgetEngine {
     // Transceiver parameters
     const { txPowerDbm: defaultTxPowerDbm, antennaGainDbi } = rf.getTransmitterParams(nodeType);
     const txPowerDbm = customTxPowerDbm !== undefined && Number.isFinite(customTxPowerDbm) ? customTxPowerDbm : defaultTxPowerDbm;
-    const rxGainDbi = rf.acnAntennaGainDbi;
+    const patternRollOffDb = sectorEval ? sectorEval.patternRollOffDb : 0.0;
+    const rxGainDbi = rf.acnAntennaGainDbi - patternRollOffDb;
 
     // Received signal power at ACN LNA input
     const prxDbm = txPowerDbm + antennaGainDbi + rxGainDbi - totalLossDb;
 
     // Thermal noise floor
-    const { pNoiseDbm } = LinkBudgetEngine.computeThermalNoiseFloorDbm(
+    const { pNoiseDbm: pNoiseThermalDbm } = LinkBudgetEngine.computeThermalNoiseFloorDbm(
       rf.channelBandwidthHz,
       rf.acnNoiseFigureDb,
       env.atmosphericTemperatureK,
       rf.boltzmannConstant
     );
+
+    // ITU-R P.618-14 Sky-Noise Coupling
+    let skyNoiseIncreaseDb = 0.0;
+    let skyTemperatureK = 0.0;
+    let pNoiseDbm = pNoiseThermalDbm;
+
+    if (nodeAltM !== undefined && acnAltM !== undefined) {
+      const aAtm = gasLossDb + rainLossDb;
+      const Tm = 275.0; // Mean atmospheric physical temperature (K)
+      skyTemperatureK = Tm * (1.0 - Math.pow(10.0, -aAtm / 10.0));
+      const T0 = 290.0; // Reference noise temperature (K)
+      const noiseFactor = Math.pow(10.0, rf.acnNoiseFigureDb / 10.0);
+      skyNoiseIncreaseDb = 10.0 * Math.log10(1.0 + skyTemperatureK / (T0 * noiseFactor));
+      pNoiseDbm = pNoiseThermalDbm + skyNoiseIncreaseDb;
+    }
 
     // Net Signal-to-Noise Ratio (SNR)
     const snrDb = prxDbm - pNoiseDbm;
@@ -185,6 +281,8 @@ export class LinkBudgetEngine {
     const spectralEfficiency = isOutage ? 0.0 : modcod.spectralEfficiencyBpsHz;
     const bitrateBps = isOutage ? 0.0 : spectralEfficiency * rf.channelBandwidthHz;
     const bitrateMbps = bitrateBps / 1.0e6;
+
+    const timingAdvanceS = slantRangeM > 0 ? (2.0 * slantRangeM) / rf.speedOfLight : 0.001;
 
     return {
       nodeType,
@@ -208,6 +306,20 @@ export class LinkBudgetEngine {
       bitrateMbps,
       isOutage,
       obstacleBlocked,
+      timingAdvanceS,
+      skyNoiseIncreaseDb,
+      skyTemperatureK,
+      activeSectorId: sectorEval?.activeSectorId,
+      sectorBoresightDeg: sectorEval?.sectorBoresightDeg,
+      acnHeadingDeg: sectorEval?.acnHeadingDeg,
+      bodyAzimuthDeg: sectorEval?.bodyAzimuthDeg,
+      offBoresightAzDeg: sectorEval?.offBoresightAzDeg,
+      elevationAngleDeg: sectorEval?.elevationAngleDeg,
+      patternRollOffDb: sectorEval ? sectorEval.patternRollOffDb : undefined,
+      allSectorGainsDbi: sectorEval?.allSectorGainsDbi,
+      isCrossoverZone: sectorEval?.isCrossoverZone,
+      handoverOccurred: sectorEval?.handoverOccurred,
+      handoverCount: sectorEval?.handoverCount,
     };
   }
 }
