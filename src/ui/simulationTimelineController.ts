@@ -48,6 +48,7 @@ export class SimulationTimelineController {
   public playheadTimeS: number = 0.0;
   public playbackSpeed: number = 1.0;
   public activeSpatialSnapshot: SpatialFrameSnapshot | null = null;
+  public isDirty: boolean = false;
 
   private isInternalSeeking: boolean = false;
   private isSynchronizingTransition: boolean = false;
@@ -254,11 +255,23 @@ export class SimulationTimelineController {
         this.playheadTimeS = this.spatialBuffer.newestSimulationTimeS;
         this.activeSpatialSnapshot = null;
       }
-      this.renderer.render();
+      this.isDirty = true;
       this.options.onStatusChange?.(this.isLive, this.playheadTimeS);
     }
 
     return true;
+  }
+
+  /**
+   * Renders the timeline canvas if marked dirty by incoming telemetry.
+   */
+  public renderIfDirty(): boolean {
+    if (this.isDirty) {
+      this.isDirty = false;
+      this.renderer.render();
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -292,6 +305,7 @@ export class SimulationTimelineController {
     try {
       this.renderer.seekTo(this.playheadTimeS, this.isLive);
       this.renderer.render();
+      this.isDirty = false;
     } finally {
       this.isInternalSeeking = false;
     }
@@ -332,6 +346,7 @@ export class SimulationTimelineController {
     try {
       this.renderer.setLive(true);
       this.renderer.render();
+      this.isDirty = false;
     } finally {
       this.isInternalSeeking = false;
     }
@@ -376,6 +391,7 @@ export class SimulationTimelineController {
   public zoomIn(): void {
     this.renderer.zoomAt(this.renderer.cssWidth / 2, 0.8);
     this.renderer.render();
+    this.isDirty = false;
   }
 
   /**
@@ -384,6 +400,7 @@ export class SimulationTimelineController {
   public zoomOut(): void {
     this.renderer.zoomAt(this.renderer.cssWidth / 2, 1.25);
     this.renderer.render();
+    this.isDirty = false;
   }
 
   /**
@@ -392,6 +409,7 @@ export class SimulationTimelineController {
   public fitHorizon(): void {
     this.renderer.setTimeWindow(this.renderer.viewStartTimeS, 60.0);
     this.renderer.render();
+    this.isDirty = false;
   }
 
   /**

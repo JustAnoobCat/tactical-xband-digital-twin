@@ -26,7 +26,7 @@ import type {
   NodeTransferTelemetry,
   ProfileFrameMessage,
 } from '../shared/workerProtocol';
-import { cartesianToGeodetic } from '../core/geodesy';
+import { cartesianToGeodetic, type GeodeticCoordinate } from '../core/geodesy';
 import {
   REAL_LADAKH_DEM_METADATA,
   TerrainBoundsTelemetry,
@@ -212,6 +212,16 @@ export function normalizeSlotAllocationToFrame(
  * Dedicated telemetry serializer constructing host telemetry payloads from simulation state.
  */
 export class TelemetrySerializer {
+  private readonly geodeticCache = new Map<number, { x: number; y: number; geo: GeodeticCoordinate }>();
+
+  public getGeodetic(nodeId: number, x: number, y: number): GeodeticCoordinate {
+    const cached = this.geodeticCache.get(nodeId);
+    if (cached && cached.x === x && cached.y === y) return cached.geo;
+    const geo = cartesianToGeodetic(x, y);
+    this.geodeticCache.set(nodeId, { x, y, geo });
+    return geo;
+  }
+
   /**
    * Constructs telemetry items for all active ground nodes from precomputed domain results.
    */
@@ -227,7 +237,7 @@ export class TelemetrySerializer {
       const q = node.queue;
 
       const [nx, ny] = node.position;
-      const geo = cartesianToGeodetic(nx, ny);
+      const geo = this.getGeodetic(node.nodeId, nx, ny);
 
       const c2Bytes = q.getClassBacklogBytes(69);
       const voiceBytes = q.getClassBacklogBytes(65);

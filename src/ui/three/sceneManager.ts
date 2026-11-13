@@ -58,6 +58,7 @@ export class ThreeSceneManager {
   private lastFpsCalcTimestampMs: number = 0;
   private currentFrameTimeMs: number = 0;
   private totalRenderCount: number = 0;
+  private isSceneDirty: boolean = true;
 
   // Placeholder root objects
   private placeholderGroup: THREE.Group;
@@ -116,6 +117,9 @@ export class ThreeSceneManager {
     // Initialize interactive OrbitControls for tactical 3D map navigation (M6.2.3-A)
     try {
       this.controls = new OrbitControls(this.camera, this.canvas);
+      this.controls.addEventListener('change', () => {
+        this.isSceneDirty = true;
+      });
       this.controls.target.copy(CAMERA_PRESETS.TACTICAL.target);
       this.controls.enableDamping = true;
       this.controls.dampingFactor = 0.05;
@@ -243,6 +247,7 @@ export class ThreeSceneManager {
     }
     this.camera.lookAt(preset.target);
     this.camera.updateProjectionMatrix();
+    this.isSceneDirty = true;
   }
 
   /**
@@ -481,6 +486,7 @@ export class ThreeSceneManager {
    */
   public updateTelemetry(frame: any): void {
     this.tacticalEntityManager.updateFromTelemetry(frame);
+    this.isSceneDirty = true;
     if (this.viewMode === '3d' && !this.isRunning && !this.isContextLost) {
       this.render();
     }
@@ -488,6 +494,7 @@ export class ThreeSceneManager {
 
   public setSelectedNode(nodeId: number): void {
     this.tacticalEntityManager.setSelectedNode(nodeId);
+    this.isSceneDirty = true;
     if (this.viewMode === '3d' && !this.isRunning && !this.isContextLost) {
       this.render();
     }
@@ -527,6 +534,7 @@ export class ThreeSceneManager {
       links: visibility.links,
       transmissions: visibility.transmissions,
     });
+    this.isSceneDirty = true;
     if (this.viewMode === '3d' && !this.isRunning && !this.isContextLost) {
       this.render();
     }
@@ -544,6 +552,7 @@ export class ThreeSceneManager {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    this.isSceneDirty = true;
 
     // If active in 3D, trigger a render frame immediately
     if (this.viewMode === '3d' && !this.isRunning && !this.isContextLost) {
@@ -614,12 +623,16 @@ export class ThreeSceneManager {
       }
 
       // Update interactive camera controls with damping
-      if (this.controls && this.controls.enabled) {
-        this.controls.update();
+      const controlsMoved = Boolean(this.controls && this.controls.enabled && this.controls.update());
+      if (controlsMoved) {
+        this.isSceneDirty = true;
       }
 
-      // Execute render
-      this.render();
+      // Execute render on demand
+      if (this.isSceneDirty) {
+        this.render();
+        this.isSceneDirty = false;
+      }
 
       // Schedule next frame
       if (typeof requestAnimationFrame !== 'undefined') {
@@ -731,6 +744,7 @@ export class ThreeSceneManager {
         this.terrainMesh.material.color.setHex(0xffffff);
         this.terrainMesh.material.needsUpdate = true;
       }
+      this.isSceneDirty = true;
     } catch (err) {
       console.warn('[ThreeSceneManager] Failed to bind hillshade texture to 3D terrain:', err);
     }
@@ -827,6 +841,7 @@ export class ThreeSceneManager {
     );
     this.datumGrid.visible = this.datumGridVisible;
     this.worldGroup.add(this.datumGrid);
+    this.isSceneDirty = true;
 
     // If 3D is active, trigger an immediate render
     if (this.viewMode === '3d' && !this.isRunning && !this.isContextLost) {

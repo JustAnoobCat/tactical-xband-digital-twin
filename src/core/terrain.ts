@@ -884,25 +884,17 @@ const candidateUrls = url
       };
     }
 
-    let steps: number[] = [];
-    if (d3D <= stepIntervalM * 2.0) {
-      steps = [d3D * 0.5];
-    } else {
-      for (let s = stepIntervalM; s < d3D; s += stepIntervalM) {
-        steps.push(s);
-      }
-    }
-
     let minClearanceRatio = Number.POSITIVE_INFINITY;
     let minClearanceM = 0.0;
     let critFresnelRadiusM = 0.0;
     let critD1 = d3D * 0.5;
     let critD2 = d3D * 0.5;
 
-    for (let i = 0; i < steps.length; i++) {
-      const d1 = steps[i];
+    if (d3D <= stepIntervalM * 2.0) {
+      // Single midpoint sample for very short baseline
+      const d1 = d3D * 0.5;
       const d2 = d3D - d1;
-      const fraction = d1 / d3D;
+      const fraction = 0.5;
 
       const sampleX = nx + fraction * dx;
       const sampleY = ny + fraction * dy;
@@ -911,24 +903,51 @@ const candidateUrls = url
       if (!Number.isFinite(hTerrain)) {
         isCoverageComplete = false;
         coverageNote = 'OUT_OF_COVERAGE: Propagation path traverses unmapped terrain outside DEM coverage';
-        break;
-      }
+      } else {
+        const earthBulge = TerrainEngine.computeEarthBulge(d1, d2, rEff);
+        const hTerrainEff = hTerrain + earthBulge;
+        const hLos = nz + fraction * dz;
+        const hClear = hLos - hTerrainEff;
 
-      const earthBulge = TerrainEngine.computeEarthBulge(d1, d2, rEff);
-      const hTerrainEff = hTerrain + earthBulge;
-
-      const hLos = nz + fraction * dz;
-      const hClear = hLos - hTerrainEff;
-
-      const r1 = Math.sqrt((wavelength * d1 * d2) / d3D);
-      const clearanceRatio = hClear / r1;
-
-      if (clearanceRatio < minClearanceRatio) {
-        minClearanceRatio = clearanceRatio;
+        const r1 = Math.sqrt((wavelength * d1 * d2) / d3D);
+        minClearanceRatio = hClear / r1;
         minClearanceM = hClear;
         critFresnelRadiusM = r1;
         critD1 = d1;
         critD2 = d2;
+      }
+    } else {
+      // Standard stepped ray-marching without array allocation
+      for (let d1 = stepIntervalM; d1 < d3D; d1 += stepIntervalM) {
+        const d2 = d3D - d1;
+        const fraction = d1 / d3D;
+
+        const sampleX = nx + fraction * dx;
+        const sampleY = ny + fraction * dy;
+
+        const hTerrain = this.getElevation(sampleX, sampleY);
+        if (!Number.isFinite(hTerrain)) {
+          isCoverageComplete = false;
+          coverageNote = 'OUT_OF_COVERAGE: Propagation path traverses unmapped terrain outside DEM coverage';
+          break;
+        }
+
+        const earthBulge = TerrainEngine.computeEarthBulge(d1, d2, rEff);
+        const hTerrainEff = hTerrain + earthBulge;
+
+        const hLos = nz + fraction * dz;
+        const hClear = hLos - hTerrainEff;
+
+        const r1 = Math.sqrt((wavelength * d1 * d2) / d3D);
+        const clearanceRatio = hClear / r1;
+
+        if (clearanceRatio < minClearanceRatio) {
+          minClearanceRatio = clearanceRatio;
+          minClearanceM = hClear;
+          critFresnelRadiusM = r1;
+          critD1 = d1;
+          critD2 = d2;
+        }
       }
     }
 

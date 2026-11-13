@@ -2954,6 +2954,7 @@ function applyMapLayersToAllRenderers() {
   syncMapLegendVisibility();
   syncRfQuickToggleButtons();
   applyThreeLayerVisibility();
+  markRadarDirty();
   mapLibreTerrainVisible = mapLayerRegistry.isLayerVisible('base.terrainDem');
   mapLibreTerrainOpacity = mapLayerRegistry.getLayerOpacity('base.terrainDem');
   const demCb = $('tb-toggle-dem-layer');
@@ -3478,6 +3479,9 @@ if (timelineCanvas) {
       clearAuxiliaryTimelineBuffers();
     },
     onMapRedrawNeeded: () => {
+      markRadarDirty();
+      schedulerNeedsRender = true;
+      terrainNeedsRender = true;
       drawRadar();
       drawWaterfall();
       drawFresnel();
@@ -3891,6 +3895,10 @@ const TAU = Math.PI * 2;
 let THEATER_RADIUS_M = 300000;
 
 let isPaused = false;
+let radarNeedsRender = true;
+let schedulerNeedsRender = true;
+let terrainNeedsRender = true;
+function markRadarDirty() { radarNeedsRender = true; }
 let selectedNodeId = -1;
 let inspectorDismissed = false;
 let nodeMoveModeActive = false;
@@ -4503,7 +4511,7 @@ function syncLiveUIState() {
   }
 
   updateScrubberUI();
-  updateDashboardDOM(latestTelemetry);
+  updateDashboardDOM(latestTelemetry, true);
   drawFresnel();
   syncSelectedNodeAglUI();
 }
@@ -4843,7 +4851,7 @@ function syncSchedulerLiveUIState() {
   }
 
   updateSchedulerScrubberUI();
-  updateDashboardDOM(latestTelemetry);
+  updateDashboardDOM(latestTelemetry, true);
   drawWaterfall();
   drawSchedulerCharts();
 }
@@ -5332,6 +5340,9 @@ worker.onmessage = (event) => {
   if (!msg) return;
 
   if (msg.type === 'TELEMETRY_FRAME') {
+    radarNeedsRender = true;
+    schedulerNeedsRender = true;
+    terrainNeedsRender = true;
     if (simTimelineController && !simTimelineController.prepareTelemetryRun(msg.frame)) {
       return;
     }
@@ -5357,7 +5368,10 @@ worker.onmessage = (event) => {
     if (dashboardOption && !dashboardOption.selected) { dashboardOption.selected = true; drawNetworkCharts(); }
     if (activeMapHoverRenderer && mapHoverPoint) renderNodeHoverTooltip(hoveredLinkNodeId ?? hoveredNodeId, mapHoverPoint, hoveredLinkNodeId !== null ? 'link' : 'node');
     ingestNetworkPerformance(msg.frame);
-    renderRegistration(msg.frame);
+    const activeTabId = document.querySelector('.tab-content.active')?.id;
+    if (activeTabId === 'tab-registration') {
+      renderRegistration(msg.frame);
+    }
     if (msg.frame && msg.frame.terrain_bounds) {
       activeTerrainBounds = msg.frame.terrain_bounds;
     }
@@ -5381,7 +5395,7 @@ worker.onmessage = (event) => {
         updateMapLibreOverlay();
       }
     }
-    if (threeController && !(simTimelineController?.isHistoricalInspecting)) {
+    if (threeController && stageViewMode === '3d' && !(simTimelineController?.isHistoricalInspecting)) {
       threeController.updateTelemetry(msg.frame);
     }
     diagnosticsTracker.renderIntoDom(
@@ -5425,8 +5439,9 @@ worker.onmessage = (event) => {
       ...(msg.selected_link_budget ? { selected_link_budget: msg.selected_link_budget } : {}),
       ...(msg.nodes_telemetry ? { nodes_telemetry: msg.nodes_telemetry } : {}),
     };
+    terrainNeedsRender = true;
     if (isPaused && !historyController.isInspecting) {
-      updateDashboardDOM(latestTelemetry);
+      updateDashboardDOM(latestTelemetry, true);
       drawFresnel();
     }
   } else if (msg.type === 'CUSTOM_DEM_LOADED') {
@@ -5610,7 +5625,7 @@ function handleNodeSelection(nodeId) {
   }
   drawRadar();
   drawFresnel();
-  if (latestTelemetry) updateDashboardDOM(latestTelemetry);
+  if (latestTelemetry) updateDashboardDOM(latestTelemetry, true);
 }
 
 $('map-node-details')?.addEventListener('click', event => {
@@ -8447,6 +8462,7 @@ window.togglePause = function() {
     }
   }
   updatePauseButtonUI();
+  if (latestTelemetry) updateDashboardDOM(latestTelemetry, true);
 };
 
 window.toggleSpatialLock = function() {
@@ -8472,6 +8488,7 @@ window.stepSim = function() {
   isPaused = true;
   updateStepControlUI(false);
   updatePauseButtonUI();
+  if (latestTelemetry) updateDashboardDOM(latestTelemetry, true);
   sendCommand({ type: 'SIM_CONTROL', action: 'step', step_request_id: reqId });
 };
 
@@ -8586,6 +8603,7 @@ window.resetSim = function() {
   }
   dataCommVisualizer.reset();
   networkTrafficTracker.clear();
+  lastRenderedNodesKey = '';
   setSpeed(PLAYBACK_SPEED.defaultValue);
   updateStepControlUI(true);
   updatePauseButtonUI();
@@ -8594,6 +8612,7 @@ window.resetSim = function() {
   if (terrainTopViewport && typeof terrainTopViewport.clearPinnedBounds === 'function') {
     terrainTopViewport.clearPinnedBounds();
   }
+  if (latestTelemetry) updateDashboardDOM(latestTelemetry, true);
   sendCommand({ type: 'SIM_CONTROL', action: 'reset' });
 };
 
@@ -8601,6 +8620,7 @@ window.loadPreset = function(id) {
   inspectingAcn = false;
   pendingAltitudeMode = null;
   flightParamsDirty = false;
+  lastRenderedNodesKey = '';
   if (id === 'PRESET_RESET' || id === 'PRESET_ACN_ONLY' || id === 'PRESET_16_NODES') {
     if (historyController.isInspecting) {
       historyController.exitHistorical();
@@ -8655,6 +8675,7 @@ window.runKargilScenario = function() {
   inspectingAcn = false;
   inspectorDismissed = true;
   selectedNodeId = 4;
+  lastRenderedNodesKey = '';
   syncNodeDropdowns(4);
   renderSelectedNodeDetails();
   setSpeed(0.5);
@@ -8672,6 +8693,7 @@ function setRadarRange(rangeM, options = { duration: 200 }) {
   currentRadarRangeM = Math.max(15000, Math.min(300000, Number.isFinite(rangeM) ? rangeM : 60000));
   syncRangeButtonHighlights(currentRadarRangeM);
   setText('tb-span-readout', `Span: ${((currentRadarRangeM * 2) / 1000).toFixed(1)} km`);
+  markRadarDirty();
   if (terrainMapMode === 'maplibre' && mapLibreInitialized) {
     syncMapLibreCameraFromRadarState(options?.duration ?? 200, Boolean(options?.resetOrientation));
   } else {
@@ -10236,7 +10258,7 @@ window.onTargetNodeChange = function(val) {
     syncSchedulerHistoricalUIState();
   } else {
     drawSchedulerCharts();
-    if (latestTelemetry) updateDashboardDOM(latestTelemetry);
+    if (latestTelemetry) updateDashboardDOM(latestTelemetry, true);
   }
 };
 
@@ -10723,12 +10745,19 @@ window.switchMainTab = function(targetTabId) {
       btn.tabIndex = isActive ? 0 : -1;
     }
   });
-  if (targetTabId === 'tab-terminal' && latestTelemetry) {
-    if (currentTrafficSubtab === 'traffic') {
+  if (latestTelemetry) {
+    updateDashboardDOM(latestTelemetry, true);
+    if (targetTabId === 'tab-terminal') {
+      if (currentTrafficSubtab === 'traffic') {
+        renderNetworkTrafficInventory(latestTelemetry);
+      } else if (latestTelemetry.nodes_telemetry) {
+        const search = $('terminal-search');
+        renderTerminalInventory(latestTelemetry.nodes_telemetry, selectedNodeId, search ? search.value : '');
+      }
+    } else if (targetTabId === 'tab-network') {
       renderNetworkTrafficInventory(latestTelemetry);
-    } else if (latestTelemetry.nodes_telemetry) {
-      const search = $('terminal-search');
-      renderTerminalInventory(latestTelemetry.nodes_telemetry, selectedNodeId, search ? search.value : '');
+    } else if (targetTabId === 'tab-registration') {
+      renderRegistration(latestTelemetry);
     }
   }
   if (targetTabId === 'tab-doc' && currentDocSubview === 'diag' && latestTelemetry) {
@@ -11348,7 +11377,7 @@ function experimentMetadata() {
   return {
     schema_version: '1.0',
     artifact: 'Tactical X-Band Network Digital Twin',
-    frontend_package_version: '1.1.0',
+    frontend_package_version: '1.1.1',
     engine: 'TypeScript WebWorker',
     run_id: experimentCapture.runId,
     label: experimentElement('experiment-run-label')?.value || 'unnamed-run',
@@ -11410,9 +11439,27 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   initNodeInventoryToolbar();
 }
 
-function updateDashboardDOM(frame) {
+let lastDomUpdateMs = 0;
+let lastRenderedNodesKey = '';
+const DOM_UPDATE_INTERVAL_MS = 80; // ~12.5 Hz cadence
+
+function updateDashboardDOM(frame, force = false) {
   if (!frame) return;
   experimentObserve(frame);
+  if (frame.nodes_telemetry) {
+    networkTrafficTracker.ingest({
+      frameIndex: Number(frame.frame_index ?? 0),
+      simulationTimeS: Number(frame.sim_time_s ?? 0),
+      nodes: frame.nodes_telemetry,
+      downlinkTelemetry: frame.downlink_telemetry,
+      schedulerMode: frame.scheduler_mode,
+    });
+  }
+  const nowMs = performance.now();
+  if (!force && (nowMs - lastDomUpdateMs < DOM_UPDATE_INTERVAL_MS)) {
+    return;
+  }
+  lastDomUpdateMs = nowMs;
   setText('clock-display', `T+${(frame.sim_time_s ?? 0).toFixed(1)}s`);
   setText('frame-display', `#${frame.frame_index ?? 0}`);
 
@@ -11436,21 +11483,23 @@ function updateDashboardDOM(frame) {
 
   if (frame.nodes_telemetry) {
     populateDropdownsOnce(frame.nodes_telemetry);
-    if (!isTimelineHist) {
+    const activeTabId = document.querySelector('.tab-content.active')?.id;
+    const nodesKey = frame.nodes_telemetry.map(n => n.node_id).join(',');
+    const nodesChanged = nodesKey !== lastRenderedNodesKey;
+    const tbody = $('terminal-inventory-tbody');
+    const hasRows = Boolean(tbody && !tbody.querySelector('td[colspan]') && tbody.children.length >= 2);
+
+    if ((activeTabId === 'tab-terminal' || nodesChanged || !hasRows || force) && !isTimelineHist) {
+      lastRenderedNodesKey = nodesKey;
       const search = $('terminal-search');
       const q = search ? search.value : '';
       if (search) window.filterTerminalOptions(q);
       renderTerminalInventory(frame.nodes_telemetry, selectedNodeId, q);
       syncSelectedNodeAglUI();
     }
-    networkTrafficTracker.ingest({
-      frameIndex: Number(frame.frame_index ?? 0),
-      simulationTimeS: Number(frame.sim_time_s ?? 0),
-      nodes: frame.nodes_telemetry,
-      downlinkTelemetry: frame.downlink_telemetry,
-      schedulerMode: frame.scheduler_mode,
-    });
-    if (!isTimelineHist) renderNetworkTrafficInventory(frame);
+    if (activeTabId === 'tab-network' && !isTimelineHist) {
+      renderNetworkTrafficInventory(frame);
+    }
   }
 
   if (isTimelineHist) return;
@@ -11771,7 +11820,7 @@ function screenToWorld(px, py, w, h) {
 function drawRadar() {
   try {
     const cvs = radarCanvas;
-    if (!cvs || stageViewMode === '3d') return;
+    if (!cvs || stageViewMode === '3d' || terrainMapMode === 'maplibre') return;
     const w = cvs.parentElement.clientWidth || 600;
     const h = cvs.parentElement.clientHeight || 500;
     if (w <= 0 || h <= 0) return;
@@ -13150,6 +13199,7 @@ window.addEventListener('mousemove', (e) => {
     panOffsetX_m -= (e.clientX - panStartX) / scale;
     panOffsetY_m += (e.clientY - panStartY) / scale;
     panStartX = e.clientX; panStartY = e.clientY;
+    markRadarDirty();
   }
 });
 
@@ -13163,6 +13213,7 @@ const finishRadarDrag = (e) => {
   if (draggedEntity?.type === 'node' && draggedEntity.lastPosition && !spatialLocked && (!simTimelineController || !simTimelineController.isHistoricalInspecting)) {
     sendCommand({ type: 'NODE_MOVE', node_id: draggedEntity.id, x_m: draggedEntity.lastPosition.xM, y_m: draggedEntity.lastPosition.yM });
   }
+  markRadarDirty();
   draggedEntity = null; isPanning = false; radarCanvas.style.cursor = 'grab';
   if (
     wasPanning &&
@@ -13811,17 +13862,32 @@ let lastTimelineAnimTimeMs = 0;
 function animationLoop(timestampMs) {
   try {
     const now = typeof timestampMs === 'number' ? timestampMs : performance.now();
-    if (lastTimelineAnimTimeMs > 0 && simTimelineController && simTimelineController.isPlayingHistory) {
-      const dtS = Math.min((now - lastTimelineAnimTimeMs) / 1000, 0.1);
-      simTimelineController.advanceHistoricalPlayback(dtS);
+    const isPlayingHistory = Boolean(simTimelineController?.isPlayingHistory);
+    if (simTimelineController) {
+      if (lastTimelineAnimTimeMs > 0 && isPlayingHistory) {
+        const dtS = Math.min((now - lastTimelineAnimTimeMs) / 1000, 0.1);
+        simTimelineController.advanceHistoricalPlayback(dtS);
+      }
+      simTimelineController.renderIfDirty();
     }
     lastTimelineAnimTimeMs = now;
 
+    // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty
+    if (radarNeedsRender || isPlayingHistory) {
+      drawRadar();
+      radarNeedsRender = false;
+    }
+
+    // 2. Analytical workspace canvases in right-hand column - gated by active tab
     const activeTab = document.querySelector('.tab-content.active');
     if (activeTab) {
-      drawRadar();
-      if (activeTab.id === 'tab-scheduler') drawWaterfall();
-      else if (activeTab.id === 'tab-terrain') drawFresnel();
+      if (activeTab.id === 'tab-scheduler' && (schedulerNeedsRender || isPlayingHistory || !isPaused)) {
+        drawWaterfall();
+        schedulerNeedsRender = false;
+      } else if (activeTab.id === 'tab-terrain' && (terrainNeedsRender || isPlayingHistory || !isPaused)) {
+        drawFresnel();
+        terrainNeedsRender = false;
+      }
     }
   } catch (err) {
     console.error('Animation loop exception:', err);

@@ -1,6 +1,6 @@
 {
   "name": "tactical-x-band-air-to-ground-network",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "TypeScript WebWorker digital twin for X-band air-to-ground TDMA research and simulation.",
   "main": "electron/main.cjs",
   "type": "module",

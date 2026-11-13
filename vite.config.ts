@@ -26,5 +26,13 @@ export default defineConfig({
   build: {
     target: "esnext",
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-three': ['three'],
+          'vendor-maplibre': ['maplibre-gl'],
+        },
+      },
+    },
   },
 });
