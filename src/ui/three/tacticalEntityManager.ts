@@ -394,6 +394,16 @@ export class TacticalEntityManager {
   public readonly groundNodesGroup: THREE.Group;
   public readonly linksGroup: THREE.Group;
   public readonly trafficGroup: THREE.Group;
+  public readonly acnSectorGroup: THREE.Group;
+  public readonly relayGroup: THREE.Group;
+  public readonly jammerGroup: THREE.Group;
+
+  // Volumetric Beams, Relay & EW Jammer Entities
+  public relayMastMesh!: THREE.Mesh;
+  public relayBackhaulLine!: THREE.Line;
+  public readonly relayHop1Lines: Map<number, THREE.Line> = new Map();
+  public jammerMesh!: THREE.Mesh;
+  public jammerRayLine!: THREE.Line;
 
   // ACN Components
   private acnVisualGroup!: THREE.Group;         // Physical 1x model
@@ -504,9 +514,23 @@ export class TacticalEntityManager {
     this.acnGroup.name = 'acnGroup';
     this.rootGroup.add(this.acnGroup);
 
+    this.acnSectorGroup = new THREE.Group();
+    this.acnSectorGroup.name = 'acnSectorGroup';
+    this.rootGroup.add(this.acnSectorGroup);
+
+    this.relayGroup = new THREE.Group();
+    this.relayGroup.name = 'relayGroup';
+    this.rootGroup.add(this.relayGroup);
+
+    this.jammerGroup = new THREE.Group();
+    this.jammerGroup.name = 'jammerGroup';
+    this.rootGroup.add(this.jammerGroup);
+
     this.initTextures();
     this.initMaterialPool();
     this.initAcn();
+    this.initSectors();
+    this.initRelayAndJammer();
     this.initTrajectory();
     this.initGroundNodes();
     this.initLinks();
@@ -1191,6 +1215,171 @@ export class TacticalEntityManager {
   }
 
   /**
+   * Initializes the 4 body-fixed rotating 3D sector cones with -15° mechanical downtilt
+   * and -3 dB crossover boundary wireframe rays at ±45°, ±135°.
+   */
+  private initSectors(): void {
+    const R = 25000.0; // 25 km tactical reach
+    const tiltDeg = -15.0; // -15° mechanical downtilt
+    const tiltRad = (tiltDeg * Math.PI) / 180.0;
+    const cosTilt = Math.cos(tiltRad);
+    const sinTilt = Math.sin(tiltRad);
+
+    const sectorColors = [0x38bdf8, 0x4ade80, 0xf59e0b, 0xc084fc];
+    const sectorAzimuthCenters = [0, 90, 180, 270];
+
+    for (let s = 0; s < 4; s++) {
+      const centerAzDeg = sectorAzimuthCenters[s];
+      const startAzDeg = centerAzDeg - 45.0;
+      const endAzDeg = centerAzDeg + 45.0;
+      const numSegments = 16;
+
+      const positions: number[] = [];
+      const indices: number[] = [];
+
+      // Vertex 0: Apex at (0, 0, 0)
+      positions.push(0, 0, 0);
+
+      // Arc vertices along azimuth
+      for (let j = 0; j <= numSegments; j++) {
+        const azDeg = startAzDeg + (j / numSegments) * (endAzDeg - startAzDeg);
+        const azRad = (azDeg * Math.PI) / 180.0;
+        // In local aircraft frame: +Y is FWD (0°), +X is STBD (90°), -Y is AFT (180°), -X is PORT (270°)
+        const x = R * cosTilt * Math.sin(azRad);
+        const y = R * cosTilt * Math.cos(azRad);
+        const z = R * sinTilt;
+        positions.push(x, y, z);
+      }
+
+      // Fan triangles
+      for (let j = 1; j <= numSegments; j++) {
+        indices.push(0, j, j + 1);
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+
+      const mat = new THREE.MeshBasicMaterial({
+        color: sectorColors[s],
+        transparent: true,
+        opacity: 0.16,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+
+      const sectorMesh = new THREE.Mesh(geo, mat);
+      sectorMesh.name = `acnSectorCone_${s}`;
+      sectorMesh.userData = { sectorId: s, boresightDeg: centerAzDeg };
+      this.acnSectorGroup.add(sectorMesh);
+    }
+
+    // -3 dB Crossover Boundary Rays at ±45°, ±135° (45°, 135°, 225°, 315°)
+    const boundaryAnglesDeg = [45.0, 135.0, 225.0, 315.0];
+    const rayPositions: number[] = [];
+    for (const bAzDeg of boundaryAnglesDeg) {
+      const bAzRad = (bAzDeg * Math.PI) / 180.0;
+      // Apex
+      rayPositions.push(0, 0, 0);
+      // Outer ray endpoint
+      rayPositions.push(
+        R * cosTilt * Math.sin(bAzRad),
+        R * cosTilt * Math.cos(bAzRad),
+        R * sinTilt
+      );
+    }
+    const rayGeo = new THREE.BufferGeometry();
+    rayGeo.setAttribute('position', new THREE.Float32BufferAttribute(rayPositions, 3));
+    const rayMat = new THREE.LineBasicMaterial({
+      color: 0xf59e0b, // Amber crossover boundary
+      transparent: true,
+      opacity: 0.65,
+    });
+    const rayLines = new THREE.LineSegments(rayGeo, rayMat);
+    rayLines.name = 'sectorCrossoverRays';
+    this.acnSectorGroup.add(rayLines);
+  }
+
+  /**
+   * Initializes pre-allocated [MCP-OPT] relay mast & lines, and EW jammer emitter beacon & ray.
+   */
+  private initRelayAndJammer(): void {
+    // 3D [MCP-OPT] Relay Mast Mesh (Cylinder)
+    const mastGeo = new THREE.CylinderGeometry(15.0, 30.0, 180.0, 8);
+    mastGeo.rotateX(Math.PI / 2); // align with Z-up
+    const mastMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.5,
+      roughness: 0.35,
+    });
+    this.relayMastMesh = new THREE.Mesh(mastGeo, mastMat);
+    this.relayMastMesh.name = 'relayMastMesh';
+    this.relayMastMesh.visible = false;
+    this.relayGroup.add(this.relayMastMesh);
+
+    // 2-Hop Backhaul Line ([MCP-OPT] -> ACN)
+    const backhaulGeo = new THREE.BufferGeometry();
+    backhaulGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const backhaulMat = new THREE.LineBasicMaterial({
+      color: 0x06b6d4, // Cyan backhaul
+      linewidth: 2,
+      transparent: true,
+      opacity: 0.9,
+    });
+    this.relayBackhaulLine = new THREE.Line(backhaulGeo, backhaulMat);
+    this.relayBackhaulLine.name = 'relayBackhaulLine';
+    this.relayBackhaulLine.visible = false;
+    this.relayGroup.add(this.relayBackhaulLine);
+
+    // Per-node Hop-1 lines (Ground Terminal -> [MCP-OPT])
+    for (let i = 0; i < 16; i++) {
+      const hopGeo = new THREE.BufferGeometry();
+      hopGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      const hopMat = new THREE.LineBasicMaterial({
+        color: 0x10b981, // Emerald 2-hop mesh link
+        linewidth: 2,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const hopLine = new THREE.Line(hopGeo, hopMat);
+      hopLine.name = `relayHop1Line_${i}`;
+      hopLine.visible = false;
+      this.relayHop1Lines.set(i, hopLine);
+      this.relayGroup.add(hopLine);
+    }
+
+    // 3D EW Jammer Emitter Beacon (Crimson Octahedron)
+    const jammerGeo = new THREE.OctahedronGeometry(200.0, 0);
+    const jammerMat = new THREE.MeshStandardMaterial({
+      color: 0xef4444, // Crimson
+      emissive: 0xb91c1c,
+      emissiveIntensity: 0.6,
+      roughness: 0.3,
+    });
+    this.jammerMesh = new THREE.Mesh(jammerGeo, jammerMat);
+    this.jammerMesh.name = 'jammerMesh';
+    this.jammerMesh.visible = false;
+    this.jammerGroup.add(this.jammerMesh);
+
+    // EW Jammer Interference Ray to ACN (Crimson Dashed)
+    const jammerLineGeo = new THREE.BufferGeometry();
+    jammerLineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const jammerLineMat = new THREE.LineDashedMaterial({
+      color: 0xef4444,
+      dashSize: 600,
+      gapSize: 400,
+      transparent: true,
+      opacity: 0.8,
+    });
+    this.jammerRayLine = new THREE.Line(jammerLineGeo, jammerLineMat);
+    this.jammerRayLine.name = 'jammerRayLine';
+    this.jammerRayLine.visible = false;
+    this.jammerGroup.add(this.jammerRayLine);
+  }
+
+  /**
    * Ingests 50 Hz TELEMETRY_FRAME from simulation worker and updates all entities.
    * Completely allocation-free: updates typed array buffers and matrix transforms in-place.
    */
@@ -1349,6 +1538,77 @@ export class TacticalEntityManager {
 
     // 4. Update Verified Bulk Transfer Packet Animation
     this.updateBulkTransferAnimation(frame);
+
+    // Update Sector Group: Position at ACN and rotate by heading (yaw) and bank (roll)
+    this.acnSectorGroup.position.copy(acnPos);
+    const headingDeg = Number.isFinite(frame.acn_heading_deg)
+      ? frame.acn_heading_deg
+      : (acn && Number.isFinite(acn.heading_rad) ? (acn.heading_rad * 180.0) / Math.PI : (this.lastValidHeadingRad * 180.0) / Math.PI);
+    const bankDeg = Number.isFinite(frame.acn_bank_deg) ? frame.acn_bank_deg : 0.0;
+    const headingRad = (headingDeg * Math.PI) / 180.0;
+    const bankRad = (bankDeg * Math.PI) / 180.0;
+    this.acnSectorGroup.rotation.set(0, bankRad, headingRad - Math.PI / 2, 'ZYX');
+
+    // 5. Update 3D [MCP-OPT] Relay Mast & 2-Hop Mesh Links
+    const advisor = frame.relay_advisor;
+    const isRelayActive = Boolean(frame.active_relay_enabled);
+    if (advisor && Array.isArray(advisor.optimalPosEnu) && advisor.optimalPosEnu.length >= 3) {
+      const opt = advisor.optimalPosEnu;
+      this.relayMastMesh.position.set(opt[0], opt[1], opt[2]);
+      this.relayMastMesh.visible = true;
+
+      if (isRelayActive) {
+        this.relayBackhaulLine.visible = true;
+        const bPos = this.relayBackhaulLine.geometry.getAttribute('position') as THREE.BufferAttribute;
+        bPos.setXYZ(0, opt[0], opt[1], opt[2]);
+        bPos.setXYZ(1, acnPos.x, acnPos.y, acnPos.z);
+        bPos.needsUpdate = true;
+
+        if (Array.isArray(frame.nodes_telemetry)) {
+          for (const n of frame.nodes_telemetry) {
+            const hLine = this.relayHop1Lines.get(n.node_id);
+            if (hLine) {
+              if (n.is_relayed) {
+                hLine.visible = true;
+                const hPos = hLine.geometry.getAttribute('position') as THREE.BufferAttribute;
+                hPos.setXYZ(0, n.x_m, n.y_m, n.z_m);
+                hPos.setXYZ(1, opt[0], opt[1], opt[2]);
+                hPos.needsUpdate = true;
+              } else {
+                hLine.visible = false;
+              }
+            }
+          }
+        }
+      } else {
+        this.relayBackhaulLine.visible = false;
+        for (const hLine of this.relayHop1Lines.values()) {
+          hLine.visible = false;
+        }
+      }
+    } else {
+      this.relayMastMesh.visible = false;
+      this.relayBackhaulLine.visible = false;
+      for (const hLine of this.relayHop1Lines.values()) {
+        hLine.visible = false;
+      }
+    }
+
+    // 6. Update 3D EW Jammer Emitter & Interference Ray
+    const jammerActive = Boolean(frame.jammer_enabled);
+    this.jammerMesh.visible = jammerActive;
+    this.jammerRayLine.visible = jammerActive;
+    if (jammerActive) {
+      const jPos = frame.jammer_pos_enu || [3200.0, -2800.0, 0.0];
+      const jz = Number.isFinite(jPos[2]) ? jPos[2] : 0.0;
+      this.jammerMesh.position.set(jPos[0], jPos[1], jz);
+
+      const jPosAttr = this.jammerRayLine.geometry.getAttribute('position') as THREE.BufferAttribute;
+      jPosAttr.setXYZ(0, jPos[0], jPos[1], jz);
+      jPosAttr.setXYZ(1, acnPos.x, acnPos.y, acnPos.z);
+      jPosAttr.needsUpdate = true;
+      this.jammerRayLine.computeLineDistances();
+    }
   }
 
   /**
@@ -1913,6 +2173,9 @@ export class TacticalEntityManager {
     readonly trajectory?: boolean;
     readonly links?: boolean;
     readonly transmissions?: boolean;
+    readonly sectors?: boolean;
+    readonly relay?: boolean;
+    readonly jammer?: boolean;
   }): void {
     if (visibility.acn !== undefined) {
       this.acnGroup.visible = visibility.acn;
@@ -1925,9 +2188,20 @@ export class TacticalEntityManager {
     }
     if (visibility.links !== undefined) {
       this.linksGroup.visible = visibility.links;
+      this.relayGroup.visible = visibility.links;
     }
     if (visibility.transmissions !== undefined) {
       this.trafficGroup.visible = visibility.transmissions;
+      this.acnSectorGroup.visible = visibility.transmissions;
+    }
+    if (visibility.sectors !== undefined) {
+      this.acnSectorGroup.visible = visibility.sectors;
+    }
+    if (visibility.relay !== undefined) {
+      this.relayGroup.visible = visibility.relay;
+    }
+    if (visibility.jammer !== undefined) {
+      this.jammerGroup.visible = visibility.jammer;
     }
     if (visibility.labels !== undefined) {
       this.setLabelsVisible(visibility.labels);

@@ -504,6 +504,26 @@ export class ThreeSceneManager {
     this.tacticalEntityManager.onNodeSelected(callback);
   }
 
+  public get acnSectorGroup(): THREE.Group {
+    return this.tacticalEntityManager.acnSectorGroup;
+  }
+
+  public get relayMastMesh(): THREE.Mesh {
+    return this.tacticalEntityManager.relayMastMesh;
+  }
+
+  public get relayBackhaulLine(): THREE.Line {
+    return this.tacticalEntityManager.relayBackhaulLine;
+  }
+
+  public get jammerMesh(): THREE.Mesh {
+    return this.tacticalEntityManager.jammerMesh;
+  }
+
+  public get jammerRayLine(): THREE.Line {
+    return this.tacticalEntityManager.jammerRayLine;
+  }
+
   /**
    * Synchronizes 3D scene group and terrain/grid visibility with the MapLayerRegistry.
    */
@@ -516,6 +536,9 @@ export class ThreeSceneManager {
     readonly trajectory?: boolean;
     readonly links?: boolean;
     readonly transmissions?: boolean;
+    readonly sectors?: boolean;
+    readonly relay?: boolean;
+    readonly jammer?: boolean;
   }): void {
     if (visibility.baseTerrain !== undefined) {
       this.terrainVisible = visibility.baseTerrain;

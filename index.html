@@ -744,7 +744,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               </div>
             </div>
             <div class="tool-utility-cluster">
-              <button id="toggle-viewshed-heatmap" type="button" aria-pressed="false" aria-label="Toggle Real-Time X-Band SINR Viewshed Heatmap" onclick="toggleViewshedHeatmap()" title="Toggle Real-Time Polar X-Band SINR Viewshed Heatmap">Viewshed</button>
+              <button id="toggle-viewshed-heatmap" type="button" aria-pressed="false" aria-label="Toggle Real-Time X-Band SINR Viewshed Heatmap" onclick="toggleViewshedHeatmap()" title="Toggle Real-Time Polar X-Band SINR Viewshed Heatmap">SINR Map</button>
               <span class="map-live-dot" aria-hidden="true"></span>
               <span class="map-chrome-mode" id="map-chrome-mode-badge">Live picture</span>
             </div>
@@ -1247,6 +1247,42 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <span style="color:#ef4444;font-weight:600">-- Legacy:</span><span style="color:var(--text-muted)">Blind Static TDMA</span>
               <span style="color:#f59e0b;font-weight:600">&mdash; Reactive:</span><span style="color:var(--text-muted)">M-LWDF (&Phi;<sub>evac</sub> = 1)</span>
               <span style="color:#10b981;font-weight:600">&mdash; Tac-TAD:</span><span style="color:var(--text-muted)">Predictive Evac (&Phi;<sub>evac</sub> &ge; 1)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Instrument D: Multi-Point Parametric Sensitivity Curve Scope -->
+      <div class="panel" id="sensitivity-sweep-panel">
+        <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <span class="sec-title">Parametric Sensitivity Sweep Analyzer</span>
+            <span class="badge-sub">5-Point Continuous Resilience Profiler</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label for="sci-sweep-axis-select" style="font-size:11px;color:var(--text-muted);margin:0">Sweep Axis:</label>
+            <select id="sci-sweep-axis-select" aria-label="Parametric Sensitivity Sweep Variable" class="form-select" style="font-size:11px;background:#161b22;color:var(--text);border:1px solid var(--line);border-radius:4px;padding:3px 8px;cursor:pointer">
+              <option value="traffic_load">Goodput &amp; Drops vs. Traffic Load Multiplier [1.0x – 5.0x]</option>
+              <option value="dem_error">Goodput &amp; Drops vs. SRTM DEM Vertical Error σ_DEM [0 – 15 m]</option>
+              <option value="cqi_delay">Goodput &amp; Drops vs. CQI Feedback Aging τ_CQI [0 – 60 ms]</option>
+            </select>
+          </div>
+        </div>
+        <p class="lede" style="margin-bottom:12px;font-size:11.5px">Continuous parametric sensitivity curves plotting delivered goodput and drop resilience across operational stress vectors. Dashed vertical cursor indicates live simulation operating regime.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center">
+          <div style="flex:1;min-width:320px;height:240px;position:relative;background:#0d1117;border-radius:6px;border:1px solid var(--line);overflow:hidden">
+            <canvas id="sensitivity-sweep-canvas" width="640" height="240" aria-label="Live Parametric Sensitivity Curve Scope" style="width:100%;height:100%;display:block"></canvas>
+          </div>
+          <div style="flex:0 0 240px;min-width:200px">
+            <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">SCHEDULER CURVE PROFILES</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:10.5px;margin-bottom:12px">
+              <span style="color:#ef4444;font-weight:600">-- Legacy:</span><span style="color:var(--text-muted)">Blind Static TDMA</span>
+              <span style="color:#f59e0b;font-weight:600">&mdash; Reactive:</span><span style="color:var(--text-muted)">M-LWDF (Fair-share capped)</span>
+              <span style="color:#10b981;font-weight:600">&mdash; Tac-TAD:</span><span style="color:var(--text-muted)">Predictive + OLLA + Deficit</span>
+            </div>
+            <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">ACTIVE OPERATING POINT</div>
+            <div id="sci-sweep-active-readout" style="font-size:10.5px;font-family:var(--mono);color:var(--hi-amber);line-height:1.4">
+              Axis: Traffic Load<br>Active: 1.0x<br>Tac Advantage: +7.8x Goodput
             </div>
           </div>
         </div>
@@ -2812,6 +2848,11 @@ import {
   getMapZoomLodTier,
 } from './src/ui/workbench/mapLayerRegistry.ts';
 import { MapLayersPanel } from './src/ui/workbench/mapLayersPanel.ts';
+import {
+  getSensitivityAxisConfig,
+  evaluateParametricSensitivity,
+  SENSITIVITY_AXES,
+} from './src/core/parametricSensitivity.ts';
 import {
   computeRfOverlayGeometry,
   renderRadarRfOverlay,
@@ -5900,6 +5941,15 @@ const terrainCanvas = $('terrain-canvas'), terrainCtx = terrainCanvas ? terrainC
 const polarAntennaCanvas = $('polar-antenna-canvas'), polarAntennaCtx = polarAntennaCanvas ? polarAntennaCanvas.getContext('2d') : null;
 const linkWaterfallCanvas = $('link-waterfall-canvas'), linkWaterfallCtx = linkWaterfallCanvas ? linkWaterfallCanvas.getContext('2d') : null;
 const ecdfDelayCanvas = $('ecdf-delay-canvas'), ecdfDelayCtx = ecdfDelayCanvas ? ecdfDelayCanvas.getContext('2d') : null;
+const sensitivitySweepCanvas = $('sensitivity-sweep-canvas'), sensitivitySweepCtx = sensitivitySweepCanvas ? sensitivitySweepCanvas.getContext('2d') : null;
+let activeSensitivityAxis = 'traffic_load';
+$('sci-sweep-axis-select')?.addEventListener('change', (e) => {
+  activeSensitivityAxis = e.target.value;
+  schedulerNeedsRender = true;
+  if (latestTelemetry) {
+    drawSensitivitySweepScope(latestTelemetry);
+  }
+});
 
 /* ---------- 2D / 3D Stage Coexistence Controller (M6.2.2) ---------- */
 let stageViewMode = '2d';
@@ -5953,6 +6003,7 @@ function handleNodeSelection(nodeId) {
     drawPolarAntennaScope(latestTelemetry);
     drawLinkWaterfallCanvas(latestTelemetry);
     drawEcdfDelayScope(latestTelemetry);
+    drawSensitivitySweepScope(latestTelemetry);
     updateDashboardDOM(latestTelemetry, true);
   }
 }
@@ -11399,6 +11450,7 @@ function resizeCanvases() {
     drawPolarAntennaScope(latestTelemetry);
     drawLinkWaterfallCanvas(latestTelemetry);
     drawEcdfDelayScope(latestTelemetry);
+    drawSensitivitySweepScope(latestTelemetry);
   }
   drawSchedulerCharts();
   drawNetworkCharts();
@@ -14634,6 +14686,209 @@ function drawEcdfDelayScope(frame) {
 }
 
 /* ====================================================================
+   INSTRUMENT D: MULTI-POINT PARAMETRIC SENSITIVITY SWEEP SCOPE
+   ==================================================================== */
+function drawSensitivitySweepScope(frame) {
+  try {
+    if (!sensitivitySweepCanvas || !sensitivitySweepCtx) return;
+    const sync = syncCanvasDpr(sensitivitySweepCanvas, sensitivitySweepCtx);
+    if (!sync.isVisible) return;
+    const w = sync.cssWidth, h = sync.cssHeight;
+    if (w <= 0 || h <= 0) return;
+    const g = sensitivitySweepCtx;
+    g.clearRect(0, 0, w, h);
+
+    // Dark canvas background
+    g.fillStyle = '#0b0e14';
+    g.fillRect(0, 0, w, h);
+
+    const padL = 50;
+    const padR = 24;
+    const padT = 28;
+    const padB = 30;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+    if (plotW <= 10 || plotH <= 10) return;
+
+    const axisCfg = getSensitivityAxisConfig(activeSensitivityAxis);
+    const xMin = axisCfg.xMin;
+    const xMax = axisCfg.xMax;
+    const maxGoodput = 110.0; // 0 - 110 Mbps Y-axis span
+
+    const toX = (val) => padL + Math.min(1.0, Math.max(0.0, (val - xMin) / (xMax - xMin))) * plotW;
+    const toY = (gpMbps) => padT + (1.0 - Math.min(1.0, Math.max(0.0, gpMbps / maxGoodput))) * plotH;
+
+    // Horizontal grid lines (0, 25, 50, 75, 100 Mbps)
+    g.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    g.lineWidth = 1;
+    g.fillStyle = 'rgba(240, 236, 228, 0.55)';
+    g.font = '10px var(--hi-mono, monospace)';
+    g.textAlign = 'right';
+    g.textBaseline = 'middle';
+
+    const yLevels = [0, 25, 50, 75, 100];
+    for (const lvl of yLevels) {
+      const y = toY(lvl);
+      g.beginPath();
+      g.moveTo(padL, y);
+      g.lineTo(padL + plotW, y);
+      g.stroke();
+      g.fillText(`${lvl}M`, padL - 6, y);
+    }
+
+    // Y-Axis Label
+    g.textAlign = 'left';
+    g.textBaseline = 'bottom';
+    g.fillStyle = 'rgba(240, 236, 228, 0.75)';
+    g.font = '10px var(--hi-mono, monospace)';
+    g.fillText('Goodput (Mbps)', padL, padT - 8);
+
+    // Domain X ticks & grid lines
+    g.textAlign = 'center';
+    g.textBaseline = 'top';
+    for (const pt of axisCfg.points) {
+      const x = toX(pt.x);
+      g.beginPath();
+      g.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      g.moveTo(x, padT);
+      g.lineTo(x, padT + plotH);
+      g.stroke();
+
+      g.fillStyle = 'rgba(240, 236, 228, 0.65)';
+      g.fillText(`${pt.x}${axisCfg.unit}`, x, padT + plotH + 5);
+    }
+
+    // X-Axis Baseline
+    g.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    g.beginPath();
+    g.moveTo(padL, padT + plotH);
+    g.lineTo(padL + plotW, padT + plotH);
+    g.stroke();
+
+    // X-Axis Title
+    g.fillStyle = 'rgba(240, 236, 228, 0.85)';
+    g.fillText(axisCfg.xLabel, padL + plotW / 2, padT + plotH + 18);
+
+    // Plot 3 Curves across the 5 domain points
+    const curves = [
+      {
+        name: 'Legacy Static TDMA',
+        color: '#ef4444',
+        dash: [4, 4],
+        width: 1.8,
+        getVal: (p) => p.staticGoodputMbps,
+      },
+      {
+        name: 'Reactive M-LWDF',
+        color: '#f59e0b',
+        dash: [],
+        width: 1.8,
+        getVal: (p) => p.reactiveGoodputMbps,
+      },
+      {
+        name: 'Predictive Tac-TAD',
+        color: '#10b981',
+        dash: [],
+        width: 2.5,
+        getVal: (p) => p.tacGoodputMbps,
+      },
+    ];
+
+    for (const c of curves) {
+      g.save();
+      g.strokeStyle = c.color;
+      g.fillStyle = c.color;
+      g.lineWidth = c.width;
+      if (c.dash.length > 0) g.setLineDash(c.dash);
+      g.beginPath();
+
+      for (let idx = 0; idx < axisCfg.points.length; idx++) {
+        const pt = axisCfg.points[idx];
+        const cx = toX(pt.x);
+        const cy = toY(c.getVal(pt));
+        if (idx === 0) g.moveTo(cx, cy);
+        else g.lineTo(cx, cy);
+      }
+      g.stroke();
+      g.setLineDash([]);
+
+      // Point dots
+      for (const pt of axisCfg.points) {
+        const cx = toX(pt.x);
+        const cy = toY(c.getVal(pt));
+        g.beginPath();
+        g.arc(cx, cy, 3, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.restore();
+    }
+
+    // Determine current active operating point from telemetry
+    let activeVal = 1.0;
+    if (activeSensitivityAxis === 'traffic_load') {
+      activeVal = Number.isFinite(frame?.traffic_load_multiplier) ? frame.traffic_load_multiplier : 1.0;
+    } else if (activeSensitivityAxis === 'dem_error') {
+      activeVal = Number.isFinite(frame?.dem_lookahead_error_std_m) ? frame.dem_lookahead_error_std_m : 0.0;
+    } else if (activeSensitivityAxis === 'cqi_delay') {
+      activeVal = Number.isFinite(frame?.cqi_feedback_delay_ms) ? frame.cqi_feedback_delay_ms : 0.0;
+    }
+
+    const clampedActive = Math.max(xMin, Math.min(xMax, activeVal));
+    const cursorX = toX(clampedActive);
+    const evalActive = evaluateParametricSensitivity(activeSensitivityAxis, clampedActive);
+
+    // Vertical cursor line at active operating point
+    g.save();
+    g.strokeStyle = '#38bdf8';
+    g.lineWidth = 1.5;
+    g.setLineDash([3, 3]);
+    g.beginPath();
+    g.moveTo(cursorX, padT);
+    g.lineTo(cursorX, padT + plotH);
+    g.stroke();
+
+    // Intersection dots at active operating point
+    const activeDots = [
+      { y: toY(evalActive.staticGoodputMbps), color: '#ef4444' },
+      { y: toY(evalActive.reactiveGoodputMbps), color: '#f59e0b' },
+      { y: toY(evalActive.tacGoodputMbps), color: '#10b981' },
+    ];
+    for (const d of activeDots) {
+      g.beginPath();
+      g.fillStyle = d.color;
+      g.arc(cursorX, d.y, 4.5, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = '#ffffff';
+      g.lineWidth = 1.2;
+      g.setLineDash([]);
+      g.stroke();
+    }
+
+    // Cursor tag
+    g.fillStyle = '#38bdf8';
+    g.font = '10px var(--hi-mono, monospace)';
+    g.textAlign = 'center';
+    g.textBaseline = 'bottom';
+    g.fillText(`LIVE: ${activeVal.toFixed(1)}${axisCfg.unit}`, cursorX, padT - 6);
+    g.restore();
+
+    // Update Live Telemetry Overlay in DOM
+    const readout = $('sci-sweep-active-readout');
+    if (readout) {
+      const advX = (evalActive.tacGoodputMbps / Math.max(0.1, evalActive.staticGoodputMbps)).toFixed(1);
+      const dropDelta = (evalActive.staticDropRatePct - evalActive.tacDropRatePct).toFixed(1);
+      readout.innerHTML = `Axis: <b>${axisCfg.xLabel}</b><br>` +
+        `Active: <b style="color:#38bdf8">${activeVal.toFixed(1)} ${axisCfg.unit}</b><br>` +
+        `Tac: <span style="color:#10b981">${evalActive.tacGoodputMbps.toFixed(1)}M (${evalActive.tacDropRatePct.toFixed(1)}% drp)</span><br>` +
+        `Static: <span style="color:#ef4444">${evalActive.staticGoodputMbps.toFixed(1)}M (${evalActive.staticDropRatePct.toFixed(1)}% drp)</span><br>` +
+        `Advantage: <b style="color:var(--hi-amber)">+${advX}x Goodput (-${dropDelta}% drops)</b>`;
+    }
+  } catch (err) {
+    console.error('drawSensitivitySweepScope exception:', err);
+  }
+}
+
+/* ====================================================================
    IEEE TRANSACTIONS LATEX TABLE GENERATOR
    ==================================================================== */
 window.exportLatexAblationTable = function() {
@@ -15495,6 +15750,7 @@ function animationLoop(timestampMs) {
         if (latestTelemetry) {
           drawPolarAntennaScope(latestTelemetry);
           drawEcdfDelayScope(latestTelemetry);
+          drawSensitivitySweepScope(latestTelemetry);
         }
         schedulerNeedsRender = false;
       } else if (activeTab.id === 'tab-terrain' && (terrainNeedsRender || isPlayingHistory || !isPaused)) {

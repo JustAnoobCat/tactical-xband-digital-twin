@@ -51,6 +51,9 @@ export interface ThreeStageController {
     readonly trajectory?: boolean;
     readonly links?: boolean;
     readonly transmissions?: boolean;
+    readonly sectors?: boolean;
+    readonly relay?: boolean;
+    readonly jammer?: boolean;
   }): void;
   dispose(): void;
 }
