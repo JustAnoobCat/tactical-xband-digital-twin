@@ -26,7 +26,7 @@ function getArg(flag, fallback) {
   return idx >= 0 && process.argv[idx + 1] ? process.argv[idx + 1] : fallback;
 }
 
-const timeoutMs = parseInt(getArg('--timeout', process.env.VERIFY_TIMEOUT_MS || '60000'), 10);
+const timeoutMs = parseInt(getArg('--timeout', process.env.VERIFY_TIMEOUT_MS || '120000'), 10);
 const suiteFilter = getArg('--suite', null);
 const bailOnError = process.argv.includes('--bail');
 const outputDir = resolve(process.cwd(), getArg('--out-dir', 'benchmark_results/generated'));

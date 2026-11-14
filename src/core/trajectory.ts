@@ -32,6 +32,7 @@ export interface PredictiveState {
   readonly predictedOutageDurationS: number;
   readonly obstacleBlocked?: boolean;
   readonly isHardShadow?: boolean;
+  readonly imminentOcclusion?: boolean;
 }
 
 export interface TrajectoryKinematicsSnapshot {
@@ -829,12 +830,14 @@ export class PredictiveLookAheadEngine {
         predictedOutageDurationS: cached.predictedOutageDurationS,
         obstacleBlocked: currentObs.obstacleBlocked ?? false,
         isHardShadow,
+        imminentOcclusion: false,
       };
     } else {
       const tOcc = Number.isFinite(cached.timeToOcclusionS)
         ? Math.max(0.0, cached.timeToOcclusionS - dtElapsedS)
         : Number.POSITIVE_INFINITY;
-      const state = tOcc <= this.warningTimeThresholdS ? NodeTerrainState.PRE_OCCLUSION_FLUSH : NodeTerrainState.NORMAL_LOS;
+      const isImminent = Number.isFinite(tOcc) && tOcc > 0 && tOcc <= this.warningTimeThresholdS;
+      const state = isImminent ? NodeTerrainState.PRE_OCCLUSION_FLUSH : NodeTerrainState.NORMAL_LOS;
       return {
         currentState: state,
         timeToOcclusionS: tOcc,
@@ -844,6 +847,7 @@ export class PredictiveLookAheadEngine {
         predictedOutageDurationS: cached.predictedOutageDurationS,
         obstacleBlocked: currentObs.obstacleBlocked ?? false,
         isHardShadow: false,
+        imminentOcclusion: isImminent,
       };
     }
   }
@@ -919,7 +923,7 @@ export class PredictiveLookAheadEngine {
 
     const steps = Math.floor(this.horizonS / this.dtStepS);
 
-    const isStepOutage = (futureT: number, futureAcn: Position3D, futureObs: TerrainObstruction): boolean => {
+    const isStepTotalOutage = (futureT: number, futureAcn: Position3D, futureObs: TerrainObstruction): boolean => {
       if (!futureObs.isLos || Boolean(futureObs.obstacleBlocked)) return true;
       if (antennaEngine && nodeId !== undefined) {
         const futureVel = this.trajectoryEngine.getAcnVelocity(futureT);
@@ -989,6 +993,91 @@ export class PredictiveLookAheadEngine {
       return false;
     };
 
+    const isStepOcclusionOrSevereDegradation = (
+      futureT: number,
+      futureAcn: Position3D,
+      futureObs: TerrainObstruction
+    ): boolean => {
+      if (!futureObs.isLos || Boolean(futureObs.obstacleBlocked)) return true;
+      const currentDiffDb = obs.diffractionLossDb ?? 0.0;
+      const futureDiffDb = futureObs.diffractionLossDb ?? 0.0;
+      if (futureDiffDb >= currentDiffDb + 8.0) return true;
+
+      const dx = futureAcn[0] - nodePos[0];
+      const dy = futureAcn[1] - nodePos[1];
+      const dz = futureAcn[2] - nodePos[2];
+      const slantRangeM = Math.hypot(dx, dy, dz);
+
+      let futureSectorEval: any = undefined;
+      let futureJammerInterferenceDbm: number | undefined = undefined;
+
+      if (antennaEngine && nodeId !== undefined) {
+        const futureVel = this.trajectoryEngine.getAcnVelocity(futureT);
+        futureSectorEval = antennaEngine.evaluateNodeSector(
+          nodeId,
+          futureAcn,
+          futureVel,
+          nodePos,
+          this.rfConfig.acnAntennaGainDbi,
+          false
+        );
+
+        if (this.envConfig.jammerEnabled) {
+          const jX = this.envConfig.jammerPosEnu[0];
+          const jY = this.envConfig.jammerPosEnu[1];
+          const jZTerrain = this.terrainEngine.getElevation(jX, jY);
+          const jZ = Number.isFinite(jZTerrain) ? jZTerrain + 3.0 : 3.0;
+          const jammerPos: Position3D = [jX, jY, jZ];
+          const dJ = Math.max(Math.hypot(futureAcn[0] - jX, futureAcn[1] - jY, futureAcn[2] - jZ), 1.0);
+          const jammerObs = this.terrainEngine.evaluateTerrainObstruction(
+            jammerPos,
+            futureAcn,
+            this.rfConfig,
+            this.envConfig,
+            100.0,
+            demError
+          );
+          const fsplJ = LinkBudgetEngine.computeFsplDb(dJ, this.rfConfig.carrierFrequencyHz, this.rfConfig.speedOfLight);
+          const gasJ = LinkBudgetEngine.computeGaseousAttenuationDb(dJ, jZ, futureAcn[2], this.rfConfig.carrierFrequencyHz);
+          const rainJ = LinkBudgetEngine.computeRainAttenuationDb(dJ, this.envConfig, jZ, futureAcn[2]);
+          const lossJ = fsplJ + (jammerObs.diffractionLossDb ?? 0.0) + gasJ + rainJ + this.rfConfig.cableLossDb;
+          const jammerSectorEval = antennaEngine.evaluateNodeSector(
+            -999,
+            futureAcn,
+            futureVel,
+            jammerPos,
+            this.rfConfig.acnAntennaGainDbi,
+            false
+          );
+          const activeSec = futureSectorEval.activeSectorId;
+          const gJammerSector = jammerSectorEval.allSectorGainsDbi[activeSec];
+          futureJammerInterferenceDbm = this.envConfig.jammerEirpDbm + gJammerSector - lossJ;
+        }
+      }
+
+      const futureLs = this.linkBudgetEngine.evaluateLink(
+        'soldier',
+        slantRangeM,
+        futureObs.diffractionLossDb ?? 0.0,
+        this.rfConfig,
+        this.envConfig,
+        Boolean(futureObs.obstacleBlocked),
+        undefined,
+        futureSectorEval,
+        nodePos[2],
+        futureAcn[2],
+        futureObs.crestRadiusM,
+        futureObs.curvatureLossDb,
+        futureJammerInterferenceDbm
+      );
+
+      if (futureLs.isOutage || futureLs.bitrateBps <= 0) return true;
+      if (ls && ls.bitrateBps > 0 && futureLs.bitrateBps <= 0.5 * ls.bitrateBps) return true;
+      if (ls && Number.isFinite(ls.snrDb) && Number.isFinite(futureLs.snrDb) && (ls.snrDb - futureLs.snrDb > 10.0)) return true;
+
+      return false;
+    };
+
     const isCurrentlyOutage = !obs.isLos || Boolean(obs.obstacleBlocked) || Boolean(ls && ls.isOutage);
     if (isCurrentlyOutage) {
       // Regime A: Hard shadow (Optical ray blocked)
@@ -1008,7 +1097,7 @@ export class PredictiveLookAheadEngine {
                 100.0,
                 demError
               );
-        if (!isStepOutage(futureT, futureAcn, futureObs)) {
+        if (!isStepTotalOutage(futureT, futureAcn, futureObs)) {
           timeToEmergenceS = step * this.dtStepS;
           break;
         }
@@ -1032,6 +1121,7 @@ export class PredictiveLookAheadEngine {
         predictedOutageDurationS,
         obstacleBlocked: obs.obstacleBlocked,
         isHardShadow,
+        imminentOcclusion: false,
       };
     } else {
       // Regime B: Unobstructed Line-of-Sight
@@ -1053,7 +1143,7 @@ export class PredictiveLookAheadEngine {
                 100.0,
                 demError
               );
-        if (isStepOutage(futureT, futureAcn, futureObs)) {
+        if (isStepOcclusionOrSevereDegradation(futureT, futureAcn, futureObs)) {
           timeToOcclusionS = step * this.dtStepS;
           occlusionStep = step;
           break;
@@ -1073,7 +1163,7 @@ export class PredictiveLookAheadEngine {
             100.0,
             demError
           );
-          if (!isStepOutage(futureT, futureAcn, futureObs)) {
+          if (!isStepTotalOutage(futureT, futureAcn, futureObs)) {
             predictedOutageDurationS = (step - occlusionStep) * this.dtStepS;
             emergenceFound = true;
             break;
@@ -1084,10 +1174,13 @@ export class PredictiveLookAheadEngine {
         }
       }
 
-      const state =
-        timeToOcclusionS <= this.warningTimeThresholdS
-          ? NodeTerrainState.PRE_OCCLUSION_FLUSH
-          : NodeTerrainState.NORMAL_LOS;
+      const isImminent =
+        Number.isFinite(timeToOcclusionS) &&
+        timeToOcclusionS > 0 &&
+        timeToOcclusionS <= this.warningTimeThresholdS;
+      const state = isImminent
+        ? NodeTerrainState.PRE_OCCLUSION_FLUSH
+        : NodeTerrainState.NORMAL_LOS;
 
       return {
         currentState: state,
@@ -1098,6 +1191,7 @@ export class PredictiveLookAheadEngine {
         predictedOutageDurationS,
         obstacleBlocked: obs.obstacleBlocked,
         isHardShadow: false,
+        imminentOcclusion: isImminent,
       };
     }
   }

@@ -24,13 +24,16 @@ console.log('\n[PEL-T1] Verifying Specification Document Persistence on Disk...'
 {
   const specViewshedPath = resolve(process.cwd(), 'docs/specs/SPEC-REALTIME-RF-VIEWSHED-AND-RELAY-ADVISOR.md');
   const specEcdfPath = resolve(process.cwd(), 'docs/specs/SPEC-PUBLICATION-ECDF-AND-LATEX-BENCHMARK-EXPORT.md');
+  const specKargilPath = resolve(process.cwd(), 'docs/specs/SPEC-KARGIL-RIDGE-TRANSIT-AND-TACTAD-ADVANTAGE.md');
   const readmePath = resolve(process.cwd(), 'README.md');
 
   assert.ok(existsSync(specViewshedPath), `Viewshed specification must exist at ${specViewshedPath}`);
   assert.ok(existsSync(specEcdfPath), `ECDF specification must exist at ${specEcdfPath}`);
+  assert.ok(existsSync(specKargilPath), `Kargil ridge transit specification must exist at ${specKargilPath}`);
 
   const viewshedContent = readFileSync(specViewshedPath, 'utf8');
   const ecdfContent = readFileSync(specEcdfPath, 'utf8');
+  const kargilContent = readFileSync(specKargilPath, 'utf8');
   const readmeContent = readFileSync(readmePath, 'utf8');
 
   assert.ok(viewshedContent.length > 500, 'Viewshed specification must be non-empty and substantive');
@@ -41,12 +44,18 @@ console.log('\n[PEL-T1] Verifying Specification Document Persistence on Disk...'
   assert.ok(ecdfContent.includes('3GPP TS 23.501'), 'ECDF spec must reference 3GPP TS 23.501 5QI PDB');
   assert.ok(ecdfContent.includes('IEEE Transactions'), 'ECDF spec must detail IEEE Transactions LaTeX export');
 
+  assert.ok(kargilContent.length > 500, 'Kargil specification must be non-empty and substantive');
+  assert.ok(kargilContent.includes('Reactive M-LWDF'), 'Kargil spec must describe Reactive M-LWDF');
+  assert.ok(kargilContent.includes('Predictive Tac-TAD'), 'Kargil spec must describe Predictive Tac-TAD');
+
   assert.ok(readmeContent.includes('SPEC-REALTIME-RF-VIEWSHED-AND-RELAY-ADVISOR.md'), 'README.md Section 7 must link Viewshed spec');
   assert.ok(readmeContent.includes('SPEC-PUBLICATION-ECDF-AND-LATEX-BENCHMARK-EXPORT.md'), 'README.md Section 7 must link ECDF spec');
+  assert.ok(readmeContent.includes('SPEC-KARGIL-RIDGE-TRANSIT-AND-TACTAD-ADVANTAGE.md'), 'README.md Section 7 must link Kargil spec');
 
   console.log(`  ✓ SPEC-REALTIME-RF-VIEWSHED-AND-RELAY-ADVISOR.md verified on disk (${viewshedContent.length} bytes)`);
   console.log(`  ✓ SPEC-PUBLICATION-ECDF-AND-LATEX-BENCHMARK-EXPORT.md verified on disk (${ecdfContent.length} bytes)`);
-  console.log('  ✓ Both specifications verified linked in README.md Section 7');
+  console.log(`  ✓ SPEC-KARGIL-RIDGE-TRANSIT-AND-TACTAD-ADVANTAGE.md verified on disk (${kargilContent.length} bytes)`);
+  console.log('  ✓ All specifications verified linked in README.md Section 7');
 }
 
 // =================================================================================================

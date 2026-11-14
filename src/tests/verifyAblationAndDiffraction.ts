@@ -276,6 +276,9 @@ export function runAblationAndDiffractionVerification(): boolean {
   let cumTacDelayDrops = 0;
   let cumReactiveDelayDrops = 0;
   let cumStaticDelayDrops = 0;
+  let cumTacGoodput = 0;
+  let cumReactiveGoodput = 0;
+  let cumStaticGoodput = 0;
 
   for (let s = 1; s <= 5; s++) {
     const simCongestedSeed = new SimulationWorkerManager(s * 100_000);
@@ -295,17 +298,22 @@ export function runAblationAndDiffractionVerification(): boolean {
     cumTacDelayDrops += sm.tacDelayDropsThisRun;
     cumReactiveDelayDrops += sm.reactiveDelayDropsThisRun ?? 0;
     cumStaticDelayDrops += sm.staticDelayDropsThisRun;
+    cumTacGoodput += sm.tacGoodputBits;
+    cumReactiveGoodput += sm.reactiveGoodputBits ?? 0;
+    cumStaticGoodput += sm.staticGoodputBits;
   }
 
   const t5Passed =
-    cumTacDelayDrops <= cumReactiveDelayDrops &&
-    cumTacDelayDrops < cumStaticDelayDrops;
+    cumTacDelayDrops < cumReactiveDelayDrops &&
+    cumReactiveDelayDrops < cumStaticDelayDrops &&
+    cumTacGoodput > cumReactiveGoodput &&
+    cumReactiveGoodput > cumStaticGoodput;
 
   results.push({
     testId: 'ABL-T5',
     testName: 'Multi-Seed Congested Baseline (Seeds 1-5 @ 3.5x Load)',
-    measured: `cumTacDelayDrops=${cumTacDelayDrops}, cumReactiveDelayDrops=${cumReactiveDelayDrops}, cumStaticDelayDrops=${cumStaticDelayDrops}`,
-    expected: 'cumTacDelayDrops <= cumReactiveDelayDrops AND cumTacDelayDrops < cumStaticDelayDrops',
+    measured: `Drops: Tac=${cumTacDelayDrops} < Reactive=${cumReactiveDelayDrops} < Static=${cumStaticDelayDrops} | Goodput: Tac=${(cumTacGoodput / 1e6).toFixed(2)}Mb > Reactive=${(cumReactiveGoodput / 1e6).toFixed(2)}Mb > Static=${(cumStaticGoodput / 1e6).toFixed(2)}Mb`,
+    expected: 'cumTacDelayDrops < cumReactiveDelayDrops < cumStaticDelayDrops AND cumTacGoodput > cumReactiveGoodput > cumStaticGoodput',
     passed: t5Passed,
   });
 

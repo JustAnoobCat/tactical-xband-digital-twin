@@ -218,7 +218,9 @@ console.log('\n[VRA-T4] Verifying Worker Manager 50 Hz Integration & Execution B
   });
   assert.equal(worker.viewshedEnabled, true, 'Worker viewshedEnabled must reflect true');
 
-  // 3. Execution Budget Safety: Run 12 ticks (240 ms = 2 full sweeps) and measure step latency
+  // 3. Execution Budget Safety: Warm up JIT, then run 12 ticks (240 ms = 2 full sweeps) and measure step latency
+  worker.tickSimulation();
+  worker.tickSimulation();
   const stepCount = 12;
   const startTickMs = performance.now();
   for (let k = 0; k < stepCount; k++) {

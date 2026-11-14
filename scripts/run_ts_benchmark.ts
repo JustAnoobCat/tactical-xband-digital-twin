@@ -28,35 +28,113 @@ function parseNonNegativeInt(value: string, name: string): number {
   return parsed;
 }
 
-const durationArg = argValue('--duration', '');
-const frames = durationArg
-  ? Math.max(1, Math.round(Number(durationArg) / 0.020))
-  : parsePositiveInt(argValue('--frames', '500'), '--frames');
-const demLookaheadErrorStdM = Number(argValue('--dem-error-m', '0.0'));
-const trafficScale = Number(argValue('--traffic-scale', '1.0'));
-const seedsRaw = argValue('--seeds', '1,2,3,4,5');
-const seeds: number[] = seedsRaw.split(',').map(s => parsePositiveInt(s.trim(), '--seeds entry'));
-const warmupFrames = parseNonNegativeInt(argValue('--warmup', '0'), '--warmup');
-const requestedTerrainMode = argValue('--terrain-mode', 'synthetic').toLowerCase();
-if (requestedTerrainMode !== 'synthetic' && requestedTerrainMode !== 'real') {
-  throw new Error(`--terrain-mode must be 'synthetic' or 'real', got '${requestedTerrainMode}'`);
+export interface BenchmarkLatexOptions {
+  readonly caption?: string;
+  readonly label?: string;
+  readonly demErrorStdM?: number;
+  readonly trafficScale?: number;
+  readonly terrainMode?: string;
 }
-const outputDir = resolve(argValue('--out', 'benchmark_results/generated'));
 
-const traceEnabled = process.argv.includes('--trace');
-const traceInterval = parsePositiveInt(argValue('--trace-interval', '1'), '--trace-interval');
-const traceOut = argValue('--trace-out', '');
+export function formatBenchmarkLatexTable(
+  rows: readonly any[],
+  options?: BenchmarkLatexOptions
+): string {
+  const n = rows.length || 1;
+  const mean = (fn: (r: any) => number) => rows.reduce((acc, r) => acc + (fn(r) || 0), 0) / n;
+  const std = (fn: (r: any) => number, m: number) =>
+    Math.sqrt(rows.reduce((acc, r) => acc + Math.pow((fn(r) || 0) - m, 2), 0) / (n > 1 ? n - 1 : 1));
 
-// Environment and Provenance Metadata (Milestone M0.1)
-let gitCommit = 'unknown';
-let gitBranch = 'unknown';
-let gitDirty = false;
-try {
-  gitCommit = execSync('git rev-parse HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
-  gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
-  const status = execSync('git status --porcelain', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
-  gitDirty = status.length > 0;
-} catch (_) {}
+  const statGpM = mean(r => (r.static_goodput_bits ?? 0) / 1e6);
+  const statGpS = std(r => (r.static_goodput_bits ?? 0) / 1e6, statGpM);
+  const statUtM = mean(r => r.static_run_ul_utilization_pct ?? 0);
+  const statUtS = std(r => r.static_run_ul_utilization_pct ?? 0, statUtM);
+  const statWstM = mean(r => (r.static_wasted_bits_on_outage ?? 0) / 1e3);
+  const statWstS = std(r => (r.static_wasted_bits_on_outage ?? 0) / 1e3, statWstM);
+  const statDelM = mean(r => r.static_delay_drops_observed ?? 0);
+  const statDelS = std(r => r.static_delay_drops_observed ?? 0, statDelM);
+  const statOflM = mean(r => r.static_overflow_drops_observed ?? 0);
+  const statOflS = std(r => r.static_overflow_drops_observed ?? 0, statOflM);
+
+  const reacGpM = mean(r => (r.reactive_goodput_bits ?? 0) / 1e6);
+  const reacGpS = std(r => (r.reactive_goodput_bits ?? 0) / 1e6, reacGpM);
+  const reacUtM = mean(r => r.reactive_run_ul_utilization_pct ?? 0);
+  const reacUtS = std(r => r.reactive_run_ul_utilization_pct ?? 0, reacUtM);
+  const reacWstM = mean(r => (r.reactive_wasted_bits_on_outage ?? 0) / 1e3);
+  const reacWstS = std(r => (r.reactive_wasted_bits_on_outage ?? 0) / 1e3, reacWstM);
+  const reacDelM = mean(r => r.reactive_delay_drops_observed ?? 0);
+  const reacDelS = std(r => r.reactive_delay_drops_observed ?? 0, reacDelM);
+  const reacOflM = mean(r => r.reactive_overflow_drops_observed ?? 0);
+  const reacOflS = std(r => r.reactive_overflow_drops_observed ?? 0, reacOflM);
+
+  const tacGpM = mean(r => (r.tac_goodput_bits ?? 0) / 1e6);
+  const tacGpS = std(r => (r.tac_goodput_bits ?? 0) / 1e6, tacGpM);
+  const tacUtM = mean(r => r.tac_run_ul_utilization_pct ?? 0);
+  const tacUtS = std(r => r.tac_run_ul_utilization_pct ?? 0, tacUtM);
+  const tacWstM = mean(r => (r.tac_wasted_bits_on_outage ?? 0) / 1e3);
+  const tacWstS = std(r => (r.tac_wasted_bits_on_outage ?? 0) / 1e3, tacWstM);
+  const tacDelM = mean(r => r.tac_delay_drops_observed ?? 0);
+  const tacDelS = std(r => r.tac_delay_drops_observed ?? 0, tacDelM);
+  const tacOflM = mean(r => r.tac_overflow_drops_observed ?? 0);
+  const tacOflS = std(r => r.tac_overflow_drops_observed ?? 0, tacOflM);
+
+  const fmt = (m: number, s: number, decimals: number = 2) =>
+    n > 1 ? `$${m.toFixed(decimals)} \\pm ${s.toFixed(decimals)}$` : `${m.toFixed(decimals)}`;
+
+  const caption = options?.caption ?? 'Paired Multi-Seed Benchmark: Tactical X-Band Scheduling Across Mountain Topography';
+  const label = options?.label ?? 'tab:tactical_benchmark_results';
+  const demError = options?.demErrorStdM ?? 0.0;
+  const traffic = options?.trafficScale ?? 1.0;
+  const mode = options?.terrainMode ?? 'synthetic';
+
+  return `\\begin{table}[htbp]
+\\centering
+\\caption{${caption}}
+\\label{${label}}
+\\begin{tabular}{l ccccc}
+\\toprule
+\\textbf{Scheduler Architecture} & \\textbf{Goodput (Mb)} & \\textbf{Airtime Util (\\%)} & \\textbf{Outage Waste (kb)} & \\textbf{Delay Drops} & \\textbf{Overflow Drops} \\\\
+\\midrule
+Legacy Static TDMA & ${fmt(statGpM, statGpS, 2)} & ${fmt(statUtM, statUtS, 1)} & ${fmt(statWstM, statWstS, 1)} & ${fmt(statDelM, statDelS, 0)} & ${fmt(statOflM, statOflS, 0)} \\\\
+Reactive M-LWDF ($\\Phi_{\\text{evac}} = 1.0$) & ${fmt(reacGpM, reacGpS, 2)} & ${fmt(reacUtM, reacUtS, 1)} & ${fmt(reacWstM, reacWstS, 1)} & ${fmt(reacDelM, reacDelS, 0)} & ${fmt(reacOflM, reacOflS, 0)} \\\\
+Predictive Tac-TAD ($\\Phi_{\\text{evac}} \\ge 1.0$) & ${fmt(tacGpM, tacGpS, 2)} & ${fmt(tacUtM, tacUtS, 1)} & ${fmt(tacWstM, tacWstS, 1)} & ${fmt(tacDelM, tacDelS, 0)} & ${fmt(tacOflM, tacOflS, 0)} \\\\
+\\bottomrule
+\\end{tabular}
+\\vspace{1ex}
+{\\footnotesize \\raggedright \\textbf{Benchmark Notes:} Multi-seed paired execution ($N = ${n}$ seeds). Topography mode: ${mode}, $\\sigma_{\\text{DEM}} = ${demError}\\text{ m}$, traffic multiplier = ${traffic.toFixed(1)}$\\times$. All metrics evaluated synchronously over 50~Hz discrete-event engine.\\par}
+\\end{table}`;
+}
+
+export function runCliBenchmark(): void {
+  const durationArg = argValue('--duration', '');
+  const frames = durationArg
+    ? Math.max(1, Math.round(Number(durationArg) / 0.020))
+    : parsePositiveInt(argValue('--frames', '500'), '--frames');
+  const demLookaheadErrorStdM = Number(argValue('--dem-error-m', '0.0'));
+  const trafficScale = Number(argValue('--traffic-scale', '1.0'));
+  const seedsRaw = argValue('--seeds', '1,2,3,4,5');
+  const seeds: number[] = seedsRaw.split(',').map(s => parsePositiveInt(s.trim(), '--seeds entry'));
+  const warmupFrames = parseNonNegativeInt(argValue('--warmup', '0'), '--warmup');
+  const requestedTerrainMode = argValue('--terrain-mode', 'synthetic').toLowerCase();
+  if (requestedTerrainMode !== 'synthetic' && requestedTerrainMode !== 'real') {
+    throw new Error(`--terrain-mode must be 'synthetic' or 'real', got '${requestedTerrainMode}'`);
+  }
+  const outputDir = resolve(argValue('--out', 'benchmark_results/generated'));
+
+  const traceEnabled = process.argv.includes('--trace');
+  const traceInterval = parsePositiveInt(argValue('--trace-interval', '1'), '--trace-interval');
+  const traceOut = argValue('--trace-out', '');
+
+  // Environment and Provenance Metadata (Milestone M0.1)
+  let gitCommit = 'unknown';
+  let gitBranch = 'unknown';
+  let gitDirty = false;
+  try {
+    gitCommit = execSync('git rev-parse HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+    gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+    const status = execSync('git status --porcelain', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+    gitDirty = status.length > 0;
+  } catch (_) {}
 
 let realDemBuffer: Buffer | null = null;
 let terrainAssetChecksum: string | null = null;
@@ -284,108 +362,48 @@ writeFileSync(jsonPath, JSON.stringify({
   runs: rows,
 }, null, 2));
 
-export interface BenchmarkLatexOptions {
-  readonly caption?: string;
-  readonly label?: string;
-  readonly demErrorStdM?: number;
-  readonly trafficScale?: number;
-  readonly terrainMode?: string;
-}
-
-export function formatBenchmarkLatexTable(
-  rows: readonly any[],
-  options?: BenchmarkLatexOptions
-): string {
-  const n = rows.length || 1;
-  const mean = (fn: (r: any) => number) => rows.reduce((acc, r) => acc + (fn(r) || 0), 0) / n;
-  const std = (fn: (r: any) => number, m: number) =>
-    Math.sqrt(rows.reduce((acc, r) => acc + Math.pow((fn(r) || 0) - m, 2), 0) / (n > 1 ? n - 1 : 1));
-
-  const statGpM = mean(r => (r.static_goodput_bits ?? 0) / 1e6);
-  const statGpS = std(r => (r.static_goodput_bits ?? 0) / 1e6, statGpM);
-  const statUtM = mean(r => r.static_run_ul_utilization_pct ?? 0);
-  const statUtS = std(r => r.static_run_ul_utilization_pct ?? 0, statUtM);
-  const statWstM = mean(r => (r.static_wasted_bits_on_outage ?? 0) / 1e3);
-  const statWstS = std(r => (r.static_wasted_bits_on_outage ?? 0) / 1e3, statWstM);
-  const statDelM = mean(r => r.static_delay_drops_observed ?? 0);
-  const statDelS = std(r => r.static_delay_drops_observed ?? 0, statDelM);
-  const statOflM = mean(r => r.static_overflow_drops_observed ?? 0);
-  const statOflS = std(r => r.static_overflow_drops_observed ?? 0, statOflM);
-
-  const reacGpM = mean(r => (r.reactive_goodput_bits ?? 0) / 1e6);
-  const reacGpS = std(r => (r.reactive_goodput_bits ?? 0) / 1e6, reacGpM);
-  const reacUtM = mean(r => r.reactive_run_ul_utilization_pct ?? 0);
-  const reacUtS = std(r => r.reactive_run_ul_utilization_pct ?? 0, reacUtM);
-  const reacWstM = mean(r => (r.reactive_wasted_bits_on_outage ?? 0) / 1e3);
-  const reacWstS = std(r => (r.reactive_wasted_bits_on_outage ?? 0) / 1e3, reacWstM);
-  const reacDelM = mean(r => r.reactive_delay_drops_observed ?? 0);
-  const reacDelS = std(r => r.reactive_delay_drops_observed ?? 0, reacDelM);
-  const reacOflM = mean(r => r.reactive_overflow_drops_observed ?? 0);
-  const reacOflS = std(r => r.reactive_overflow_drops_observed ?? 0, reacOflM);
-
-  const tacGpM = mean(r => (r.tac_goodput_bits ?? 0) / 1e6);
-  const tacGpS = std(r => (r.tac_goodput_bits ?? 0) / 1e6, tacGpM);
-  const tacUtM = mean(r => r.tac_run_ul_utilization_pct ?? 0);
-  const tacUtS = std(r => r.tac_run_ul_utilization_pct ?? 0, tacUtM);
-  const tacWstM = mean(r => (r.tac_wasted_bits_on_outage ?? 0) / 1e3);
-  const tacWstS = std(r => (r.tac_wasted_bits_on_outage ?? 0) / 1e3, tacWstM);
-  const tacDelM = mean(r => r.tac_delay_drops_observed ?? 0);
-  const tacDelS = std(r => r.tac_delay_drops_observed ?? 0, tacDelM);
-  const tacOflM = mean(r => r.tac_overflow_drops_observed ?? 0);
-  const tacOflS = std(r => r.tac_overflow_drops_observed ?? 0, tacOflM);
-
-  const fmt = (m: number, s: number, decimals: number = 2) =>
-    n > 1 ? `$${m.toFixed(decimals)} \\pm ${s.toFixed(decimals)}$` : `${m.toFixed(decimals)}`;
-
-  const caption = options?.caption ?? 'Paired Multi-Seed Benchmark: Tactical X-Band Scheduling Across Mountain Topography';
-  const label = options?.label ?? 'tab:tactical_benchmark_results';
-  const demError = options?.demErrorStdM ?? 0.0;
-  const traffic = options?.trafficScale ?? 1.0;
-  const mode = options?.terrainMode ?? 'synthetic';
-
-  return `\\begin{table}[htbp]
-\\centering
-\\caption{${caption}}
-\\label{${label}}
-\\begin{tabular}{l ccccc}
-\\toprule
-\\textbf{Scheduler Architecture} & \\textbf{Goodput (Mb)} & \\textbf{Airtime Util (\\%)} & \\textbf{Outage Waste (kb)} & \\textbf{Delay Drops} & \\textbf{Overflow Drops} \\\\
-\\midrule
-Legacy Static TDMA & ${fmt(statGpM, statGpS, 2)} & ${fmt(statUtM, statUtS, 1)} & ${fmt(statWstM, statWstS, 1)} & ${fmt(statDelM, statDelS, 0)} & ${fmt(statOflM, statOflS, 0)} \\\\
-Reactive M-LWDF ($\\Phi_{\\text{evac}} = 1.0$) & ${fmt(reacGpM, reacGpS, 2)} & ${fmt(reacUtM, reacUtS, 1)} & ${fmt(reacWstM, reacWstS, 1)} & ${fmt(reacDelM, reacDelS, 0)} & ${fmt(reacOflM, reacOflS, 0)} \\\\
-Predictive Tac-TAD ($\\Phi_{\\text{evac}} \\ge 1.0$) & ${fmt(tacGpM, tacGpS, 2)} & ${fmt(tacUtM, tacUtS, 1)} & ${fmt(tacWstM, tacWstS, 1)} & ${fmt(tacDelM, tacDelS, 0)} & ${fmt(tacOflM, tacOflS, 0)} \\\\
-\\bottomrule
-\\end{tabular}
-\\vspace{1ex}
-{\\footnotesize \\raggedright \\textbf{Benchmark Notes:} Multi-seed paired execution ($N = ${n}$ seeds). Topography mode: ${mode}, $\\sigma_{\\text{DEM}} = ${demError}\\text{ m}$, traffic multiplier = ${traffic.toFixed(1)}$\\times$. All metrics evaluated synchronously over 50~Hz discrete-event engine.\\par}
-\\end{table}`;
-}
-
-writeFileSync(csvPath, `${fields.join(',')}\n${rows.map(row => fields.map(f => csvCell(row[f])).join(',')).join('\n')}\n`);
-const latexContent = formatBenchmarkLatexTable(rows, {
-  demErrorStdM: demLookaheadErrorStdM,
-  trafficScale,
-  terrainMode: requestedTerrainMode,
-});
-const latestTexPath = resolve(outputDir, 'latest_ablation_table.tex');
-writeFileSync(latestTexPath, latexContent, 'utf8');
-console.log(`\nWrote ${rows.length} runs:\n  ${jsonPath}\n  ${csvPath}\n  ${latestTexPath}`);
-
-// Optional Canonical State-Hash Trace Recording
-if (traceEnabled) {
-  const traceTargetSeed = seeds[0];
-  const traceResult = generateSimulationTrace({
-    seed: traceTargetSeed,
-    frames,
+  writeFileSync(csvPath, `${fields.join(',')}\n${rows.map(row => fields.map(f => csvCell(row[f])).join(',')).join('\n')}\n`);
+  const latexContent = formatBenchmarkLatexTable(rows, {
+    demErrorStdM: demLookaheadErrorStdM,
+    trafficScale,
     terrainMode: requestedTerrainMode,
-    traceInterval,
-    realDemBuffer,
-    terrainAssetChecksum,
   });
-  const traceDestination = traceOut
-    ? resolve(traceOut)
-    : resolve(outputDir, `simulation-trace-${requestedTerrainMode}-seed${traceTargetSeed}-${stamp}.json`);
-  mkdirSync(resolve(traceDestination, '..'), { recursive: true });
-  writeFileSync(traceDestination, JSON.stringify(traceResult, null, 2), 'utf8');
-  console.log(`\n[+] Canonical state-hash trace saved to:\n  ${traceDestination}`);
+  const latestTexPath = resolve(outputDir, 'latest_ablation_table.tex');
+  writeFileSync(latestTexPath, latexContent, 'utf8');
+  console.log(`\nWrote ${rows.length} runs:\n  ${jsonPath}\n  ${csvPath}\n  ${latestTexPath}`);
+
+  // Optional Canonical State-Hash Trace Recording
+  if (traceEnabled) {
+    const traceTargetSeed = seeds[0];
+    const traceResult = generateSimulationTrace({
+      seed: traceTargetSeed,
+      frames,
+      terrainMode: requestedTerrainMode,
+      traceInterval,
+      realDemBuffer,
+      terrainAssetChecksum,
+    });
+    const traceDestination = traceOut
+      ? resolve(traceOut)
+      : resolve(outputDir, `simulation-trace-${requestedTerrainMode}-seed${traceTargetSeed}-${stamp}.json`);
+    mkdirSync(resolve(traceDestination, '..'), { recursive: true });
+    writeFileSync(traceDestination, JSON.stringify(traceResult, null, 2), 'utf8');
+    console.log(`\n[+] Canonical state-hash trace saved to:\n  ${traceDestination}`);
+  }
+}
+
+const isMainModule = (
+  (process.argv[1] && (
+    process.argv[1].endsWith('run_ts_benchmark.ts') ||
+    process.argv[1].endsWith('run_ts_benchmark.js')
+  )) ||
+  (!new Error().stack?.includes('dependencyRequest') && (
+    process.argv.some(arg => arg.includes('run_ts_benchmark')) ||
+    Boolean(process.env.npm_lifecycle_script?.includes('run_ts_benchmark')) ||
+    (process.argv[1]?.includes('vite-node') && !process.argv.some(arg => arg.includes('verify')))
+  ))
+);
+
+if (isMainModule) {
+  runCliBenchmark();
 }

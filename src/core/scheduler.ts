@@ -862,7 +862,22 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
       // Proportional fairness
       const rPrev = this.rAvg.get(m.nid) ?? 100000.0;
-      const pfTerm = m.rInst / Math.max(1000.0, rPrev);
+      let pfTerm = m.rInst / Math.max(1000.0, rPrev);
+
+      if (this.enablePredictiveLookahead) {
+        const isDegradedOrOccluding =
+          (Number.isFinite(m.tOcc) && m.tOcc > 0) ||
+          m.ps?.currentState === NodeTerrainState.RE_EMERGENCE_BURST ||
+          m.ps?.imminentOcclusion === true ||
+          ((m.ls?.diffractionLossDb ?? 0.0) > 3.0) ||
+          Boolean(m.ls?.isCrossoverZone);
+
+        if (isDegradedOrOccluding) {
+          // Channel-degradation inversion: clamp channel quality factor so ridge-grazing/pre-occlusion
+          // nodes are evacuated BEFORE link loss rather than deferred by low instantaneous bitrate!
+          pfTerm = Math.max(1.0, pfTerm);
+        }
+      }
 
       // Backlog utility
       const backlogUtility = Math.max(1.0, Math.log2(1.0 + m.qTotalBits / 8000.0));
@@ -1009,6 +1024,12 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
         let secRemainingUlTimeS = tUlAvailable;
 
+        const maxReactiveSlot = Math.min(
+          this.tauMaxNormalS,
+          this.config.maxSlotDurationS,
+          tUlAvailable / Math.max(candidateNodes.length, 2)
+        );
+
         // Pass 1: Primary allocation up to tauMaxNormalS (or flush duration)
         for (let i = 0; i < ranked.length; i++) {
           if (secRemainingUlTimeS < this.config.minSlotDurationS + this.config.guardIntervalS) break;
@@ -1026,12 +1047,17 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
           let tauSlot: number;
           let isFlush = false;
 
-          const isPreFlush = (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH || (Number.isFinite(ps?.timeToOcclusionS) && (ps?.timeToOcclusionS ?? 0) > 0 && (ps?.timeToOcclusionS ?? 0) <= 3.0));
+          const isPreFlush = (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH || ps?.imminentOcclusion === true || (Number.isFinite(ps?.timeToOcclusionS) && (ps?.timeToOcclusionS ?? 0) > 0 && (ps?.timeToOcclusionS ?? 0) <= 3.0));
           if (this.enablePredictiveLookahead && isPreFlush && phiEvac > 1.0) {
             tauSlot = Math.min(maxAvailSlot, Math.max(tauReq, this.config.minSlotDurationS));
             isFlush = true;
+          } else if (this.enablePredictiveLookahead) {
+            // Tac-TAD unlocks up to 15.0 ms in Pass-1 to evacuate high-priority/backlogged traffic
+            const maxSlot = Math.min(0.015, maxAvailSlot);
+            tauSlot = Math.min(tauReq, maxSlot, maxAvailSlot);
           } else {
-            const maxSlot = Math.min(this.tauMaxNormalS, this.config.maxSlotDurationS);
+            // Reactive M-LWDF strictly bounded by per-sector fair share
+            const maxSlot = Math.min(maxReactiveSlot, maxAvailSlot);
             tauSlot = Math.min(tauReq, maxSlot, maxAvailSlot);
           }
 
@@ -1057,13 +1083,14 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         // Pass 2: Work-Conserving Deficit Drainage
         // Redistribute leftover sector airtime to backlogged candidates without adding guard intervals
         if (secRemainingUlTimeS > 0.0001) {
+          const maxAllowedSlot = this.enablePredictiveLookahead ? Math.min(0.016, tUlAvailable) : maxReactiveSlot;
           for (let i = 0; i < candidatePlan.length && secRemainingUlTimeS > 0.0001; i++) {
             const plan = candidatePlan[i];
             if (plan.remainingBacklogBits <= 0) continue;
 
             const extraTauReq = plan.remainingBacklogBits / plan.rInst;
             const maxAddTau = Math.min(
-              this.config.maxSlotDurationS - plan.tauSlot,
+              Math.max(0, maxAllowedSlot - plan.tauSlot),
               secRemainingUlTimeS
             );
             const addTau = Math.min(extraTauReq, maxAddTau);
@@ -1223,6 +1250,12 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
     let remainingUlTimeS = tUlAvailable;
 
+    const maxReactiveSlot = Math.min(
+      this.tauMaxNormalS,
+      this.config.maxSlotDurationS,
+      tUlAvailable / Math.max(candidateNodes.length, 2)
+    );
+
     // Pass 1: Primary allocation up to tauMaxNormalS (or flush duration)
     for (let i = 0; i < ranked.length; i++) {
       if (remainingUlTimeS < this.config.minSlotDurationS + this.config.guardIntervalS) break;
@@ -1240,12 +1273,15 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       let tauSlot: number;
       let isFlush = false;
 
-      const isPreFlush = (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH || (Number.isFinite(ps?.timeToOcclusionS) && (ps?.timeToOcclusionS ?? 0) > 0 && (ps?.timeToOcclusionS ?? 0) <= 3.0));
+      const isPreFlush = (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH || ps?.imminentOcclusion === true || (Number.isFinite(ps?.timeToOcclusionS) && (ps?.timeToOcclusionS ?? 0) > 0 && (ps?.timeToOcclusionS ?? 0) <= 3.0));
       if (this.enablePredictiveLookahead && isPreFlush && phiEvac > 1.0) {
         tauSlot = Math.min(maxAvailSlot, Math.max(tauReq, this.config.minSlotDurationS));
         isFlush = true;
+      } else if (this.enablePredictiveLookahead) {
+        const maxSlot = Math.min(0.015, maxAvailSlot);
+        tauSlot = Math.min(tauReq, maxSlot, maxAvailSlot);
       } else {
-        const maxSlot = Math.min(this.tauMaxNormalS, this.config.maxSlotDurationS);
+        const maxSlot = Math.min(maxReactiveSlot, maxAvailSlot);
         tauSlot = Math.min(tauReq, maxSlot, maxAvailSlot);
       }
 
@@ -1270,13 +1306,14 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
     // Pass 2: Work-Conserving Deficit Drainage
     if (remainingUlTimeS > 0.0001) {
+      const maxAllowedSlot = this.enablePredictiveLookahead ? Math.min(0.016, tUlAvailable) : maxReactiveSlot;
       for (let i = 0; i < candidatePlan.length && remainingUlTimeS > 0.0001; i++) {
         const plan = candidatePlan[i];
         if (plan.remainingBacklogBits <= 0) continue;
 
         const extraTauReq = plan.remainingBacklogBits / plan.rInst;
         const maxAddTau = Math.min(
-          this.config.maxSlotDurationS - plan.tauSlot,
+          Math.max(0, maxAllowedSlot - plan.tauSlot),
           remainingUlTimeS
         );
         const addTau = Math.min(extraTauReq, maxAddTau);
