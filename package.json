@@ -24,6 +24,8 @@
     "verify:ablation": "vite-node src/tests/verifyAblationAndDiffraction.ts",
     "verify:scientific-instruments": "vite-node src/tests/verifyScientificInstruments.ts",
     "verify:doppler-ew": "vite-node src/tests/verifyDopplerAndEwJammer.ts",
+    "verify:viewshed-relay": "vite-node src/tests/verifyViewshedAndRelayAdvisor.ts",
+    "verify:publication-ecdf": "vite-node src/tests/verifyPublicationEcdfAndLatex.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",

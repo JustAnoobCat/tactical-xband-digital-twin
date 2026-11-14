@@ -96,7 +96,9 @@ const REGISTERED_SUITES = [
   { id: 'verify:itu-physics', name: 'First-Principles ITU-R Physics & Terrain', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyItuFirstPrinciples.ts'], category: 'physics' },
   { id: 'verify:ablation', name: 'Diffraction Scheduling & Ablation Baseline (ABL-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyAblationAndDiffraction.ts'], category: 'scheduler' },
   { id: 'verify:scientific-instruments', name: 'Scientific RF & Protocol Instruments (SCI-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyScientificInstruments.ts'], category: 'ui' },
-  { id: 'verify:doppler-ew', name: '8.0 GHz Doppler Kinematics & Contested EW Jammer (DEW-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDopplerAndEwJammer.ts'], category: 'physics' }
+  { id: 'verify:doppler-ew', name: '8.0 GHz Doppler Kinematics & Contested EW Jammer (DEW-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDopplerAndEwJammer.ts'], category: 'physics' },
+  { id: 'verify:viewshed-relay', name: 'Polar X-Band Viewshed & Relay Placement Advisor (VRA-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyViewshedAndRelayAdvisor.ts'], category: 'rf' },
+  { id: 'verify:publication-ecdf', name: 'Publication ECDF Delay Scope & IEEE LaTeX Export (PEL-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPublicationEcdfAndLatex.ts'], category: 'ui' }
 ];
 
 // -----------------------------------------------------------------------------

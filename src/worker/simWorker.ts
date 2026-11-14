@@ -120,6 +120,7 @@ import {
   buildEmptyFresnelSlice,
   PROFILE_FRESNEL_FRACTION,
 } from '../core/profileEngine';
+import { PolarViewshedEngine, type RelayAdvisorReport } from '../core/viewshedEngine';
 
 export {
   FRAME_DT,
@@ -134,8 +135,10 @@ export {
   ActiveTransferManager,
   normalizeSlotAllocationToFrame,
   PROFILE_FRESNEL_FRACTION,
+  PolarViewshedEngine,
 };
 export type {
+  RelayAdvisorReport,
   WorkerCommandResult,
   SelectedLinkBudgetTelemetry,
   TelemetryGanttAllocation,
@@ -216,6 +219,10 @@ export class SimulationWorkerManager {
   public prevAcnVel: Position3D = [0, 0, 0];
   public jammerShieldLossDb: number = 0.0;
   public jammerSectorInterferenceDbm: readonly [number, number, number, number] = [-150.0, -150.0, -150.0, -150.0];
+  public readonly viewshedEngine: PolarViewshedEngine = new PolarViewshedEngine();
+  public viewshedEnabled: boolean = false;
+  public relayAdvisorReport: RelayAdvisorReport | undefined = undefined;
+  public lastTelemetryFrame: TelemetryFrame | null = null;
   public batchSpatialSnapshots: SpatialFrameSnapshot[] = [];
   public tdmaSimTimeS: number = 0.0;
   public superframeEpochIndex: number = 0;
@@ -227,6 +234,73 @@ export class SimulationWorkerManager {
   public getLiveAcnPosition(): [number, number, number] {
     const p = this.trajectoryEngine.getAcnPosition(this.simTimeS);
     return [p[0], p[1], this.liveAltitudeM];
+  }
+
+  public get viewshedSinrGrid(): Float32Array | undefined {
+    return this.viewshedEnabled ? this.viewshedEngine.getSinrGrid() : undefined;
+  }
+
+  public get relayAdvisor(): RelayAdvisorReport | undefined {
+    return this.relayAdvisorReport;
+  }
+
+  public computeDelayQuantiles(nodes: readonly GroundNodeTrafficSubsystem[]): number[] {
+    const delaysMs: number[] = [];
+    const qosList = [69, 65, 67, 70];
+    for (let i = 0; i < nodes.length; i++) {
+      const q = nodes[i].queue;
+      for (let j = 0; j < 4; j++) {
+        const qos = qosList[j];
+        if (q.getClassPacketCount(qos) > 0) {
+          const dMs = q.getHolDelayS(qos, this.simTimeS) * 1000.0;
+          if (Number.isFinite(dMs) && dMs >= 0) {
+            delaysMs.push(dMs);
+          }
+        }
+      }
+    }
+    if (delaysMs.length === 0) {
+      return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    }
+    delaysMs.sort((a, b) => a - b);
+    const getQuantile = (q: number) => {
+      const idx = Math.min(delaysMs.length - 1, Math.max(0, Math.floor(q * (delaysMs.length - 1))));
+      return Number(delaysMs[idx].toFixed(2));
+    };
+    return [
+      getQuantile(0.10),
+      getQuantile(0.25),
+      getQuantile(0.50),
+      getQuantile(0.75),
+      getQuantile(0.90),
+      getQuantile(0.95),
+      getQuantile(0.99),
+    ];
+  }
+
+  public get staticDelayEcdfMs(): readonly number[] {
+    return this.computeDelayQuantiles(this.nodesStatic);
+  }
+
+  public get tacDelayEcdfMs(): readonly number[] {
+    return this.computeDelayQuantiles(this.nodesTac);
+  }
+
+  public get reactiveDelayEcdfMs(): readonly number[] {
+    return this.computeDelayQuantiles(this.nodesReactive);
+  }
+
+  public computeRelayAdvisor(): RelayAdvisorReport {
+    const nodes = this.nodesTac.length > 0 ? this.nodesTac : this.nodesStatic;
+    const report = this.viewshedEngine.computeOptimalRelayPlacement(
+      this.trajectoryEngine,
+      this.terrainEngine,
+      nodes,
+      this.rfConfig,
+      this.envConfig
+    );
+    this.relayAdvisorReport = report;
+    return report;
   }
 
   public nodeRegistry: NodeRegistry;
@@ -355,6 +429,7 @@ export class SimulationWorkerManager {
     this.initNodes();
     this.registerActiveNodesWithSchedulers();
     this.initTransfers();
+    this.computeRelayAdvisor();
   }
 
   private initNodes(): void {
@@ -656,6 +731,8 @@ export class SimulationWorkerManager {
         jammer_pos_enu: frame.jammer_pos_enu,
         jammer_terrain_shield_db: frame.jammer_terrain_shield_db,
         jammer_sector_interference_dbm: frame.jammer_sector_interference_dbm,
+        viewshed_sinr_grid: frame.viewshed_sinr_grid,
+        relay_advisor: frame.relay_advisor,
       });
     }
   }
@@ -1057,6 +1134,20 @@ export class SimulationWorkerManager {
       nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked || ls.isOutage);
     }
 
+    // 1b. Real-Time Polar X-Band SINR Viewshed Slice Sweep (Amortized 6 Azimuths per 20 ms tick)
+    if (this.viewshedEnabled) {
+      this.viewshedEngine.updateSlice(
+        acnPos,
+        acnVel,
+        this.terrainEngine,
+        this.rfConfig,
+        this.envConfig,
+        6,
+        acnAttitude,
+        jammerInterferenceBySector
+      );
+    }
+
     // 2. Predictive Lookahead Evaluation (Decoupled with Interleaved Round-Robin & Bounded Emergency Budget)
     if (interval <= 1) {
       // 50 Hz Reference Mode: Evaluate all nodes unconditionally
@@ -1322,7 +1413,9 @@ export class SimulationWorkerManager {
     const activeNodes = this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic;
     const selNode = activeNodes.find((n) => n.nodeId === this.selectedNodeId) ?? activeNodes[0];
     const fresnelSlice = this.buildFresnelSlice(selNode, acnPos);
-    return this.telemetrySerializer.buildTelemetryFrame(this, acnPos, fresnelSlice);
+    const frame = this.telemetrySerializer.buildTelemetryFrame(this, acnPos, fresnelSlice);
+    this.lastTelemetryFrame = frame;
+    return frame;
   }
 
   private buildFresnelSlice(
@@ -1564,6 +1657,7 @@ export class SimulationWorkerManager {
         this.lookaheadEngine.invalidateAll();
         this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.computeRelayAdvisor();
         this.emitProfileFrame();
         return result(true);
       }
@@ -1596,6 +1690,7 @@ export class SimulationWorkerManager {
           this.selectedNodeId = -1;
           this.spatialRevision++;
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+          this.computeRelayAdvisor();
           this.emitProfileFrame();
           return result(true);
         }
@@ -1618,6 +1713,7 @@ export class SimulationWorkerManager {
           this.resampleGroundNodeAltitudes();
           this.spatialRevision++;
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+          this.computeRelayAdvisor();
           this.emitProfileFrame();
           return result(true);
         }
@@ -1690,6 +1786,12 @@ export class SimulationWorkerManager {
       }
 
       case 'SET_SCIENTIFIC_PARAMS': {
+        if (msg.viewshedEnabled !== undefined) {
+          this.viewshedEnabled = Boolean(msg.viewshedEnabled);
+        }
+        if (msg.recomputeRelayAdvisor) {
+          this.computeRelayAdvisor();
+        }
         const demError = msg.demLookaheadErrorStdM !== undefined && Number.isFinite(msg.demLookaheadErrorStdM)
           ? Math.max(0.0, Math.min(25.0, msg.demLookaheadErrorStdM))
           : this.envConfig.demLookaheadErrorStdM;
@@ -1719,6 +1821,16 @@ export class SimulationWorkerManager {
           this.nodesReactive[i].trafficLoadMultiplier = trafficScale;
         }
         this.lookaheadEngine.invalidateAll();
+        return result(true);
+      }
+
+      case 'SET_VIEWSHED_CONFIG': {
+        if (msg.viewshedEnabled !== undefined) {
+          this.viewshedEnabled = Boolean(msg.viewshedEnabled);
+        }
+        if (msg.recomputeRelayAdvisor) {
+          this.computeRelayAdvisor();
+        }
         return result(true);
       }
 
@@ -2016,6 +2128,7 @@ export class SimulationWorkerManager {
           this.deferredEmergencyQueue.clear();
         }
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.computeRelayAdvisor();
         this.emitProfileFrame();
         return result(true);
       }
@@ -2109,6 +2222,7 @@ export class SimulationWorkerManager {
         this.lookaheadEngine.invalidateAll();
         this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.computeRelayAdvisor();
         this.emitProfileFrame();
 
         const res: WorkerCommandResult = {
@@ -2193,6 +2307,7 @@ export class SimulationWorkerManager {
         this.lookaheadEngine.invalidateAll();
         this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.computeRelayAdvisor();
         this.emitProfileFrame();
 
         const res: WorkerCommandResult = {
@@ -2240,6 +2355,7 @@ export class SimulationWorkerManager {
         this.lookaheadEngine.invalidateAll();
         this.deferredEmergencyQueue.clear();
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.computeRelayAdvisor();
         this.emitProfileFrame();
 
         const res: WorkerCommandResult = {

@@ -58,6 +58,7 @@ import {
 } from '../core/trajectory';
 import { PROFILE_FRESNEL_FRACTION } from '../core/profileEngine';
 import type { QuadSectorAntennaEngine } from '../core/antennaArray';
+import type { RelayAdvisorReport } from '../core/viewshedEngine';
 
 export { PROFILE_FRESNEL_FRACTION };
 export type { NodeTransferState };
@@ -151,6 +152,11 @@ export interface TelemetrySimulationState {
   readonly envConfig?: EnvironmentConfig;
   readonly jammerShieldLossDb?: number;
   readonly jammerSectorInterferenceDbm?: readonly [number, number, number, number];
+  readonly viewshedSinrGrid?: readonly number[] | Float32Array;
+  readonly relayAdvisor?: RelayAdvisorReport;
+  readonly staticDelayEcdfMs?: readonly number[];
+  readonly reactiveDelayEcdfMs?: readonly number[];
+  readonly tacDelayEcdfMs?: readonly number[];
 }
 
 /**
@@ -747,6 +753,20 @@ export class TelemetrySerializer {
       jammer_pos_enu: state.envConfig?.jammerPosEnu ?? [3200.0, -2800.0, 0.0],
       jammer_terrain_shield_db: state.jammerShieldLossDb ?? 0.0,
       jammer_sector_interference_dbm: state.jammerSectorInterferenceDbm ?? [0, 0, 0, 0],
+      viewshed_sinr_grid: state.viewshedSinrGrid,
+      relay_advisor: state.relayAdvisor,
+      static_delay_ecdf_ms: state.staticDelayEcdfMs,
+      reactive_delay_ecdf_ms: state.reactiveDelayEcdfMs,
+      tac_delay_ecdf_ms: state.tacDelayEcdfMs,
+      static_p50_ms: state.staticDelayEcdfMs?.[2] ?? 0.0,
+      static_p95_ms: state.staticDelayEcdfMs?.[5] ?? 0.0,
+      static_p99_ms: state.staticDelayEcdfMs?.[6] ?? 0.0,
+      reactive_p50_ms: state.reactiveDelayEcdfMs?.[2] ?? 0.0,
+      reactive_p95_ms: state.reactiveDelayEcdfMs?.[5] ?? 0.0,
+      reactive_p99_ms: state.reactiveDelayEcdfMs?.[6] ?? 0.0,
+      tac_p50_ms: state.tacDelayEcdfMs?.[2] ?? 0.0,
+      tac_p95_ms: state.tacDelayEcdfMs?.[5] ?? 0.0,
+      tac_p99_ms: state.tacDelayEcdfMs?.[6] ?? 0.0,
     };
   }
 

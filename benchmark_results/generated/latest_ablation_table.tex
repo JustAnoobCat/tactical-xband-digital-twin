@@ -1,0 +1,16 @@
+\begin{table}[htbp]
+\centering
+\caption{Paired Multi-Seed Benchmark: Tactical X-Band Scheduling Across Mountain Topography}
+\label{tab:tactical_benchmark_results}
+\begin{tabular}{l ccccc}
+\toprule
+\textbf{Scheduler Architecture} & \textbf{Goodput (Mb)} & \textbf{Airtime Util (\%)} & \textbf{Outage Waste (kb)} & \textbf{Delay Drops} & \textbf{Overflow Drops} \\
+\midrule
+Legacy Static TDMA & $3.70 \pm 0.07$ & $100.0 \pm 0.0$ & $196.6 \pm 0.0$ & $172 \pm 0$ & $0 \pm 0$ \\
+Reactive M-LWDF ($\Phi_{\text{evac}} = 1.0$) & $5.62 \pm 0.07$ & $9.7 \pm 0.1$ & $0.0 \pm 0.0$ & $0 \pm 0$ & $0 \pm 0$ \\
+Predictive Tac-TAD ($\Phi_{\text{evac}} \ge 1.0$) & $5.62 \pm 0.07$ & $9.7 \pm 0.1$ & $0.0 \pm 0.0$ & $0 \pm 0$ & $0 \pm 0$ \\
+\bottomrule
+\end{tabular}
+\vspace{1ex}
+{\footnotesize \raggedright \textbf{Benchmark Notes:} Multi-seed paired execution ($N = 5$ seeds). Topography mode: synthetic, $\sigma_{\text{DEM}} = 0\text{ m}$, traffic multiplier = 1.0$\times$. All metrics evaluated synchronously over 50~Hz discrete-event engine.\par}
+\end{table}

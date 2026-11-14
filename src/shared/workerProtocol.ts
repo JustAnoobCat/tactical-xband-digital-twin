@@ -16,6 +16,8 @@ import type { TerrainBoundsTelemetry, TerrainObstruction, DemGeographicMetadata 
 import type { NodeTerrainState } from '../core/trajectory';
 import type { ActiveTransferTelemetry } from '../core/transferMetrics';
 import type { RegistrationState, RegistrationEvent } from '../core/registration';
+import type { RelayAdvisorReport } from '../core/viewshedEngine';
+export type { RelayAdvisorReport };
 import { TdmaFrameConfig } from '../core/tdmaConfig';
 import type { ITdmaFrameConfig, TdmaUplinkPolicy } from '../core/tdmaConfig';
 export { TdmaFrameConfig };
@@ -384,6 +386,20 @@ export interface TelemetryFrame {
   readonly jammer_pos_enu?: Position3D;
   readonly jammer_terrain_shield_db?: number;
   readonly jammer_sector_interference_dbm?: readonly [number, number, number, number];
+  readonly viewshed_sinr_grid?: Float32Array | readonly number[];
+  readonly relay_advisor?: RelayAdvisorReport;
+  readonly static_delay_ecdf_ms?: readonly number[];
+  readonly reactive_delay_ecdf_ms?: readonly number[];
+  readonly tac_delay_ecdf_ms?: readonly number[];
+  readonly static_p50_ms?: number;
+  readonly static_p95_ms?: number;
+  readonly static_p99_ms?: number;
+  readonly reactive_p50_ms?: number;
+  readonly reactive_p95_ms?: number;
+  readonly reactive_p99_ms?: number;
+  readonly tac_p50_ms?: number;
+  readonly tac_p95_ms?: number;
+  readonly tac_p99_ms?: number;
 }
 
 // ----------------------------------------------------------------------------
@@ -788,6 +804,14 @@ export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
   readonly trafficLoadMultiplier?: number;
   readonly jammerEnabled?: boolean;
   readonly jammerEirpDbm?: number;
+  readonly viewshedEnabled?: boolean;
+  readonly recomputeRelayAdvisor?: boolean;
+}
+
+export interface SetViewshedConfigCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_VIEWSHED_CONFIG';
+  readonly viewshedEnabled?: boolean;
+  readonly recomputeRelayAdvisor?: boolean;
 }
 
 export type WorkerInboundCommand =
@@ -797,6 +821,7 @@ export type WorkerInboundCommand =
   | SelectNodeCommand
   | SetSpatialLockCommand
   | SetScientificParamsCommand
+  | SetViewshedConfigCommand
   | NodeMoveCommand
   | NodeAddCommand
   | NodeDeleteCommand
@@ -848,6 +873,20 @@ export interface TelemetryFrameMessage {
   readonly jammer_pos_enu?: Position3D;
   readonly jammer_terrain_shield_db?: number;
   readonly jammer_sector_interference_dbm?: readonly [number, number, number, number];
+  readonly viewshed_sinr_grid?: Float32Array | readonly number[];
+  readonly relay_advisor?: RelayAdvisorReport;
+  readonly static_delay_ecdf_ms?: readonly number[];
+  readonly reactive_delay_ecdf_ms?: readonly number[];
+  readonly tac_delay_ecdf_ms?: readonly number[];
+  readonly static_p50_ms?: number;
+  readonly static_p95_ms?: number;
+  readonly static_p99_ms?: number;
+  readonly reactive_p50_ms?: number;
+  readonly reactive_p95_ms?: number;
+  readonly reactive_p99_ms?: number;
+  readonly tac_p50_ms?: number;
+  readonly tac_p95_ms?: number;
+  readonly tac_p99_ms?: number;
 }
 
 export interface ProfileFrameMessage {
