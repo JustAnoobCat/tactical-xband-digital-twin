@@ -494,7 +494,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
             }
 
             totalPayloadBitsDequeued += bitsServed;
-            if (ls?.isOutage || !ls || ls.bitrateBps <= 0) {
+            if (ls?.isOutage || !ls || ls.bitrateBps <= 0 || ls.cqiDecodeFailure) {
               totalBitsWasted += bitsServed;
             } else {
               totalBitsTx += bitsServed;
@@ -643,7 +643,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         }
 
         totalPayloadBitsDequeued += bitsServed;
-        if (ls?.isOutage || !ls || ls.bitrateBps <= 0) {
+        if (ls?.isOutage || !ls || ls.bitrateBps <= 0 || ls.cqiDecodeFailure) {
           totalBitsWasted += bitsServed;
         } else {
           totalBitsTx += bitsServed;
@@ -968,6 +968,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
       const allocations: SlotAllocation[] = [];
       let totalBitsTx = 0;
+      let totalBitsWasted = 0;
       let totalPayloadBitsDequeued = 0;
       const scheduledIds = new Set<number>();
 
@@ -1135,8 +1136,12 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
             bitsServed += served[p].sizeBits;
           }
           totalPayloadBitsDequeued += bitsServed;
-          totalBitsTx += bitsServed;
-          secBitsTx += bitsServed;
+          if (plan.ls?.cqiDecodeFailure) {
+            totalBitsWasted += bitsServed;
+          } else {
+            totalBitsTx += bitsServed;
+            secBitsTx += bitsServed;
+          }
 
           // Update Proportional Fairness moving average using variable superframe duration
           const rAchieved = bitsServed / this.config.frameDurationS;
@@ -1185,7 +1190,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         totalUlUtilizationPct: utilPct,
         totalPayloadBitsDequeued,
         totalBitsTransmitted: totalBitsTx,
-        totalBitsWastedOnOutage: 0,
+        totalBitsWastedOnOutage: totalBitsWasted,
         ...this.buildDropReportFields(drops),
         totalBacklogBits: backlogBits,
         superframeDurationS: this.config.frameDurationS,
@@ -1330,6 +1335,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
     // Step 4: Dequeue and materialize allocations
     const allocations: SlotAllocation[] = [];
     let totalBitsTx = 0;
+    let totalBitsWasted = 0;
     let totalPayloadBitsDequeued = 0;
     let usedTimeS = 0.0;
     let slotStartS = currentSimTimeS + this.config.ctrlDurationS + tDl;
@@ -1360,8 +1366,11 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         bitsServed += served[p].sizeBits;
       }
       totalPayloadBitsDequeued += bitsServed;
-      // Candidate filtering above excludes hard-shadow and reported-outage links.
-      totalBitsTx += bitsServed;
+      if (plan.ls?.cqiDecodeFailure) {
+        totalBitsWasted += bitsServed;
+      } else {
+        totalBitsTx += bitsServed;
+      }
 
       // Update Proportional Fairness moving average using variable superframe duration
       const rAchieved = bitsServed / this.config.frameDurationS;
@@ -1399,8 +1408,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       totalUlUtilizationPct: utilPct,
       totalPayloadBitsDequeued,
       totalBitsTransmitted: totalBitsTx,
-      // Tac-TAD filters unusable links before dequeue, so no dequeued payload is wasted on outage.
-      totalBitsWastedOnOutage: 0,
+      totalBitsWastedOnOutage: totalBitsWasted,
       ...this.buildDropReportFields(drops),
       totalBacklogBits: backlogBits,
       superframeDurationS: this.config.frameDurationS,

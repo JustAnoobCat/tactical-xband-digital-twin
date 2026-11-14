@@ -85,6 +85,10 @@ export interface LinkStatus {
   readonly relayHop2BitrateMbps?: number;
   readonly relayHop1SnrDb?: number;
   readonly relayHop2SnrDb?: number;
+  readonly ricianKFactorDb?: number;
+  readonly ricianFadingGainDb?: number;
+  readonly ollaMarginDb?: number;
+  readonly cqiDecodeFailure?: boolean;
 }
 
 export class LinkBudgetEngine {
@@ -127,6 +131,71 @@ export class LinkBudgetEngine {
       radialVelocityMs,
       dopplerShiftHz,
       dopplerRateHzS,
+    };
+  }
+
+  /**
+   * 3GPP TR 38.811 Elevation- and Diffraction-Coupled Rician Multipath Fading Synthesis.
+   *
+   * 1. 3GPP TR 38.811 Elevation & Diffraction-Coupled Rician K-factor (dB):
+   *    K_dB = clamp_{[-2.0, 20.0]}(4.0 + 13.5 * sin(max(|theta_el|, 2.0 deg) * pi / 180) - 0.35 * min(max(L_diff, 0), 25.0))
+   *    K_lin = 10^(K_dB / 10.0)
+   *
+   * 2. Deterministic Clarke / Jakes Doppler-Coherent Sum-of-Sinusoids (M = 6 scatterers):
+   *    A_s = sqrt(K_lin / (K_lin + 1.0))
+   *    sigma_d = sqrt(1.0 / ((K_lin + 1.0) * 6.0))
+   *    f_max = max(|f_d|, 12.0) Hz (12 Hz floor for airframe vibration / clutter micro-Doppler)
+   *    For m = 0..5:
+   *      alpha_m = (2m + 1) * pi / 12
+   *      psi_{i,m} = nodeId * 1.618034 + m * 2.399963
+   *      theta_m(t) = 2 * pi * f_max * t * cos(alpha_m) + psi_{i,m}
+   *      I_mp = sigma_d * sum(cos(theta_m(t)))
+   *      Q_mp = sigma_d * sum(sin(theta_m(t)))
+   *    P_env = (A_s + I_mp)^2 + Q_mp^2
+   *    G_Rice,dB = clamp_{[-12.0, 4.5]}(10 * log10(max(P_env, 0.0631)))
+   */
+  public static computeRicianMultipathFading(
+    nodeId: number,
+    simTimeS: number,
+    elevationAngleDeg: number,
+    diffractionLossDb: number,
+    dopplerShiftHz: number
+  ): { ricianKFactorDb: number; fadingGainDb: number } {
+    const absElevDeg = Math.abs(elevationAngleDeg);
+    const effElevDeg = Math.max(absElevDeg, 2.0);
+    const elevRad = (effElevDeg * Math.PI) / 180.0;
+    const effDiffDb = Math.min(Math.max(diffractionLossDb, 0.0), 25.0);
+
+    const rawKDb = 4.0 + 13.5 * Math.sin(elevRad) - 0.35 * effDiffDb;
+    const ricianKFactorDb = Math.max(-2.0, Math.min(20.0, rawKDb));
+    const kLin = Math.pow(10.0, ricianKFactorDb / 10.0);
+
+    const as = Math.sqrt(kLin / (kLin + 1.0));
+    const sigmaD = Math.sqrt(1.0 / ((kLin + 1.0) * 6.0));
+    const fMax = Math.max(Math.abs(dopplerShiftHz), 12.0);
+
+    let sumCos = 0.0;
+    let sumSin = 0.0;
+    const twoPiFMaxT = 2.0 * Math.PI * fMax * simTimeS;
+
+    for (let m = 0; m < 6; m++) {
+      const alphaM = ((2 * m + 1) * Math.PI) / 12.0;
+      const psiIm = nodeId * 1.618034 + m * 2.399963;
+      const thetaM = twoPiFMaxT * Math.cos(alphaM) + psiIm;
+      sumCos += Math.cos(thetaM);
+      sumSin += Math.sin(thetaM);
+    }
+
+    const imp = sigmaD * sumCos;
+    const qmp = sigmaD * sumSin;
+    const pEnv = (as + imp) * (as + imp) + qmp * qmp;
+    const safePEnv = Math.max(pEnv, 0.0631);
+    const rawFadingGainDb = 10.0 * Math.log10(safePEnv);
+    const fadingGainDb = Math.max(-12.0, Math.min(4.5, rawFadingGainDb));
+
+    return {
+      ricianKFactorDb,
+      fadingGainDb,
     };
   }
 
@@ -252,17 +321,18 @@ export class LinkBudgetEngine {
   /**
    * Selects highest order operational DVB-S2X / 3GPP Rel-17 MODCOD for received SNR.
    */
-  public static selectModCod(snrDb: number): { name: string; spectralEfficiencyBpsHz: number } {
+  public static selectModCod(snrDb: number): { name: string; spectralEfficiencyBpsHz: number; minSnrDb: number } {
     for (let i = 0; i < MODCOD_TABLE.length; i++) {
       const entry = MODCOD_TABLE[i];
       if (snrDb >= entry.minSnrDb) {
         return {
           name: entry.name,
           spectralEfficiencyBpsHz: entry.spectralEfficiencyBpsHz,
+          minSnrDb: entry.minSnrDb,
         };
       }
     }
-    return { name: 'LINK_OUTAGE', spectralEfficiencyBpsHz: 0.0 };
+    return { name: 'LINK_OUTAGE', spectralEfficiencyBpsHz: 0.0, minSnrDb: Number.NEGATIVE_INFINITY };
   }
 
   /**
@@ -286,7 +356,11 @@ export class LinkBudgetEngine {
     radialVelocityMs?: number,
     dopplerShiftHz?: number,
     dopplerRateHzS?: number,
-    customRxGainDbi?: number
+    customRxGainDbi?: number,
+    fadingGainDb?: number,
+    ricianKFactorDb?: number,
+    ollaMarginDb?: number,
+    cqiDecodeFailure?: boolean
   ): LinkStatus {
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
@@ -311,8 +385,20 @@ export class LinkBudgetEngine {
       ? customRxGainDbi
       : (rf.acnAntennaGainDbi - patternRollOffDb);
 
+    // 3GPP TR 38.811 Rician multipath fading gain
+    let effFadingGainDb = fadingGainDb;
+    let effRicianKDb = ricianKFactorDb;
+    if (effFadingGainDb === undefined && env.ricianFadingEnabled) {
+      const elev = sectorEval?.elevationAngleDeg ?? 0.0;
+      const fDoppler = dopplerShiftHz ?? 0.0;
+      const rician = LinkBudgetEngine.computeRicianMultipathFading(0, 0, elev, diffractionLossDb, fDoppler);
+      effFadingGainDb = rician.fadingGainDb;
+      effRicianKDb = rician.ricianKFactorDb;
+    }
+    const fadingTerm = (effFadingGainDb !== undefined && Number.isFinite(effFadingGainDb)) ? effFadingGainDb : 0.0;
+
     // Received signal power at ACN LNA input
-    const prxDbm = txPowerDbm + antennaGainDbi + rxGainDbi - totalLossDb;
+    const prxDbm = txPowerDbm + antennaGainDbi + rxGainDbi - totalLossDb + fadingTerm;
 
     // Thermal noise floor
     const { pNoiseDbm: pNoiseThermalDbm } = LinkBudgetEngine.computeThermalNoiseFloorDbm(
@@ -410,6 +496,10 @@ export class LinkBudgetEngine {
       isCrossoverZone: sectorEval?.isCrossoverZone,
       handoverOccurred: sectorEval?.handoverOccurred,
       handoverCount: sectorEval?.handoverCount,
+      ricianKFactorDb: effRicianKDb,
+      ricianFadingGainDb: effFadingGainDb,
+      ollaMarginDb,
+      cqiDecodeFailure,
     };
   }
 
@@ -480,6 +570,10 @@ export class LinkBudgetEngine {
         relayHop2SnrDb: hop2Link.snrDb,
         obstacleBlocked: false,
         diffractionLossDb: 0.0,
+        ricianKFactorDb: directLink.ricianKFactorDb,
+        ricianFadingGainDb: directLink.ricianFadingGainDb,
+        ollaMarginDb: directLink.ollaMarginDb,
+        cqiDecodeFailure: directLink.cqiDecodeFailure,
       };
     }
 

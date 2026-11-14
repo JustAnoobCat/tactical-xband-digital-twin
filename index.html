@@ -1308,6 +1308,20 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <span id="sci-relay-readout" style="font-size:10px;font-family:var(--mono);color:var(--text-muted)">Relayed: 0 nodes | Backhaul: —</span>
             </div>
           </div>
+          <div style="flex:1;min-width:260px">
+            <div style="margin-bottom:4px">
+              <label for="sci-fading-cqi-select" id="lbl-sci-fading-cqi" style="font-size:11px;font-weight:600;color:var(--text)">3GPP Small-Scale Fading &amp; CQI Delay</label>
+            </div>
+            <select id="sci-fading-cqi-select" aria-label="3GPP TR 38.811 Rician Multipath Fading and CQI Delay Mode" style="width:100%;padding:4px 8px;font-size:11px;background:#17140f;border:1px solid var(--line);color:#fff;border-radius:4px" onchange="onScientificParamChange()">
+              <option value="awgn-0ms" selected>Deterministic AWGN (0 ms CQI Delay)</option>
+              <option value="rician-0ms">3GPP Rician Fading + 0 ms Ideal CQI</option>
+              <option value="rician-20ms">3GPP Rician Fading + 20 ms CQI Delay (OLLA Active)</option>
+              <option value="rician-40ms">3GPP Rician Fading + 40 ms Severe CQI Aging</option>
+            </select>
+            <div style="margin-top:4px">
+              <span id="sci-fading-cqi-readout" style="font-size:10px;font-family:var(--mono);color:var(--text-muted)">Mode: AWGN (0 ms delay)</span>
+            </div>
+          </div>
         </div>
 
         <div class="table-scroll">
@@ -1600,6 +1614,10 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <span>Doppler Shift f_d</span>
             <strong id="wf-doppler-readout" class="c-acc">-- Hz</strong>
             <div style="font-size:10px;color:var(--text-muted);margin-top:2px" id="wf-doppler-sub">(-- Hz/s)</div>
+          </div>
+          <div class="inspector-metric" style="grid-column: span 2;">
+            <span>3GPP TR 38.811 Multipath Fading &amp; OLLA</span>
+            <strong id="wf-rician-readout" class="c-acc">3GPP Rician K-Factor: — dB (Fading: — dB | OLLA: — dB)</strong>
           </div>
         </div>
       </div>
@@ -2235,6 +2253,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <tr><td>ITU-R P.838-3 &amp; P.839-4</td><td>X-band (8.0 GHz) specific rain attenuation coupled with 4,800 m MSL 0°C freezing isotherm liquid/ice rain path partitioning.</td><td>Authoritative implementation in <code>LinkBudgetEngine.computeRainAttenuationDb</code>; clamps liquid rain path to the Ladakh freezing level ceiling.</td></tr>
           <tr><td>ITU-R P.618-14</td><td>Atmospheric and precipitation sky-noise brightness temperature coupling (ΔT_sky and receiver noise figure degradation ΔN_sky,dB).</td><td>Authoritative implementation in <code>LinkBudgetEngine.evaluateLink</code>; dynamically elevates receiver noise temperature based on slant-path atmospheric and rain losses.</td></tr>
           <tr><td>DVB-S2X / 3GPP Rel-17 NTN &amp; TS 23.501 (5QI)</td><td>8-tier adaptive coding and modulation (ACM) lookup table (−1.5 dB to 22.0 dB SNR; 0.33 to 4.95 bit/s/Hz) and 3GPP TS 23.501 5QI strict-priority tactical bearer delay budgets (5QI 69, 65, 67, 70).</td><td>Authoritative implementations in <code>selectModCod</code> and <code>FQCoDelQueue</code>; maps physical channel SNR to PHY capacity and enforces delay-budget packet pruning.</td></tr>
+          <tr><td>3GPP TR 38.811 (§6.6 &amp; §6.7)</td><td>Elevation and diffraction-coupled Rician small-scale multipath fading (Clarke/Jakes sum-of-sinusoids synthesis), CQI feedback aging (&tau;<sub>CQI</sub> up to 60 ms), and predictive Outer-Loop Link Adaptation (OLLA) margin.</td><td>Authoritative implementation in <code>LinkBudgetEngine.computeRicianMultipathFading</code>, <code>TerrainAwareDynamicScheduler</code>, and <code>simWorker.ts</code>; models fast multipath fading envelope and compensates for delayed channel state reports.</td></tr>
         </tbody></table>
         <p>Free-space path loss, Friis geometry, thermal noise, queueing, TDMA framing, and Tac-TAD are project-defined engineering components. They should not be described as separate industry-standard implementations unless a source mapping and validation evidence are added.</p>
       </section>
@@ -2327,7 +2346,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <table class="doc-table-clean"><thead><tr><th>Model area</th><th>Current assumption</th><th>Consequence</th><th>Source / status</th></tr></thead><tbody>
           <tr><td>Coordinates</td><td>Local Cartesian X east, Y north, Z MSL/elevation.</td><td>Projection and datum errors are not propagated as uncertainty.</td><td><code>terrain.ts</code>; implemented project coordinate model.</td></tr>
           <tr><td>Terrain</td><td>DEM samples plus effective Earth bulge and configured geometric obstacles.</td><td>Resolution, sampling interval, and coverage boundaries limit obstruction fidelity.</td><td><code>evaluateTerrainObstruction</code>; project approximation.</td></tr>
-          <tr><td>Propagation</td><td>FSPL, ITU-R P.676-13 gas absorption, P.838/839 rain loss, P.526-15 Bullington + crest curvature diffraction, F.1336 quad-sector antenna pattern, P.618-14 sky noise.</td><td>No small-scale multipath fading, co-channel jamming/interference, or measured RF calibration.</td><td><code>linkBudget.ts</code>, <code>terrain.ts</code>, <code>antennaArray.ts</code>.</td></tr>
+          <tr><td>Propagation</td><td>FSPL, ITU-R P.676-13 gas absorption, P.838/839 rain loss, P.526-15 Bullington + crest curvature diffraction, F.1336 quad-sector antenna pattern, P.618-14 sky noise, 3GPP TR 38.811 Rician multipath fading with CQI feedback delay.</td><td>Small-scale Clarke/Jakes fading with OLLA margin protection; EW jamming modeled via ablation matrix.</td><td><code>linkBudget.ts</code>, <code>terrain.ts</code>, <code>antennaArray.ts</code>, <code>simWorker.ts</code>.</td></tr>
           <tr><td>Adaptation</td><td>Discrete SNR threshold table maps directly to spectral efficiency.</td><td>No modem, coding, HARQ, packet error probability, or waveform timing model.</td><td><code>MODCOD_TABLE</code>; standards-inspired abstraction.</td></tr>
           <tr><td>Scheduling</td><td>Static equal slots versus deterministic Tac-TAD heuristic.</td><td>No proof of optimality, universal fairness, or learned policy behavior.</td><td><code>scheduler.ts</code>; project-defined.</td></tr>
           <tr><td>Replay</td><td>Rolling telemetry snapshots.</td><td>Historical scrubbing is not deterministic re-execution.</td><td><code>simulationHistory.ts</code> and coordinators.</td></tr>
@@ -10238,6 +10257,22 @@ window.onScientificParamChange = function() {
   const relaySelect = $('sci-relay-select');
   const activeRelayEnabled = relaySelect ? relaySelect.value === 'active' : (latestTelemetry?.active_relay_enabled ?? false);
 
+  const fadingCqiSelect = $('sci-fading-cqi-select');
+  let ricianFadingEnabled = false;
+  let cqiFeedbackDelayMs = 0;
+  if (fadingCqiSelect) {
+    if (fadingCqiSelect.value === 'rician-0ms') {
+      ricianFadingEnabled = true;
+      cqiFeedbackDelayMs = 0;
+    } else if (fadingCqiSelect.value === 'rician-20ms') {
+      ricianFadingEnabled = true;
+      cqiFeedbackDelayMs = 20;
+    } else if (fadingCqiSelect.value === 'rician-40ms') {
+      ricianFadingEnabled = true;
+      cqiFeedbackDelayMs = 40;
+    }
+  }
+
   sendCommand({
     type: 'SET_SCIENTIFIC_PARAMS',
     demLookaheadErrorStdM: demVal,
@@ -10245,6 +10280,8 @@ window.onScientificParamChange = function() {
     jammerEnabled,
     jammerEirpDbm,
     activeRelayEnabled,
+    ricianFadingEnabled,
+    cqiFeedbackDelayMs,
   });
 };
 
@@ -12346,6 +12383,25 @@ function updateDashboardDOM(frame, force = false) {
     setText('sci-relay-readout', `Relayed: ${count} nodes | Backhaul: ${sec} (${snr})`);
   }
 
+  if (frame.rician_fading_enabled !== undefined || frame.cqi_feedback_delay_ms !== undefined) {
+    const sel = $('sci-fading-cqi-select');
+    if (sel && document.activeElement !== sel) {
+      if (!frame.rician_fading_enabled) {
+        sel.value = 'awgn-0ms';
+      } else if ((frame.cqi_feedback_delay_ms ?? 0) === 0) {
+        sel.value = 'rician-0ms';
+      } else if (frame.cqi_feedback_delay_ms === 20) {
+        sel.value = 'rician-20ms';
+      } else {
+        sel.value = 'rician-40ms';
+      }
+    }
+    const modeStr = !frame.rician_fading_enabled
+      ? 'AWGN (0 ms delay)'
+      : `3GPP Rician (${frame.cqi_feedback_delay_ms ?? 0} ms delay${(frame.cqi_feedback_delay_ms ?? 0) === 20 ? ', OLLA' : ''})`;
+    setText('sci-fading-cqi-readout', `Mode: ${modeStr}`);
+  }
+
   updateScientificAblationMatrix(frame);
 }
 
@@ -14232,6 +14288,10 @@ function drawLinkWaterfallCanvas(frame) {
     const fddot = typeof node.doppler_rate_hz_s === 'number' ? node.doppler_rate_hz_s : 0.0;
     setText('wf-doppler-readout', `${fd >= 0 ? '+' : ''}${fd.toFixed(1)} Hz`);
     setText('wf-doppler-sub', `(${fddot >= 0 ? '+' : ''}${fddot.toFixed(2)} Hz/s)`);
+    const ricianK = typeof node.rician_k_db === 'number' ? `${node.rician_k_db.toFixed(1)} dB` : '— dB';
+    const ricianFading = typeof node.rician_fading_db === 'number' ? `${node.rician_fading_db >= 0 ? '+' : ''}${node.rician_fading_db.toFixed(1)} dB` : '— dB';
+    const ollaMargin = typeof node.olla_margin_db === 'number' ? `${node.olla_margin_db.toFixed(1)} dB` : '0.0 dB';
+    setText('wf-rician-readout', `3GPP Rician K-Factor: ${ricianK} (Fading: ${ricianFading} | OLLA: ${ollaMargin})`);
 
     // Draw Waterfall Steps
     const stages = [

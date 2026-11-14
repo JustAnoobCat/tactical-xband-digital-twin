@@ -392,6 +392,9 @@ export class TelemetrySerializer {
         is_relayed: ls?.isRelayed ?? false,
         relay_hop1_mbps: ls?.relayHop1BitrateMbps,
         relay_hop2_mbps: ls?.relayHop2BitrateMbps,
+        rician_k_db: ls?.ricianKFactorDb,
+        rician_fading_db: ls?.ricianFadingGainDb,
+        olla_margin_db: ls?.ollaMarginDb,
       };
     });
   }
@@ -765,6 +768,8 @@ export class TelemetrySerializer {
       relayed_node_count: state.relayedNodeCount ?? 0,
       relay_backhaul_sector_id: state.relayBackhaulSectorId,
       relay_backhaul_snr_db: state.relayBackhaulSnrDb,
+      rician_fading_enabled: state.envConfig?.ricianFadingEnabled ?? false,
+      cqi_feedback_delay_ms: state.envConfig?.cqiFeedbackDelayMs ?? 0,
       static_delay_ecdf_ms: state.staticDelayEcdfMs,
       reactive_delay_ecdf_ms: state.reactiveDelayEcdfMs,
       tac_delay_ecdf_ms: state.tacDelayEcdfMs,

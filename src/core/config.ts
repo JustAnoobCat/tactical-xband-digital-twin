@@ -150,6 +150,8 @@ export interface IEnvironmentConfig {
   readonly jammerPosEnu?: Position3D;
   readonly activeRelayEnabled?: boolean;
   readonly relayAntennaGainDbi?: number;
+  readonly ricianFadingEnabled?: boolean;
+  readonly cqiFeedbackDelayMs?: number;
 }
 
 export class EnvironmentConfig implements IEnvironmentConfig {
@@ -165,6 +167,8 @@ export class EnvironmentConfig implements IEnvironmentConfig {
   public readonly jammerPosEnu: Position3D = [3200.0, -2800.0, 0.0];
   public readonly activeRelayEnabled: boolean = false;
   public readonly relayAntennaGainDbi: number = 12.0;
+  public readonly ricianFadingEnabled: boolean = false;
+  public readonly cqiFeedbackDelayMs: number = 0;
 
   constructor(init?: Partial<IEnvironmentConfig>) {
     this.effectiveEarthRadiusFactor = init?.effectiveEarthRadiusFactor ?? 4.0 / 3.0; // ITU-R P.834 k-factor
@@ -179,6 +183,8 @@ export class EnvironmentConfig implements IEnvironmentConfig {
     this.jammerPosEnu = init?.jammerPosEnu ?? ([3200.0, -2800.0, 0.0] as const);
     this.activeRelayEnabled = init?.activeRelayEnabled ?? false;
     this.relayAntennaGainDbi = init?.relayAntennaGainDbi ?? 12.0;
+    this.ricianFadingEnabled = init?.ricianFadingEnabled ?? false;
+    this.cqiFeedbackDelayMs = init?.cqiFeedbackDelayMs ?? 0;
   }
 
   /**

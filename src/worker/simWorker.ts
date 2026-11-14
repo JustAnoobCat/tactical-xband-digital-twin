@@ -317,6 +317,10 @@ export class SimulationWorkerManager {
   public nodesTac: GroundNodeTrafficSubsystem[] = [];
   public nodesReactive: GroundNodeTrafficSubsystem[] = [];
   public linkStatuses: Map<number, LinkStatus> = new Map();
+  public readonly linkStatusesStatic: Map<number, LinkStatus> = new Map();
+  public readonly linkStatusesReactive: Map<number, LinkStatus> = new Map();
+  public readonly linkStatusesTac: Map<number, LinkStatus> = new Map();
+  public readonly nodeSinrHistory: Map<number, Float64Array> = new Map();
   public predStates: Map<number, PredictiveState> = new Map();
   public obstructionResults: Map<number, TerrainObstruction> = new Map();
   public readonly transferManager: ActiveTransferManager = new ActiveTransferManager();
@@ -746,6 +750,8 @@ export class SimulationWorkerManager {
         relayed_node_count: frame.relayed_node_count,
         relay_backhaul_sector_id: frame.relay_backhaul_sector_id,
         relay_backhaul_snr_db: frame.relay_backhaul_snr_db,
+        rician_fading_enabled: frame.rician_fading_enabled,
+        cqi_feedback_delay_ms: frame.cqi_feedback_delay_ms,
       });
     }
   }
@@ -756,21 +762,21 @@ export class SimulationWorkerManager {
       this.frameIndex,
       t,
       this.nodesStatic,
-      this.linkStatuses,
+      this.linkStatusesStatic.size > 0 ? this.linkStatusesStatic : this.linkStatuses,
       this.predStates
     );
     const reportTac = this.tacScheduler.scheduleFrame(
       this.frameIndex,
       t,
       this.nodesTac,
-      this.linkStatuses,
+      this.linkStatusesTac.size > 0 ? this.linkStatusesTac : this.linkStatuses,
       this.predStates
     );
     const reportReactive = this.reactiveScheduler.scheduleFrame(
       this.frameIndex,
       t,
       this.nodesReactive,
-      this.linkStatuses,
+      this.linkStatusesReactive.size > 0 ? this.linkStatusesReactive : this.linkStatuses,
       this.predStates
     );
 
@@ -1122,6 +1128,21 @@ export class SimulationWorkerManager {
         ? jammerInterferenceBySector[activeSectorId]
         : undefined;
 
+      let ricianKFactorDb: number | undefined = undefined;
+      let ricianFadingGainDb: number | undefined = undefined;
+
+      if (this.envConfig.ricianFadingEnabled) {
+        const fading = LinkBudgetEngine.computeRicianMultipathFading(
+          node.nodeId,
+          this.simTimeS,
+          sectorEval.elevationAngleDeg ?? 0.0,
+          obstruction.diffractionLossDb,
+          doppler.dopplerShiftHz
+        );
+        ricianKFactorDb = fading.ricianKFactorDb;
+        ricianFadingGainDb = fading.fadingGainDb;
+      }
+
       const ls = this.linkEngine.evaluateLink(
         node.nodeType,
         slantM,
@@ -1138,7 +1159,10 @@ export class SimulationWorkerManager {
         nodeJammerInterferenceDbm,
         doppler.radialVelocityMs,
         doppler.dopplerShiftHz,
-        doppler.dopplerRateHzS
+        doppler.dopplerRateHzS,
+        undefined,
+        ricianFadingGainDb,
+        ricianKFactorDb
       );
 
       nextObstructions.set(nid, obstruction);
@@ -1418,7 +1442,100 @@ export class SimulationWorkerManager {
       }
     }
     // Publish staged results together so no caller can observe a partial node refresh.
-    this.linkStatuses.clear(); for (const [id, value] of nextLinks) this.linkStatuses.set(id, value);
+    this.linkStatuses.clear();
+    this.linkStatusesStatic.clear();
+    this.linkStatusesReactive.clear();
+    this.linkStatusesTac.clear();
+
+    const isRician = this.envConfig.ricianFadingEnabled;
+    const delayMs = this.envConfig.cqiFeedbackDelayMs;
+    const delaySteps = Math.min(3, Math.max(0, Math.round(delayMs / 20)));
+
+    for (const [nid, ls] of nextLinks) {
+      this.linkStatuses.set(nid, ls);
+
+      if (!isRician || delayMs <= 0) {
+        if (isRician) {
+          (ls as any).ollaMarginDb = 0.0;
+        }
+        this.linkStatusesStatic.set(nid, ls);
+        this.linkStatusesReactive.set(nid, ls);
+        this.linkStatusesTac.set(nid, ls);
+        continue;
+      }
+
+      // Update 4-frame SINR circular history
+      const currentSinr = ls.sinrDb ?? ls.snrDb;
+      let hist = this.nodeSinrHistory.get(nid);
+      if (!hist) {
+        hist = new Float64Array(4);
+        hist.fill(currentSinr);
+        this.nodeSinrHistory.set(nid, hist);
+      } else {
+        hist[3] = hist[2];
+        hist[2] = hist[1];
+        hist[1] = hist[0];
+        hist[0] = currentSinr;
+      }
+
+      const delayedSinr = hist[delaySteps];
+
+      // 1. Reactive & Static Baselines (delayed CQI selection)
+      const modcodDelayed = LinkBudgetEngine.selectModCod(delayedSinr);
+      const isDelayedOutage = ls.obstacleBlocked || modcodDelayed.name === 'LINK_OUTAGE';
+      const effDelayed = isDelayedOutage ? 0.0 : modcodDelayed.spectralEfficiencyBpsHz;
+      const bpsDelayed = isDelayedOutage ? 0.0 : effDelayed * this.rfConfig.channelBandwidthHz;
+
+      // ACM Block Decode Failure (CQI Aging Outage):
+      // If delayed CQI report SINR(t - tau_CQI) selected a MODCOD whose required SNR threshold
+      // exceeds current frame's true physical SINR(t) by more than 0.5 dB
+      const isDecodeFailureBaseline =
+        !isDelayedOutage &&
+        modcodDelayed.minSnrDb > currentSinr + 0.5;
+
+      const lsBaseline: LinkStatus = {
+        ...ls,
+        modcodName: isDelayedOutage ? 'LINK_OUTAGE' : modcodDelayed.name,
+        spectralEfficiency: effDelayed,
+        bitrateBps: bpsDelayed,
+        bitrateMbps: bpsDelayed / 1.0e6,
+        isOutage: isDelayedOutage,
+        cqiDecodeFailure: isDecodeFailureBaseline,
+      };
+      this.linkStatusesStatic.set(nid, lsBaseline);
+      this.linkStatusesReactive.set(nid, lsBaseline);
+
+      // 2. Predictive Tac-TAD with OLLA Margin
+      const kDb = ls.ricianKFactorDb ?? 4.0;
+      const kLin = Math.pow(10.0, kDb / 10.0);
+      const delayFactor = Math.min(1.0, delayMs / 20.0);
+      const ollaMarginDb = (2.5 / Math.sqrt(kLin)) * delayFactor;
+      const sinrSafe = delayedSinr - ollaMarginDb;
+
+      const modcodSafe = LinkBudgetEngine.selectModCod(sinrSafe);
+      const isSafeOutage = ls.obstacleBlocked || modcodSafe.name === 'LINK_OUTAGE';
+      const effSafe = isSafeOutage ? 0.0 : modcodSafe.spectralEfficiencyBpsHz;
+      const bpsSafe = isSafeOutage ? 0.0 : effSafe * this.rfConfig.channelBandwidthHz;
+
+      const isDecodeFailureTac =
+        !isSafeOutage &&
+        modcodSafe.minSnrDb > currentSinr + 0.5;
+
+      const lsTac: LinkStatus = {
+        ...ls,
+        modcodName: isSafeOutage ? 'LINK_OUTAGE' : modcodSafe.name,
+        spectralEfficiency: effSafe,
+        bitrateBps: bpsSafe,
+        bitrateMbps: bpsSafe / 1.0e6,
+        isOutage: isSafeOutage,
+        cqiDecodeFailure: isDecodeFailureTac,
+        ollaMarginDb,
+      };
+      this.linkStatusesTac.set(nid, lsTac);
+
+      // Attach ollaMarginDb to authoritative linkStatus for telemetry inspection
+      (ls as any).ollaMarginDb = ollaMarginDb;
+    }
     this.predStates.clear(); for (const [id, value] of nextPredictions) this.predStates.set(id, value);
     this.obstructionResults.clear(); for (const [id, value] of nextObstructions) this.obstructionResults.set(id, value);
     for (let i = 0; i < this.nodesTac.length; i++) {
@@ -1489,6 +1606,21 @@ export class SimulationWorkerManager {
         ? this.jammerSectorInterferenceDbm[sectorEval.activeSectorId]
         : undefined;
 
+      let ricianKFactorDb: number | undefined = undefined;
+      let ricianFadingGainDb: number | undefined = undefined;
+
+      if (this.envConfig.ricianFadingEnabled) {
+        const fading = LinkBudgetEngine.computeRicianMultipathFading(
+          node.nodeId,
+          this.simTimeS,
+          sectorEval.elevationAngleDeg ?? 0.0,
+          obstruction.diffractionLossDb,
+          doppler.dopplerShiftHz
+        );
+        ricianKFactorDb = fading.ricianKFactorDb;
+        ricianFadingGainDb = fading.fadingGainDb;
+      }
+
       linkStatus = this.linkEngine.evaluateLink(
         node.nodeType,
         slantM,
@@ -1505,7 +1637,10 @@ export class SimulationWorkerManager {
         nodeJammerInterferenceDbm,
         doppler.radialVelocityMs,
         doppler.dopplerShiftHz,
-        doppler.dopplerRateHzS
+        doppler.dopplerRateHzS,
+        undefined,
+        ricianFadingGainDb,
+        ricianKFactorDb
       );
 
       if (this.envConfig.activeRelayEnabled && this.relayAdvisorReport && this.relayAdvisorReport.optimalPosEnu && (linkStatus.isOutage || linkStatus.bitrateMbps < 5.0)) {
@@ -1733,6 +1868,10 @@ export class SimulationWorkerManager {
     this.isTerrainClamped = false;
     this.trajectoryEngine.resetKinematics(this.flightConfig.loiterSpeedMps);
     this.linkStatuses.clear();
+    this.linkStatusesStatic.clear();
+    this.linkStatusesReactive.clear();
+    this.linkStatusesTac.clear();
+    this.nodeSinrHistory.clear();
     this.predStates.clear();
     this.obstructionResults.clear();
     this.clearRelayHop1Cache();
@@ -2028,6 +2167,10 @@ export class SimulationWorkerManager {
           ? msg.jammerEirpDbm
           : this.envConfig.jammerEirpDbm;
         const activeRelayEnabled = msg.activeRelayEnabled !== undefined ? Boolean(msg.activeRelayEnabled) : this.envConfig.activeRelayEnabled;
+        const ricianFadingEnabled = msg.ricianFadingEnabled !== undefined ? Boolean(msg.ricianFadingEnabled) : this.envConfig.ricianFadingEnabled;
+        const cqiFeedbackDelayMs = msg.cqiFeedbackDelayMs !== undefined && Number.isFinite(msg.cqiFeedbackDelayMs)
+          ? msg.cqiFeedbackDelayMs
+          : this.envConfig.cqiFeedbackDelayMs;
 
         this.envConfig = new EnvironmentConfig({
           ...this.envConfig,
@@ -2036,6 +2179,8 @@ export class SimulationWorkerManager {
           jammerEnabled,
           jammerEirpDbm,
           activeRelayEnabled,
+          ricianFadingEnabled,
+          cqiFeedbackDelayMs,
         });
         this.lookaheadEngine.setEnvConfig(this.envConfig);
         for (let i = 0; i < this.nodesStatic.length; i++) {
@@ -2048,7 +2193,10 @@ export class SimulationWorkerManager {
           this.nodesReactive[i].trafficLoadMultiplier = trafficScale;
         }
         this.lookaheadEngine.invalidateAll();
-        if (msg.activeRelayEnabled !== undefined) {
+        if (msg.ricianFadingEnabled !== undefined && !msg.ricianFadingEnabled) {
+          this.nodeSinrHistory.clear();
+        }
+        if (msg.activeRelayEnabled !== undefined || msg.ricianFadingEnabled !== undefined || msg.cqiFeedbackDelayMs !== undefined) {
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         }
         return result(true);

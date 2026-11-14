@@ -170,6 +170,9 @@ export interface NodeTelemetryItem {
   readonly is_relayed?: boolean;
   readonly relay_hop1_mbps?: number;
   readonly relay_hop2_mbps?: number;
+  readonly rician_k_db?: number;
+  readonly rician_fading_db?: number;
+  readonly olla_margin_db?: number;
   readonly [key: string]: unknown;
 }
 
@@ -237,6 +240,9 @@ export interface SelectedLinkBudgetTelemetry {
   readonly is_relayed?: boolean;
   readonly relay_hop1_mbps?: number;
   readonly relay_hop2_mbps?: number;
+  readonly rician_k_db?: number;
+  readonly rician_fading_db?: number;
+  readonly olla_margin_db?: number;
   readonly [key: string]: unknown;
 }
 
@@ -410,6 +416,8 @@ export interface TelemetryFrame {
   readonly tac_p50_ms?: number;
   readonly tac_p95_ms?: number;
   readonly tac_p99_ms?: number;
+  readonly rician_fading_enabled?: boolean;
+  readonly cqi_feedback_delay_ms?: number;
 }
 
 // ----------------------------------------------------------------------------
@@ -817,6 +825,8 @@ export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
   readonly viewshedEnabled?: boolean;
   readonly recomputeRelayAdvisor?: boolean;
   readonly activeRelayEnabled?: boolean;
+  readonly ricianFadingEnabled?: boolean;
+  readonly cqiFeedbackDelayMs?: number;
 }
 
 export interface SetViewshedConfigCommand extends BaseWorkerInboundCommand {
@@ -903,6 +913,8 @@ export interface TelemetryFrameMessage {
   readonly tac_p50_ms?: number;
   readonly tac_p95_ms?: number;
   readonly tac_p99_ms?: number;
+  readonly rician_fading_enabled?: boolean;
+  readonly cqi_feedback_delay_ms?: number;
 }
 
 export interface ProfileFrameMessage {
