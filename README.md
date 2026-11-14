@@ -161,7 +161,6 @@ If you utilize this Digital Twin platform, its mathematical formulations, or its
 ```bibtex
 @software{tactical_xband_digital_twin_2026,
   title = {Tactical X-Band Air-to-Ground Network Digital Twin},
-  author = {DRDO / Indian Institute of Technology Tactical Communications Research Group},
   year = {2026},
   version = {1.2.0},
   url = {https://github.com/organization/tactical-xband-digital-twin}
