@@ -544,10 +544,11 @@ export class SimulationWorkerManager {
 
     if (Math.abs(tFrame - FRAME_DT) < 1e-6) {
       // Baseline 20 ms mode: 100% bit-for-bit identical to original discrete physics
+      const trafficScale = this.envConfig.trafficLoadMultiplier ?? 1.0;
       for (let i = 0; i < this.nodesStatic.length; i++) {
-        const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT);
-        const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT);
-        const rPkts = this.nodesReactive[i]?.generateTraffic(t, FRAME_DT) ?? [];
+        const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT, trafficScale);
+        const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT, trafficScale);
+        const rPkts = this.nodesReactive[i]?.generateTraffic(t, FRAME_DT, trafficScale) ?? [];
         this.metrics.staticEnqueuedPkts += sPkts.length;
         this.metrics.tacEnqueuedPkts += tPkts.length;
         this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
@@ -562,11 +563,12 @@ export class SimulationWorkerManager {
     } else if (tFrame < FRAME_DT - 1e-6) {
       // Fast waveforms (tFrame < 20 ms, e.g. 10 ms fast mode):
       // Execute multiple TDMA sub-cycles within one 50 Hz physics tick
+      const trafficScale = this.envConfig.trafficLoadMultiplier ?? 1.0;
       while (this.tdmaAccumulatorS >= tFrame - 1e-6) {
         for (let i = 0; i < this.nodesStatic.length; i++) {
-          const sPkts = this.nodesStatic[i].generateTraffic(t, tFrame);
-          const tPkts = this.nodesTac[i].generateTraffic(t, tFrame);
-          const rPkts = this.nodesReactive[i]?.generateTraffic(t, tFrame) ?? [];
+          const sPkts = this.nodesStatic[i].generateTraffic(t, tFrame, trafficScale);
+          const tPkts = this.nodesTac[i].generateTraffic(t, tFrame, trafficScale);
+          const rPkts = this.nodesReactive[i]?.generateTraffic(t, tFrame, trafficScale) ?? [];
           this.metrics.staticEnqueuedPkts += sPkts.length;
           this.metrics.tacEnqueuedPkts += tPkts.length;
           this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
@@ -582,10 +584,11 @@ export class SimulationWorkerManager {
     } else {
       // Extended waveforms (tFrame > 20 ms, e.g. 40 ms extended mode):
       // Generate traffic for FRAME_DT every tick so backlogs accumulate naturally
+      const trafficScale = this.envConfig.trafficLoadMultiplier ?? 1.0;
       for (let i = 0; i < this.nodesStatic.length; i++) {
-        const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT);
-        const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT);
-        const rPkts = this.nodesReactive[i]?.generateTraffic(t, FRAME_DT) ?? [];
+        const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT, trafficScale);
+        const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT, trafficScale);
+        const rPkts = this.nodesReactive[i]?.generateTraffic(t, FRAME_DT, trafficScale) ?? [];
         this.metrics.staticEnqueuedPkts += sPkts.length;
         this.metrics.tacEnqueuedPkts += tPkts.length;
         this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
@@ -619,7 +622,33 @@ export class SimulationWorkerManager {
       const frame = this.buildTelemetryFrame(acnPos);
       (frame as any).batch_spatial_snapshots = this.batchSpatialSnapshots.splice(0);
       (frame as any).completed_superframes = this.pendingTimelineRecords.splice(0);
-      this.emitHostMessage({ type: 'TELEMETRY_FRAME', frame });
+      this.emitHostMessage({
+        type: 'TELEMETRY_FRAME',
+        frame,
+        static_goodput_mbps: frame.static_goodput_mbps,
+        static_util_pct: frame.static_util_pct,
+        static_wasted_bits: frame.static_wasted_bits,
+        static_delay_drops: frame.static_delay_drops,
+        static_overflow_drops: frame.static_overflow_drops,
+        static_scheduled_ul_s: frame.static_scheduled_ul_s,
+        static_sector_util_pct: frame.static_sector_util_pct,
+        tac_goodput_mbps: frame.tac_goodput_mbps,
+        tac_util_pct: frame.tac_util_pct,
+        tac_wasted_bits: frame.tac_wasted_bits,
+        tac_delay_drops: frame.tac_delay_drops,
+        tac_overflow_drops: frame.tac_overflow_drops,
+        tac_scheduled_ul_s: frame.tac_scheduled_ul_s,
+        tac_sector_util_pct: frame.tac_sector_util_pct,
+        reactive_goodput_mbps: frame.reactive_goodput_mbps,
+        reactive_util_pct: frame.reactive_util_pct,
+        reactive_wasted_bits: frame.reactive_wasted_bits,
+        reactive_delay_drops: frame.reactive_delay_drops,
+        reactive_overflow_drops: frame.reactive_overflow_drops,
+        reactive_scheduled_ul_s: frame.reactive_scheduled_ul_s,
+        reactive_sector_util_pct: frame.reactive_sector_util_pct,
+        dem_lookahead_error_std_m: frame.dem_lookahead_error_std_m,
+        traffic_load_multiplier: frame.traffic_load_multiplier,
+      });
     }
   }
 
@@ -929,7 +958,7 @@ export class SimulationWorkerManager {
         acnAttitude
       );
       nextObstructions.set(nid, obstruction);
-      nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm, sectorEval, node.position[2], acnPos[2]));
+      nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm, sectorEval, node.position[2], acnPos[2], obstruction.crestRadiusM, obstruction.curvatureLossDb));
       // Traffic-generation shadow is current geometry, independent of a predicted re-emergence label.
       nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked);
     }
@@ -1126,7 +1155,7 @@ export class SimulationWorkerManager {
     let linkStatus = this.linkStatuses.get(node.nodeId);
     if (!linkStatus) {
       const slantM = Math.hypot(acnPos[0] - node.position[0], acnPos[1] - node.position[1], acnPos[2] - node.position[2]);
-      linkStatus = this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm, undefined, node.position[2], acnPos[2]);
+      linkStatus = this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm, undefined, node.position[2], acnPos[2], obstruction.crestRadiusM, obstruction.curvatureLossDb);
       this.linkStatuses.set(node.nodeId, linkStatus);
     }
     let predState = this.predStates.get(node.nodeId);
@@ -1516,6 +1545,31 @@ export class SimulationWorkerManager {
         this.transferManager.startTransfer(nid, ttype, bytes, this.simTimeS, isBlocked);
         staticNode.injectTraffic(ttype, this.simTimeS);
         tacNode.injectTraffic(ttype, this.simTimeS);
+        return result(true);
+      }
+
+      case 'SET_SCIENTIFIC_PARAMS': {
+        const demError = msg.demLookaheadErrorStdM !== undefined && Number.isFinite(msg.demLookaheadErrorStdM)
+          ? Math.max(0.0, Math.min(25.0, msg.demLookaheadErrorStdM))
+          : this.envConfig.demLookaheadErrorStdM;
+        const trafficScale = msg.trafficLoadMultiplier !== undefined && Number.isFinite(msg.trafficLoadMultiplier)
+          ? Math.max(0.25, Math.min(8.0, msg.trafficLoadMultiplier))
+          : (this.envConfig.trafficLoadMultiplier ?? 1.0);
+        this.envConfig = new EnvironmentConfig({
+          ...this.envConfig,
+          demLookaheadErrorStdM: demError,
+          trafficLoadMultiplier: trafficScale,
+        });
+        this.lookaheadEngine.setEnvConfig(this.envConfig);
+        for (let i = 0; i < this.nodesStatic.length; i++) {
+          this.nodesStatic[i].trafficLoadMultiplier = trafficScale;
+        }
+        for (let i = 0; i < this.nodesTac.length; i++) {
+          this.nodesTac[i].trafficLoadMultiplier = trafficScale;
+        }
+        for (let i = 0; i < this.nodesReactive.length; i++) {
+          this.nodesReactive[i].trafficLoadMultiplier = trafficScale;
+        }
         return result(true);
       }
 

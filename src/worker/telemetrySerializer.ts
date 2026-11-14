@@ -33,7 +33,7 @@ import {
   TerrainEngine,
   TerrainObstruction,
 } from '../core/terrain';
-import { ACNFlightConfig, type AltitudeMode } from '../core/config';
+import { ACNFlightConfig, EnvironmentConfig, type AltitudeMode } from '../core/config';
 import { LinkStatus } from '../core/linkBudget';
 import {
   SlotAllocation,
@@ -148,6 +148,7 @@ export interface TelemetrySimulationState {
   readonly tdmaConfig: TdmaFrameConfig;
   readonly simulationRunId?: number;
   readonly antennaEngine?: QuadSectorAntennaEngine;
+  readonly envConfig?: EnvironmentConfig;
 }
 
 /**
@@ -361,12 +362,17 @@ export class TelemetrySerializer {
         communication_eligible: registration.state === 'REGISTERED',
         active_sector_id: ls?.activeSectorId,
         sector_boresight_deg: ls?.sectorBoresightDeg,
-        body_azimuth_deg: ls?.bodyAzimuthDeg,
-        off_boresight_deg: ls?.offBoresightAzDeg,
-        pattern_rolloff_db: ls?.patternRollOffDb,
+        body_azimuth_deg: ls?.bodyAzimuthDeg ?? 0.0,
+        off_boresight_deg: ls?.offBoresightAzDeg ?? 0.0,
+        pattern_rolloff_db: ls?.patternRollOffDb ?? 0.0,
         sector_gains_dbi: ls?.allSectorGainsDbi,
         is_crossover_zone: ls?.isCrossoverZone,
         handover_count: ls?.handoverCount,
+        crest_radius_m: ls?.crestRadiusM ?? obstruction?.crestRadiusM ?? 2000.0,
+        curvature_loss_db: ls?.curvatureLossDb ?? obstruction?.curvatureLossDb ?? 0.0,
+        sky_temp_k: ls?.skyTemperatureK ?? 0.0,
+        sky_noise_db: ls?.skyNoiseIncreaseDb ?? 0.0,
+        timing_advance_us: ls?.timingAdvanceUs ?? (ls?.slantRangeM ? (2.0 * ls.slantRangeM / 299792458.0) * 1e6 : 0.0),
       };
     });
   }
@@ -708,6 +714,27 @@ export class TelemetrySerializer {
           ]
         : [0, 0, 0, 0],
       total_sector_handovers: state.antennaEngine ? state.antennaEngine.getTotalHandovers() : 0,
+      static_goodput_mbps: state.simTimeS > 0 ? Number(((state.metrics.staticGoodputBits / state.simTimeS) / 1e6).toFixed(4)) : 0.0,
+      static_util_pct: state.lastReportStatic?.totalUlUtilizationPct ?? 0.0,
+      static_wasted_bits: state.metrics.staticWastedBits,
+      static_delay_drops: state.metrics.staticDelayDropsThisRun,
+      static_overflow_drops: state.metrics.staticOverflowDropsThisRun,
+      static_scheduled_ul_s: state.metrics.staticScheduledUlTimeS,
+      tac_goodput_mbps: state.simTimeS > 0 ? Number(((state.metrics.tacGoodputBits / state.simTimeS) / 1e6).toFixed(4)) : 0.0,
+      tac_util_pct: state.lastReportTac?.totalUlUtilizationPct ?? 0.0,
+      tac_wasted_bits: state.metrics.tacWastedBits,
+      tac_delay_drops: state.metrics.tacDelayDropsThisRun,
+      tac_overflow_drops: state.metrics.tacOverflowDropsThisRun,
+      tac_scheduled_ul_s: state.metrics.tacScheduledUlTimeS,
+      reactive_goodput_mbps: state.simTimeS > 0 ? Number((((state.metrics.reactiveGoodputBits ?? 0) / state.simTimeS) / 1e6).toFixed(4)) : 0.0,
+      reactive_util_pct: state.lastReportReactive?.totalUlUtilizationPct ?? 0.0,
+      reactive_wasted_bits: state.metrics.reactiveWastedBits ?? 0,
+      reactive_delay_drops: state.metrics.reactiveDelayDropsThisRun ?? 0,
+      reactive_overflow_drops: state.metrics.reactiveOverflowDropsThisRun ?? 0,
+      reactive_scheduled_ul_s: state.metrics.reactiveScheduledUlTimeS ?? 0,
+      reactive_sector_util_pct: state.lastReportReactive?.sectorUtilizationPct ?? [0, 0, 0, 0],
+      dem_lookahead_error_std_m: state.envConfig?.demLookaheadErrorStdM ?? 0.0,
+      traffic_load_multiplier: state.envConfig?.trafficLoadMultiplier ?? 1.0,
     };
   }
 

@@ -757,7 +757,7 @@ export class PredictiveLookAheadEngine {
   public readonly terrainEngine: TerrainEngine;
   public readonly linkBudgetEngine: LinkBudgetEngine;
   public readonly rfConfig: RFConfig;
-  public readonly envConfig: EnvironmentConfig;
+  public envConfig: EnvironmentConfig;
   public readonly flightConfig: ACNFlightConfig;
   public readonly trajectoryEngine: ACNTrajectory;
 
@@ -874,6 +874,17 @@ export class PredictiveLookAheadEngine {
     this.horizonS = options?.horizonS ?? 15.0;
     this.dtStepS = options?.dtStepS ?? 0.5;
     this.warningTimeThresholdS = options?.warningTimeThresholdS ?? 3.0;
+  }
+
+  public setEnvConfig(envConfig: EnvironmentConfig): void {
+    this.envConfig = envConfig;
+  }
+
+  public setDemLookaheadErrorStdM(demErrorStdM: number): void {
+    this.envConfig = new EnvironmentConfig({
+      ...this.envConfig,
+      demLookaheadErrorStdM: demErrorStdM,
+    });
   }
 
   public evaluatePredictiveState(

@@ -33,6 +33,7 @@ const frames = durationArg
   ? Math.max(1, Math.round(Number(durationArg) / 0.020))
   : parsePositiveInt(argValue('--frames', '500'), '--frames');
 const demLookaheadErrorStdM = Number(argValue('--dem-error-m', '0.0'));
+const trafficScale = Number(argValue('--traffic-scale', '1.0'));
 const seedsRaw = argValue('--seeds', '1,2,3,4,5');
 const seeds: number[] = seedsRaw.split(',').map(s => parsePositiveInt(s.trim(), '--seeds entry'));
 const warmupFrames = parseNonNegativeInt(argValue('--warmup', '0'), '--warmup');
@@ -96,8 +97,12 @@ const benchmarkStartMs = performance.now();
 for (const seed of seeds) {
   const setupStart = performance.now();
   const manager = new SimulationWorkerManager(seed * 100_000);
-  if (demLookaheadErrorStdM > 0) {
-    manager.envConfig.demLookaheadErrorStdM = demLookaheadErrorStdM;
+  if (demLookaheadErrorStdM > 0 || trafficScale !== 1.0) {
+    manager.handleMessage({
+      type: 'SET_SCIENTIFIC_PARAMS',
+      demLookaheadErrorStdM,
+      trafficLoadMultiplier: trafficScale,
+    });
   }
 
   if (requestedTerrainMode === 'real' && realDemBuffer) {

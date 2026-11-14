@@ -1203,6 +1203,96 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             </div>
           </div>
         </div>
+
+        <!-- Instrument A: Body-Frame Polar Radiation Pattern Scope -->
+        <div class="polar-scope-container" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+          <div style="flex:0 0 240px;width:240px;height:240px;position:relative;background:#0d1117;border-radius:6px;border:1px solid var(--line);overflow:hidden">
+            <canvas id="polar-antenna-canvas" width="240" height="240" aria-label="ACN Body-Frame Polar Radiation Scope" style="width:240px;height:240px;display:block"></canvas>
+          </div>
+          <div style="flex:1;min-width:220px">
+            <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px">ACN BODY-FRAME POLAR PATTERN [ITU-R F.1336]</div>
+            <div style="font-size:11px;font-family:var(--mono);color:var(--accent);margin-bottom:8px" id="polar-scope-readout">HDG: --° | BANK: --° | HO: 0</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11px;color:var(--text-muted)">
+              <span>Outer Circle:</span><span style="color:var(--text)">0 dB Peak Gain (15 dBi boresight)</span>
+              <span>Amber Circle:</span><span style="color:#e09f3e">-3 dB Crossover (&plusmn;45&deg;)</span>
+              <span>Inner Rings:</span><span style="color:var(--text)">-10 dB and -20 dB</span>
+              <span>Sectors:</span><span><strong style="color:#38bdf8">S0 (0&deg; FWD)</strong> · <strong style="color:#4ade80">S1 (90&deg; STBD)</strong> · <strong style="color:#f59e0b">S2 (180&deg; AFT)</strong> · <strong style="color:#c084fc">S3 (270&deg; PORT)</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3-Way Scientific Ablation Matrix Panel & Live Experiment Controls -->
+      <div class="panel" id="sci-ablation-panel">
+        <div class="panel-head">
+          <span class="sec-title">3-Way Scientific Ablation Matrix</span>
+          <span class="badge-sub">Lockstep Multi-Scheduler Telemetry</span>
+        </div>
+        <p class="lede" style="margin-bottom:12px;font-size:11.5px">Direct comparison of identical traffic load across Legacy Static TDMA (fixed-slot baseline), Reactive M-LWDF (&Phi;<sub>evac</sub> = 1.0, channel-aware reactive baseline), and Predictive Tac-TAD (&Phi;<sub>evac</sub> &ge; 1.0, 3s lookahead pre-occlusion flush).</p>
+        
+        <!-- Live Scientific Parameter Controls -->
+        <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;background:var(--hi-void,#14171c);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin-bottom:14px">
+          <div style="flex:1;min-width:220px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <label for="sci-dem-error-slider" id="lbl-sci-dem-error" style="font-size:11px;font-weight:600;color:var(--text)">SRTM DEM Vertical Error &sigma;<sub>DEM</sub></label>
+              <b id="sci-dem-error-val" style="font-size:11px;font-family:var(--mono);color:var(--accent)">0 m</b>
+            </div>
+            <input type="range" id="sci-dem-error-slider" min="0" max="15" step="1" value="0" aria-label="SRTM DEM Vertical Error Standard Deviation in meters" style="width:100%" oninput="onScientificParamChange()">
+          </div>
+          <div style="flex:1;min-width:200px">
+            <div style="margin-bottom:4px">
+              <label for="sci-traffic-scale-select" id="lbl-sci-traffic-scale" style="font-size:11px;font-weight:600;color:var(--text)">Offered Traffic Load Multiplier</label>
+            </div>
+            <select id="sci-traffic-scale-select" aria-label="Offered Traffic Load Multiplier" style="width:100%;padding:4px 8px;font-size:11px;background:#17140f;border:1px solid var(--line);color:#fff;border-radius:4px" onchange="onScientificParamChange()">
+              <option value="1.0" selected>1.0x (Nominal)</option>
+              <option value="2.0">2.0x (Elevated)</option>
+              <option value="3.5">3.5x (Congested Burst)</option>
+              <option value="5.0">5.0x (Saturation Stress)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table class="data-table" id="sci-ablation-table">
+            <thead>
+              <tr>
+                <th style="width:28%">Scheduler Architecture</th>
+                <th>Goodput [Mbps]</th>
+                <th>Airtime Util [%]</th>
+                <th>Outage Waste [kbits]</th>
+                <th>Delay Drops [pkts]</th>
+                <th>Overflow Drops [pkts]</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="abl-row-static">
+                <td><strong>1. Legacy Static TDMA</strong><br><span style="font-size:10px;color:var(--text-muted)">Blind Fixed-Slot Baseline</span></td>
+                <td id="abl-static-goodput">—</td>
+                <td id="abl-static-util">—</td>
+                <td id="abl-static-waste" class="c-bad">—</td>
+                <td id="abl-static-delay">—</td>
+                <td id="abl-static-overflow">—</td>
+              </tr>
+              <tr id="abl-row-reactive">
+                <td><strong>2. Reactive M-LWDF</strong><br><span style="font-size:10px;color:var(--text-muted)">Channel- &amp; 5QI-Aware (&Phi;<sub>evac</sub> = 1.0)</span></td>
+                <td id="abl-reactive-goodput">—</td>
+                <td id="abl-reactive-util">—</td>
+                <td id="abl-reactive-waste">—</td>
+                <td id="abl-reactive-delay">—</td>
+                <td id="abl-reactive-overflow">—</td>
+              </tr>
+              <tr id="abl-row-tac">
+                <td><strong class="c-acc">3. Predictive Tac-TAD</strong><br><span style="font-size:10px;color:var(--text-muted)">Terrain &amp; Sector Lookahead (&Phi;<sub>evac</sub> &ge; 1.0)</span></td>
+                <td id="abl-tac-goodput" class="c-acc">—</td>
+                <td id="abl-tac-util">—</td>
+                <td id="abl-tac-waste" class="c-ok">—</td>
+                <td id="abl-tac-delay" class="c-ok">—</td>
+                <td id="abl-tac-overflow" class="c-ok">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="inspector-footnote" style="margin-top:8px">Metrics are worker-authoritative values computed across simultaneous parallel scheduler threads executing over identical channel state and queue arrival distributions.</p>
       </div>
 
       <div class="panel waterfall-card">
@@ -1370,6 +1460,50 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <span id="terrain-node-agl-feedback" class="muted" style="font-size:11px"></span>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Instrument B: First-Principles ITU-R Link Budget Waterfall & Physics Readout -->
+      <div class="panel" id="itu-waterfall-panel" style="margin-top:14px">
+        <div class="panel-head">
+          <span class="sec-title">ITU-R First-Principles Link Budget Waterfall</span>
+          <span class="badge-sub" id="wf-target-node-badge">Inspecting Target Node 1</span>
+        </div>
+        <p class="lede" style="margin-bottom:12px;font-size:11.5px">Step-by-step physical power accounting: P<sub>tx</sub> &rarr; +G<sub>tx</sub> &rarr; -FSPL &rarr; -A<sub>gas</sub>(P.676) &rarr; -A<sub>rain</sub>(P.839) &rarr; -L<sub>diff</sub>(P.526) &rarr; +G<sub>acn</sub> - L<sub>pat</sub> &rarr; P<sub>rx</sub> vs. P<sub>noise</sub> (with T<sub>sky</sub> and &Delta;N<sub>sky</sub> coupling).</p>
+        <div style="position:relative;width:100%;height:180px;background:#0d1117;border-radius:6px;border:1px solid var(--line);overflow:hidden;margin-bottom:12px">
+          <canvas id="link-waterfall-canvas" width="600" height="180" aria-label="ITU-R Link Budget Waterfall Canvas" style="width:100%;height:100%;display:block"></canvas>
+        </div>
+        <div class="inspector-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+          <div class="inspector-metric">
+            <span>P_tx &rarr; EIRP</span>
+            <strong id="wf-eirp-readout">-- dBm</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>FSPL Loss</span>
+            <strong id="wf-fspl-readout">-- dB</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Atmospheric (P.676/839)</span>
+            <strong id="wf-atm-readout">-- dB</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>Diffraction (P.526-15)</span>
+            <strong id="wf-diff-readout">-- dB</strong>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px" id="wf-crest-sub">R_crest: -- m · T_crest: -- dB</div>
+          </div>
+          <div class="inspector-metric">
+            <span>P_rx Net Received</span>
+            <strong id="wf-prx-readout">-- dBm</strong>
+          </div>
+          <div class="inspector-metric">
+            <span>P_noise Floor</span>
+            <strong id="wf-pnoise-readout">-- dBm</strong>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px" id="wf-sky-sub">T_sky: -- K · +&Delta;N_sky: -- dB</div>
+          </div>
+          <div class="inspector-metric">
+            <span>Timing Advance &tau;_TA</span>
+            <strong id="wf-ta-readout" class="c-acc">-- &mu;s</strong>
           </div>
         </div>
       </div>
@@ -5619,6 +5753,8 @@ function renderHillshadeFromWorker(data, size, boundsKm, terrainMode, bounds) {
 const radarCanvas = $('radar-canvas'), radarCtx = radarCanvas.getContext('2d');
 const waterfallCanvas = $('waterfall-canvas'), waterfallCtx = waterfallCanvas.getContext('2d');
 const terrainCanvas = $('terrain-canvas'), terrainCtx = terrainCanvas ? terrainCanvas.getContext('2d') : null;
+const polarAntennaCanvas = $('polar-antenna-canvas'), polarAntennaCtx = polarAntennaCanvas ? polarAntennaCanvas.getContext('2d') : null;
+const linkWaterfallCanvas = $('link-waterfall-canvas'), linkWaterfallCtx = linkWaterfallCanvas ? linkWaterfallCanvas.getContext('2d') : null;
 
 /* ---------- 2D / 3D Stage Coexistence Controller (M6.2.2) ---------- */
 let stageViewMode = '2d';
@@ -5668,7 +5804,11 @@ function handleNodeSelection(nodeId) {
   }
   drawRadar();
   drawFresnel();
-  if (latestTelemetry) updateDashboardDOM(latestTelemetry, true);
+  if (latestTelemetry) {
+    drawPolarAntennaScope(latestTelemetry);
+    drawLinkWaterfallCanvas(latestTelemetry);
+    updateDashboardDOM(latestTelemetry, true);
+  }
 }
 
 $('map-node-details')?.addEventListener('click', event => {
@@ -9921,6 +10061,20 @@ window.onBandwidthParamChange = function() {
   invalidateToolboxCache();
 };
 
+window.onScientificParamChange = function() {
+  const demSlider = $('sci-dem-error-slider');
+  const trafficSelect = $('sci-traffic-scale-select');
+  const demVal = demSlider ? parseFloat(demSlider.value) : 0;
+  const trafficVal = trafficSelect ? parseFloat(trafficSelect.value) : 1.0;
+  const demLabel = $('sci-dem-error-val');
+  if (demLabel) demLabel.textContent = `${demVal.toFixed(0)} m`;
+  sendCommand({
+    type: 'SET_SCIENTIFIC_PARAMS',
+    demLookaheadErrorStdM: demVal,
+    trafficLoadMultiplier: trafficVal,
+  });
+};
+
 /* ---------- Ground Node Antenna AGL Configuration (Feature 7) ---------- */
 let pendingAglUpdate = null;
 let aglFeedbackTimeout = null;
@@ -10991,7 +11145,7 @@ syncTabWithLocationHash();
 function resizeCanvases() {
   const chart1 = $('sched-chart-utilization');
   const chart2 = $('sched-chart-backlog');
-  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2].forEach(cvs => {
+  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2, polarAntennaCanvas, linkWaterfallCanvas].forEach(cvs => {
     if (!cvs) return;
     syncCanvasDpr(cvs);
   });
@@ -11011,6 +11165,10 @@ function resizeCanvases() {
   drawRadar();
   drawWaterfall();
   drawFresnel();
+  if (latestTelemetry) {
+    drawPolarAntennaScope(latestTelemetry);
+    drawLinkWaterfallCanvas(latestTelemetry);
+  }
   drawSchedulerCharts();
   drawNetworkCharts();
   syncFloatingOverlayLayout();
@@ -11022,6 +11180,7 @@ if ('ResizeObserver' in window) {
   const ro = new ResizeObserver(() => resizeCanvases());
   [
     radarCanvas, waterfallCanvas, terrainCanvas,
+    polarAntennaCanvas, linkWaterfallCanvas,
     $('sched-chart-utilization'), $('sched-chart-backlog'),
     $('network-individual-chart'), $('network-aggregate-chart')
   ].forEach(c => {
@@ -11957,6 +12116,8 @@ function updateDashboardDOM(frame, force = false) {
     setText('tx-eta-lbl', status === 'TRANSMITTING' ? `${etaText} · ${rateMbps} Mbps` : etaText);
     setText('tx-msg-lbl', tx.status_message || (status === 'IDLE' ? 'Select terminal and inject traffic.' : ''));
   }
+
+  updateScientificAblationMatrix(frame);
 }
 
 /* ====================================================================
@@ -13464,6 +13625,404 @@ function gfxNiceStep(range, target) {
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
 }
 
+/* ====================================================================
+   INSTRUMENT A: BODY-FRAME POLAR RADIATION SCOPE [ITU-R F.1336]
+   ==================================================================== */
+function drawPolarAntennaScope(frame) {
+  try {
+    if (!polarAntennaCanvas || !polarAntennaCtx) return;
+    const sync = syncCanvasDpr(polarAntennaCanvas, polarAntennaCtx);
+    if (!sync.isVisible) return;
+    const w = sync.cssWidth, h = sync.cssHeight;
+    if (w <= 0 || h <= 0) return;
+    const g = polarAntennaCtx;
+    g.clearRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const R = Math.min(cx, cy) - 22; // 22px margin for 10px text labels
+
+    // Dark canvas background
+    g.fillStyle = '#0b0e14';
+    g.fillRect(0, 0, w, h);
+
+    // Attenuation ring radii: mapped from 0 dB at outer rim (R) to 25 dB at center (0)
+    const r0 = R;
+    const r3 = R * (1 - 3 / 25.0);
+    const r10 = R * (1 - 10 / 25.0);
+    const r20 = R * (1 - 20 / 25.0);
+
+    // 0 dB outer rim
+    g.strokeStyle = 'rgba(115, 166, 212, 0.45)';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.arc(cx, cy, r0, 0, Math.PI * 2);
+    g.stroke();
+
+    // -10 dB and -20 dB inner rings
+    g.strokeStyle = 'rgba(115, 166, 212, 0.2)';
+    g.lineWidth = 1;
+    g.setLineDash([2, 4]);
+    g.beginPath();
+    g.arc(cx, cy, r10, 0, Math.PI * 2);
+    g.stroke();
+    g.beginPath();
+    g.arc(cx, cy, r20, 0, Math.PI * 2);
+    g.stroke();
+
+    // -3 dB crossover circle (dashed amber circle)
+    g.strokeStyle = '#e09f3e';
+    g.lineWidth = 1.5;
+    g.setLineDash([4, 4]);
+    g.beginPath();
+    g.arc(cx, cy, r3, 0, Math.PI * 2);
+    g.stroke();
+    g.setLineDash([]);
+
+    // Dashed crossover diagonals (45°, 135°, 225°, 315°)
+    g.strokeStyle = 'rgba(224, 159, 62, 0.35)';
+    g.lineWidth = 1;
+    g.setLineDash([3, 4]);
+    const diags = [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4];
+    for (const ang of diags) {
+      g.beginPath();
+      g.moveTo(cx - R * Math.cos(ang), cy - R * Math.sin(ang));
+      g.lineTo(cx + R * Math.cos(ang), cy + R * Math.sin(ang));
+      g.stroke();
+    }
+    g.setLineDash([]);
+
+    // Radial axes at 0° (FWD, top), 90° (STBD, right), 180° (AFT, bottom), 270° (PORT, left)
+    g.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(cx, cy - R - 6);
+    g.lineTo(cx, cy + R + 6);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(cx - R - 6, cy);
+    g.lineTo(cx + R + 6, cy);
+    g.stroke();
+
+    // Axis labels (10px monospace)
+    g.fillStyle = '#94a3b8';
+    g.font = '600 10px monospace';
+    g.textAlign = 'center';
+    g.textBaseline = 'bottom';
+    g.fillText('0° FWD', cx, cy - R - 7);
+    g.textBaseline = 'top';
+    g.fillText('180° AFT', cx, cy + R + 7);
+    g.textBaseline = 'middle';
+    g.textAlign = 'left';
+    g.fillText('90° STBD', cx + R + 7, cy);
+    g.textAlign = 'right';
+    g.fillText('270° PORT', cx - R - 7, cy);
+
+    // Ring dB labels
+    g.fillStyle = 'rgba(148, 163, 184, 0.6)';
+    g.font = '10px monospace';
+    g.textAlign = 'right';
+    g.textBaseline = 'bottom';
+    g.fillText('0dB', cx + r0 - 2, cy - 2);
+    g.fillText('-3dB', cx + r3 - 2, cy - 2);
+    g.fillText('-10dB', cx + r10 - 2, cy - 2);
+
+    // 4 continuous parabolic sector gain curves G_k(Δφ) = -12 * (Δφ / 90°)^2 dB
+    const sectorColors = ['#38bdf8', '#4ade80', '#f59e0b', '#c084fc'];
+    const boresightsDeg = [0, 90, 180, 270];
+
+    for (let k = 0; k < 4; k++) {
+      const phi0 = boresightsDeg[k];
+      g.strokeStyle = sectorColors[k];
+      g.lineWidth = 1.8;
+      g.beginPath();
+      let started = false;
+
+      for (let delta = -60; delta <= 60; delta += 2) {
+        const thetaDeg = phi0 + delta;
+        const thetaRad = (thetaDeg * Math.PI) / 180;
+        const rollOffDb = 12 * Math.pow(Math.abs(delta) / 90.0, 2);
+        const rVal = R * Math.max(0, 1 - rollOffDb / 25.0);
+        const px = cx + rVal * Math.sin(thetaRad);
+        const py = cy - rVal * Math.cos(thetaRad);
+        if (!started) {
+          g.moveTo(px, py);
+          started = true;
+        } else {
+          g.lineTo(px, py);
+        }
+      }
+      g.stroke();
+    }
+
+    // Plot ground nodes
+    const nodes = frame?.nodes_telemetry || [];
+    for (const n of nodes) {
+      const azDeg = typeof n.body_azimuth_deg === 'number' ? n.body_azimuth_deg : 0;
+      const rollOff = typeof n.pattern_rolloff_db === 'number' ? n.pattern_rolloff_db : 0;
+      const rNode = R * Math.max(0.08, 1 - Math.min(25.0, rollOff) / 25.0);
+      const azRad = (azDeg * Math.PI) / 180;
+      const nx = cx + rNode * Math.sin(azRad);
+      const ny = cy - rNode * Math.cos(azRad);
+
+      const secId = (typeof n.active_sector_id === 'number' && n.active_sector_id >= 0 && n.active_sector_id < 4)
+        ? n.active_sector_id : 0;
+      const col = sectorColors[secId];
+
+      const isSel = n.node_id === selectedNodeId;
+      if (isSel) {
+        g.strokeStyle = '#ffffff';
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.arc(nx, ny, 6, 0, Math.PI * 2);
+        g.stroke();
+      }
+
+      g.fillStyle = col;
+      g.beginPath();
+      g.arc(nx, ny, isSel ? 4 : 3, 0, Math.PI * 2);
+      g.fill();
+
+      // Node callsign
+      g.fillStyle = isSel ? '#ffffff' : col;
+      g.font = '600 10px monospace';
+      g.textAlign = 'center';
+      g.textBaseline = 'bottom';
+      g.fillText(n.name || `S${n.node_id}`, nx, ny - 4);
+    }
+
+    // Update Header Readout
+    const hdg = typeof frame?.acn_heading_deg === 'number' ? frame.acn_heading_deg.toFixed(1) : '--';
+    const bank = typeof frame?.acn_bank_deg === 'number' ? frame.acn_bank_deg.toFixed(1) : '--';
+    const ho = typeof frame?.total_sector_handovers === 'number' ? frame.total_sector_handovers : 0;
+    setText('polar-scope-readout', `HDG: ${hdg}° | BANK: ${bank}° | HO: ${ho}`);
+  } catch (err) {
+    console.error('drawPolarAntennaScope exception:', err);
+  }
+}
+
+/* ====================================================================
+   INSTRUMENT B: ITU-R LINK BUDGET WATERFALL ANALYZER
+   ==================================================================== */
+function drawLinkWaterfallCanvas(frame) {
+  try {
+    if (!linkWaterfallCanvas || !linkWaterfallCtx) return;
+    const sync = syncCanvasDpr(linkWaterfallCanvas, linkWaterfallCtx);
+    if (!sync.isVisible) return;
+    const w = sync.cssWidth, h = sync.cssHeight;
+    if (w <= 0 || h <= 0) return;
+    const g = linkWaterfallCtx;
+    g.clearRect(0, 0, w, h);
+
+    // Identify inspected node: selected node if valid, else node 1, else nodes[0]
+    const nodes = frame?.nodes_telemetry || [];
+    let node = nodes.find(n => n.node_id === selectedNodeId);
+    if (!node) node = nodes.find(n => n.node_id === 1) || nodes[0];
+
+    // Background
+    g.fillStyle = '#0b0e14';
+    g.fillRect(0, 0, w, h);
+
+    if (!node) {
+      g.fillStyle = '#94a3b8';
+      g.font = '11px monospace';
+      g.textAlign = 'center';
+      g.fillText('Waiting for node RF link telemetry...', w / 2, h / 2);
+      return;
+    }
+
+    // RF Link Budget values
+    const ptx = typeof node.tx_power_dbm === 'number' ? node.tx_power_dbm : 36.0;
+    const gtx = node.node_type === 'mcp' ? 24.0 : 0.0;
+    const eirp = ptx + gtx;
+    const slantKm = typeof node.slant_range_km === 'number' && node.slant_range_km > 0 ? node.slant_range_km : 25.0;
+    const fspl = 20 * Math.log10(slantKm * 1000) + 20 * Math.log10(8e9) - 147.55;
+    const agas = frame?.selected_link_budget?.gas_loss_db ?? (0.012 * slantKm);
+    const arain = frame?.selected_link_budget?.rain_loss_db ?? 0.0;
+    const ldiff = typeof node.diffraction_loss_db === 'number' ? node.diffraction_loss_db : 0.0;
+    const rCrest = typeof node.crest_radius_m === 'number' ? node.crest_radius_m : 2000.0;
+    const tCrest = typeof node.curvature_loss_db === 'number' ? node.curvature_loss_db : 0.0;
+    const rollOff = typeof node.pattern_rolloff_db === 'number' ? node.pattern_rolloff_db : 0.0;
+    const gacnNet = Math.max(0, 15.0 - rollOff);
+    const prx = eirp - fspl - agas - arain - ldiff + gacnNet;
+    const dnsky = typeof node.sky_noise_db === 'number' ? node.sky_noise_db : 0.0;
+    const tsky = typeof node.sky_temp_k === 'number' ? node.sky_temp_k : 0.0;
+    const pnoise = -110.0 + dnsky; // -114 dBm thermal (1MHz) + 4dB NF + ΔN_sky
+    const tauTa = typeof node.timing_advance_us === 'number' ? node.timing_advance_us : ((2.0 * slantKm * 1000 / 299792458.0) * 1e6);
+
+    // Update Tabular Readout
+    setText('wf-target-node-badge', `Node ${node.node_id} (${node.name || 'Terminal'})`);
+    setText('wf-eirp-readout', `${eirp.toFixed(1)} dBm`);
+    setText('wf-fspl-readout', `-${fspl.toFixed(1)} dB`);
+    setText('wf-atm-readout', `-${(agas + arain).toFixed(2)} dB`);
+    setText('wf-diff-readout', `-${ldiff.toFixed(1)} dB`);
+    setText('wf-crest-sub', `R_crest: ${rCrest.toFixed(0)} m · T_crest: ${tCrest.toFixed(1)} dB`);
+    setText('wf-prx-readout', `${prx.toFixed(1)} dBm`);
+    setText('wf-pnoise-readout', `${pnoise.toFixed(1)} dBm`);
+    setText('wf-sky-sub', `T_sky: ${tsky.toFixed(1)} K · +ΔN_sky: ${dnsky.toFixed(2)} dB`);
+    setText('wf-ta-readout', `${tauTa.toFixed(1)} μs`);
+
+    // Draw Waterfall Steps
+    const stages = [
+      { label: 'P_tx', delta: ptx, cum: ptx, col: '#4ade80' },
+      { label: '+G_tx', delta: gtx, cum: eirp, col: '#34d399' },
+      { label: '-FSPL', delta: -fspl, cum: eirp - fspl, col: '#f87171' },
+      { label: '-A_gas', delta: -agas, cum: eirp - fspl - agas, col: '#fbbf24' },
+      { label: '-A_rain', delta: -arain, cum: eirp - fspl - agas - arain, col: '#60a5fa' },
+      { label: '-L_diff', delta: -ldiff, cum: eirp - fspl - agas - arain - ldiff, col: '#f87171' },
+      { label: '+G_acn', delta: gacnNet, cum: prx, col: '#38bdf8' },
+      { label: 'P_rx', delta: prx, cum: prx, col: prx >= pnoise ? '#4ade80' : '#ef4444' }
+    ];
+
+    const paddingX = 40;
+    const paddingY = 24;
+    const plotW = w - paddingX * 2;
+    const plotH = h - paddingY * 2;
+    const numSteps = stages.length;
+    const colW = plotW / numSteps;
+
+    // Y mapping: +60 dBm at top to -140 dBm at bottom
+    const yMax = 60;
+    const yMin = -140;
+    const yToPx = val => paddingY + plotH * (1 - (val - yMin) / (yMax - yMin));
+
+    // Grid lines
+    g.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+    g.lineWidth = 1;
+    g.setLineDash([3, 4]);
+    const gridVals = [40, 20, 0, -20, -40, -60, -80, -100, -120];
+    for (const gv of gridVals) {
+      const gy = yToPx(gv);
+      g.beginPath();
+      g.moveTo(paddingX, gy);
+      g.lineTo(w - paddingX, gy);
+      g.stroke();
+
+      g.fillStyle = 'rgba(148, 163, 184, 0.5)';
+      g.font = '10px monospace';
+      g.textAlign = 'right';
+      g.textBaseline = 'middle';
+      g.fillText(`${gv}`, paddingX - 4, gy);
+    }
+    g.setLineDash([]);
+
+    // Dashed noise floor line across canvas
+    const pNoiseY = yToPx(pnoise);
+    g.strokeStyle = '#ef4444';
+    g.lineWidth = 1.2;
+    g.setLineDash([4, 4]);
+    g.beginPath();
+    g.moveTo(paddingX, pNoiseY);
+    g.lineTo(w - paddingX, pNoiseY);
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = '#ef4444';
+    g.font = '600 10px monospace';
+    g.textAlign = 'left';
+    g.fillText(`P_noise (${pnoise.toFixed(0)} dBm)`, paddingX + 6, pNoiseY - 4);
+
+    // Draw Waterfall Bars
+    let prevY = yToPx(0);
+    for (let i = 0; i < numSteps; i++) {
+      const st = stages[i];
+      const bx = paddingX + i * colW + colW * 0.15;
+      const bw = colW * 0.7;
+      const currY = yToPx(st.cum);
+
+      // Connecting dash from previous bar
+      if (i > 0) {
+        g.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+        g.lineWidth = 1;
+        g.setLineDash([2, 2]);
+        g.beginPath();
+        g.moveTo(bx - colW * 0.3, prevY);
+        g.lineTo(bx, prevY);
+        g.stroke();
+        g.setLineDash([]);
+      }
+
+      // Bar
+      const startY = i === 0 || i === numSteps - 1 ? yToPx(yMin) : prevY;
+      const topY = Math.min(startY, currY);
+      const barH = Math.max(3, Math.abs(currY - startY));
+
+      g.fillStyle = st.col;
+      g.fillRect(bx, topY, bw, barH);
+      g.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      g.lineWidth = 1;
+      g.strokeRect(bx, topY, bw, barH);
+
+      // Label below bar
+      g.fillStyle = '#94a3b8';
+      g.font = '600 10px monospace';
+      g.textAlign = 'center';
+      g.textBaseline = 'top';
+      g.fillText(st.label, bx + bw / 2, h - paddingY + 6);
+
+      // Value above or below bar
+      g.fillStyle = '#ffffff';
+      g.font = '10px monospace';
+      g.textBaseline = currY < startY ? 'bottom' : 'top';
+      const valText = i === 0 || i === numSteps - 1 ? `${st.cum.toFixed(0)}` : `${st.delta >= 0 ? '+' : ''}${st.delta.toFixed(0)}`;
+      g.fillText(valText, bx + bw / 2, currY + (currY < startY ? -2 : 2));
+
+      prevY = currY;
+    }
+  } catch (err) {
+    console.error('drawLinkWaterfallCanvas exception:', err);
+  }
+}
+
+/* ====================================================================
+   TASK 3: 3-WAY SCIENTIFIC ABLATION MATRIX UPDATE
+   ==================================================================== */
+function updateScientificAblationMatrix(frame) {
+  try {
+    if (!frame) return;
+
+    // 1. Static TDMA
+    const sGoodput = typeof frame.static_goodput_mbps === 'number' ? frame.static_goodput_mbps : 0;
+    const sUtil = typeof frame.static_util_pct === 'number' ? frame.static_util_pct : 0;
+    const sWaste = typeof frame.static_wasted_bits === 'number' ? (frame.static_wasted_bits / 1000) : 0;
+    const sDelay = typeof frame.static_delay_drops === 'number' ? frame.static_delay_drops : 0;
+    const sOverflow = typeof frame.static_overflow_drops === 'number' ? frame.static_overflow_drops : 0;
+
+    setText('abl-static-goodput', `${sGoodput.toFixed(2)} Mbps`);
+    setText('abl-static-util', `${sUtil.toFixed(1)}%`);
+    setText('abl-static-waste', `${sWaste.toFixed(1)} kb`);
+    setText('abl-static-delay', `${sDelay}`);
+    setText('abl-static-overflow', `${sOverflow}`);
+
+    // 2. Reactive M-LWDF
+    const rGoodput = typeof frame.reactive_goodput_mbps === 'number' ? frame.reactive_goodput_mbps : 0;
+    const rUtil = typeof frame.reactive_util_pct === 'number' ? frame.reactive_util_pct : 0;
+    const rWaste = typeof frame.reactive_wasted_bits === 'number' ? (frame.reactive_wasted_bits / 1000) : 0;
+    const rDelay = typeof frame.reactive_delay_drops === 'number' ? frame.reactive_delay_drops : 0;
+    const rOverflow = typeof frame.reactive_overflow_drops === 'number' ? frame.reactive_overflow_drops : 0;
+
+    setText('abl-reactive-goodput', `${rGoodput.toFixed(2)} Mbps`);
+    setText('abl-reactive-util', `${rUtil.toFixed(1)}%`);
+    setText('abl-reactive-waste', `${rWaste.toFixed(1)} kb`);
+    setText('abl-reactive-delay', `${rDelay}`);
+    setText('abl-reactive-overflow', `${rOverflow}`);
+
+    // 3. Tac-TAD
+    const tGoodput = typeof frame.tac_goodput_mbps === 'number' ? frame.tac_goodput_mbps : 0;
+    const tUtil = typeof frame.tac_util_pct === 'number' ? frame.tac_util_pct : 0;
+    const tWaste = typeof frame.tac_wasted_bits === 'number' ? (frame.tac_wasted_bits / 1000) : 0;
+    const tDelay = typeof frame.tac_delay_drops === 'number' ? frame.tac_delay_drops : 0;
+    const tOverflow = typeof frame.tac_overflow_drops === 'number' ? frame.tac_overflow_drops : 0;
+
+    setText('abl-tac-goodput', `${tGoodput.toFixed(2)} Mbps`);
+    setText('abl-tac-util', `${tUtil.toFixed(1)}%`);
+    setText('abl-tac-waste', `${tWaste.toFixed(1)} kb`);
+    setText('abl-tac-delay', `${tDelay}`);
+    setText('abl-tac-overflow', `${tOverflow}`);
+  } catch (err) {
+    console.error('updateScientificAblationMatrix exception:', err);
+  }
+}
+
 function drawWaterfall() {
   try {
     const cvs = waterfallCanvas;
@@ -14248,9 +14807,11 @@ function animationLoop(timestampMs) {
     if (activeTab) {
       if (activeTab.id === 'tab-scheduler' && (schedulerNeedsRender || isPlayingHistory || !isPaused)) {
         drawWaterfall();
+        if (latestTelemetry) drawPolarAntennaScope(latestTelemetry);
         schedulerNeedsRender = false;
       } else if (activeTab.id === 'tab-terrain' && (terrainNeedsRender || isPlayingHistory || !isPaused)) {
         drawFresnel();
+        if (latestTelemetry) drawLinkWaterfallCanvas(latestTelemetry);
         terrainNeedsRender = false;
       }
     }

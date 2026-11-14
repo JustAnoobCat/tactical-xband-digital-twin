@@ -142,6 +142,7 @@ export interface IEnvironmentConfig {
   readonly rainCellLengthKm: number;
   readonly atmosphericTemperatureK: number;
   readonly demLookaheadErrorStdM?: number;
+  readonly trafficLoadMultiplier?: number;
 }
 
 export class EnvironmentConfig implements IEnvironmentConfig {
@@ -151,6 +152,7 @@ export class EnvironmentConfig implements IEnvironmentConfig {
   public readonly rainCellLengthKm: number;
   public readonly atmosphericTemperatureK: number;
   public readonly demLookaheadErrorStdM: number;
+  public readonly trafficLoadMultiplier: number;
 
   constructor(init?: Partial<IEnvironmentConfig>) {
     this.effectiveEarthRadiusFactor = init?.effectiveEarthRadiusFactor ?? 4.0 / 3.0; // ITU-R P.834 k-factor
@@ -159,6 +161,7 @@ export class EnvironmentConfig implements IEnvironmentConfig {
     this.rainCellLengthKm = init?.rainCellLengthKm ?? 10.0; // Convective cell extent
     this.atmosphericTemperatureK = init?.atmosphericTemperatureK ?? 290.0; // Ambient noise temperature (K)
     this.demLookaheadErrorStdM = init?.demLookaheadErrorStdM ?? 0.0; // SRTM DEM vertical uncertainty for lookahead probes
+    this.trafficLoadMultiplier = init?.trafficLoadMultiplier ?? 1.0; // Offered traffic load multiplier [0.25, 8.0]
   }
 
   /**

@@ -22,6 +22,7 @@
     "verify:terrain-toolbox": "vite-node src/tests/verifyTerrainToolboxSci.ts",
     "verify:itu-physics": "vite-node src/tests/verifyItuFirstPrinciples.ts",
     "verify:ablation": "vite-node src/tests/verifyAblationAndDiffraction.ts",
+    "verify:scientific-instruments": "vite-node src/tests/verifyScientificInstruments.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",

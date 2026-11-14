@@ -58,6 +58,9 @@ export interface LinkStatus {
   /** True when geometry intersects a screening-only obstacle; no attenuation is inferred. */
   readonly obstacleBlocked?: boolean;
   readonly timingAdvanceS?: number;
+  readonly timingAdvanceUs?: number;
+  readonly crestRadiusM?: number;
+  readonly curvatureLossDb?: number;
   readonly skyNoiseIncreaseDb?: number;
   readonly skyTemperatureK?: number;
   readonly activeSectorId?: AcnSectorId;
@@ -223,7 +226,9 @@ export class LinkBudgetEngine {
     customTxPowerDbm?: number,
     sectorEval?: AcnSectorEvaluation,
     nodeAltM?: number,
-    acnAltM?: number
+    acnAltM?: number,
+    crestRadiusM?: number,
+    curvatureLossDb?: number
   ): LinkStatus {
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
@@ -282,7 +287,9 @@ export class LinkBudgetEngine {
     const bitrateBps = isOutage ? 0.0 : spectralEfficiency * rf.channelBandwidthHz;
     const bitrateMbps = bitrateBps / 1.0e6;
 
-    const timingAdvanceS = slantRangeM > 0 ? (2.0 * slantRangeM) / rf.speedOfLight : 0.001;
+    const cSpeed = rf.speedOfLight || 299792458.0;
+    const timingAdvanceS = slantRangeM > 0 ? (2.0 * slantRangeM) / cSpeed : 0.001;
+    const timingAdvanceUs = slantRangeM > 0 ? ((2.0 * slantRangeM) / cSpeed) * 1e6 : 0.0;
 
     return {
       nodeType,
@@ -307,6 +314,9 @@ export class LinkBudgetEngine {
       isOutage,
       obstacleBlocked,
       timingAdvanceS,
+      timingAdvanceUs,
+      crestRadiusM,
+      curvatureLossDb,
       skyNoiseIncreaseDb,
       skyTemperatureK,
       activeSectorId: sectorEval?.activeSectorId,

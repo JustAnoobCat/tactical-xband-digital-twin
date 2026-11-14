@@ -155,8 +155,15 @@ export interface NodeTelemetryItem {
   readonly sector_gains_dbi?: readonly [number, number, number, number];
   readonly is_crossover_zone?: boolean;
   readonly handover_count?: number;
+  readonly crest_radius_m?: number;
+  readonly curvature_loss_db?: number;
+  readonly sky_temp_k?: number;
+  readonly sky_noise_db?: number;
+  readonly timing_advance_us?: number;
   readonly [key: string]: unknown;
 }
+
+export type SerializedNodeTelemetry = NodeTelemetryItem;
 
 export interface TelemetryGanttAllocation {
   readonly node_id: number;
@@ -341,6 +348,27 @@ export interface TelemetryFrame {
   readonly tac_sector_util_pct?: readonly [number, number, number, number];
   readonly tac_sector_goodput_mbps?: readonly [number, number, number, number];
   readonly total_sector_handovers?: number;
+  readonly static_goodput_mbps?: number;
+  readonly static_util_pct?: number;
+  readonly static_wasted_bits?: number;
+  readonly static_delay_drops?: number;
+  readonly static_overflow_drops?: number;
+  readonly static_scheduled_ul_s?: number;
+  readonly tac_goodput_mbps?: number;
+  readonly tac_util_pct?: number;
+  readonly tac_wasted_bits?: number;
+  readonly tac_delay_drops?: number;
+  readonly tac_overflow_drops?: number;
+  readonly tac_scheduled_ul_s?: number;
+  readonly reactive_goodput_mbps?: number;
+  readonly reactive_util_pct?: number;
+  readonly reactive_wasted_bits?: number;
+  readonly reactive_delay_drops?: number;
+  readonly reactive_overflow_drops?: number;
+  readonly reactive_scheduled_ul_s?: number;
+  readonly reactive_sector_util_pct?: readonly [number, number, number, number];
+  readonly dem_lookahead_error_std_m?: number;
+  readonly traffic_load_multiplier?: number;
 }
 
 // ----------------------------------------------------------------------------
@@ -739,12 +767,19 @@ export interface GetTerrainMeshDataCommand extends BaseWorkerInboundCommand {
   readonly request_id?: string | number;
 }
 
+export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_SCIENTIFIC_PARAMS';
+  readonly demLookaheadErrorStdM?: number;
+  readonly trafficLoadMultiplier?: number;
+}
+
 export type WorkerInboundCommand =
   | SimControlCommand
   | SetSpeedCommand
   | SetSchedulerCommand
   | SelectNodeCommand
   | SetSpatialLockCommand
+  | SetScientificParamsCommand
   | NodeMoveCommand
   | NodeAddCommand
   | NodeDeleteCommand
@@ -768,6 +803,29 @@ export type WorkerInboundCommand =
 export interface TelemetryFrameMessage {
   readonly type: 'TELEMETRY_FRAME';
   readonly frame: TelemetryFrame;
+  readonly static_goodput_mbps?: number;
+  readonly static_util_pct?: number;
+  readonly static_wasted_bits?: number;
+  readonly static_delay_drops?: number;
+  readonly static_overflow_drops?: number;
+  readonly static_scheduled_ul_s?: number;
+  readonly static_sector_util_pct?: readonly [number, number, number, number];
+  readonly tac_goodput_mbps?: number;
+  readonly tac_util_pct?: number;
+  readonly tac_wasted_bits?: number;
+  readonly tac_delay_drops?: number;
+  readonly tac_overflow_drops?: number;
+  readonly tac_scheduled_ul_s?: number;
+  readonly tac_sector_util_pct?: readonly [number, number, number, number];
+  readonly reactive_goodput_mbps?: number;
+  readonly reactive_util_pct?: number;
+  readonly reactive_wasted_bits?: number;
+  readonly reactive_delay_drops?: number;
+  readonly reactive_overflow_drops?: number;
+  readonly reactive_scheduled_ul_s?: number;
+  readonly reactive_sector_util_pct?: readonly [number, number, number, number];
+  readonly dem_lookahead_error_std_m?: number;
+  readonly traffic_load_multiplier?: number;
 }
 
 export interface ProfileFrameMessage {

@@ -355,6 +355,8 @@ export class GroundNodeTrafficSubsystem {
   public tacticalPriority: number = 1.0;
   /** Flag indicating total battery exhaustion. */
   public isDepleted: boolean = false;
+  /** Offered traffic load multiplier [0.25, 8.0]. */
+  public trafficLoadMultiplier: number = 1.0;
 
   private readonly c2IntervalS: number = 0.1; // 10 Hz heartbeat
   private lastC2TimeS: number = -1.0;
@@ -443,15 +445,17 @@ export class GroundNodeTrafficSubsystem {
 
   public generateTraffic(
     currentSimTimeS: number,
-    _frameDurationS: number = 0.02
+    _frameDurationS: number = 0.02,
+    trafficScale?: number
   ): Packet[] {
     if (this.batteryLevelPct <= 0 || this.isDepleted) {
       return [];
     }
+    const mult = Math.max(0.25, Math.min(8.0, trafficScale ?? this.trafficLoadMultiplier ?? 1.0));
     const generated: Packet[] = [];
 
     // 1. 5QI 69: Periodic C2 Health & Status
-    if (this.lastC2TimeS < 0.0 || currentSimTimeS - this.lastC2TimeS >= this.c2IntervalS) {
+    if (this.lastC2TimeS < 0.0 || currentSimTimeS - this.lastC2TimeS >= this.c2IntervalS / mult) {
       generated.push(this.enqueuePacket(69, currentSimTimeS));
       this.lastC2TimeS = currentSimTimeS;
     }
@@ -459,11 +463,17 @@ export class GroundNodeTrafficSubsystem {
     // 2. 5QI 65: Mission-Critical PTT Voice
     if (this.hasVoice && currentSimTimeS >= this.voiceStartS && currentSimTimeS <= this.voiceEndS) {
       generated.push(this.enqueuePacket(65, currentSimTimeS));
+      if (mult > 1.0) {
+        const extra = this.poissonDraw((mult - 1.0) * 1.0);
+        for (let i = 0; i < extra; i++) {
+          generated.push(this.enqueuePacket(65, currentSimTimeS));
+        }
+      }
     }
 
     // 3. 5QI 67: Tactical Mission-Critical Video (Paused if radio is in shadow)
     if (this.hasVideo && !this.isShadowed) {
-      const numVideo = this.poissonDraw(this.videoMeanPktsPerFrame);
+      const numVideo = this.poissonDraw(this.videoMeanPktsPerFrame * mult);
       for (let i = 0; i < numVideo; i++) {
         generated.push(this.enqueuePacket(67, currentSimTimeS));
       }
@@ -475,11 +485,21 @@ export class GroundNodeTrafficSubsystem {
       currentSimTimeS >= this.photoTriggerTimeS &&
       this.photoBytesRemaining > 0
     ) {
-      const slices = Math.min(2, Math.ceil(this.photoBytesRemaining / 1400));
+      const baseSlices = Math.min(2, Math.ceil(this.photoBytesRemaining / 1400));
+      const slices = Math.max(1, Math.round(baseSlices * Math.min(2.0, mult)));
       for (let i = 0; i < slices; i++) {
         const chunk = Math.min(1400, this.photoBytesRemaining);
         generated.push(this.enqueuePacket(70, currentSimTimeS, chunk));
         this.photoBytesRemaining -= chunk;
+      }
+    }
+
+    // 5. Stochastic Tactical Bursts under elevated congestion
+    if (mult > 1.0 && !this.isShadowed && this.nodeType !== 'mcp') {
+      const burstLambda = (mult - 1.0) * 0.15;
+      const burstPkts = this.poissonDraw(burstLambda);
+      for (let i = 0; i < burstPkts; i++) {
+        generated.push(this.enqueuePacket(67, currentSimTimeS, 1024));
       }
     }
 
