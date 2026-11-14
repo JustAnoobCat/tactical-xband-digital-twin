@@ -26,6 +26,7 @@
     "verify:doppler-ew": "vite-node src/tests/verifyDopplerAndEwJammer.ts",
     "verify:viewshed-relay": "vite-node src/tests/verifyViewshedAndRelayAdvisor.ts",
     "verify:publication-ecdf": "vite-node src/tests/verifyPublicationEcdfAndLatex.ts",
+    "verify:active-relay": "vite-node src/tests/verifyActiveTwoHopRelay.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",

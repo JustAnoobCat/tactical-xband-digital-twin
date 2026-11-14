@@ -80,6 +80,11 @@ export interface LinkStatus {
   readonly dopplerRateHzS?: number;
   readonly jammerInterferenceDbm?: number;
   readonly sinrDb?: number;
+  readonly isRelayed?: boolean;
+  readonly relayHop1BitrateMbps?: number;
+  readonly relayHop2BitrateMbps?: number;
+  readonly relayHop1SnrDb?: number;
+  readonly relayHop2SnrDb?: number;
 }
 
 export class LinkBudgetEngine {
@@ -280,7 +285,8 @@ export class LinkBudgetEngine {
     jammerInterferenceDbm?: number,
     radialVelocityMs?: number,
     dopplerShiftHz?: number,
-    dopplerRateHzS?: number
+    dopplerRateHzS?: number,
+    customRxGainDbi?: number
   ): LinkStatus {
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
@@ -301,7 +307,9 @@ export class LinkBudgetEngine {
     const { txPowerDbm: defaultTxPowerDbm, antennaGainDbi } = rf.getTransmitterParams(nodeType);
     const txPowerDbm = customTxPowerDbm !== undefined && Number.isFinite(customTxPowerDbm) ? customTxPowerDbm : defaultTxPowerDbm;
     const patternRollOffDb = sectorEval ? sectorEval.patternRollOffDb : 0.0;
-    const rxGainDbi = rf.acnAntennaGainDbi - patternRollOffDb;
+    const rxGainDbi = customRxGainDbi !== undefined && Number.isFinite(customRxGainDbi)
+      ? customRxGainDbi
+      : (rf.acnAntennaGainDbi - patternRollOffDb);
 
     // Received signal power at ACN LNA input
     const prxDbm = txPowerDbm + antennaGainDbi + rxGainDbi - totalLossDb;
@@ -403,5 +411,78 @@ export class LinkBudgetEngine {
       handoverOccurred: sectorEval?.handoverOccurred,
       handoverCount: sectorEval?.handoverCount,
     };
+  }
+
+  /**
+   * Evaluates two-hop Decode-and-Forward (DF) tactical relay link geometry and harmonic capacity.
+   *
+   * Formulations:
+   * 1. Exact half-duplex Decode-and-Forward harmonic capacity:
+   *    R_DF = (R_1 * R_2) / (R_1 + R_2) [bps]
+   * 2. Bottleneck SNR: min(SNR_1, SNR_2)
+   * 3. Two-hop propagation delay & round-trip Timing Advance:
+   *    tau_TA,DF = 2 * (d_1 + d_2) / c
+   *
+   * Rescues occluded terminals when directLink is in outage or R_DF exceeds direct link bitrate.
+   */
+  public static computeDecodeAndForwardRelayLink(
+    directLink: LinkStatus,
+    hop1Link: LinkStatus,
+    hop2Link: LinkStatus,
+    dHop1M: number,
+    dHop2M: number,
+    speedOfLight: number = SPEED_OF_LIGHT
+  ): LinkStatus {
+    if (
+      hop1Link.isOutage ||
+      hop2Link.isOutage ||
+      hop1Link.bitrateBps <= 0 ||
+      hop2Link.bitrateBps <= 0
+    ) {
+      return { ...directLink, isRelayed: false };
+    }
+
+    const r1 = hop1Link.bitrateBps;
+    const r2 = hop2Link.bitrateBps;
+    const rDf = (r1 * r2) / (r1 + r2);
+
+    if (directLink.isOutage || rDf > directLink.bitrateBps) {
+      const bottleneckSnr = Math.min(hop1Link.snrDb, hop2Link.snrDb);
+      const bottleneckSinr = Math.min(
+        hop1Link.sinrDb ?? hop1Link.snrDb,
+        hop2Link.sinrDb ?? hop2Link.snrDb
+      );
+      const bottleneckModcod =
+        hop1Link.snrDb <= hop2Link.snrDb
+          ? hop1Link.modcodName
+          : hop2Link.modcodName;
+      const totalSlantM = dHop1M + dHop2M;
+      const timingAdvanceS = totalSlantM > 0 ? (2.0 * totalSlantM) / speedOfLight : 0.0;
+      const timingAdvanceUs = timingAdvanceS * 1e6;
+
+      return {
+        ...directLink,
+        isOutage: false,
+        isRelayed: true,
+        bitrateBps: rDf,
+        bitrateMbps: rDf / 1.0e6,
+        snrDb: bottleneckSnr,
+        sinrDb: bottleneckSinr,
+        modcodName: `2HOP:${bottleneckModcod}`,
+        activeSectorId: hop2Link.activeSectorId,
+        sectorBoresightDeg: hop2Link.sectorBoresightDeg,
+        slantRangeM: totalSlantM,
+        timingAdvanceS,
+        timingAdvanceUs,
+        relayHop1BitrateMbps: hop1Link.bitrateMbps,
+        relayHop2BitrateMbps: hop2Link.bitrateMbps,
+        relayHop1SnrDb: hop1Link.snrDb,
+        relayHop2SnrDb: hop2Link.snrDb,
+        obstacleBlocked: false,
+        diffractionLossDb: 0.0,
+      };
+    }
+
+    return { ...directLink, isRelayed: false };
   }
 }

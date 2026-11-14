@@ -167,6 +167,9 @@ export interface NodeTelemetryItem {
   readonly doppler_rate_hz_s?: number;
   readonly jammer_interference_dbm?: number;
   readonly sinr_db?: number;
+  readonly is_relayed?: boolean;
+  readonly relay_hop1_mbps?: number;
+  readonly relay_hop2_mbps?: number;
   readonly [key: string]: unknown;
 }
 
@@ -231,6 +234,9 @@ export interface SelectedLinkBudgetTelemetry {
   readonly doppler_rate_hz_s?: number;
   readonly jammer_interference_dbm?: number;
   readonly sinr_db?: number;
+  readonly is_relayed?: boolean;
+  readonly relay_hop1_mbps?: number;
+  readonly relay_hop2_mbps?: number;
   readonly [key: string]: unknown;
 }
 
@@ -388,6 +394,10 @@ export interface TelemetryFrame {
   readonly jammer_sector_interference_dbm?: readonly [number, number, number, number];
   readonly viewshed_sinr_grid?: Float32Array | readonly number[];
   readonly relay_advisor?: RelayAdvisorReport;
+  readonly active_relay_enabled?: boolean;
+  readonly relayed_node_count?: number;
+  readonly relay_backhaul_sector_id?: 0 | 1 | 2 | 3;
+  readonly relay_backhaul_snr_db?: number;
   readonly static_delay_ecdf_ms?: readonly number[];
   readonly reactive_delay_ecdf_ms?: readonly number[];
   readonly tac_delay_ecdf_ms?: readonly number[];
@@ -806,12 +816,14 @@ export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
   readonly jammerEirpDbm?: number;
   readonly viewshedEnabled?: boolean;
   readonly recomputeRelayAdvisor?: boolean;
+  readonly activeRelayEnabled?: boolean;
 }
 
 export interface SetViewshedConfigCommand extends BaseWorkerInboundCommand {
   readonly type: 'SET_VIEWSHED_CONFIG';
   readonly viewshedEnabled?: boolean;
   readonly recomputeRelayAdvisor?: boolean;
+  readonly activeRelayEnabled?: boolean;
 }
 
 export type WorkerInboundCommand =
@@ -875,6 +887,10 @@ export interface TelemetryFrameMessage {
   readonly jammer_sector_interference_dbm?: readonly [number, number, number, number];
   readonly viewshed_sinr_grid?: Float32Array | readonly number[];
   readonly relay_advisor?: RelayAdvisorReport;
+  readonly active_relay_enabled?: boolean;
+  readonly relayed_node_count?: number;
+  readonly relay_backhaul_sector_id?: 0 | 1 | 2 | 3;
+  readonly relay_backhaul_snr_db?: number;
   readonly static_delay_ecdf_ms?: readonly number[];
   readonly reactive_delay_ecdf_ms?: readonly number[];
   readonly tac_delay_ecdf_ms?: readonly number[];

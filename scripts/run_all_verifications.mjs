@@ -98,7 +98,8 @@ const REGISTERED_SUITES = [
   { id: 'verify:scientific-instruments', name: 'Scientific RF & Protocol Instruments (SCI-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyScientificInstruments.ts'], category: 'ui' },
   { id: 'verify:doppler-ew', name: '8.0 GHz Doppler Kinematics & Contested EW Jammer (DEW-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDopplerAndEwJammer.ts'], category: 'physics' },
   { id: 'verify:viewshed-relay', name: 'Polar X-Band Viewshed & Relay Placement Advisor (VRA-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyViewshedAndRelayAdvisor.ts'], category: 'rf' },
-  { id: 'verify:publication-ecdf', name: 'Publication ECDF Delay Scope & IEEE LaTeX Export (PEL-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPublicationEcdfAndLatex.ts'], category: 'ui' }
+  { id: 'verify:publication-ecdf', name: 'Publication ECDF Delay Scope & IEEE LaTeX Export (PEL-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPublicationEcdfAndLatex.ts'], category: 'ui' },
+  { id: 'verify:active-relay', name: 'Active Two-Hop Decode-and-Forward Mesh Relay (ATR-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyActiveTwoHopRelay.ts'], category: 'rf' }
 ];
 
 // -----------------------------------------------------------------------------

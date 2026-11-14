@@ -1296,6 +1296,18 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <span id="sci-jammer-shield-readout" style="font-size:10px;font-family:var(--mono);color:var(--text-muted)">Jammer Terrain Shield: 0.0 dB | Worst Sector I_J: — dBm</span>
             </div>
           </div>
+          <div style="flex:1;min-width:220px">
+            <div style="margin-bottom:4px">
+              <label for="sci-relay-select" id="lbl-sci-relay-select" style="font-size:11px;font-weight:600;color:var(--text)">Two-Hop Mesh Relay Mode</label>
+            </div>
+            <select id="sci-relay-select" aria-label="Two-Hop Mesh Relay Mode" style="width:100%;padding:4px 8px;font-size:11px;background:#17140f;border:1px solid var(--line);color:#fff;border-radius:4px" onchange="onScientificParamChange()">
+              <option value="disabled" selected>DISABLED (Direct Only)</option>
+              <option value="active">ACTIVE [MCP-OPT] Ridge Relay</option>
+            </select>
+            <div style="margin-top:4px">
+              <span id="sci-relay-readout" style="font-size:10px;font-family:var(--mono);color:var(--text-muted)">Relayed: 0 nodes | Backhaul: —</span>
+            </div>
+          </div>
         </div>
 
         <div class="table-scroll">
@@ -1475,6 +1487,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <span id="relay-advisor-status-badge" class="kpi-badge badge-neutral">Ready</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
+            <button type="button" id="btn-toggle-active-relay" class="secondary" aria-label="Deploy Active Two-Hop MCP Ridge Relay" aria-pressed="false" onclick="toggleActiveRelay()" title="Deploy Active Two-Hop Decode-and-Forward MCP Ridge Relay">Deploy Active Two-Hop Ridge Relay [OFF]</button>
             <button type="button" id="btn-recompute-relay-advisor" class="secondary" aria-label="Recompute Optimal Ridge Relay" onclick="recomputeRelayAdvisor()" title="Recompute Optimal Ridge Relay Position across 360° ACN Orbit">Recompute Optimal Ridge Relay</button>
           </div>
         </div>
@@ -1490,6 +1503,10 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div class="form-row">
             <span>Ground Squad Relay Coverage:</span>
             <b id="relay-ground-cov">--%</b>
+          </div>
+          <div class="form-row">
+            <span>Active Relayed Nodes:</span>
+            <b id="relay-active-stats">0 | Backhaul: —</b>
           </div>
         </div>
       </div>
@@ -10218,13 +10235,37 @@ window.onScientificParamChange = function() {
     }
   }
 
+  const relaySelect = $('sci-relay-select');
+  const activeRelayEnabled = relaySelect ? relaySelect.value === 'active' : (latestTelemetry?.active_relay_enabled ?? false);
+
   sendCommand({
     type: 'SET_SCIENTIFIC_PARAMS',
     demLookaheadErrorStdM: demVal,
     trafficLoadMultiplier: trafficVal,
     jammerEnabled,
     jammerEirpDbm,
+    activeRelayEnabled,
   });
+};
+
+window.toggleActiveRelay = function() {
+  const current = Boolean(latestTelemetry?.active_relay_enabled);
+  const next = !current;
+  sendCommand({
+    type: 'SET_SCIENTIFIC_PARAMS',
+    activeRelayEnabled: next,
+  });
+  const btn = $('btn-toggle-active-relay');
+  if (btn) {
+    btn.setAttribute('aria-pressed', next ? 'true' : 'false');
+    btn.textContent = next ? 'Active Two-Hop Ridge Relay [ONLINE]' : 'Deploy Active Two-Hop Ridge Relay [OFF]';
+    btn.className = next ? 'primary' : 'secondary';
+  }
+  const schedSel = $('sci-relay-select');
+  if (schedSel) {
+    schedSel.value = next ? 'active' : 'disabled';
+  }
+  radarNeedsRender = true;
 };
 
 /* ---------- Ground Node Antenna AGL Configuration (Feature 7) ---------- */
@@ -12286,6 +12327,25 @@ function updateDashboardDOM(frame, force = false) {
     }
   }
 
+  if (frame.active_relay_enabled !== undefined) {
+    const isOnline = Boolean(frame.active_relay_enabled);
+    const btn = $('btn-toggle-active-relay');
+    if (btn) {
+      btn.setAttribute('aria-pressed', isOnline ? 'true' : 'false');
+      btn.textContent = isOnline ? 'Active Two-Hop Ridge Relay [ONLINE]' : 'Deploy Active Two-Hop Ridge Relay [OFF]';
+      btn.className = isOnline ? 'primary' : 'secondary';
+    }
+    const schedSel = $('sci-relay-select');
+    if (schedSel && document.activeElement !== schedSel) {
+      schedSel.value = isOnline ? 'active' : 'disabled';
+    }
+    const count = frame.relayed_node_count ?? 0;
+    const sec = frame.relay_backhaul_sector_id !== undefined ? `S${frame.relay_backhaul_sector_id}` : '—';
+    const snr = frame.relay_backhaul_snr_db !== undefined ? `${frame.relay_backhaul_snr_db.toFixed(1)} dB` : '—';
+    setText('relay-active-stats', `${count} | Backhaul: ${sec} (${snr})`);
+    setText('sci-relay-readout', `Relayed: ${count} nodes | Backhaul: ${sec} (${snr})`);
+  }
+
   updateScientificAblationMatrix(frame);
 }
 
@@ -12764,9 +12824,10 @@ function drawRadar() {
     if (latestTelemetry && latestTelemetry.relay_advisor && latestTelemetry.relay_advisor.optimalPosEnu) {
       const optEnu = latestTelemetry.relay_advisor.optimalPosEnu;
       const optPt = worldToScreen(optEnu[0], optEnu[1], w, h);
+      const isRelayActive = Boolean(latestTelemetry.active_relay_enabled);
       ctx.save();
-      ctx.fillStyle = '#fbbf24';
-      ctx.strokeStyle = '#d97706';
+      ctx.fillStyle = isRelayActive ? '#38bdf8' : '#fbbf24';
+      ctx.strokeStyle = isRelayActive ? '#0284c7' : '#d97706';
       ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(optPt.x, optPt.y - 7);
@@ -12778,9 +12839,22 @@ function drawRadar() {
       ctx.stroke();
 
       ctx.font = `700 10px ${MONO}`;
-      ctx.fillStyle = '#fef08a';
+      ctx.fillStyle = isRelayActive ? '#7dd3fc' : '#fef08a';
       ctx.fillText('[MCP-OPT]', optPt.x + 9, optPt.y + 3);
       ctx.restore();
+
+      // Cyan backhaul vector from [MCP-OPT] to ACN when active relay is enabled
+      if (isRelayActive) {
+        ctx.save();
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 2.0;
+        ctx.setLineDash([6, 3]);
+        ctx.beginPath();
+        ctx.moveTo(optPt.x, optPt.y);
+        ctx.lineTo(acnPos.x, acnPos.y);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
     // Zoom-LOD formatting & priority reservation for ACN-1
@@ -12971,7 +13045,7 @@ function drawRadar() {
     if (visLinks) {
       ctx.save();
       nodeItems.forEach(item => {
-        if (item.isSel) return;
+        if (item.isSel || item.node.is_relayed) return;
         const linkAlpha = mapLayerRegistry.getEffectiveAlpha('comm.links', focusCtx, item.node.node_id);
         const isCriticalLink = item.classification.isOutage || item.classification.isBlocked;
         ctx.globalAlpha = isCriticalLink
@@ -13002,7 +13076,7 @@ function drawRadar() {
 
     // Pass 2: Render selected terminal link on top with enhanced contrast & thickness
     const selectedItem = nodeItems.find(item => item.isSel);
-    if (visLinks && selectedItem) {
+    if (visLinks && selectedItem && !selectedItem.node.is_relayed) {
       ctx.save();
       ctx.globalAlpha = mapLayerRegistry.getEffectiveAlpha('comm.links', focusCtx, selectedItem.node.node_id);
       ctx.beginPath();
@@ -13012,6 +13086,25 @@ function drawRadar() {
       ctx.lineWidth = selectedItem.style.selectedLineWidth;
       ctx.setLineDash(selectedItem.style.lineDash);
       ctx.stroke();
+      ctx.restore();
+    }
+
+    // Pass 2.1: Active Two-Hop Mesh Relay Vectors (Terminal -> [MCP-OPT])
+    if (visLinks && latestTelemetry && latestTelemetry.active_relay_enabled && latestTelemetry.relay_advisor && latestTelemetry.relay_advisor.optimalPosEnu) {
+      const optEnu = latestTelemetry.relay_advisor.optimalPosEnu;
+      const optPt = worldToScreen(optEnu[0], optEnu[1], w, h);
+      ctx.save();
+      nodeItems.forEach(item => {
+        if (item.node.is_relayed) {
+          ctx.beginPath();
+          ctx.moveTo(item.nPos.x, item.nPos.y);
+          ctx.lineTo(optPt.x, optPt.y);
+          ctx.strokeStyle = item.isSel ? '#34d399' : '#10b981';
+          ctx.lineWidth = item.isSel ? 3.0 : 1.8;
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+        }
+      });
       ctx.restore();
     }
 

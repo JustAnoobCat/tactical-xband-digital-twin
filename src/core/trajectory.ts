@@ -812,8 +812,10 @@ export class PredictiveLookAheadEngine {
     currentObs: TerrainObstruction | { isLos: boolean; obstacleBlocked?: boolean; minClearanceM: number; isHardShadow?: boolean },
     ls?: LinkStatus
   ): PredictiveState {
-    const isPhysicallyBlocked = !currentObs.isLos || (currentObs.obstacleBlocked ?? false);
     const isWorkingLink = Boolean(ls && !ls.isOutage && ls.bitrateBps > 0 && !ls.obstacleBlocked);
+    const isPhysicallyBlocked = (ls?.isRelayed && isWorkingLink)
+      ? false
+      : (!currentObs.isLos || (currentObs.obstacleBlocked ?? false));
     const isHardShadow = isWorkingLink ? false : isPhysicallyBlocked;
 
     if (isPhysicallyBlocked) {
@@ -1078,7 +1080,9 @@ export class PredictiveLookAheadEngine {
       return false;
     };
 
-    const isCurrentlyOutage = !obs.isLos || Boolean(obs.obstacleBlocked) || Boolean(ls && ls.isOutage);
+    const isCurrentlyOutage = (ls?.isRelayed && !ls.isOutage && ls.bitrateBps > 0)
+      ? false
+      : (!obs.isLos || Boolean(obs.obstacleBlocked) || Boolean(ls && ls.isOutage));
     if (isCurrentlyOutage) {
       // Regime A: Hard shadow (Optical ray blocked)
       let timeToEmergenceS = Number.POSITIVE_INFINITY;

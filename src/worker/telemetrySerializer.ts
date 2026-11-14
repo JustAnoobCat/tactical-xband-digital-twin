@@ -154,6 +154,9 @@ export interface TelemetrySimulationState {
   readonly jammerSectorInterferenceDbm?: readonly [number, number, number, number];
   readonly viewshedSinrGrid?: readonly number[] | Float32Array;
   readonly relayAdvisor?: RelayAdvisorReport;
+  readonly relayedNodeCount?: number;
+  readonly relayBackhaulSectorId?: 0 | 1 | 2 | 3;
+  readonly relayBackhaulSnrDb?: number;
   readonly staticDelayEcdfMs?: readonly number[];
   readonly reactiveDelayEcdfMs?: readonly number[];
   readonly tacDelayEcdfMs?: readonly number[];
@@ -386,6 +389,9 @@ export class TelemetrySerializer {
         doppler_rate_hz_s: ls?.dopplerRateHzS ?? 0.0,
         jammer_interference_dbm: ls?.jammerInterferenceDbm,
         sinr_db: ls?.sinrDb ?? ls?.snrDb ?? -99.0,
+        is_relayed: ls?.isRelayed ?? false,
+        relay_hop1_mbps: ls?.relayHop1BitrateMbps,
+        relay_hop2_mbps: ls?.relayHop2BitrateMbps,
       };
     });
   }
@@ -755,6 +761,10 @@ export class TelemetrySerializer {
       jammer_sector_interference_dbm: state.jammerSectorInterferenceDbm ?? [0, 0, 0, 0],
       viewshed_sinr_grid: state.viewshedSinrGrid,
       relay_advisor: state.relayAdvisor,
+      active_relay_enabled: state.envConfig?.activeRelayEnabled ?? false,
+      relayed_node_count: state.relayedNodeCount ?? 0,
+      relay_backhaul_sector_id: state.relayBackhaulSectorId,
+      relay_backhaul_snr_db: state.relayBackhaulSnrDb,
       static_delay_ecdf_ms: state.staticDelayEcdfMs,
       reactive_delay_ecdf_ms: state.reactiveDelayEcdfMs,
       tac_delay_ecdf_ms: state.tacDelayEcdfMs,

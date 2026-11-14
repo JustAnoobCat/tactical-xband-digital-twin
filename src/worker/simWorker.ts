@@ -222,6 +222,14 @@ export class SimulationWorkerManager {
   public readonly viewshedEngine: PolarViewshedEngine = new PolarViewshedEngine();
   public viewshedEnabled: boolean = false;
   public relayAdvisorReport: RelayAdvisorReport | undefined = undefined;
+  public relayedNodeCount: number = 0;
+  public relayBackhaulSectorId?: 0 | 1 | 2 | 3;
+  public relayBackhaulSnrDb?: number;
+  private relayHop1ObstructionCache: Map<number, TerrainObstruction> = new Map();
+
+  public clearRelayHop1Cache(): void {
+    this.relayHop1ObstructionCache.clear();
+  }
   public lastTelemetryFrame: TelemetryFrame | null = null;
   public batchSpatialSnapshots: SpatialFrameSnapshot[] = [];
   public tdmaSimTimeS: number = 0.0;
@@ -291,6 +299,7 @@ export class SimulationWorkerManager {
   }
 
   public computeRelayAdvisor(): RelayAdvisorReport {
+    this.clearRelayHop1Cache();
     const nodes = this.nodesTac.length > 0 ? this.nodesTac : this.nodesStatic;
     const report = this.viewshedEngine.computeOptimalRelayPlacement(
       this.trajectoryEngine,
@@ -733,6 +742,10 @@ export class SimulationWorkerManager {
         jammer_sector_interference_dbm: frame.jammer_sector_interference_dbm,
         viewshed_sinr_grid: frame.viewshed_sinr_grid,
         relay_advisor: frame.relay_advisor,
+        active_relay_enabled: frame.active_relay_enabled,
+        relayed_node_count: frame.relayed_node_count,
+        relay_backhaul_sector_id: frame.relay_backhaul_sector_id,
+        relay_backhaul_snr_db: frame.relay_backhaul_snr_db,
       });
     }
   }
@@ -1134,6 +1147,122 @@ export class SimulationWorkerManager {
       nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked || ls.isOutage);
     }
 
+    // 1a. Active Two-Hop Decode-and-Forward (DF) Tactical Mesh Relay Evaluation
+    let relayedNodeCount = 0;
+    let relayBackhaulSectorId: 0 | 1 | 2 | 3 | undefined = undefined;
+    let relayBackhaulSnrDb: number | undefined = undefined;
+
+    if (this.envConfig.activeRelayEnabled && this.relayAdvisorReport && this.relayAdvisorReport.optimalPosEnu) {
+      const relayPos = this.relayAdvisorReport.optimalPosEnu;
+      const dHop2M = Math.max(1.0, Math.hypot(acnPos[0] - relayPos[0], acnPos[1] - relayPos[1], acnPos[2] - relayPos[2]));
+      const hop2Obs = this.terrainEngine.evaluateTerrainObstruction(relayPos, acnPos, this.rfConfig, this.envConfig);
+      const hop2SectorEval = this.antennaEngine.evaluateNodeSector(
+        -888,
+        acnPos,
+        acnVel,
+        relayPos,
+        this.rfConfig.acnAntennaGainDbi,
+        false,
+        acnAttitude
+      );
+      const hop2Doppler = LinkBudgetEngine.computeDopplerKinematics(
+        acnPos,
+        acnVel,
+        relayPos,
+        this.rfConfig.carrierFrequencyHz,
+        acnAccel
+      );
+      const hop2JammerInterferenceDbm = this.envConfig.jammerEnabled && jammerInterferenceBySector !== undefined
+        ? jammerInterferenceBySector[hop2SectorEval.activeSectorId]
+        : undefined;
+
+      const hop2Link = this.linkEngine.evaluateLink(
+        'mcp',
+        dHop2M,
+        hop2Obs.diffractionLossDb,
+        this.rfConfig,
+        this.envConfig,
+        hop2Obs.obstacleBlocked,
+        this.rfConfig.mcpTxPowerDbm,
+        hop2SectorEval,
+        relayPos[2],
+        acnPos[2],
+        hop2Obs.crestRadiusM,
+        hop2Obs.curvatureLossDb,
+        hop2JammerInterferenceDbm,
+        hop2Doppler.radialVelocityMs,
+        hop2Doppler.dopplerShiftHz,
+        hop2Doppler.dopplerRateHzS
+      );
+
+      relayBackhaulSectorId = hop2SectorEval.activeSectorId;
+      relayBackhaulSnrDb = hop2Link.snrDb;
+
+      for (let i = 0; i < numNodes; i++) {
+        const node = this.nodesTac[i];
+        const nid = node.nodeId;
+        const directLink = nextLinks.get(nid)!;
+
+        if (directLink.isOutage || directLink.bitrateMbps < 5.0) {
+          let hop1Obs = this.relayHop1ObstructionCache.get(nid);
+          if (!hop1Obs) {
+            hop1Obs = this.terrainEngine.evaluateTerrainObstruction(
+              node.position,
+              relayPos,
+              this.rfConfig,
+              this.envConfig
+            );
+            this.relayHop1ObstructionCache.set(nid, hop1Obs);
+          }
+
+          const dHop1M = Math.max(1.0, Math.hypot(
+            relayPos[0] - node.position[0],
+            relayPos[1] - node.position[1],
+            relayPos[2] - node.position[2]
+          ));
+
+          const hop1Link = this.linkEngine.evaluateLink(
+            node.nodeType,
+            dHop1M,
+            hop1Obs.diffractionLossDb,
+            this.rfConfig,
+            this.envConfig,
+            hop1Obs.obstacleBlocked,
+            node.txPowerDbm,
+            undefined,
+            node.position[2],
+            relayPos[2],
+            hop1Obs.crestRadiusM,
+            hop1Obs.curvatureLossDb,
+            undefined,
+            0,
+            0,
+            0,
+            this.envConfig.relayAntennaGainDbi
+          );
+
+          const relayedLink = LinkBudgetEngine.computeDecodeAndForwardRelayLink(
+            directLink,
+            hop1Link,
+            hop2Link,
+            dHop1M,
+            dHop2M,
+            this.rfConfig.speedOfLight
+          );
+
+          if (relayedLink.isRelayed) {
+            nextLinks.set(nid, relayedLink);
+            nextShadow.set(nid, false);
+            relayedNodeCount++;
+          }
+        }
+      }
+    }
+
+    this.relayedNodeCount = relayedNodeCount;
+    this.relayBackhaulSectorId = relayBackhaulSectorId;
+    this.relayBackhaulSnrDb = relayBackhaulSnrDb;
+
     // 1b. Real-Time Polar X-Band SINR Viewshed Slice Sweep (Amortized 6 Azimuths per 20 ms tick)
     if (this.viewshedEnabled) {
       this.viewshedEngine.updateSlice(
@@ -1378,6 +1507,98 @@ export class SimulationWorkerManager {
         doppler.dopplerShiftHz,
         doppler.dopplerRateHzS
       );
+
+      if (this.envConfig.activeRelayEnabled && this.relayAdvisorReport && this.relayAdvisorReport.optimalPosEnu && (linkStatus.isOutage || linkStatus.bitrateMbps < 5.0)) {
+        const relayPos = this.relayAdvisorReport.optimalPosEnu;
+        const dHop2M = Math.max(1.0, Math.hypot(acnPos[0] - relayPos[0], acnPos[1] - relayPos[1], acnPos[2] - relayPos[2]));
+        const hop2Obs = this.terrainEngine.evaluateTerrainObstruction(relayPos, acnPos, this.rfConfig, this.envConfig);
+        const hop2SectorEval = this.antennaEngine.evaluateNodeSector(
+          -888,
+          acnPos,
+          acnVel,
+          relayPos,
+          this.rfConfig.acnAntennaGainDbi,
+          false
+        );
+        const hop2Doppler = LinkBudgetEngine.computeDopplerKinematics(
+          acnPos,
+          acnVel,
+          relayPos,
+          this.rfConfig.carrierFrequencyHz
+        );
+        const hop2JammerInterferenceDbm = this.envConfig.jammerEnabled
+          ? this.jammerSectorInterferenceDbm[hop2SectorEval.activeSectorId]
+          : undefined;
+
+        const hop2Link = this.linkEngine.evaluateLink(
+          'mcp',
+          dHop2M,
+          hop2Obs.diffractionLossDb,
+          this.rfConfig,
+          this.envConfig,
+          hop2Obs.obstacleBlocked,
+          this.rfConfig.mcpTxPowerDbm,
+          hop2SectorEval,
+          relayPos[2],
+          acnPos[2],
+          hop2Obs.crestRadiusM,
+          hop2Obs.curvatureLossDb,
+          hop2JammerInterferenceDbm,
+          hop2Doppler.radialVelocityMs,
+          hop2Doppler.dopplerShiftHz,
+          hop2Doppler.dopplerRateHzS
+        );
+
+        let hop1Obs = this.relayHop1ObstructionCache.get(node.nodeId);
+        if (!hop1Obs) {
+          hop1Obs = this.terrainEngine.evaluateTerrainObstruction(
+            node.position,
+            relayPos,
+            this.rfConfig,
+            this.envConfig
+          );
+          this.relayHop1ObstructionCache.set(node.nodeId, hop1Obs);
+        }
+
+        const dHop1M = Math.max(1.0, Math.hypot(
+          relayPos[0] - node.position[0],
+          relayPos[1] - node.position[1],
+          relayPos[2] - node.position[2]
+        ));
+
+        const hop1Link = this.linkEngine.evaluateLink(
+          node.nodeType,
+          dHop1M,
+          hop1Obs.diffractionLossDb,
+          this.rfConfig,
+          this.envConfig,
+          hop1Obs.obstacleBlocked,
+          node.txPowerDbm,
+          undefined,
+          node.position[2],
+          relayPos[2],
+          hop1Obs.crestRadiusM,
+          hop1Obs.curvatureLossDb,
+          undefined,
+          0,
+          0,
+          0,
+          this.envConfig.relayAntennaGainDbi
+        );
+
+        const relayedLink = LinkBudgetEngine.computeDecodeAndForwardRelayLink(
+          linkStatus,
+          hop1Link,
+          hop2Link,
+          dHop1M,
+          dHop2M,
+          this.rfConfig.speedOfLight
+        );
+        if (relayedLink.isRelayed) {
+          linkStatus = relayedLink;
+        }
+      }
+
       this.linkStatuses.set(node.nodeId, linkStatus);
     }
     let predState = this.predStates.get(node.nodeId);
@@ -1514,6 +1735,10 @@ export class SimulationWorkerManager {
     this.linkStatuses.clear();
     this.predStates.clear();
     this.obstructionResults.clear();
+    this.clearRelayHop1Cache();
+    this.relayedNodeCount = 0;
+    this.relayBackhaulSectorId = undefined;
+    this.relayBackhaulSnrDb = undefined;
     this.lookaheadEngine?.invalidateAll();
     this.deferredEmergencyQueue.clear();
     this.metrics = {
@@ -1802,6 +2027,7 @@ export class SimulationWorkerManager {
         const jammerEirpDbm = msg.jammerEirpDbm !== undefined && Number.isFinite(msg.jammerEirpDbm)
           ? msg.jammerEirpDbm
           : this.envConfig.jammerEirpDbm;
+        const activeRelayEnabled = msg.activeRelayEnabled !== undefined ? Boolean(msg.activeRelayEnabled) : this.envConfig.activeRelayEnabled;
 
         this.envConfig = new EnvironmentConfig({
           ...this.envConfig,
@@ -1809,6 +2035,7 @@ export class SimulationWorkerManager {
           trafficLoadMultiplier: trafficScale,
           jammerEnabled,
           jammerEirpDbm,
+          activeRelayEnabled,
         });
         this.lookaheadEngine.setEnvConfig(this.envConfig);
         for (let i = 0; i < this.nodesStatic.length; i++) {
@@ -1821,6 +2048,9 @@ export class SimulationWorkerManager {
           this.nodesReactive[i].trafficLoadMultiplier = trafficScale;
         }
         this.lookaheadEngine.invalidateAll();
+        if (msg.activeRelayEnabled !== undefined) {
+          this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        }
         return result(true);
       }
 
@@ -1830,6 +2060,14 @@ export class SimulationWorkerManager {
         }
         if (msg.recomputeRelayAdvisor) {
           this.computeRelayAdvisor();
+        }
+        if (msg.activeRelayEnabled !== undefined) {
+          this.envConfig = new EnvironmentConfig({
+            ...this.envConfig,
+            activeRelayEnabled: Boolean(msg.activeRelayEnabled),
+          });
+          this.lookaheadEngine.setEnvConfig(this.envConfig);
+          this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         }
         return result(true);
       }
