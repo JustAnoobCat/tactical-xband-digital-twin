@@ -10,8 +10,9 @@
  * 5. DVB-S2X / 3GPP Rel-17 NTN discrete 8-state MODCOD table with 2.5 dB margin.
  */
 
-import { EnvironmentConfig, NodeType, RFConfig } from './config';
+import { EnvironmentConfig, NodeType, RFConfig, SPEED_OF_LIGHT } from './config';
 import type { AcnSectorEvaluation, AcnSectorId } from './antennaArray';
+import type { Position3D } from '../shared/types';
 
 export interface ModCodEntry {
   readonly name: string;
@@ -74,9 +75,56 @@ export interface LinkStatus {
   readonly isCrossoverZone?: boolean;
   readonly handoverOccurred?: boolean;
   readonly handoverCount?: number;
+  readonly radialVelocityMs?: number;
+  readonly dopplerShiftHz?: number;
+  readonly dopplerRateHzS?: number;
+  readonly jammerInterferenceDbm?: number;
+  readonly sinrDb?: number;
 }
 
 export class LinkBudgetEngine {
+  /**
+   * First-principles 8.0 GHz 3D Kinematic Doppler frequency shift (f_d) and analytical
+   * drift rate (f_d_dot) between ACN and stationary ground node.
+   *
+   * Formulations:
+   * 1. Line-of-sight unit vector: d_vec = r_node - r_acn, d_3d = max(||d_vec||, 1.0), u_hat = d_vec / d_3d
+   * 2. Radial velocity (v_rad > 0 when closing): v_rad = v_acn . u_hat
+   * 3. Carrier Doppler shift: f_d = (f_c / c) * v_rad
+   * 4. Analytical Doppler drift rate: f_d_dot = (f_c / c) * (a_acn . u_hat - (||v_acn||^2 - v_rad^2) / d_3d)
+   */
+  public static computeDopplerKinematics(
+    acnPos: Position3D,
+    acnVel: Position3D,
+    nodePos: Position3D,
+    carrierFreqHz: number = 8.0e9,
+    acnAccel: Position3D = [0, 0, 0]
+  ): { radialVelocityMs: number; dopplerShiftHz: number; dopplerRateHzS: number } {
+    const dx = nodePos[0] - acnPos[0];
+    const dy = nodePos[1] - acnPos[1];
+    const dz = nodePos[2] - acnPos[2];
+    const slantDistM = Math.hypot(dx, dy, dz);
+    const d3dM = Math.max(slantDistM, 1.0);
+    const ux = dx / d3dM;
+    const uy = dy / d3dM;
+    const uz = dz / d3dM;
+
+    const radialVelocityMs = acnVel[0] * ux + acnVel[1] * uy + acnVel[2] * uz;
+    const c = SPEED_OF_LIGHT;
+    const dopplerShiftHz = (carrierFreqHz / c) * radialVelocityMs;
+
+    const vNormSq = acnVel[0] * acnVel[0] + acnVel[1] * acnVel[1] + acnVel[2] * acnVel[2];
+    const aDotU = acnAccel[0] * ux + acnAccel[1] * uy + acnAccel[2] * uz;
+    const transverseTerm = (vNormSq - radialVelocityMs * radialVelocityMs) / d3dM;
+    const dopplerRateHzS = (carrierFreqHz / c) * (aDotU - transverseTerm);
+
+    return {
+      radialVelocityMs,
+      dopplerShiftHz,
+      dopplerRateHzS,
+    };
+  }
+
   /**
    * Computes Free Space Path Loss (FSPL) in dB:
    * FSPL = 20*log10(d) + 20*log10(fc) + 20*log10(4*pi/c)
@@ -224,11 +272,15 @@ export class LinkBudgetEngine {
     env: EnvironmentConfig,
     obstacleBlocked: boolean = false,
     customTxPowerDbm?: number,
-    sectorEval?: AcnSectorEvaluation,
+    sectorEval?: AcnSectorEvaluation & { jammerInterferenceDbm?: number },
     nodeAltM?: number,
     acnAltM?: number,
     crestRadiusM?: number,
-    curvatureLossDb?: number
+    curvatureLossDb?: number,
+    jammerInterferenceDbm?: number,
+    radialVelocityMs?: number,
+    dopplerShiftHz?: number,
+    dopplerRateHzS?: number
   ): LinkStatus {
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
@@ -277,10 +329,25 @@ export class LinkBudgetEngine {
       pNoiseDbm = pNoiseThermalDbm + skyNoiseIncreaseDb;
     }
 
-    // Net Signal-to-Noise Ratio (SNR)
-    const snrDb = prxDbm - pNoiseDbm;
+    // Contested Jammer Interference & Effective Physical SINR
+    const effJammerInterferenceDbm = jammerInterferenceDbm !== undefined && Number.isFinite(jammerInterferenceDbm)
+      ? jammerInterferenceDbm
+      : (sectorEval as { jammerInterferenceDbm?: number } | undefined)?.jammerInterferenceDbm;
 
-    // Dynamic MODCOD selection & capacity mapping
+    let pNoiseAndInterferenceDbm = pNoiseDbm;
+    let sinrDb: number;
+
+    if (effJammerInterferenceDbm !== undefined && Number.isFinite(effJammerInterferenceDbm)) {
+      const pNoiseMw = Math.pow(10.0, pNoiseDbm / 10.0);
+      const pJammerMw = Math.pow(10.0, effJammerInterferenceDbm / 10.0);
+      pNoiseAndInterferenceDbm = 10.0 * Math.log10(pNoiseMw + pJammerMw);
+      sinrDb = prxDbm - pNoiseAndInterferenceDbm;
+    } else {
+      sinrDb = prxDbm - pNoiseDbm;
+    }
+
+    // Dynamic MODCOD selection & capacity mapping using effective SINR
+    const snrDb = sinrDb;
     const modcod = LinkBudgetEngine.selectModCod(snrDb);
     const isOutage = obstacleBlocked || modcod.name === 'LINK_OUTAGE';
     const spectralEfficiency = isOutage ? 0.0 : modcod.spectralEfficiencyBpsHz;
@@ -305,8 +372,13 @@ export class LinkBudgetEngine {
       txGainDbi: antennaGainDbi,
       rxGainDbi,
       prxDbm,
-      pNoiseDbm,
+      pNoiseDbm: pNoiseAndInterferenceDbm,
       snrDb,
+      sinrDb,
+      jammerInterferenceDbm: effJammerInterferenceDbm,
+      radialVelocityMs,
+      dopplerShiftHz,
+      dopplerRateHzS,
       modcodName: obstacleBlocked ? 'OBSTACLE_BLOCKED' : modcod.name,
       spectralEfficiency,
       bitrateBps,

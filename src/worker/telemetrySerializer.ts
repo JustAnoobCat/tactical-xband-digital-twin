@@ -149,6 +149,8 @@ export interface TelemetrySimulationState {
   readonly simulationRunId?: number;
   readonly antennaEngine?: QuadSectorAntennaEngine;
   readonly envConfig?: EnvironmentConfig;
+  readonly jammerShieldLossDb?: number;
+  readonly jammerSectorInterferenceDbm?: readonly [number, number, number, number];
 }
 
 /**
@@ -373,6 +375,11 @@ export class TelemetrySerializer {
         sky_temp_k: ls?.skyTemperatureK ?? 0.0,
         sky_noise_db: ls?.skyNoiseIncreaseDb ?? 0.0,
         timing_advance_us: ls?.timingAdvanceUs ?? (ls?.slantRangeM ? (2.0 * ls.slantRangeM / 299792458.0) * 1e6 : 0.0),
+        radial_vel_ms: ls?.radialVelocityMs ?? 0.0,
+        doppler_shift_hz: ls?.dopplerShiftHz ?? 0.0,
+        doppler_rate_hz_s: ls?.dopplerRateHzS ?? 0.0,
+        jammer_interference_dbm: ls?.jammerInterferenceDbm,
+        sinr_db: ls?.sinrDb ?? ls?.snrDb ?? -99.0,
       };
     });
   }
@@ -735,6 +742,11 @@ export class TelemetrySerializer {
       reactive_sector_util_pct: state.lastReportReactive?.sectorUtilizationPct ?? [0, 0, 0, 0],
       dem_lookahead_error_std_m: state.envConfig?.demLookaheadErrorStdM ?? 0.0,
       traffic_load_multiplier: state.envConfig?.trafficLoadMultiplier ?? 1.0,
+      jammer_enabled: state.envConfig?.jammerEnabled ?? false,
+      jammer_eirp_dbm: state.envConfig?.jammerEirpDbm ?? 65.0,
+      jammer_pos_enu: state.envConfig?.jammerPosEnu ?? [3200.0, -2800.0, 0.0],
+      jammer_terrain_shield_db: state.jammerShieldLossDb ?? 0.0,
+      jammer_sector_interference_dbm: state.jammerSectorInterferenceDbm ?? [0, 0, 0, 0],
     };
   }
 

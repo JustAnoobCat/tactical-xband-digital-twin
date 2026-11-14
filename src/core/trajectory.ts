@@ -935,6 +935,40 @@ export class PredictiveLookAheadEngine {
         const dy = futureAcn[1] - nodePos[1];
         const dz = futureAcn[2] - nodePos[2];
         const slantRangeM = Math.hypot(dx, dy, dz);
+
+        let futureJammerInterferenceDbm: number | undefined = undefined;
+        if (this.envConfig.jammerEnabled) {
+          const jX = this.envConfig.jammerPosEnu[0];
+          const jY = this.envConfig.jammerPosEnu[1];
+          const jZTerrain = this.terrainEngine.getElevation(jX, jY);
+          const jZ = Number.isFinite(jZTerrain) ? jZTerrain + 3.0 : 3.0;
+          const jammerPos: Position3D = [jX, jY, jZ];
+          const dJ = Math.max(Math.hypot(futureAcn[0] - jX, futureAcn[1] - jY, futureAcn[2] - jZ), 1.0);
+          const jammerObs = this.terrainEngine.evaluateTerrainObstruction(
+            jammerPos,
+            futureAcn,
+            this.rfConfig,
+            this.envConfig,
+            100.0,
+            demError
+          );
+          const fsplJ = LinkBudgetEngine.computeFsplDb(dJ, this.rfConfig.carrierFrequencyHz, this.rfConfig.speedOfLight);
+          const gasJ = LinkBudgetEngine.computeGaseousAttenuationDb(dJ, jZ, futureAcn[2], this.rfConfig.carrierFrequencyHz);
+          const rainJ = LinkBudgetEngine.computeRainAttenuationDb(dJ, this.envConfig, jZ, futureAcn[2]);
+          const lossJ = fsplJ + (jammerObs.diffractionLossDb ?? 0.0) + gasJ + rainJ + this.rfConfig.cableLossDb;
+          const jammerSectorEval = antennaEngine.evaluateNodeSector(
+            -999,
+            futureAcn,
+            futureVel,
+            jammerPos,
+            this.rfConfig.acnAntennaGainDbi,
+            false
+          );
+          const activeSec = futureSectorEval.activeSectorId;
+          const gJammerSector = jammerSectorEval.allSectorGainsDbi[activeSec];
+          futureJammerInterferenceDbm = this.envConfig.jammerEirpDbm + gJammerSector - lossJ;
+        }
+
         const futureLs = this.linkBudgetEngine.evaluateLink(
           'soldier',
           slantRangeM,
@@ -945,14 +979,18 @@ export class PredictiveLookAheadEngine {
           undefined,
           futureSectorEval,
           nodePos[2],
-          futureAcn[2]
+          futureAcn[2],
+          futureObs.crestRadiusM,
+          futureObs.curvatureLossDb,
+          futureJammerInterferenceDbm
         );
         if (futureLs.isOutage || futureLs.bitrateBps <= 0) return true;
       }
       return false;
     };
 
-    if (!obs.isLos || obs.obstacleBlocked) {
+    const isCurrentlyOutage = !obs.isLos || Boolean(obs.obstacleBlocked) || Boolean(ls && ls.isOutage);
+    if (isCurrentlyOutage) {
       // Regime A: Hard shadow (Optical ray blocked)
       let timeToEmergenceS = Number.POSITIVE_INFINITY;
 

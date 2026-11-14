@@ -160,6 +160,11 @@ export interface NodeTelemetryItem {
   readonly sky_temp_k?: number;
   readonly sky_noise_db?: number;
   readonly timing_advance_us?: number;
+  readonly radial_vel_ms?: number;
+  readonly doppler_shift_hz?: number;
+  readonly doppler_rate_hz_s?: number;
+  readonly jammer_interference_dbm?: number;
+  readonly sinr_db?: number;
   readonly [key: string]: unknown;
 }
 
@@ -219,6 +224,11 @@ export interface SelectedLinkBudgetTelemetry {
   readonly isCoverageComplete?: boolean;
   readonly coverage_note?: string;
   readonly coverageNote?: string;
+  readonly radial_vel_ms?: number;
+  readonly doppler_shift_hz?: number;
+  readonly doppler_rate_hz_s?: number;
+  readonly jammer_interference_dbm?: number;
+  readonly sinr_db?: number;
   readonly [key: string]: unknown;
 }
 
@@ -369,6 +379,11 @@ export interface TelemetryFrame {
   readonly reactive_sector_util_pct?: readonly [number, number, number, number];
   readonly dem_lookahead_error_std_m?: number;
   readonly traffic_load_multiplier?: number;
+  readonly jammer_enabled?: boolean;
+  readonly jammer_eirp_dbm?: number;
+  readonly jammer_pos_enu?: Position3D;
+  readonly jammer_terrain_shield_db?: number;
+  readonly jammer_sector_interference_dbm?: readonly [number, number, number, number];
 }
 
 // ----------------------------------------------------------------------------
@@ -771,6 +786,8 @@ export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
   readonly type: 'SET_SCIENTIFIC_PARAMS';
   readonly demLookaheadErrorStdM?: number;
   readonly trafficLoadMultiplier?: number;
+  readonly jammerEnabled?: boolean;
+  readonly jammerEirpDbm?: number;
 }
 
 export type WorkerInboundCommand =
@@ -826,6 +843,11 @@ export interface TelemetryFrameMessage {
   readonly reactive_sector_util_pct?: readonly [number, number, number, number];
   readonly dem_lookahead_error_std_m?: number;
   readonly traffic_load_multiplier?: number;
+  readonly jammer_enabled?: boolean;
+  readonly jammer_eirp_dbm?: number;
+  readonly jammer_pos_enu?: Position3D;
+  readonly jammer_terrain_shield_db?: number;
+  readonly jammer_sector_interference_dbm?: readonly [number, number, number, number];
 }
 
 export interface ProfileFrameMessage {

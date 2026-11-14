@@ -166,3 +166,17 @@ If you utilize this Digital Twin platform, its mathematical formulations, or its
   url = {https://github.com/organization/tactical-xband-digital-twin}
 }
 ```
+
+---
+
+## 7. Architecture Specifications (`docs/specs/`)
+
+Detailed engineering design specifications, mathematical models, and architectural blueprints are archived in [`docs/specs/`](docs/specs/):
+
+- [`SPEC-ITU-FIRST-PRINCIPLES-RF-AND-TERRAIN.md`](docs/specs/SPEC-ITU-FIRST-PRINCIPLES-RF-AND-TERRAIN.md): First-principles ITU-R P.526-15 multi-ridge diffraction, P.676-13 barometric gaseous absorption, P.838-3/P.839-4 rain loss with freezing isotherm partitioning, and P.618-14 sky-noise temperature coupling.
+- [`SPEC-QUAD-SECTOR-ANTENNA-UPGRADE.md`](docs/specs/SPEC-QUAD-SECTOR-ANTENNA-UPGRADE.md): 4-channel parallel per-sector TDMA architecture with body-fixed quadrant array ($0^\circ, 90^\circ, 180^\circ, 270^\circ$), ITU-R F.1336 parabolic roll-off, aircraft bank-angle roll coupling, and 1.5 dB handover hysteresis.
+- [`SPEC-PERFORMANCE-OPTIMIZATION-REV1.md`](docs/specs/SPEC-PERFORMANCE-OPTIMIZATION-REV1.md): Web Worker discrete-event loop optimization, zero-allocation spatial buffers, and SIMD/typed-array memory architectures achieving $\le 8\text{ ms}$ p95 step latency.
+- [`SPEC-TERRAIN-WORKSPACE-UX-REVAMP.md`](docs/specs/SPEC-TERRAIN-WORKSPACE-UX-REVAMP.md): High-fidelity 3D alpine terrain workspace, TopoJSON/GeoTIFF ingestion, interactive transect tooling, and C2 tactical console UX.
+- [`SPEC-TERRAIN-WORKSPACE-UX-REVAMP-REV3.md`](docs/specs/SPEC-TERRAIN-WORKSPACE-UX-REVAMP-REV3.md): Scientific terrain toolbox revision 3, curvature cylinder loss inspection, and DEM height profiling.
+- [`METRICS_PATCH_NOTES.md`](docs/specs/METRICS_PATCH_NOTES.md): Symmetric airtime, throughput accounting, drop classifications, and benchmark provenance logging.
+

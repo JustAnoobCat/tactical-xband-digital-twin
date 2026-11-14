@@ -213,6 +213,9 @@ export class SimulationWorkerManager {
   public liveAltitudeM: number = 5000.0;
   public liveVzMps: number = 0.0;
   public isTerrainClamped: boolean = false;
+  public prevAcnVel: Position3D = [0, 0, 0];
+  public jammerShieldLossDb: number = 0.0;
+  public jammerSectorInterferenceDbm: readonly [number, number, number, number] = [-150.0, -150.0, -150.0, -150.0];
   public batchSpatialSnapshots: SpatialFrameSnapshot[] = [];
   public tdmaSimTimeS: number = 0.0;
   public superframeEpochIndex: number = 0;
@@ -648,6 +651,11 @@ export class SimulationWorkerManager {
         reactive_sector_util_pct: frame.reactive_sector_util_pct,
         dem_lookahead_error_std_m: frame.dem_lookahead_error_std_m,
         traffic_load_multiplier: frame.traffic_load_multiplier,
+        jammer_enabled: frame.jammer_enabled,
+        jammer_eirp_dbm: frame.jammer_eirp_dbm,
+        jammer_pos_enu: frame.jammer_pos_enu,
+        jammer_terrain_shield_db: frame.jammer_terrain_shield_db,
+        jammer_sector_interference_dbm: frame.jammer_sector_interference_dbm,
       });
     }
   }
@@ -939,7 +947,60 @@ export class SimulationWorkerManager {
 
     const rawVel = this.trajectoryEngine.getAcnVelocity(timeS);
     const acnVel: [number, number, number] = [rawVel[0], rawVel[1], this.liveVzMps];
+    const dtStep = 0.02;
+    const acnAccel: Position3D = [
+      (acnVel[0] - this.prevAcnVel[0]) / dtStep,
+      (acnVel[1] - this.prevAcnVel[1]) / dtStep,
+      (acnVel[2] - this.prevAcnVel[2]) / dtStep,
+    ];
+    this.prevAcnVel = acnVel;
     const acnAttitude = this.antennaEngine.computeAcnAttitude(acnVel, timeS, true);
+
+    // Evaluate Contested EW Jammer Ingress & Terrain Shielding
+    let jammerInterferenceBySector: readonly [number, number, number, number] | undefined = undefined;
+    if (this.envConfig.jammerEnabled) {
+      const jX = this.envConfig.jammerPosEnu[0];
+      const jY = this.envConfig.jammerPosEnu[1];
+      const surfaceZ = this.terrainEngine.getElevation(jX, jY);
+      const jZ = Number.isFinite(surfaceZ) ? surfaceZ + 3.0 : 3.0;
+      const jammerPos: Position3D = [jX, jY, jZ];
+      const dJammerM = Math.max(Math.hypot(acnPos[0] - jX, acnPos[1] - jY, acnPos[2] - jZ), 1.0);
+
+      const jammerObs = this.terrainEngine.evaluateTerrainObstruction(
+        jammerPos,
+        acnPos,
+        this.rfConfig,
+        this.envConfig
+      );
+      this.jammerShieldLossDb = jammerObs.diffractionLossDb ?? 0.0;
+
+      const fsplJ = LinkBudgetEngine.computeFsplDb(dJammerM, this.rfConfig.carrierFrequencyHz, this.rfConfig.speedOfLight);
+      const gasJ = LinkBudgetEngine.computeGaseousAttenuationDb(dJammerM, jZ, acnPos[2], this.rfConfig.carrierFrequencyHz);
+      const rainJ = LinkBudgetEngine.computeRainAttenuationDb(dJammerM, this.envConfig, jZ, acnPos[2]);
+      const lossJ = fsplJ + this.jammerShieldLossDb + gasJ + rainJ + this.rfConfig.cableLossDb;
+
+      const jammerSectorEval = this.antennaEngine.evaluateNodeSector(
+        -999,
+        acnPos,
+        acnVel,
+        jammerPos,
+        this.rfConfig.acnAntennaGainDbi,
+        false,
+        acnAttitude
+      );
+
+      const eirp = this.envConfig.jammerEirpDbm;
+      jammerInterferenceBySector = [
+        eirp + jammerSectorEval.allSectorGainsDbi[0] - lossJ,
+        eirp + jammerSectorEval.allSectorGainsDbi[1] - lossJ,
+        eirp + jammerSectorEval.allSectorGainsDbi[2] - lossJ,
+        eirp + jammerSectorEval.allSectorGainsDbi[3] - lossJ,
+      ] as const;
+      this.jammerSectorInterferenceDbm = jammerInterferenceBySector;
+    } else {
+      this.jammerShieldLossDb = 0.0;
+      this.jammerSectorInterferenceDbm = [-150.0, -150.0, -150.0, -150.0];
+    }
 
     // 1. Authoritative 50 Hz Physical Obstruction Evaluation for ALL nodes
     for (let i = 0; i < numNodes; i++) {
@@ -957,10 +1018,43 @@ export class SimulationWorkerManager {
         true,
         acnAttitude
       );
+
+      const doppler = LinkBudgetEngine.computeDopplerKinematics(
+        acnPos,
+        acnVel,
+        node.position,
+        this.rfConfig.carrierFrequencyHz,
+        acnAccel
+      );
+
+      const activeSectorId = sectorEval.activeSectorId;
+      const nodeJammerInterferenceDbm = jammerInterferenceBySector !== undefined
+        ? jammerInterferenceBySector[activeSectorId]
+        : undefined;
+
+      const ls = this.linkEngine.evaluateLink(
+        node.nodeType,
+        slantM,
+        obstruction.diffractionLossDb,
+        this.rfConfig,
+        this.envConfig,
+        obstruction.obstacleBlocked,
+        node.txPowerDbm,
+        sectorEval,
+        node.position[2],
+        acnPos[2],
+        obstruction.crestRadiusM,
+        obstruction.curvatureLossDb,
+        nodeJammerInterferenceDbm,
+        doppler.radialVelocityMs,
+        doppler.dopplerShiftHz,
+        doppler.dopplerRateHzS
+      );
+
       nextObstructions.set(nid, obstruction);
-      nextLinks.set(nid, this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm, sectorEval, node.position[2], acnPos[2], obstruction.crestRadiusM, obstruction.curvatureLossDb));
-      // Traffic-generation shadow is current geometry, independent of a predicted re-emergence label.
-      nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked);
+      nextLinks.set(nid, ls);
+      // Traffic-generation shadow is current geometry or link outage
+      nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked || ls.isOutage);
     }
 
     // 2. Predictive Lookahead Evaluation (Decoupled with Interleaved Round-Robin & Bounded Emergency Budget)
@@ -1155,12 +1249,56 @@ export class SimulationWorkerManager {
     let linkStatus = this.linkStatuses.get(node.nodeId);
     if (!linkStatus) {
       const slantM = Math.hypot(acnPos[0] - node.position[0], acnPos[1] - node.position[1], acnPos[2] - node.position[2]);
-      linkStatus = this.linkEngine.evaluateLink(node.nodeType, slantM, obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm, undefined, node.position[2], acnPos[2], obstruction.crestRadiusM, obstruction.curvatureLossDb);
+      const rawVel = this.trajectoryEngine.getAcnVelocity(this.simTimeS);
+      const acnVel: [number, number, number] = [rawVel[0], rawVel[1], this.liveVzMps];
+      const sectorEval = this.antennaEngine.evaluateNodeSector(
+        node.nodeId,
+        acnPos,
+        acnVel,
+        node.position,
+        this.rfConfig.acnAntennaGainDbi,
+        false
+      );
+      const doppler = LinkBudgetEngine.computeDopplerKinematics(
+        acnPos,
+        acnVel,
+        node.position,
+        this.rfConfig.carrierFrequencyHz
+      );
+      const nodeJammerInterferenceDbm = this.envConfig.jammerEnabled
+        ? this.jammerSectorInterferenceDbm[sectorEval.activeSectorId]
+        : undefined;
+
+      linkStatus = this.linkEngine.evaluateLink(
+        node.nodeType,
+        slantM,
+        obstruction.diffractionLossDb,
+        this.rfConfig,
+        this.envConfig,
+        obstruction.obstacleBlocked,
+        node.txPowerDbm,
+        sectorEval,
+        node.position[2],
+        acnPos[2],
+        obstruction.crestRadiusM,
+        obstruction.curvatureLossDb,
+        nodeJammerInterferenceDbm,
+        doppler.radialVelocityMs,
+        doppler.dopplerShiftHz,
+        doppler.dopplerRateHzS
+      );
       this.linkStatuses.set(node.nodeId, linkStatus);
     }
     let predState = this.predStates.get(node.nodeId);
     if (!predState) {
-      predState = this.lookaheadEngine.evaluatePredictiveState(node.position, this.simTimeS, obstruction);
+      predState = this.lookaheadEngine.evaluatePredictiveState(
+        node.position,
+        this.simTimeS,
+        obstruction,
+        node.nodeId,
+        this.antennaEngine,
+        linkStatus
+      );
       this.predStates.set(node.nodeId, predState);
     }
     return { obstruction, linkStatus, predState };
@@ -1230,6 +1368,9 @@ export class SimulationWorkerManager {
     this.speed = PLAYBACK_SPEED.defaultValue;
     this.achievedSpeed = 1.0;
     this.simDebtMs = 0.0;
+    this.prevAcnVel = [0, 0, 0];
+    this.jammerShieldLossDb = 0.0;
+    this.jammerSectorInterferenceDbm = [-150.0, -150.0, -150.0, -150.0];
     this.lastSpeedMeasureTime = 0.0;
     this.lastSpeedMeasureSimTime = 0.0;
     if (this.timerId !== null) {
@@ -1555,10 +1696,17 @@ export class SimulationWorkerManager {
         const trafficScale = msg.trafficLoadMultiplier !== undefined && Number.isFinite(msg.trafficLoadMultiplier)
           ? Math.max(0.25, Math.min(8.0, msg.trafficLoadMultiplier))
           : (this.envConfig.trafficLoadMultiplier ?? 1.0);
+        const jammerEnabled = msg.jammerEnabled !== undefined ? Boolean(msg.jammerEnabled) : this.envConfig.jammerEnabled;
+        const jammerEirpDbm = msg.jammerEirpDbm !== undefined && Number.isFinite(msg.jammerEirpDbm)
+          ? msg.jammerEirpDbm
+          : this.envConfig.jammerEirpDbm;
+
         this.envConfig = new EnvironmentConfig({
           ...this.envConfig,
           demLookaheadErrorStdM: demError,
           trafficLoadMultiplier: trafficScale,
+          jammerEnabled,
+          jammerEirpDbm,
         });
         this.lookaheadEngine.setEnvConfig(this.envConfig);
         for (let i = 0; i < this.nodesStatic.length; i++) {
@@ -1570,6 +1718,7 @@ export class SimulationWorkerManager {
         for (let i = 0; i < this.nodesReactive.length; i++) {
           this.nodesReactive[i].trafficLoadMultiplier = trafficScale;
         }
+        this.lookaheadEngine.invalidateAll();
         return result(true);
       }
 

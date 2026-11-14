@@ -23,6 +23,7 @@
     "verify:itu-physics": "vite-node src/tests/verifyItuFirstPrinciples.ts",
     "verify:ablation": "vite-node src/tests/verifyAblationAndDiffraction.ts",
     "verify:scientific-instruments": "vite-node src/tests/verifyScientificInstruments.ts",
+    "verify:doppler-ew": "vite-node src/tests/verifyDopplerAndEwJammer.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",

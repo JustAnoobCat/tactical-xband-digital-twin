@@ -87,6 +87,11 @@ export function buildSelectedLinkBudget(
     isCoverageComplete: obstruction?.isCoverageComplete ?? true,
     coverage_note: obstruction?.coverageNote,
     coverageNote: obstruction?.coverageNote,
+    radial_vel_ms: linkStatus?.radialVelocityMs ?? 0.0,
+    doppler_shift_hz: linkStatus?.dopplerShiftHz ?? 0.0,
+    doppler_rate_hz_s: linkStatus?.dopplerRateHzS ?? 0.0,
+    jammer_interference_dbm: linkStatus?.jammerInterferenceDbm,
+    sinr_db: linkStatus?.sinrDb ?? linkStatus?.snrDb ?? -99.0,
   };
 }
 

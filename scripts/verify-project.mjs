@@ -7,7 +7,7 @@ const requiredFiles = [
   '../src/core/config.ts', '../src/core/terrain.ts', '../src/core/linkBudget.ts',
   '../src/core/trajectory.ts', '../src/core/queues.ts', '../src/core/scheduler.ts',
   '../src/tests/verifyPhysics.ts', '../src/tests/verifyScheduler.ts', '../src/tests/verifyWorkerState.ts',
-  '../benchmark_results/BENCHMARK_DOSSIER.md', '../benchmark_results/summary_metrics.csv', '../METRICS_PATCH_NOTES.md',
+  '../benchmark_results/BENCHMARK_DOSSIER.md', '../benchmark_results/summary_metrics.csv', '../docs/specs/METRICS_PATCH_NOTES.md',
 ];
 
 const checks = [];

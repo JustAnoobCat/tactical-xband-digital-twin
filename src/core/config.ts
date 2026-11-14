@@ -7,6 +7,8 @@
  * and Aerial Communication Node (ACN) orbital kinematics parameters.
  */
 
+import type { Position3D } from '../shared/types';
+
 export const SPEED_OF_LIGHT = 299792458.0; // Exact SI constant (m/s)
 export const BOLTZMANN_CONSTANT = 1.380649e-23; // Exact SI constant (J/K)
 
@@ -143,6 +145,9 @@ export interface IEnvironmentConfig {
   readonly atmosphericTemperatureK: number;
   readonly demLookaheadErrorStdM?: number;
   readonly trafficLoadMultiplier?: number;
+  readonly jammerEnabled?: boolean;
+  readonly jammerEirpDbm?: number;
+  readonly jammerPosEnu?: Position3D;
 }
 
 export class EnvironmentConfig implements IEnvironmentConfig {
@@ -153,6 +158,9 @@ export class EnvironmentConfig implements IEnvironmentConfig {
   public readonly atmosphericTemperatureK: number;
   public readonly demLookaheadErrorStdM: number;
   public readonly trafficLoadMultiplier: number;
+  public readonly jammerEnabled: boolean = false;
+  public readonly jammerEirpDbm: number = 65.0;
+  public readonly jammerPosEnu: Position3D = [3200.0, -2800.0, 0.0];
 
   constructor(init?: Partial<IEnvironmentConfig>) {
     this.effectiveEarthRadiusFactor = init?.effectiveEarthRadiusFactor ?? 4.0 / 3.0; // ITU-R P.834 k-factor
@@ -162,6 +170,9 @@ export class EnvironmentConfig implements IEnvironmentConfig {
     this.atmosphericTemperatureK = init?.atmosphericTemperatureK ?? 290.0; // Ambient noise temperature (K)
     this.demLookaheadErrorStdM = init?.demLookaheadErrorStdM ?? 0.0; // SRTM DEM vertical uncertainty for lookahead probes
     this.trafficLoadMultiplier = init?.trafficLoadMultiplier ?? 1.0; // Offered traffic load multiplier [0.25, 8.0]
+    this.jammerEnabled = init?.jammerEnabled ?? false;
+    this.jammerEirpDbm = init?.jammerEirpDbm ?? 65.0;
+    this.jammerPosEnu = init?.jammerPosEnu ?? ([3200.0, -2800.0, 0.0] as const);
   }
 
   /**
