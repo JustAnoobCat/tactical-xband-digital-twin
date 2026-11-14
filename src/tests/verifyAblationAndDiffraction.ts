@@ -271,6 +271,45 @@ export function runAblationAndDiffractionVerification(): boolean {
   });
 
   // ========================================================================
+  // ABL-T5: Multi-Seed Congested Baseline (Seeds 1-5 @ 3.5x Load)
+  // ========================================================================
+  let cumTacDelayDrops = 0;
+  let cumReactiveDelayDrops = 0;
+  let cumStaticDelayDrops = 0;
+
+  for (let s = 1; s <= 5; s++) {
+    const simCongestedSeed = new SimulationWorkerManager(s * 100_000);
+    simCongestedSeed.terrainEngine.setTerrainMode('synthetic');
+    simCongestedSeed.isPaused = true;
+    simCongestedSeed.handleMessage({
+      type: 'SET_SCIENTIFIC_PARAMS',
+      demLookaheadErrorStdM: 5.0,
+      trafficLoadMultiplier: 3.5,
+    });
+
+    for (let f = 0; f < 250; f++) {
+      simCongestedSeed.tickSimulation();
+    }
+
+    const sm = simCongestedSeed.metrics;
+    cumTacDelayDrops += sm.tacDelayDropsThisRun;
+    cumReactiveDelayDrops += sm.reactiveDelayDropsThisRun ?? 0;
+    cumStaticDelayDrops += sm.staticDelayDropsThisRun;
+  }
+
+  const t5Passed =
+    cumTacDelayDrops <= cumReactiveDelayDrops &&
+    cumTacDelayDrops < cumStaticDelayDrops;
+
+  results.push({
+    testId: 'ABL-T5',
+    testName: 'Multi-Seed Congested Baseline (Seeds 1-5 @ 3.5x Load)',
+    measured: `cumTacDelayDrops=${cumTacDelayDrops}, cumReactiveDelayDrops=${cumReactiveDelayDrops}, cumStaticDelayDrops=${cumStaticDelayDrops}`,
+    expected: 'cumTacDelayDrops <= cumReactiveDelayDrops AND cumTacDelayDrops < cumStaticDelayDrops',
+    passed: t5Passed,
+  });
+
+  // ========================================================================
   // Summary & Diagnostics Output
   // ========================================================================
   console.log('\n================================================================================');

@@ -712,6 +712,170 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
     this.rAvg.delete(nodeId);
   }
 
+  private rankCandidateNodes(
+    candidateNodes: readonly GroundNodeTrafficSubsystem[],
+    getLink: (id: number) => LinkStatus | undefined,
+    getPred: (id: number) => PredictiveState | undefined,
+    currentSimTimeS: number
+  ): Array<{ psi: number; node: GroundNodeTrafficSubsystem; phiEvac: number }> {
+    const candMeta = candidateNodes.map(node => {
+      const nid = node.nodeId;
+      const ls = getLink(nid);
+      const ps = getPred(nid);
+      const q = node.queue;
+      const qTotalBits = q.getTotalBacklogBits();
+      const rInst = ls?.bitrateBps ?? 1e6;
+      const tauDrain = qTotalBits / Math.max(rInst, 1.0);
+
+      let urgency = 0.0;
+      let maxHolRatio = 0.0;
+      let minTtl = Number.POSITIVE_INFINITY;
+      let worstHol = 0.0;
+      let worstPdb = 0.1;
+
+      for (const [qidStr, weight] of Object.entries(this.weights)) {
+        const qid = Number(qidStr);
+        if (q.getClassBacklogBytes(qid) > 0) {
+          const hol = q.getHolDelayS(qid, currentSimTimeS);
+          const pdb = QOS_PROFILES[qid]?.pdbS ?? 0.1;
+          const ratio = hol / pdb;
+          if (ratio > maxHolRatio) {
+            maxHolRatio = ratio;
+            worstHol = hol;
+            worstPdb = pdb;
+          }
+          const ttl = Math.max(0.001, pdb - hol);
+          if (ttl < minTtl) {
+            minTtl = ttl;
+          }
+          urgency += weight * Math.exp(Math.min(8.0, ratio));
+        }
+      }
+      if (urgency === 0.0) urgency = 0.1;
+      const tauTtl = Number.isFinite(minTtl) ? minTtl : 999.0;
+      const isCriticalDanger = qTotalBits > 0 && (tauTtl <= 0.045 || maxHolRatio >= 0.70);
+
+      const tOcc = (Number.isFinite(ps?.timeToOcclusionS) && (ps?.timeToOcclusionS ?? 0) > 0)
+        ? ps!.timeToOcclusionS
+        : Number.POSITIVE_INFINITY;
+      const zeta = Number.isFinite(tOcc) ? (tauDrain / Math.max(tOcc, 0.020)) : 0.0;
+      let rhoDeadline = Number.isFinite(tOcc) ? (tauTtl / Math.max(Math.min(tauTtl, tOcc), 0.020)) : 1.0;
+      if (rhoDeadline < 1.0) rhoDeadline = 1.0;
+
+      return {
+        node,
+        nid,
+        ls,
+        ps,
+        qTotalBits,
+        rInst,
+        tauDrain,
+        urgency,
+        maxHolRatio,
+        worstHol,
+        worstPdb,
+        tauTtl,
+        isCriticalDanger,
+        tOcc,
+        zeta,
+        rhoDeadline,
+      };
+    });
+
+    const ranked: Array<{ psi: number; node: GroundNodeTrafficSubsystem; phiEvac: number }> = [];
+
+    for (let i = 0; i < candMeta.length; i++) {
+      const m = candMeta[i];
+      let phiEvac = 1.0;
+      let effHolRatio = m.maxHolRatio;
+      let effUrgency = m.urgency;
+
+      if (this.enablePredictiveLookahead) {
+        // Imminent-Expiry Protection Gate (Critical Control Invariant):
+        // Peer node only suppresses pre-occlusion flush when it has consumed >= 82% of PDB,
+        // has <= 30ms remaining TTL, AND its expiration is strictly tighter than this node's outage.
+        const otherInCriticalDanger = candMeta.some(other =>
+          other.nid !== m.nid &&
+          other.maxHolRatio >= 0.82 &&
+          other.tauTtl <= 0.030 &&
+          other.tauTtl < m.tOcc
+        );
+
+        // Effective Physical Deadline Compression (tau_eff-TTL = min(tau_TTL, tau_occ))
+        if (Number.isFinite(m.tOcc) && m.tOcc > 0 && m.tOcc < m.tauTtl && !otherInCriticalDanger) {
+          const compressionRatio = 1.0 - (m.tOcc / Math.max(m.tauTtl, 0.060)) * 0.5;
+          const clampedCompression = Math.max(0.0, Math.min(0.95, compressionRatio));
+          effHolRatio = Math.max(m.maxHolRatio, clampedCompression);
+          if (effHolRatio > m.maxHolRatio && m.qTotalBits > 0) {
+            effUrgency = Math.max(m.urgency, m.urgency * Math.exp(Math.min(6.0, 2.5 * (effHolRatio - m.maxHolRatio))));
+          }
+        }
+
+        const isApproachingOutage =
+          (m.ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH || (Number.isFinite(m.tOcc) && m.tOcc > 0 && m.tOcc <= 3.0)) &&
+          m.qTotalBits > 0;
+
+        if (isApproachingOutage) {
+          const rawWarning = 3.0;
+          const evacRatio = Math.max(0.0, (rawWarning - m.tOcc) / rawWarning);
+          const phiRaw = 1.0 + 5.0 * evacRatio * Math.min(1.0, m.qTotalBits / 20000.0);
+
+          if (otherInCriticalDanger) {
+            phiEvac = 1.0;
+          } else {
+            const pressureTerm = Math.max(0.15, Math.min(1.5, m.zeta + 0.25 / Math.max(m.tOcc, 0.05)));
+            phiEvac = 1.0 + (phiRaw - 1.0) * pressureTerm;
+            if (m.tOcc <= 1.5 && m.tOcc < m.tauTtl) {
+              const deadlineCompressionBoost = 1.0 + 0.5 * ((1.5 - m.tOcc) / 1.5);
+              phiEvac *= deadlineCompressionBoost;
+            }
+          }
+        } else if (m.ps?.currentState === NodeTerrainState.RE_EMERGENCE_BURST) {
+          const otherTighterDanger = candMeta.some(other =>
+            other.nid !== m.nid &&
+            other.maxHolRatio >= 0.82 &&
+            other.tauTtl <= 0.030 &&
+            other.tauTtl < m.tauTtl
+          );
+          if (m.worstHol > 0 && !otherTighterDanger) {
+            phiEvac = 4.0;
+          } else {
+            phiEvac = 1.0;
+          }
+        }
+
+        // Crossover boundary pre-flush boost (1.25x boost if isCrossoverZone === true)
+        if (m.ls?.isCrossoverZone) {
+          const anyOtherInCriticalDanger = candMeta.some(other =>
+            other.nid !== m.nid &&
+            other.maxHolRatio >= 0.82 &&
+            other.tauTtl <= 0.030
+          );
+          if (m.zeta >= 0.10 && !anyOtherInCriticalDanger) {
+            phiEvac *= 1.25;
+          }
+        }
+      }
+
+      // Exponential HoL delay urgency boost when approaching PDB (>= 50% PDB elapsed)
+      const holDelayBoost = effHolRatio >= 0.5 ? Math.exp(Math.min(6.0, 3.0 * effHolRatio)) : 1.0;
+
+      // Proportional fairness
+      const rPrev = this.rAvg.get(m.nid) ?? 100000.0;
+      const pfTerm = m.rInst / Math.max(1000.0, rPrev);
+
+      // Backlog utility
+      const backlogUtility = Math.max(1.0, Math.log2(1.0 + m.qTotalBits / 8000.0));
+
+      const priorityMultiplier = Math.max(0.1, Math.min(5.0, m.node.tacticalPriority ?? 1.0));
+      const psi = phiEvac * effUrgency * holDelayBoost * pfTerm * backlogUtility * priorityMultiplier;
+      ranked.push({ psi, node: m.node, phiEvac });
+    }
+
+    ranked.sort((a, b) => b.psi - a.psi);
+    return ranked;
+  }
+
   public scheduleFrame(
     frameIndex: number,
     currentSimTimeS: number,
@@ -828,66 +992,8 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
           candidateNodes.push(node);
         }
 
-        // Step 2: Compute Lyapunov Composite Metric Psi_i
-        const ranked: Array<{ psi: number; node: GroundNodeTrafficSubsystem }> = [];
-        for (let i = 0; i < candidateNodes.length; i++) {
-          const node = candidateNodes[i];
-          const nid = node.nodeId;
-          const ps = getPred(nid);
-          const ls = getLink(nid);
-          const q = node.queue;
-          const qTotalBits = q.getTotalBacklogBits();
-
-          // Urgency metric & HoL delay ratio
-          let urgency = 0.0;
-          let maxHolRatio = 0.0;
-          for (const [qidStr, weight] of Object.entries(this.weights)) {
-            const qid = Number(qidStr);
-            if (q.getClassBacklogBytes(qid) > 0) {
-              const hol = q.getHolDelayS(qid, currentSimTimeS);
-              const pdb = QOS_PROFILES[qid]?.pdbS ?? 0.1;
-              const ratio = hol / pdb;
-              if (ratio > maxHolRatio) maxHolRatio = ratio;
-              urgency += weight * Math.exp(Math.min(8.0, ratio));
-            }
-          }
-          if (urgency === 0.0) urgency = 0.1;
-
-          // Exponential HoL delay urgency boost when approaching PDB (>= 50% PDB elapsed)
-          const holDelayBoost = maxHolRatio >= 0.5 ? Math.exp(Math.min(6.0, 3.0 * maxHolRatio)) : 1.0;
-
-          // Proportional fairness
-          const rInst = ls?.bitrateBps ?? 1e6;
-          const rPrev = this.rAvg.get(nid) ?? 100000.0;
-          const pfTerm = rInst / Math.max(1000.0, rPrev);
-
-          // Backlog utility
-          const backlogUtility = Math.max(1.0, Math.log2(1.0 + qTotalBits / 8000.0));
-
-          // Predictive evacuation boost (strictly gated by enablePredictiveLookahead)
-          let phiEvac = 1.0;
-          if (this.enablePredictiveLookahead) {
-            if (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
-              const warning = 3.0;
-              const tOcc = ps.timeToOcclusionS;
-              const evacRatio = Math.max(0.0, (warning - tOcc) / warning);
-              phiEvac = 1.0 + 5.0 * evacRatio * Math.min(1.0, qTotalBits / 20000.0);
-            } else if (ps?.currentState === NodeTerrainState.RE_EMERGENCE_BURST) {
-              phiEvac = 4.0;
-            }
-
-            // Crossover boundary pre-flush boost (1.25x boost if isCrossoverZone === true)
-            if (ls?.isCrossoverZone) {
-              phiEvac *= 1.25;
-            }
-          }
-
-          const priorityMultiplier = Math.max(0.1, Math.min(5.0, node.tacticalPriority ?? 1.0));
-          const psi = phiEvac * urgency * holDelayBoost * pfTerm * backlogUtility * priorityMultiplier;
-          ranked.push({ psi, node });
-        }
-
-        ranked.sort((a, b) => b.psi - a.psi);
+        // Step 2: Compute Lyapunov Composite Metric Psi_i with Imminent-Expiry Protection
+        const ranked = this.rankCandidateNodes(candidateNodes, getLink, getPred, currentSimTimeS);
 
         // Step 3: Work-Conserving Multi-Pass Slot Sizing for Sector k
         const candidatePlan: Array<{
@@ -907,7 +1013,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         for (let i = 0; i < ranked.length; i++) {
           if (secRemainingUlTimeS < this.config.minSlotDurationS + this.config.guardIntervalS) break;
 
-          const node = ranked[i].node;
+          const { node, phiEvac } = ranked[i];
           const nid = node.nodeId;
           const ps = getPred(nid);
           const ls = getLink(nid);
@@ -920,7 +1026,8 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
           let tauSlot: number;
           let isFlush = false;
 
-          if (this.enablePredictiveLookahead && ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
+          const isPreFlush = (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH || (Number.isFinite(ps?.timeToOcclusionS) && (ps?.timeToOcclusionS ?? 0) > 0 && (ps?.timeToOcclusionS ?? 0) <= 3.0));
+          if (this.enablePredictiveLookahead && isPreFlush && phiEvac > 1.0) {
             tauSlot = Math.min(maxAvailSlot, Math.max(tauReq, this.config.minSlotDurationS));
             isFlush = true;
           } else {
@@ -1099,61 +1206,8 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       candidateNodes.push(node);
     }
 
-    // Step 2: Compute Lyapunov Composite Metric Psi_i
-    const ranked: Array<{ psi: number; node: GroundNodeTrafficSubsystem }> = [];
-    for (let i = 0; i < candidateNodes.length; i++) {
-      const node = candidateNodes[i];
-      const nid = node.nodeId;
-      const ps = getPred(nid);
-      const ls = getLink(nid);
-      const q = node.queue;
-      const qTotalBits = q.getTotalBacklogBits();
-
-      // Urgency metric & HoL delay ratio
-      let urgency = 0.0;
-      let maxHolRatio = 0.0;
-      for (const [qidStr, weight] of Object.entries(this.weights)) {
-        const qid = Number(qidStr);
-        if (q.getClassBacklogBytes(qid) > 0) {
-          const hol = q.getHolDelayS(qid, currentSimTimeS);
-          const pdb = QOS_PROFILES[qid]?.pdbS ?? 0.1;
-          const ratio = hol / pdb;
-          if (ratio > maxHolRatio) maxHolRatio = ratio;
-          urgency += weight * Math.exp(Math.min(8.0, ratio));
-        }
-      }
-      if (urgency === 0.0) urgency = 0.1;
-
-      // Exponential HoL delay urgency boost when approaching PDB (>= 50% PDB elapsed)
-      const holDelayBoost = maxHolRatio >= 0.5 ? Math.exp(Math.min(6.0, 3.0 * maxHolRatio)) : 1.0;
-
-      // Proportional fairness
-      const rInst = ls?.bitrateBps ?? 1e6;
-      const rPrev = this.rAvg.get(nid) ?? 100000.0;
-      const pfTerm = rInst / Math.max(1000.0, rPrev);
-
-      // Backlog utility
-      const backlogUtility = Math.max(1.0, Math.log2(1.0 + qTotalBits / 8000.0));
-
-      // Predictive evacuation boost (strictly gated by enablePredictiveLookahead)
-      let phiEvac = 1.0;
-      if (this.enablePredictiveLookahead) {
-        if (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
-          const warning = 3.0;
-          const tOcc = ps.timeToOcclusionS;
-          const evacRatio = Math.max(0.0, (warning - tOcc) / warning);
-          phiEvac = 1.0 + 5.0 * evacRatio * Math.min(1.0, qTotalBits / 20000.0);
-        } else if (ps?.currentState === NodeTerrainState.RE_EMERGENCE_BURST) {
-          phiEvac = 4.0;
-        }
-      }
-
-      const priorityMultiplier = Math.max(0.1, Math.min(5.0, node.tacticalPriority ?? 1.0));
-      const psi = phiEvac * urgency * holDelayBoost * pfTerm * backlogUtility * priorityMultiplier;
-      ranked.push({ psi, node });
-    }
-
-    ranked.sort((a, b) => b.psi - a.psi);
+    // Step 2: Compute Lyapunov Composite Metric Psi_i with Imminent-Expiry Protection
+    const ranked = this.rankCandidateNodes(candidateNodes, getLink, getPred, currentSimTimeS);
 
     // Step 3: Work-Conserving Multi-Pass Slot Sizing
     const candidatePlan: Array<{
@@ -1173,7 +1227,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
     for (let i = 0; i < ranked.length; i++) {
       if (remainingUlTimeS < this.config.minSlotDurationS + this.config.guardIntervalS) break;
 
-      const node = ranked[i].node;
+      const { node, phiEvac } = ranked[i];
       const nid = node.nodeId;
       const ps = getPred(nid);
       const ls = getLink(nid);
@@ -1186,7 +1240,8 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       let tauSlot: number;
       let isFlush = false;
 
-      if (this.enablePredictiveLookahead && ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH) {
+      const isPreFlush = (ps?.currentState === NodeTerrainState.PRE_OCCLUSION_FLUSH || (Number.isFinite(ps?.timeToOcclusionS) && (ps?.timeToOcclusionS ?? 0) > 0 && (ps?.timeToOcclusionS ?? 0) <= 3.0));
+      if (this.enablePredictiveLookahead && isPreFlush && phiEvac > 1.0) {
         tauSlot = Math.min(maxAvailSlot, Math.max(tauReq, this.config.minSlotDurationS));
         isFlush = true;
       } else {

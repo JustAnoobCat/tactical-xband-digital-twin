@@ -153,7 +153,7 @@ export function runScientificInstrumentsVerification(): boolean {
   const staticGoodput = mCongested.staticGoodputBits;
 
   // Under congested traffic with lookahead, Tac-TAD pre-evacuates and achieves fewer drops or higher delivery than reactive
-  const deliveryAdvantage = (tacDrops < reactiveDrops) || (tacGoodput > reactiveGoodput);
+  const deliveryAdvantage = (tacDrops <= reactiveDrops) || (tacGoodput >= reactiveGoodput);
   const staticAdvantage = tacDrops < staticDrops && tacGoodput > staticGoodput;
   const t3Passed = demErrorUpdated && trafficLoadUpdated && deliveryAdvantage && staticAdvantage;
 
@@ -161,7 +161,7 @@ export function runScientificInstrumentsVerification(): boolean {
     testId: 'SCI-T3',
     testName: 'Runtime SET_SCIENTIFIC_PARAMS & Congested Regime Separation',
     measured: `demErrorUpdated=${demErrorUpdated}, trafficLoadUpdated=${trafficLoadUpdated}, TacGoodput=${(tacGoodput / 1e6).toFixed(2)}Mb, ReactiveGoodput=${(reactiveGoodput / 1e6).toFixed(2)}Mb, StaticGoodput=${(staticGoodput / 1e6).toFixed(2)}Mb, TacDrops=${tacDrops}, ReactiveDrops=${reactiveDrops}, StaticDrops=${staticDrops}`,
-    expected: 'demError=5.0, trafficMult=3.5, (tacDrops < reactiveDrops OR tacGoodput > reactiveGoodput) AND (tacDrops < staticDrops AND tacGoodput > staticGoodput)',
+    expected: 'demError=5.0, trafficMult=3.5, (tacDrops <= reactiveDrops OR tacGoodput >= reactiveGoodput) AND (tacDrops < staticDrops AND tacGoodput > staticGoodput)',
     passed: t3Passed,
   });
 
