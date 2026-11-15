@@ -6,48 +6,65 @@
 
 :root {
   /* ========================================================================
-   * LAYER 1: PRIMITIVES (Alpine Basalt Slate & Calibrated Signal Pigments)
+   * LAYER 1: PRIMITIVES (Obsidian Aerospace: Anduril Lattice × Ansys STK)
    * ======================================================================== */
-  --hi-void:               #111316;
-  --hi-bg:                 #171a1f;
-  --hi-surface:            #1e2229;
-  --hi-raised:             #252a33;
-  --hi-elevated:           #2e3440;
+  --hi-void:               #06080d;
+  --hi-bg:                 #0b0f17;
+  --hi-surface:            #101622;
+  --hi-raised:             #161f30;
+  --hi-elevated:           #1b263b;
 
-  --hi-line-faint:         rgba(240, 236, 228, 0.07);
-  --hi-line-subtle:        #2e3440;
-  --hi-line-strong:        #3d4554;
-  --hi-line-focus:         rgba(224, 159, 62, 0.62);
+  --hi-line-faint:         rgba(148, 163, 184, 0.08);
+  --hi-line-subtle:        rgba(148, 163, 184, 0.14);
+  --hi-line-strong:        rgba(148, 163, 184, 0.28);
+  --hi-line-focus:         rgba(0, 229, 255, 0.65);
 
-  --hi-text-bright:        #faf8f4;
-  --hi-text-primary:       #f2efe9;
-  --hi-text-muted:         #b3afa7;
-  --hi-text-faint:         #aba79f;
+  --hi-text-bright:        #ffffff;
+  --hi-text-primary:       #f1f5f9;
+  --hi-text-muted:         #94a3b8;
+  --hi-text-faint:         #64748b;
 
-  /* Semantic Signal Tokens */
-  --hi-amber:              #e09f3e;
-  --hi-amber-bright:       #f0b85c;
-  --hi-amber-soft:         rgba(224, 159, 62, 0.16);
+  /* High-Contrast Aerospace Accents */
+  --hi-cyan:               #00e5ff;
+  --hi-cyan-bright:        #38bdf8;
+  --hi-cyan-soft:          rgba(0, 229, 255, 0.16);
 
-  --hi-sage:               #52b788;
-  --hi-sage-bright:        #74c69d;
-  --hi-sage-soft:          rgba(82, 183, 136, 0.16);
+  --hi-emerald:            #00e676;
+  --hi-emerald-bright:     #4ade80;
+  --hi-emerald-soft:       rgba(0, 230, 118, 0.16);
+
+  --hi-amber:              #ffab00;
+  --hi-amber-bright:       #fbbf24;
+  --hi-amber-soft:         rgba(255, 171, 0, 0.16);
+
+  --hi-crimson:            #ff2a54;
+  --hi-crimson-bright:     #f43f5e;
+  --hi-crimson-soft:       rgba(255, 42, 84, 0.16);
+
+  --hi-violet:             #b388ff;
+  --hi-violet-bright:      #c084fc;
+  --hi-violet-soft:        rgba(179, 136, 255, 0.16);
+
+  /* Preserved Highland aliases mapped to Obsidian accents */
+  --hi-sage:               var(--hi-emerald);
+  --hi-sage-bright:        var(--hi-emerald-bright);
+  --hi-sage-soft:          var(--hi-emerald-soft);
 
   --hi-ochre:              #e9c46a;
   --hi-ochre-soft:         rgba(233, 196, 106, 0.16);
 
-  --hi-vermilion:          #e05347;
-  --hi-vermilion-bright:   #f07167;
-  --hi-vermilion-soft:     rgba(224, 83, 71, 0.16);
+  --hi-vermilion:          var(--hi-crimson);
+  --hi-vermilion-bright:   var(--hi-crimson-bright);
+  --hi-vermilion-soft:     var(--hi-crimson-soft);
 
   --hi-copper:             #d97736;
   --hi-copper-soft:        rgba(217, 119, 54, 0.18);
 
-  --hi-indigo:             #8a95e6;
-  --hi-indigo-soft:        rgba(138, 149, 230, 0.16);
+  --hi-indigo:             var(--hi-violet);
+  --hi-indigo-soft:        var(--hi-violet-soft);
 
-  --hi-ash:                #747c88;
-  --hi-ash-soft:           rgba(116, 124, 136, 0.18);
+  --hi-ash:                #64748b;
+  --hi-ash-soft:           rgba(100, 116, 139, 0.18);
 
   --hi-sans:               "IBM Plex Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --hi-mono:               "IBM Plex Mono", ui-monospace, Consolas, Menlo, monospace;
@@ -82,11 +99,11 @@
   --c2-color-elevated:     var(--hi-elevated);
   --c2-color-line-subtle:  var(--hi-line-subtle);
   --c2-color-line-medium:  var(--hi-line-strong);
-  --c2-color-cyan:         var(--hi-amber);
-  --c2-color-emerald:      var(--hi-sage);
-  --c2-color-amber:        var(--hi-ochre);
-  --c2-color-crimson:      var(--hi-vermilion);
-  --c2-color-violet:       var(--hi-indigo);
+  --c2-color-cyan:         var(--hi-cyan);
+  --c2-color-emerald:      var(--hi-emerald);
+  --c2-color-amber:        var(--hi-amber);
+  --c2-color-crimson:      var(--hi-crimson);
+  --c2-color-violet:       var(--hi-violet);
 
   --c2-bg:                 var(--hi-bg);
   --c2-surface:            var(--hi-surface);
@@ -227,11 +244,34 @@ button:disabled {
 
 button.active,
 .seg button.active,
-.nav-tab.active,
 .btn-live.active {
   background-color: var(--hi-amber-soft);
   border-color: var(--hi-amber);
   color: var(--hi-amber-bright);
+}
+
+.nav-tab.active {
+  background-color: rgba(0, 229, 255, 0.12) !important;
+  border-color: rgba(0, 229, 255, 0.45) !important;
+  color: var(--hi-cyan) !important;
+  border-bottom: 2px solid #00e5ff !important;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.22);
+}
+
+.metric-val,
+.kpi-val,
+.stat-val,
+.clock,
+#clock-display,
+#frame-display,
+.badge,
+.kpi-badge,
+table td,
+table th,
+.sim-speed-readout,
+.sim-speed-achieved,
+.time-val {
+  font-variant-numeric: tabular-nums;
 }
 
 .primary,
@@ -944,6 +984,10 @@ body.is-historical-mode .map-chrome-mode {
   gap: 5px;
   padding: 6px 10px;
   min-height: 36px;
+  background-color: rgba(16, 22, 34, 0.92) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--hi-line-subtle);
 }
 
 .stage-toolbar-row {
@@ -964,6 +1008,28 @@ body.is-historical-mode .map-chrome-mode {
 .stage-toolbar button {
   min-height: 28px;
   padding: 3px 8px;
+  font-size: 10.5px;
+}
+
+.stage-toolbar .seg {
+  background: rgba(6, 8, 13, 0.75);
+  border: 1px solid var(--hi-line-subtle);
+  border-radius: 6px;
+  padding: 2px;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.stage-toolbar .seg button {
+  border-radius: 4px;
+  border: none;
+  transition: all 0.15s ease;
+}
+
+.stage-toolbar .seg button.active {
+  background: rgba(0, 229, 255, 0.16) !important;
+  color: var(--hi-cyan) !important;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
 }
 
 .stage-toolbar .tool-group {

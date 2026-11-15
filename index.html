@@ -2843,6 +2843,7 @@ import {
   renderCursorHudHtml,
 } from './src/ui/radarCursorReadout.ts';
 import { createThreeStageController } from './src/ui/three/index.ts';
+import { MapController } from './src/ui/mapController.ts';
 import {
   MapLayerRegistry,
   getMapZoomLodTier,
@@ -4312,6 +4313,8 @@ let activeTerrainBounds = null;
 let pendingTerrainCenteringBounds = null;
 let terrainMapMode = 'radar';
 let mapLibreInstance = null;
+const mapController = new MapController();
+window.mapController = mapController;
 let mapLibreInitialized = false;
 let mapLibreErrorShown = false;
 let mapLibreTravelledPath = [];
@@ -6288,7 +6291,10 @@ window.setStageViewMode = function(mode) {
       initThreeStage();
     }
     requestTerrainMeshData(false);
-    if (radarCvs) radarCvs.style.display = 'none';
+    if (radarCvs) {
+      radarCvs.style.display = 'none';
+      radarCvs.style.pointerEvents = 'auto';
+    }
     if (mapLibreStage) mapLibreStage.style.display = 'none';
     if (threeWrap) {
       threeWrap.style.display = 'block';
@@ -6319,16 +6325,24 @@ window.setStageViewMode = function(mode) {
     if (radarCvs) {
       if (terrainMapMode === 'maplibre') {
         initializeMapLibre();
-        radarCvs.style.display = 'none';
+        if (mapLibreInstance) mapController.setMapInstance(mapLibreInstance);
         if (mapLibreStage) mapLibreStage.style.display = 'block';
+        radarCvs.style.display = 'block';
+        radarCvs.style.pointerEvents = 'none';
+        radarCvs.style.background = 'transparent';
+        radarCvs.style.zIndex = '4';
         requestAnimationFrame(() => {
           mapLibreInstance?.resize();
           updateMapLibreOverlay();
           syncMapLibreCameraFromRadarState(0);
+          drawRadar();
         });
       } else {
         if (mapLibreInitialized) syncRadarStateFromMapLibreCamera();
         radarCvs.style.display = 'block';
+        radarCvs.style.pointerEvents = 'auto';
+        radarCvs.style.background = '';
+        radarCvs.style.zIndex = '';
         if (mapLibreStage) mapLibreStage.style.display = 'none';
         drawRadar();
       }
@@ -7410,6 +7424,7 @@ function initializeMapLibre() {
     attributionControl: { compact: true },
     cooperativeGestures: false,
   });
+  mapController.setMapInstance(mapLibreInstance);
   requestAnimationFrame(() => {
     const attribEl = document.querySelector('#maplibre-map .maplibregl-ctrl-attrib');
     if (attribEl) {
@@ -7946,6 +7961,7 @@ function setMapMode(mode) {
   syncFloatingOverlayLayout();
   if (terrainMapMode === 'maplibre') {
     initializeMapLibre();
+    if (mapLibreInstance) mapController.setMapInstance(mapLibreInstance);
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       const notice = $('map-renderer-notice');
       if (notice) {
@@ -7953,18 +7969,29 @@ function setMapMode(mode) {
         notice.hidden = false;
       }
     }
-    if (radar) radar.style.display = 'none';
     if (map) map.style.display = 'block';
+    if (radar) {
+      radar.style.display = 'block';
+      radar.style.pointerEvents = 'none';
+      radar.style.background = 'transparent';
+      radar.style.zIndex = '4';
+    }
     requestAnimationFrame(() => {
       mapLibreInstance?.resize();
       updateMapLibreOverlay();
       applyMapLibreLayerState();
       syncMapLibreCameraFromRadarState(0);
+      drawRadar();
     });
   } else {
     if (mapLibreInitialized) syncRadarStateFromMapLibreCamera();
     if (map) map.style.display = 'none';
-    if (radar) radar.style.display = 'block';
+    if (radar) {
+      radar.style.display = 'block';
+      radar.style.pointerEvents = 'auto';
+      radar.style.background = '';
+      radar.style.zIndex = '';
+    }
     drawRadar();
   }
 }
@@ -12023,7 +12050,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 let lastDomUpdateMs = 0;
 let lastRenderedNodesKey = '';
-const DOM_UPDATE_INTERVAL_MS = 80; // ~12.5 Hz cadence
+const DOM_UPDATE_INTERVAL_MS = 100; // 10 Hz cadence (100 ms interval)
 
 function updateDashboardDOM(frame, force = false) {
   if (!frame) return;
@@ -12474,15 +12501,263 @@ function screenToWorld(px, py, w, h) {
   return { x: (px - g.centerX) / g.scale + panOffsetX_m, y: (g.centerY - py) / g.scale + panOffsetY_m };
 }
 
+function renderMapLibreKineticOverlay(ctx, w, h, frame) {
+  ctx.clearRect(0, 0, w, h);
+  if (!frame || !mapController) return;
+
+  const acn = frame.acn_telemetry;
+  const acnPosX = acn?.pos_x ?? 0;
+  const acnPosY = acn?.pos_y ?? 0;
+  const acnPt = mapController.projectEnuToContainerPoint(acnPosX, acnPosY);
+  if (!acnPt) return;
+
+  const now = performance.now();
+  const headingDeg = Number.isFinite(frame.acn_heading_deg)
+    ? frame.acn_heading_deg
+    : (acn && Number.isFinite(acn.heading_rad) ? (acn.heading_rad * 180.0) / Math.PI : 0);
+
+  const advisor = frame.relay_advisor;
+  const isRelayActive = Boolean(frame.active_relay_enabled);
+  const relayPt = (advisor && Array.isArray(advisor.optimalPosEnu) && advisor.optimalPosEnu.length >= 2)
+    ? mapController.projectEnuToContainerPoint(advisor.optimalPosEnu[0], advisor.optimalPosEnu[1])
+    : null;
+
+  // 1. Rotating Radar Sweep Line around ACN (60 FPS)
+  ctx.save();
+  const sweepAngle = (now * 0.002) % (Math.PI * 2);
+  const sweepRadius = 150;
+  const sweepEnd = {
+    x: acnPt.x + Math.cos(sweepAngle) * sweepRadius,
+    y: acnPt.y + Math.sin(sweepAngle) * sweepRadius,
+  };
+  const sweepGrad = ctx.createRadialGradient(acnPt.x, acnPt.y, 0, acnPt.x, acnPt.y, sweepRadius);
+  sweepGrad.addColorStop(0, 'rgba(0, 229, 255, 0.35)');
+  sweepGrad.addColorStop(0.8, 'rgba(0, 229, 255, 0.10)');
+  sweepGrad.addColorStop(1, 'rgba(0, 229, 255, 0)');
+
+  ctx.beginPath();
+  ctx.moveTo(acnPt.x, acnPt.y);
+  ctx.arc(acnPt.x, acnPt.y, sweepRadius, sweepAngle - 0.35, sweepAngle);
+  ctx.closePath();
+  ctx.fillStyle = sweepGrad;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(acnPt.x, acnPt.y);
+  ctx.lineTo(sweepEnd.x, sweepEnd.y);
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // 2. Rotating 4-Sector Lobes (S0..S3) centered at ACN
+  ctx.save();
+  const rayLen = 90;
+  const crossoverAngles = [45, 135, 225, 315];
+  ctx.strokeStyle = 'rgba(255, 171, 0, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  for (const offset of crossoverAngles) {
+    const worldAngle = (headingDeg + offset) % 360;
+    const rad = ((worldAngle - 90) * Math.PI) / 180;
+    ctx.beginPath();
+    ctx.moveTo(acnPt.x, acnPt.y);
+    ctx.lineTo(acnPt.x + Math.cos(rad) * rayLen, acnPt.y + Math.sin(rad) * rayLen);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  const sectors = [
+    { id: 'S0', offset: 0, label: 'S0', color: '#00e5ff' },
+    { id: 'S1', offset: 90, label: 'S1', color: '#00e676' },
+    { id: 'S2', offset: 180, label: 'S2', color: '#ffab00' },
+    { id: 'S3', offset: 270, label: 'S3', color: '#b388ff' },
+  ];
+  ctx.font = `600 10px ${MONO}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const sec of sectors) {
+    const worldAngle = (headingDeg + sec.offset) % 360;
+    const rad = ((worldAngle - 90) * Math.PI) / 180;
+    ctx.strokeStyle = sec.color;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(acnPt.x + Math.cos(rad) * 40, acnPt.y + Math.sin(rad) * 40);
+    ctx.lineTo(acnPt.x + Math.cos(rad) * 58, acnPt.y + Math.sin(rad) * 58);
+    ctx.stroke();
+
+    const lx = acnPt.x + Math.cos(rad) * 72;
+    const ly = acnPt.y + Math.sin(rad) * 72;
+    ctx.fillStyle = sec.color;
+    ctx.fillText(sec.label, lx, ly);
+  }
+  ctx.restore();
+
+  // Draw aircraft chevron at acnPt
+  drawAircraftChevron(ctx, acnPt.x, acnPt.y, headingDeg);
+
+  // 3. Project Nodes & Draw Animated Packet Flow Pulses
+  const nodes = frame.nodes_telemetry || [];
+  ctx.save();
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const nPt = mapController.projectEnuToContainerPoint(node.x_m, node.y_m);
+    if (!nPt) continue;
+
+    const isPreOcclusion = (node.registration_state === 'PRE_OCCLUSION_FLUSH');
+    const isRelayed = isRelayActive && Boolean(node.is_relayed) && Boolean(relayPt);
+    const pulseColor = isPreOcclusion ? '#b388ff' : (isRelayed ? '#00e676' : '#00e5ff');
+    const t = (now * 0.0016 + i * 0.17) % 1.0;
+
+    let px, py;
+    if (isRelayed && relayPt) {
+      if (t < 0.5) {
+        const segT = t * 2.0;
+        px = nPt.x + (relayPt.x - nPt.x) * segT;
+        py = nPt.y + (relayPt.y - nPt.y) * segT;
+      } else {
+        const segT = (t - 0.5) * 2.0;
+        px = relayPt.x + (acnPt.x - relayPt.x) * segT;
+        py = relayPt.y + (acnPt.y - relayPt.y) * segT;
+      }
+    } else {
+      px = nPt.x + (acnPt.x - nPt.x) * t;
+      py = nPt.y + (acnPt.y - nPt.y) * t;
+    }
+
+    // Packet pulse glow
+    ctx.beginPath();
+    ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = pulseColor;
+    ctx.shadowColor = pulseColor;
+    ctx.shadowBlur = 8;
+    ctx.fill();
+
+    // Core white center
+    ctx.beginPath();
+    ctx.arc(px, py, 2.0, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Node HUD reticle if selected
+    if (selectedNodeId === node.node_id) {
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1.5;
+      const bSize = 10;
+      // 4 corner brackets
+      ctx.beginPath();
+      // TL
+      ctx.moveTo(nPt.x - bSize, nPt.y - bSize + 4);
+      ctx.lineTo(nPt.x - bSize, nPt.y - bSize);
+      ctx.lineTo(nPt.x - bSize + 4, nPt.y - bSize);
+      // TR
+      ctx.moveTo(nPt.x + bSize - 4, nPt.y - bSize);
+      ctx.lineTo(nPt.x + bSize, nPt.y - bSize);
+      ctx.lineTo(nPt.x + bSize, nPt.y - bSize + 4);
+      // BR
+      ctx.moveTo(nPt.x + bSize, nPt.y + bSize - 4);
+      ctx.lineTo(nPt.x + bSize, nPt.y + bSize);
+      ctx.lineTo(nPt.x + bSize - 4, nPt.y + bSize);
+      // BL
+      ctx.moveTo(nPt.x - bSize + 4, nPt.y + bSize);
+      ctx.lineTo(nPt.x - bSize, nPt.y + bSize);
+      ctx.lineTo(nPt.x - bSize, nPt.y + bSize - 4);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // 4. Pulsing EW Jammer Rings & Emitter
+  if (frame.jammer_enabled) {
+    const jPos = frame.jammer_pos_enu || [3200, -2800, 0];
+    const jPt = mapController.projectEnuToContainerPoint(jPos[0], jPos[1]);
+    if (jPt) {
+      ctx.save();
+      // Expanding wave rings
+      for (let rIdx = 0; rIdx < 3; rIdx++) {
+        const ringProgress = ((now * 0.04 + rIdx * 20) % 60);
+        const ringAlpha = Math.max(0, 1.0 - ringProgress / 60);
+        ctx.beginPath();
+        ctx.arc(jPt.x, jPt.y, ringProgress, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 42, 84, ${ringAlpha * 0.75})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      // Dashed interference line to ACN
+      ctx.strokeStyle = 'rgba(255, 42, 84, 0.65)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(jPt.x, jPt.y);
+      ctx.lineTo(acnPt.x, acnPt.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Crimson Diamond
+      const dSize = 7;
+      ctx.fillStyle = '#ff2a54';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(jPt.x, jPt.y - dSize);
+      ctx.lineTo(jPt.x + dSize, jPt.y);
+      ctx.lineTo(jPt.x, jPt.y + dSize);
+      ctx.lineTo(jPt.x - dSize, jPt.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = `700 10px ${MONO}`;
+      ctx.fillStyle = '#ff2a54';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('[EW-JAM]', jPt.x, jPt.y - dSize - 2);
+      ctx.restore();
+    }
+  }
+
+  // 5. Optimal Relay Mast Beacon [MCP-OPT]
+  if (isRelayActive && relayPt) {
+    ctx.save();
+    ctx.fillStyle = '#00e5ff';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(relayPt.x - 5, relayPt.y - 5, 10, 10);
+    ctx.strokeRect(relayPt.x - 5, relayPt.y - 5, 10, 10);
+
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 2.0;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(relayPt.x, relayPt.y);
+    ctx.lineTo(acnPt.x, acnPt.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = `700 10px ${MONO}`;
+    ctx.fillStyle = '#00e5ff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('[MCP-OPT]', relayPt.x, relayPt.y - 7);
+    ctx.restore();
+  }
+}
+
 function drawRadar() {
   try {
     const cvs = radarCanvas;
-    if (!cvs || stageViewMode === '3d' || terrainMapMode === 'maplibre') return;
+    if (!cvs || stageViewMode === '3d') return;
     const w = cvs.parentElement.clientWidth || 600;
     const h = cvs.parentElement.clientHeight || 500;
     if (w <= 0 || h <= 0) return;
 
     const ctx = radarCtx;
+    if (terrainMapMode === 'maplibre') {
+      renderMapLibreKineticOverlay(ctx, w, h, latestTelemetry);
+      return;
+    }
     ctx.clearRect(0, 0, w, h);
 
     const { centerX: cx, centerY: cy, scale } = getRadarGeometry(w, h);
@@ -15736,8 +16011,8 @@ function animationLoop(timestampMs) {
     }
     lastTimelineAnimTimeMs = now;
 
-    // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty
-    if (radarNeedsRender || isPlayingHistory) {
+    // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty or MapLibre kinetic overlay active (skips when in 3D mode)
+    if (stageViewMode !== '3d' && (radarNeedsRender || isPlayingHistory || terrainMapMode === 'maplibre')) {
       drawRadar();
       radarNeedsRender = false;
     }

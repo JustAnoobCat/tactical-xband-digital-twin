@@ -101,7 +101,8 @@ const REGISTERED_SUITES = [
   { id: 'verify:publication-ecdf', name: 'Publication ECDF Delay Scope & IEEE LaTeX Export (PEL-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPublicationEcdfAndLatex.ts'], category: 'ui' },
   { id: 'verify:active-relay', name: 'Active Two-Hop Decode-and-Forward Mesh Relay (ATR-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyActiveTwoHopRelay.ts'], category: 'rf' },
   { id: 'verify:rician-cqi', name: '3GPP TR 38.811 Rician Fading & CQI Aging (RFC-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRicianFadingAndCqiAging.ts'], category: 'rf' },
-  { id: 'verify:3d-sensitivity', name: '3D Volumetric Beams, Relay / EW Parity & Sensitivity Sweep (PSS-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verify3dParityAndSensitivitySweep.ts'], category: 'ui' }
+  { id: 'verify:3d-sensitivity', name: '3D Volumetric Beams, Relay / EW Parity & Sensitivity Sweep (PSS-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verify3dParityAndSensitivitySweep.ts'], category: 'ui' },
+  { id: 'verify:ui-makeover', name: 'UI/UX Makeover, MapLibre Kinetic Overlay & 3D Perf Optimization (UMP-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUiMakeoverAnd3dPerf.ts'], category: 'ui' }
 ];
 
 // -----------------------------------------------------------------------------

@@ -490,6 +490,12 @@ export class TacticalEntityManager {
   private declutterAcceptedCount: number = 0;
   private labelsVisible: boolean = true;
 
+  // Pre-allocated 60 FPS 3D Packet Flow Pulses & Line distance cache
+  public readonly linkPulseMeshes: THREE.Mesh[] = [];
+  public readonly linkPulseGroup: THREE.Group;
+  private readonly prevLinkEndpoints: Map<number, Float32Array> = new Map();
+  private prevJammerEndpoints: Float32Array | null = null;
+
   constructor() {
     this.rootGroup = new THREE.Group();
     this.rootGroup.name = 'tacticalEntitiesRoot';
@@ -526,6 +532,10 @@ export class TacticalEntityManager {
     this.jammerGroup.name = 'jammerGroup';
     this.rootGroup.add(this.jammerGroup);
 
+    this.linkPulseGroup = new THREE.Group();
+    this.linkPulseGroup.name = 'linkPulseGroup';
+    this.rootGroup.add(this.linkPulseGroup);
+
     this.initTextures();
     this.initMaterialPool();
     this.initAcn();
@@ -535,6 +545,7 @@ export class TacticalEntityManager {
     this.initGroundNodes();
     this.initLinks();
     this.initBulkTransferPacket();
+    this.initLinkPulses();
   }
 
   /**
@@ -1215,11 +1226,31 @@ export class TacticalEntityManager {
   }
 
   /**
+   * Pre-allocates 16 glowing 60 FPS 3D link flow pulses along active direct and 2-hop links.
+   */
+  private initLinkPulses(): void {
+    const pulseGeo = new THREE.SphereGeometry(32.0, 8, 8);
+    for (let i = 0; i < 16; i++) {
+      const pulseMat = new THREE.MeshBasicMaterial({
+        color: 0x00e5ff,
+        transparent: true,
+        opacity: 0.95,
+      });
+      const mesh = new THREE.Mesh(pulseGeo, pulseMat);
+      mesh.name = `linkPulseMesh_${i}`;
+      mesh.visible = false;
+      this.linkPulseMeshes.push(mesh);
+      this.linkPulseGroup.add(mesh);
+    }
+  }
+
+  /**
    * Initializes the 4 body-fixed rotating 3D sector cones with -15° mechanical downtilt
    * and -3 dB crossover boundary wireframe rays at ±45°, ±135°.
+   * Overdraw optimization: Shrunk from 25 km to 3.5 km with 0.10 opacity and single-sided front rendering.
    */
   private initSectors(): void {
-    const R = 25000.0; // 25 km tactical reach
+    const R = 3500.0; // 3.5 km tactical reach eliminates full-screen alpha overdraw
     const tiltDeg = -15.0; // -15° mechanical downtilt
     const tiltRad = (tiltDeg * Math.PI) / 180.0;
     const cosTilt = Math.cos(tiltRad);
@@ -1232,7 +1263,7 @@ export class TacticalEntityManager {
       const centerAzDeg = sectorAzimuthCenters[s];
       const startAzDeg = centerAzDeg - 45.0;
       const endAzDeg = centerAzDeg + 45.0;
-      const numSegments = 16;
+      const numSegments = 12;
 
       const positions: number[] = [];
       const indices: number[] = [];
@@ -1264,8 +1295,8 @@ export class TacticalEntityManager {
       const mat = new THREE.MeshBasicMaterial({
         color: sectorColors[s],
         transparent: true,
-        opacity: 0.16,
-        side: THREE.DoubleSide,
+        opacity: 0.10,
+        side: THREE.FrontSide,
         depthWrite: false,
       });
 
@@ -1532,7 +1563,29 @@ export class TacticalEntityManager {
         if (linkLine.material !== targetMat) {
           linkLine.material = targetMat;
         }
-        linkLine.computeLineDistances();
+
+        // Only recompute computeLineDistances() when positions change by > 5 m
+        const prev = this.prevLinkEndpoints.get(node.node_id);
+        const curX0 = acnPos.x, curY0 = acnPos.y, curZ0 = acnPos.z;
+        const curX1 = isMapped ? node.x_m : acnPos.x;
+        const curY1 = isMapped ? node.y_m : acnPos.y;
+        const curZ1 = isMapped ? node.z_m : acnPos.z;
+        let shouldRecomputeDist = false;
+        if (!prev) {
+          shouldRecomputeDist = true;
+          this.prevLinkEndpoints.set(node.node_id, new Float32Array([curX0, curY0, curZ0, curX1, curY1, curZ1]));
+        } else {
+          const dx0 = curX0 - prev[0], dy0 = curY0 - prev[1], dz0 = curZ0 - prev[2];
+          const dx1 = curX1 - prev[3], dy1 = curY1 - prev[4], dz1 = curZ1 - prev[5];
+          if ((dx0 * dx0 + dy0 * dy0 + dz0 * dz0 > 25.0) || (dx1 * dx1 + dy1 * dy1 + dz1 * dz1 > 25.0)) {
+            shouldRecomputeDist = true;
+            prev[0] = curX0; prev[1] = curY0; prev[2] = curZ0;
+            prev[3] = curX1; prev[4] = curY1; prev[5] = curZ1;
+          }
+        }
+        if (shouldRecomputeDist) {
+          linkLine.computeLineDistances();
+        }
       }
     }
 
@@ -1607,7 +1660,106 @@ export class TacticalEntityManager {
       jPosAttr.setXYZ(0, jPos[0], jPos[1], jz);
       jPosAttr.setXYZ(1, acnPos.x, acnPos.y, acnPos.z);
       jPosAttr.needsUpdate = true;
-      this.jammerRayLine.computeLineDistances();
+
+      // Only recompute computeLineDistances() when positions change by > 5 m
+      let shouldRecomputeJammer = false;
+      if (!this.prevJammerEndpoints) {
+        shouldRecomputeJammer = true;
+        this.prevJammerEndpoints = new Float32Array([jPos[0], jPos[1], jz, acnPos.x, acnPos.y, acnPos.z]);
+      } else {
+        const dx0 = jPos[0] - this.prevJammerEndpoints[0];
+        const dy0 = jPos[1] - this.prevJammerEndpoints[1];
+        const dz0 = jz - this.prevJammerEndpoints[2];
+        const dx1 = acnPos.x - this.prevJammerEndpoints[3];
+        const dy1 = acnPos.y - this.prevJammerEndpoints[4];
+        const dz1 = acnPos.z - this.prevJammerEndpoints[5];
+        if ((dx0 * dx0 + dy0 * dy0 + dz0 * dz0 > 25.0) || (dx1 * dx1 + dy1 * dy1 + dz1 * dz1 > 25.0)) {
+          shouldRecomputeJammer = true;
+          this.prevJammerEndpoints[0] = jPos[0]; this.prevJammerEndpoints[1] = jPos[1]; this.prevJammerEndpoints[2] = jz;
+          this.prevJammerEndpoints[3] = acnPos.x; this.prevJammerEndpoints[4] = acnPos.y; this.prevJammerEndpoints[5] = acnPos.z;
+        }
+      }
+      if (shouldRecomputeJammer) {
+        this.jammerRayLine.computeLineDistances();
+      }
+    }
+
+    // 7. Update 60 FPS 3D Packet Flow Pulses
+    this.update3dPacketPulses(frame);
+  }
+
+  /**
+   * Updates 60 FPS 3D packet flow pulse markers traveling along direct LoS and 2-hop mesh links.
+   * Colors: Electric Cyan (#00e5ff) for direct, Tactical Emerald (#00e676) for 2-hop, Violet Plasma (#b388ff) for PRE_OCCLUSION_FLUSH.
+   */
+  private update3dPacketPulses(frame: any): void {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const advisor = frame.relay_advisor;
+    const isRelayActive = Boolean(frame.active_relay_enabled);
+    const hasRelayPos = Boolean(advisor && Array.isArray(advisor.optimalPosEnu) && advisor.optimalPosEnu.length >= 3);
+    const optX = hasRelayPos ? advisor.optimalPosEnu[0] : 0;
+    const optY = hasRelayPos ? advisor.optimalPosEnu[1] : 0;
+    const optZ = hasRelayPos ? advisor.optimalPosEnu[2] : 0;
+    const acnPos = this.acnGroup.position;
+
+    const nodes = frame.nodes_telemetry || [];
+    for (let i = 0; i < 16; i++) {
+      const pulseMesh = this.linkPulseMeshes[i];
+      if (!pulseMesh) continue;
+      const node = nodes.find((n: any) => n.node_id === i);
+      const item = this.nodeItems.find((it) => it.nodeId === i);
+      const isMapped = item ? item.isMapped : false;
+
+      if (!node || !isMapped || item?.status === 'OUTAGE_DISCONNECTED' || item?.status === 'BLOCKED_TERRAIN' || item?.status === 'BLOCKED_OBSTACLE') {
+        pulseMesh.visible = false;
+        continue;
+      }
+
+      pulseMesh.visible = true;
+      const t = (now * 0.0016 + i * 0.17) % 1.0;
+      const mat = pulseMesh.material as THREE.MeshBasicMaterial;
+
+      const isPreOcclusion = (node.registration_state === 'PRE_OCCLUSION_FLUSH' || (item?.status as string) === 'PRE_OCCLUSION_FLUSH');
+      const isRelayed = isRelayActive && Boolean(node.is_relayed) && hasRelayPos;
+
+      if (isPreOcclusion) {
+        mat.color.setHex(0xb388ff); // Violet Plasma
+      } else if (isRelayed) {
+        mat.color.setHex(0x00e676); // Tactical Emerald
+      } else {
+        mat.color.setHex(0x00e5ff); // Electric Cyan
+      }
+
+      const nx = item!.group.position.x;
+      const ny = item!.group.position.y;
+      const nz = item!.group.position.z;
+
+      if (isRelayed) {
+        if (t < 0.5) {
+          // Hop 1: Ground Terminal -> [MCP-OPT]
+          const segT = t * 2.0;
+          pulseMesh.position.set(
+            nx + (optX - nx) * segT,
+            ny + (optY - ny) * segT,
+            nz + (optZ - nz) * segT
+          );
+        } else {
+          // Hop 2: [MCP-OPT] -> ACN
+          const segT = (t - 0.5) * 2.0;
+          pulseMesh.position.set(
+            optX + (acnPos.x - optX) * segT,
+            optY + (acnPos.y - optY) * segT,
+            optZ + (acnPos.z - optZ) * segT
+          );
+        }
+      } else {
+        // Direct LoS: Terminal -> ACN
+        pulseMesh.position.set(
+          nx + (acnPos.x - nx) * t,
+          ny + (acnPos.y - ny) * t,
+          nz + (acnPos.z - nz) * t
+        );
+      }
     }
   }
 

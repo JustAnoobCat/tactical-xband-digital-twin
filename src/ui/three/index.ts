@@ -6,6 +6,7 @@
 export * from './threeTypes';
 export * from './sceneManager';
 export * from './terrainBuilder';
+export * from './terrainRenderer';
 export * from './tacticalEntityManager';
 
 import { ThreeSceneManager } from './sceneManager';

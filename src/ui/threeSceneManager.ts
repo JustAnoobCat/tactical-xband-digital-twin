@@ -11,6 +11,7 @@
 export * from './three/sceneManager';
 export * from './three/tacticalEntityManager';
 export * from './three/terrainBuilder';
+export * from './three/terrainRenderer';
 export * from './three/threeTypes';
 export * from './three/index';
 export { ThreeSceneManager } from './three/sceneManager';
