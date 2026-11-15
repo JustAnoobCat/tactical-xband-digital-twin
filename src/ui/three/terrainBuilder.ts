@@ -122,6 +122,79 @@ export function buildNativeDemGeometry(data: TerrainMeshDataPayload): THREE.Buff
 }
 
 /**
+ * Builds the ultra-fast decimated 128x128 DEM geometry (M1.6).
+ * 16,384 vertices, 32,258 triangles (16x fewer triangles than native512).
+ * Uses Uint16Array index buffer (vertex count 16,384 <= 65,536).
+ */
+export function buildFastDemGeometry(data: TerrainMeshDataPayload): THREE.BufferGeometry {
+  const N = 128;
+  const vertexCount = N * N; // 16,384
+  const cellCount = (N - 1) * (N - 1); // 127 * 127 = 16,129
+  const triangleCount = cellCount * 2; // 32,258
+  const indexCount = triangleCount * 3; // 96,774
+
+  const positions = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const indices = new Uint16Array(indexCount);
+
+  const minX = data.bounds.minX;
+  const maxX = data.bounds.maxX;
+  const minY = data.bounds.minY;
+  const maxY = data.bounds.maxY;
+
+  const xStep = (maxX - minX) / 127.0;
+  const yStep = (maxY - minY) / 127.0;
+
+  for (let r = 0; r < N; r++) {
+    const yM = maxY - r * yStep;
+    const srcRow = (r * 511.0) / 127.0; // exact mapping: 0 -> 0.0, 127 -> 511.0
+    const v = 1.0 - r / 127.0;
+
+    for (let c = 0; c < N; c++) {
+      const xM = minX + c * xStep;
+      const srcCol = (c * 511.0) / 127.0; // exact mapping: 0 -> 0.0, 127 -> 511.0
+      const u = c / 127.0;
+      const idx = r * N + c;
+
+      const zM = sampleDemBilinear(data.elevations, srcCol, srcRow, 512, 512);
+
+      positions[idx * 3] = xM;
+      positions[idx * 3 + 1] = yM;
+      positions[idx * 3 + 2] = zM;
+
+      uvs[idx * 2] = u;
+      uvs[idx * 2 + 1] = v;
+    }
+  }
+
+  let indexOffset = 0;
+  for (let r = 0; r < N - 1; r++) {
+    for (let c = 0; c < N - 1; c++) {
+      const TL = r * N + c;
+      const TR = r * N + (c + 1);
+      const BL = (r + 1) * N + c;
+      const BR = (r + 1) * N + (c + 1);
+
+      indices[indexOffset++] = TL;
+      indices[indexOffset++] = BL;
+      indices[indexOffset++] = TR;
+
+      indices[indexOffset++] = TR;
+      indices[indexOffset++] = BL;
+      indices[indexOffset++] = BR;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeVertexNormals();
+
+  return geometry;
+}
+
+/**
  * Builds the fallback Balanced 256x256 DEM geometry.
  * Maps endpoints exactly using continuous coordinates: sourceIndex = meshIndex * 511 / 255.
  * Uses Uint16Array index buffer (vertex count 65,536 <= 65,536).
@@ -208,7 +281,7 @@ export function buildPerimeterSkirtGeometry(
     return null;
   }
 
-  const N = resolution === 'native512' ? 512 : 256;
+  const N = resolution === 'native512' ? 512 : (resolution === 'balanced256' ? 256 : 128);
   const S = N - 1; // segments per edge
 
   const minX = data.bounds.minX;
@@ -453,12 +526,14 @@ export function buildTacticalDatumGrid(
  */
 export function buildTerrainGeometrySet(
   data: TerrainMeshDataPayload,
-  resolution: TerrainMeshResolution = 'native512'
+  resolution: TerrainMeshResolution = 'fast128'
 ): TerrainGeometryBuildResult {
   const meshGeometry =
-    resolution === 'native512'
-      ? buildNativeDemGeometry(data)
-      : buildBalancedDemGeometry(data);
+    resolution === 'fast128'
+      ? buildFastDemGeometry(data)
+      : resolution === 'native512'
+        ? buildNativeDemGeometry(data)
+        : buildBalancedDemGeometry(data);
 
   const skirtGeometry = buildPerimeterSkirtGeometry(data, resolution, APPROVED_SKIRT_BASE_MSL_M);
 

@@ -99,21 +99,21 @@ export function buildDecimatedDemGeometry(
 }
 
 /**
- * Creates an ultra-fast unlit or Lambert terrain material using pre-baked hillshade texture.
+ * Creates an ultra-fast unlit terrain material using pre-baked hillshade texture.
  * Bypasses expensive PBR roughness, metalness, and multiple specular passes.
  */
 export function createFastTerrainMaterial(
   hillshadeTexture: THREE.Texture | null = null
 ): THREE.Material {
   if (hillshadeTexture) {
-    return new THREE.MeshLambertMaterial({
+    return new THREE.MeshBasicMaterial({
       map: hillshadeTexture,
       color: 0xffffff,
       side: THREE.FrontSide,
     });
   }
 
-  return new THREE.MeshLambertMaterial({
+  return new THREE.MeshBasicMaterial({
     color: 0x1e293b,
     side: THREE.FrontSide,
   });
@@ -123,7 +123,7 @@ export function createFastTerrainMaterial(
  * Creates a lightweight unlit / Lambert skirt material.
  */
 export function createFastSkirtMaterial(): THREE.Material {
-  return new THREE.MeshLambertMaterial({
+  return new THREE.MeshBasicMaterial({
     color: 0x0f172a,
     side: THREE.FrontSide,
   });
@@ -134,12 +134,12 @@ export function createFastSkirtMaterial(): THREE.Material {
  */
 export function buildOptimizedTerrainGeometrySet(
   data: TerrainMeshDataPayload,
-  resolution: TerrainMeshResolution = 'native512',
+  resolution: TerrainMeshResolution = 'fast128',
   enforceDecimationLimit = false
 ): TerrainGeometryBuildResult {
   let meshGeometry: THREE.BufferGeometry;
 
-  if (enforceDecimationLimit) {
+  if (enforceDecimationLimit || resolution === 'fast128') {
     meshGeometry = buildDecimatedDemGeometry(data, 128);
   } else if (resolution === 'native512') {
     meshGeometry = buildNativeDemGeometry(data);

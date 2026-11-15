@@ -24,6 +24,9 @@ import { buildLinkProfile, LinkProfile } from './linkProfile';
 import { NodeTerrainState, PredictiveState } from './trajectory';
 import { GroundNodeTrafficSubsystem } from './queues';
 
+export type ProfileData = LinkProfile;
+export type LinkProfileAnalysis = LinkProfile;
+
 /** Existing profile visualization/clearance factor. Does not alter terrain or link-budget decisions. */
 export const PROFILE_FRESNEL_FRACTION = 0.6;
 
@@ -121,6 +124,12 @@ export function buildEmptyFresnelSlice(
       obstacleBlocked: false,
       obstacleIntervals: [],
       samples: [],
+      kFactor: 4.0 / 3.0,
+      refractivityGradNPerKm: EnvironmentConfig.refractivityGradientFromK(4.0 / 3.0),
+      maxEarthBulgeM: 0,
+      bullingtonApex: null,
+      fresnelZone2RadiusMidM: 0,
+      fresnelZone3RadiusMidM: 0,
       valid: false,
       isCoverageComplete: false,
       invalidReason: 'No ground nodes registered in scenario.',
@@ -276,6 +285,12 @@ export function buildFresnelSlice(
     crest_radius_m: obstruction.crestRadiusM,
     curvature_loss_db: obstruction.curvatureLossDb,
     bullington_apex_dist_m: obstruction.bullingtonApexDistM,
+    kFactor: linkProfile.kFactor,
+    refractivityGradNPerKm: linkProfile.refractivityGradNPerKm,
+    maxEarthBulgeM: linkProfile.maxEarthBulgeM,
+    bullingtonApex: linkProfile.bullingtonApex,
+    fresnelZone2RadiusMidM: linkProfile.fresnelZone2RadiusMidM,
+    fresnelZone3RadiusMidM: linkProfile.fresnelZone3RadiusMidM,
     profile_points: profilePoints,
     link_budget: linkBudget,
     is_coverage_complete: isCoverageComplete,

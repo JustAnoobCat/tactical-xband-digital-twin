@@ -6,11 +6,11 @@
 \toprule
 \textbf{Scheduler Architecture} & \textbf{Goodput (Mb)} & \textbf{Airtime Util (\%)} & \textbf{Outage Waste (kb)} & \textbf{Delay Drops} & \textbf{Overflow Drops} \\
 \midrule
-Legacy Static TDMA & $12.50 \pm 0.15$ & $100.0 \pm 0.0$ & $512.0 \pm 0.0$ & $1428 \pm 36$ & $0 \pm 0$ \\
-Reactive M-LWDF ($\Phi_{\text{evac}} = 1.0$) & $17.20 \pm 0.07$ & $37.5 \pm 0.5$ & $0.0 \pm 0.0$ & $569 \pm 26$ & $20 \pm 0$ \\
-Predictive Tac-TAD ($\Phi_{\text{evac}} \ge 1.0$) & $21.96 \pm 0.18$ & $40.5 \pm 0.3$ & $0.0 \pm 0.0$ & $34 \pm 14$ & $20 \pm 0$ \\
+Legacy Static TDMA & 0.15 & 100.0 & 628.5 & 0 & 0 \\
+Reactive M-LWDF ($\Phi_{\text{evac}} = 1.0$) & 0.15 & 0.6 & 0.0 & 239 & 0 \\
+Predictive Tac-TAD ($\Phi_{\text{evac}} \ge 1.0$) & 0.15 & 0.6 & 0.0 & 239 & 0 \\
 \bottomrule
 \end{tabular}
 \vspace{1ex}
-{\footnotesize \raggedright \textbf{Benchmark Notes:} Multi-seed paired execution ($N = 5$ seeds). Topography mode: synthetic, $\sigma_{\text{DEM}} = 0\text{ m}$, traffic multiplier = 3.5$\times$. All metrics evaluated synchronously over 50~Hz discrete-event engine.\par}
+{\footnotesize \raggedright \textbf{Benchmark Notes:} Multi-seed paired execution ($N = 1$ seeds). Topography mode: real, $\sigma_{\text{DEM}} = 0\text{ m}$, traffic multiplier = 1.0$\times$. All metrics evaluated synchronously over 50~Hz discrete-event engine.\par}
 \end{table}

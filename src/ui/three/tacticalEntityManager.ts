@@ -582,45 +582,21 @@ export class TacticalEntityManager {
       const strokeHex = this.parseCssColor(style.strokeColor);
       const selStrokeHex = this.parseCssColor(style.selectedStrokeColor);
 
-      const isDashed = status !== 'CONNECTED';
-      const dashSize = status === 'DEGRADED' ? 800 : (status === 'BLOCKED_OBSTACLE' ? 300 : 500);
-      const gapSize = status === 'DEGRADED' ? 400 : (status === 'BLOCKED_OBSTACLE' ? 400 : 500);
+      const normalMat = new THREE.LineBasicMaterial({
+        color: strokeHex,
+        transparent: true,
+        opacity: status === 'OUTAGE_DISCONNECTED' || status === 'UNKNOWN' ? 0.45 : 0.85,
+        linewidth: 1,
+        depthTest: true,
+      });
 
-      const normalMat = isDashed
-        ? new THREE.LineDashedMaterial({
-            color: strokeHex,
-            dashSize,
-            gapSize,
-            transparent: true,
-            opacity: status === 'OUTAGE_DISCONNECTED' || status === 'UNKNOWN' ? 0.45 : 0.85,
-            linewidth: 1,
-            depthTest: true,
-          })
-        : new THREE.LineBasicMaterial({
-            color: strokeHex,
-            transparent: true,
-            opacity: 0.9,
-            linewidth: 1,
-            depthTest: true,
-          });
-
-      const selectedMat = isDashed
-        ? new THREE.LineDashedMaterial({
-            color: selStrokeHex,
-            dashSize,
-            gapSize,
-            transparent: true,
-            opacity: 1.0,
-            linewidth: 2,
-            depthTest: true,
-          })
-        : new THREE.LineBasicMaterial({
-            color: selStrokeHex,
-            transparent: true,
-            opacity: 1.0,
-            linewidth: 2,
-            depthTest: true,
-          });
+      const selectedMat = new THREE.LineBasicMaterial({
+        color: selStrokeHex,
+        transparent: true,
+        opacity: 1.0,
+        linewidth: 2,
+        depthTest: true,
+      });
 
       this.materialPool.set(`normal_${status}`, normalMat);
       this.materialPool.set(`selected_${status}`, selectedMat);
@@ -753,15 +729,12 @@ export class TacticalEntityManager {
       ringPoints.push(new THREE.Vector3(Math.cos(theta) * ringRadius, Math.sin(theta) * ringRadius, 0));
     }
     const ringGeo = new THREE.BufferGeometry().setFromPoints(ringPoints);
-    const ringMat = new THREE.LineDashedMaterial({
+    const ringMat = new THREE.LineBasicMaterial({
       color: 0xe09f3e,
-      dashSize: 1500,
-      gapSize: 1000,
       transparent: true,
       opacity: 0.32,
     });
     this.acnCoverageLine = new THREE.LineLoop(ringGeo, ringMat);
-    this.acnCoverageLine.computeLineDistances();
     this.acnGroup.add(this.acnCoverageLine);
   }
 
@@ -773,10 +746,8 @@ export class TacticalEntityManager {
     this.trajectoryGeo = new THREE.BufferGeometry();
     this.trajectoryGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-    const trajectoryMat = new THREE.LineDashedMaterial({
+    const trajectoryMat = new THREE.LineBasicMaterial({
       color: 0xc9bfa9,
-      dashSize: 1200,
-      gapSize: 800,
       transparent: true,
       opacity: 0.65,
     });
@@ -981,16 +952,13 @@ export class TacticalEntityManager {
       new THREE.Vector3(0, 0, 5000.0),
     ];
     const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-    const lineMat = new THREE.LineDashedMaterial({
+    const lineMat = new THREE.LineBasicMaterial({
       color: 0x8a95e6, // Quartz indigo UNKNOWN indicator
-      dashSize: 200,
-      gapSize: 200,
       transparent: true,
       opacity: 0.75,
       depthTest: true,
     });
     const plumbLine = new THREE.Line(lineGeo, lineMat);
-    plumbLine.computeLineDistances();
     g.add(plumbLine);
 
     // Schematic alert badge positioned at mid-height (3,350m)
@@ -1397,10 +1365,8 @@ export class TacticalEntityManager {
     // EW Jammer Interference Ray to ACN (Crimson Dashed)
     const jammerLineGeo = new THREE.BufferGeometry();
     jammerLineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    const jammerLineMat = new THREE.LineDashedMaterial({
+    const jammerLineMat = new THREE.LineBasicMaterial({
       color: 0xef4444,
-      dashSize: 600,
-      gapSize: 400,
       transparent: true,
       opacity: 0.8,
     });
@@ -1453,7 +1419,6 @@ export class TacticalEntityManager {
         }
         posAttr.needsUpdate = true;
         this.trajectoryLine.geometry.setDrawRange(0, count);
-        this.trajectoryLine.computeLineDistances();
       }
     }
 
@@ -1557,34 +1522,11 @@ export class TacticalEntityManager {
           item.markerSprite.material.color.setHex(nodeHex);
         }
 
-        // Update link material from pre-allocated pool
+        // Update link material from pre-allocated pool (solid LineBasicMaterial - zero computeLineDistances)
         const matKey = `${isSel ? 'selected' : 'normal'}_${classification.status}`;
         const targetMat = this.materialPool.get(matKey) || this.materialPool.get('normal_UNKNOWN')!;
         if (linkLine.material !== targetMat) {
           linkLine.material = targetMat;
-        }
-
-        // Only recompute computeLineDistances() when positions change by > 5 m
-        const prev = this.prevLinkEndpoints.get(node.node_id);
-        const curX0 = acnPos.x, curY0 = acnPos.y, curZ0 = acnPos.z;
-        const curX1 = isMapped ? node.x_m : acnPos.x;
-        const curY1 = isMapped ? node.y_m : acnPos.y;
-        const curZ1 = isMapped ? node.z_m : acnPos.z;
-        let shouldRecomputeDist = false;
-        if (!prev) {
-          shouldRecomputeDist = true;
-          this.prevLinkEndpoints.set(node.node_id, new Float32Array([curX0, curY0, curZ0, curX1, curY1, curZ1]));
-        } else {
-          const dx0 = curX0 - prev[0], dy0 = curY0 - prev[1], dz0 = curZ0 - prev[2];
-          const dx1 = curX1 - prev[3], dy1 = curY1 - prev[4], dz1 = curZ1 - prev[5];
-          if ((dx0 * dx0 + dy0 * dy0 + dz0 * dz0 > 25.0) || (dx1 * dx1 + dy1 * dy1 + dz1 * dz1 > 25.0)) {
-            shouldRecomputeDist = true;
-            prev[0] = curX0; prev[1] = curY0; prev[2] = curZ0;
-            prev[3] = curX1; prev[4] = curY1; prev[5] = curZ1;
-          }
-        }
-        if (shouldRecomputeDist) {
-          linkLine.computeLineDistances();
         }
       }
     }
@@ -1660,28 +1602,6 @@ export class TacticalEntityManager {
       jPosAttr.setXYZ(0, jPos[0], jPos[1], jz);
       jPosAttr.setXYZ(1, acnPos.x, acnPos.y, acnPos.z);
       jPosAttr.needsUpdate = true;
-
-      // Only recompute computeLineDistances() when positions change by > 5 m
-      let shouldRecomputeJammer = false;
-      if (!this.prevJammerEndpoints) {
-        shouldRecomputeJammer = true;
-        this.prevJammerEndpoints = new Float32Array([jPos[0], jPos[1], jz, acnPos.x, acnPos.y, acnPos.z]);
-      } else {
-        const dx0 = jPos[0] - this.prevJammerEndpoints[0];
-        const dy0 = jPos[1] - this.prevJammerEndpoints[1];
-        const dz0 = jz - this.prevJammerEndpoints[2];
-        const dx1 = acnPos.x - this.prevJammerEndpoints[3];
-        const dy1 = acnPos.y - this.prevJammerEndpoints[4];
-        const dz1 = acnPos.z - this.prevJammerEndpoints[5];
-        if ((dx0 * dx0 + dy0 * dy0 + dz0 * dz0 > 25.0) || (dx1 * dx1 + dy1 * dy1 + dz1 * dz1 > 25.0)) {
-          shouldRecomputeJammer = true;
-          this.prevJammerEndpoints[0] = jPos[0]; this.prevJammerEndpoints[1] = jPos[1]; this.prevJammerEndpoints[2] = jz;
-          this.prevJammerEndpoints[3] = acnPos.x; this.prevJammerEndpoints[4] = acnPos.y; this.prevJammerEndpoints[5] = acnPos.z;
-        }
-      }
-      if (shouldRecomputeJammer) {
-        this.jammerRayLine.computeLineDistances();
-      }
     }
 
     // 7. Update 60 FPS 3D Packet Flow Pulses

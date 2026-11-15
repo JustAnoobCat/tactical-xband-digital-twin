@@ -9,12 +9,13 @@
  *    NORMAL_LOS -> PRE_OCCLUSION_FLUSH -> HARD_SHADOW_CUTOFF -> RE_EMERGENCE_BURST.
  */
 
-import { ACNFlightConfig, ACNWaypoint, EnvironmentConfig, RFConfig } from './config';
+import { ACNFlightConfig, ACNWaypoint, EnvironmentConfig, RFConfig, DEFAULT_RF_CONFIG, DEFAULT_ENVIRONMENT_CONFIG } from './config';
 import { LinkBudgetEngine, type LinkStatus } from './linkBudget';
 import { TerrainEngine, type TerrainObstruction } from './terrain';
 import type { Position3D } from '../shared/types';
 import { validateClosedWaypointPath } from './waypoints';
 import type { QuadSectorAntennaEngine } from './antennaArray';
+import { CANONICAL_16_NODE_POSITIONS } from './nodeRegistry';
 
 export enum NodeTerrainState {
   NORMAL_LOS = 'NORMAL_LOS',
@@ -1199,4 +1200,362 @@ export class PredictiveLookAheadEngine {
       };
     }
   }
+}
+
+// ----------------------------------------------------------------------------
+// Aerospace Flight Pattern Generators & Flight Plan Profiler
+// ----------------------------------------------------------------------------
+
+export type FlightPatternType = 'ellipse_orbit' | 'racetrack_hold' | 'figure8_valley' | 'canyon_transit';
+
+export interface FlightPatternOptions {
+  readonly cruiseAltM?: number;
+  readonly centerXm?: number;
+  readonly centerYm?: number;
+  readonly radiusAM?: number;
+  readonly radiusBM?: number;
+  readonly rotationDeg?: number;
+  readonly legLengthM?: number;
+  readonly turnRadiusM?: number;
+}
+
+export interface FlightPlanProfileSample {
+  readonly distKm: number;
+  readonly acnAltM: number;
+  readonly demAltM: number;
+  readonly aglM: number;
+  readonly bankDeg: number;
+  readonly cfitWarning: boolean;
+}
+
+export interface FlightPlanEnvelopeSummary {
+  readonly totalDistanceKm: number;
+  readonly orbitPeriodS: number;
+  readonly minClearanceAglM: number;
+  readonly minTurnRadiusM: number;
+  readonly peakBankAngleDeg: number;
+  readonly cfitWarningCount: number;
+  readonly predictedLoSCoveragePct: number;
+  readonly samples: readonly FlightPlanProfileSample[];
+}
+
+/**
+ * Generates first-principles parameterized aerospace waypoint paths for tactical ACN flight plans.
+ */
+export function generateFlightPatternWaypoints(
+  patternType: FlightPatternType,
+  options: FlightPatternOptions = {}
+): readonly ACNWaypoint[] {
+  const cruiseAlt = Number.isFinite(options.cruiseAltM) ? options.cruiseAltM! : 5000.0;
+  const centerX = options.centerXm ?? 0.0;
+  const centerY = options.centerYm ?? 0.0;
+  const rotationDeg = options.rotationDeg ?? (patternType === 'ellipse_orbit' ? 35.0 : 0.0);
+
+  switch (patternType) {
+    case 'ellipse_orbit': {
+      const count = 8;
+      const a = options.radiusAM ?? 20000.0;
+      const b = options.radiusBM ?? 10000.0;
+      const rad = (rotationDeg * Math.PI) / 180.0;
+      const cosR = Math.cos(rad);
+      const sinR = Math.sin(rad);
+      const waypoints: ACNWaypoint[] = [];
+
+      for (let k = 0; k < count; k++) {
+        const theta = (2.0 * Math.PI * k) / count;
+        const xLoc = a * Math.cos(theta);
+        const yLoc = b * Math.sin(theta);
+        const x = centerX + xLoc * cosR - yLoc * sinR;
+        const y = centerY + xLoc * sinR + yLoc * cosR;
+        waypoints.push({
+          xM: Math.round(x * 10) / 10,
+          yM: Math.round(y * 10) / 10,
+          zM: cruiseAlt,
+        });
+      }
+      return validateClosedWaypointPath(waypoints);
+    }
+
+    case 'racetrack_hold': {
+      const L = options.legLengthM ?? (options.radiusAM ? options.radiusAM * 1.5 : 24000.0);
+      const R = options.turnRadiusM ?? (options.radiusBM ?? 8000.0);
+      const rad = (rotationDeg * Math.PI) / 180.0;
+      const cosR = Math.cos(rad);
+      const sinR = Math.sin(rad);
+      const halfL = L / 2.0;
+
+      // 8 waypoints: 2 straight parallel legs and 2 semicircular endcaps (constant radius R)
+      // Leg 1 (Eastbound): WP0 -> WP1 along y = -R
+      // Turn 1 (East endcap): WP2, WP3
+      // Leg 2 (Westbound): WP4 -> WP5 along y = +R
+      // Turn 2 (West endcap): WP6, WP7
+      const localPoints: [number, number][] = [
+        [-halfL, -R],
+        [halfL, -R],
+        [halfL + R * Math.SQRT1_2, -R * Math.SQRT1_2],
+        [halfL + R * Math.SQRT1_2, R * Math.SQRT1_2],
+        [halfL, R],
+        [-halfL, R],
+        [-halfL - R * Math.SQRT1_2, R * Math.SQRT1_2],
+        [-halfL - R * Math.SQRT1_2, -R * Math.SQRT1_2],
+      ];
+
+      const waypoints: ACNWaypoint[] = localPoints.map(([xLoc, yLoc]) => {
+        const x = centerX + xLoc * cosR - yLoc * sinR;
+        const y = centerY + xLoc * sinR + yLoc * cosR;
+        return {
+          xM: Math.round(x * 10) / 10,
+          yM: Math.round(y * 10) / 10,
+          zM: cruiseAlt,
+        };
+      });
+      return validateClosedWaypointPath(waypoints);
+    }
+
+    case 'figure8_valley': {
+      const A = options.radiusAM ?? 18000.0;
+      const B = options.radiusBM ?? 24000.0;
+      const rad = (rotationDeg * Math.PI) / 180.0;
+      const cosR = Math.cos(rad);
+      const sinR = Math.sin(rad);
+      const count = 8;
+      const waypoints: ACNWaypoint[] = [];
+
+      for (let k = 0; k < count; k++) {
+        const theta = (2.0 * Math.PI * k) / count;
+        // Lemniscate of Gerono / Figure-8: x(theta) = A * sin(theta), y(theta) = B * sin(theta) * cos(theta)
+        const xLoc = A * Math.sin(theta);
+        const yLoc = B * Math.sin(theta) * Math.cos(theta);
+        const x = centerX + xLoc * cosR - yLoc * sinR;
+        const y = centerY + xLoc * sinR + yLoc * cosR;
+        waypoints.push({
+          xM: Math.round(x * 10) / 10,
+          yM: Math.round(y * 10) / 10,
+          zM: cruiseAlt,
+        });
+      }
+      return validateClosedWaypointPath(waypoints);
+    }
+
+    case 'canyon_transit': {
+      const rad = (rotationDeg * Math.PI) / 180.0;
+      const cosR = Math.cos(rad);
+      const sinR = Math.sin(rad);
+      const altDelta = cruiseAlt - 5000.0;
+
+      // 6-waypoint terrain-skimming alpine corridor route with stepped waypoint altitudes:
+      // 4,800 m -> 5,350 m (high mountain ridge/pass) -> 4,900 m MSL
+      const localCorridor: [number, number, number][] = [
+        [-16000.0, -10000.0, 4800.0 + altDelta],
+        [-8000.0, -4000.0, 5050.0 + altDelta],
+        [2000.0, 3000.0, 5350.0 + altDelta],
+        [14000.0, 9000.0, 4900.0 + altDelta],
+        [10000.0, 15000.0, 5100.0 + altDelta],
+        [-6000.0, 8000.0, 4950.0 + altDelta],
+      ];
+
+      const waypoints: ACNWaypoint[] = localCorridor.map(([xLoc, yLoc, zAlt]) => {
+        const x = centerX + xLoc * cosR - yLoc * sinR;
+        const y = centerY + xLoc * sinR + yLoc * cosR;
+        return {
+          xM: Math.round(x * 10) / 10,
+          yM: Math.round(y * 10) / 10,
+          zM: Math.round(zAlt),
+        };
+      });
+      return validateClosedWaypointPath(waypoints);
+    }
+
+    default:
+      throw new Error(`Unsupported flight pattern type: ${patternType}`);
+  }
+}
+
+/**
+ * Evaluates the full aerodynamic envelope and vertical terrain clearance profile of a flight plan.
+ * Samples N = 64 equidistant points, computing AGL, curvature kappa, coordinated bank angle phi,
+ * minimum turn radius R_min, and predicted route Line-of-Sight coverage across tactical ground nodes.
+ */
+export function evaluateFlightPlanProfile(
+  waypointsOrTrajectory: readonly ACNWaypoint[] | ACNTrajectory,
+  airspeedMps: number = 50.0,
+  terrainEngine?: TerrainEngine | { getElevation(x: number, y: number): number; getElevationAt?(x: number, y: number): number },
+  groundNodes?: readonly { position: readonly [number, number] | Position3D; nodeId: number }[]
+): FlightPlanEnvelopeSummary {
+  const V = Number.isFinite(airspeedMps) && airspeedMps > 0 ? airspeedMps : 50.0;
+  const G_CONST = 9.80665;
+
+  const getElev = (x: number, y: number): number => {
+    if (!terrainEngine) return 3500.0;
+    const val = typeof (terrainEngine as any).getElevationAt === 'function'
+      ? (terrainEngine as any).getElevationAt(x, y)
+      : (typeof terrainEngine.getElevation === 'function' ? terrainEngine.getElevation(x, y) : 3500.0);
+    return Number.isFinite(val) ? val : 3500.0;
+  };
+
+  let traj: ACNTrajectory;
+  if (Array.isArray(waypointsOrTrajectory)) {
+    const waypoints = validateClosedWaypointPath(waypointsOrTrajectory);
+    const firstZ = waypoints.find(w => w.zM !== undefined && Number.isFinite(w.zM))?.zM ?? 5000.0;
+    const flightConfig = new ACNFlightConfig({
+      trajectoryMode: 'waypoints',
+      waypoints,
+      loiterSpeedMps: V,
+      altitudeMode: 'amsl',
+      altitudeMslM: firstZ,
+    });
+    traj = new WaypointTrajectoryEngine(flightConfig, 512, getElev);
+  } else {
+    traj = waypointsOrTrajectory as ACNTrajectory;
+  }
+
+  const N = 64;
+  const totalLengthM = traj.totalLengthM;
+  const orbitPeriodS = totalLengthM > 0 ? totalLengthM / V : 0;
+  const samples: FlightPlanProfileSample[] = [];
+
+  let peakBankAngleDeg = 0.0;
+  let minClearanceAglM = Number.POSITIVE_INFINITY;
+  let cfitWarningCount = 0;
+  let maxCurvature = 0.0;
+
+  for (let k = 0; k < N; k++) {
+    const distM = (k / N) * totalLengthM;
+    const distKm = Math.round((distM / 1000.0) * 100) / 100;
+    const tS = orbitPeriodS > 0 ? (k / N) * orbitPeriodS : 0.0;
+
+    const pos = traj.getAcnPosition(tS);
+    const acnAltM = Math.round(pos[2] * 10) / 10;
+    const demAltM = Math.round(getElev(pos[0], pos[1]) * 10) / 10;
+    const aglM = Math.round((acnAltM - demAltM) * 10) / 10;
+    const cfitWarning = aglM < 300.0;
+
+    if (cfitWarning) {
+      cfitWarningCount++;
+    }
+    if (aglM < minClearanceAglM) {
+      minClearanceAglM = aglM;
+    }
+
+    // Robust centered finite differences for velocity and acceleration
+    const dt = Math.max(0.2, Math.min(2.0, orbitPeriodS > 0 ? orbitPeriodS / 256.0 : 1.0));
+    const pPrev = traj.getAcnPosition(tS - dt);
+    const pNow = pos;
+    const pNext = traj.getAcnPosition(tS + dt);
+
+    const vx = (pNext[0] - pPrev[0]) / (2.0 * dt);
+    const vy = (pNext[1] - pPrev[1]) / (2.0 * dt);
+    const ax = (pNext[0] - 2.0 * pNow[0] + pPrev[0]) / (dt * dt);
+    const ay = (pNext[1] - 2.0 * pNow[1] + pPrev[1]) / (dt * dt);
+
+    const vHorizSq = vx * vx + vy * vy;
+    let kappa = 0.0;
+    let bankDeg = 0.0;
+
+    if (vHorizSq > 1e-4) {
+      const cross = Math.abs(vx * ay - vy * ax);
+      kappa = cross / Math.pow(vHorizSq, 1.5);
+      if (Number.isFinite(kappa)) {
+        if (kappa > maxCurvature) maxCurvature = kappa;
+        const tanPhi = (V * V * kappa) / G_CONST;
+        bankDeg = (180.0 / Math.PI) * Math.atan(tanPhi);
+        bankDeg = Math.round(bankDeg * 10) / 10;
+      }
+    }
+
+    if (Math.abs(bankDeg) > peakBankAngleDeg) {
+      peakBankAngleDeg = Math.abs(bankDeg);
+    }
+
+    samples.push({
+      distKm,
+      acnAltM,
+      demAltM,
+      aglM,
+      bankDeg,
+      cfitWarning,
+    });
+  }
+
+  // Minimum turn radius: R_min = V^2 / (g * tan(max|phi|))
+  let minTurnRadiusM = Number.POSITIVE_INFINITY;
+  if (peakBankAngleDeg > 1e-4) {
+    const tanPeak = Math.tan((peakBankAngleDeg * Math.PI) / 180.0);
+    minTurnRadiusM = Math.round((V * V) / (G_CONST * tanPeak));
+  } else if (maxCurvature > 1e-9) {
+    minTurnRadiusM = Math.round(1.0 / maxCurvature);
+  }
+
+  // 12 route samples for LoS coverage estimation
+  let predictedLoSCoveragePct = 100.0;
+  if (terrainEngine) {
+    const nodes = (groundNodes && groundNodes.length > 0)
+      ? groundNodes
+      : CANONICAL_16_NODE_POSITIONS.map((pos, idx) => ({
+          position: [pos[0], pos[1], getElev(pos[0], pos[1]) + 2.0] as Position3D,
+          nodeId: idx,
+        }));
+
+    let sumCoveredPct = 0.0;
+    const numPhases = 12;
+
+    for (let m = 0; m < numPhases; m++) {
+      const phaseTimeS = orbitPeriodS > 0 ? (m / numPhases) * orbitPeriodS : 0.0;
+      const acnPos = traj.getAcnPosition(phaseTimeS);
+      let losCount = 0;
+
+      for (const node of nodes) {
+        const nPos: Position3D = [
+          node.position[0],
+          node.position[1],
+          node.position.length >= 3 && Number.isFinite(node.position[2])
+            ? node.position[2]!
+            : getElev(node.position[0], node.position[1]) + 2.0,
+        ];
+
+        let isLos = true;
+        if (typeof (terrainEngine as any).evaluateTerrainObstruction === 'function') {
+          const obs = (terrainEngine as any).evaluateTerrainObstruction(
+            nPos,
+            acnPos,
+            DEFAULT_RF_CONFIG,
+            DEFAULT_ENVIRONMENT_CONFIG,
+            200.0
+          );
+          isLos = Boolean(obs.isLos || obs.minClearanceM > 0);
+        } else {
+          const steps = 16;
+          for (let s = 1; s < steps; s++) {
+            const frac = s / steps;
+            const sx = nPos[0] + frac * (acnPos[0] - nPos[0]);
+            const sy = nPos[1] + frac * (acnPos[1] - nPos[1]);
+            const sz = nPos[2] + frac * (acnPos[2] - nPos[2]);
+            const gz = getElev(sx, sy);
+            if (gz > sz) {
+              isLos = false;
+              break;
+            }
+          }
+        }
+
+        if (isLos) losCount++;
+      }
+
+      const phasePct = nodes.length > 0 ? (losCount / nodes.length) * 100.0 : 100.0;
+      sumCoveredPct += phasePct;
+    }
+
+    predictedLoSCoveragePct = Math.round((sumCoveredPct / numPhases) * 10) / 10;
+  }
+
+  return {
+    totalDistanceKm: Math.round((totalLengthM / 1000.0) * 10) / 10,
+    orbitPeriodS: Math.round(orbitPeriodS * 10) / 10,
+    minClearanceAglM: Number.isFinite(minClearanceAglM) ? minClearanceAglM : 0.0,
+    minTurnRadiusM,
+    peakBankAngleDeg,
+    cfitWarningCount,
+    predictedLoSCoveragePct,
+    samples: Object.freeze(samples),
+  };
 }

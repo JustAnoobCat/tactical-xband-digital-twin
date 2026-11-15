@@ -262,6 +262,12 @@ export interface FresnelSliceTelemetry {
   readonly crest_radius_m?: number;
   readonly curvature_loss_db?: number;
   readonly bullington_apex_dist_m?: number;
+  readonly kFactor?: number;
+  readonly refractivityGradNPerKm?: number;
+  readonly maxEarthBulgeM?: number;
+  readonly bullingtonApex?: import('../core/terrain').BullingtonApexData | null;
+  readonly fresnelZone2RadiusMidM?: number;
+  readonly fresnelZone3RadiusMidM?: number;
   readonly link_budget: SelectedLinkBudgetTelemetry;
   readonly profile_points: readonly [number, number, number, number][];
   readonly is_coverage_complete?: boolean;
@@ -740,6 +746,7 @@ export interface ConfigUpdateParams {
   readonly tdma_frame_config?: Partial<ITdmaFrameConfig>;
   readonly lookahead_cadence_hz?: number;
   readonly lookahead_interval_frames?: number;
+  readonly earthRadiusFactorK?: number;
 }
 
 export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
@@ -753,6 +760,7 @@ export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
   readonly altitude_mode?: AltitudeMode;
   readonly target_agl_m?: number;
   readonly max_climb_rate_mps?: number;
+  readonly earthRadiusFactorK?: number;
   readonly max_descent_rate_mps?: number;
   readonly orbit_a_m?: number;
   readonly orbit_b_m?: number;
@@ -827,6 +835,7 @@ export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
   readonly activeRelayEnabled?: boolean;
   readonly ricianFadingEnabled?: boolean;
   readonly cqiFeedbackDelayMs?: number;
+  readonly earthRadiusFactorK?: number;
 }
 
 export interface SetViewshedConfigCommand extends BaseWorkerInboundCommand {

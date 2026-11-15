@@ -1,5 +1,6 @@
 import type { Position3D } from '../shared/types';
-import type { TerrainObstruction } from './terrain';
+import type { TerrainObstruction, BullingtonApexData } from './terrain';
+import { EnvironmentConfig } from './config';
 
 /** One worker-generated sample along the ground terminal to ACN link. All elevations and distances are metres. */
 export interface LinkProfileSample {
@@ -12,6 +13,10 @@ export interface LinkProfileSample {
   readonly effectiveTerrainElevationMslM: number;
   readonly losElevationMslM: number;
   readonly fresnelRadiusM: number;
+  readonly fresnel2RadiusM?: number;
+  readonly fresnel3RadiusM?: number;
+  readonly earthBulgeM?: number;
+  readonly nu?: number;
   readonly lowerFresnelElevationMslM: number;
   readonly upperFresnelElevationMslM: number;
   /** Signed LOS-to-effective-terrain clearance at this visualization sample. */
@@ -55,6 +60,13 @@ export interface LinkProfile {
   readonly crestRadiusM?: number;
   readonly curvatureLossDb?: number;
   readonly bullingtonApexDistM?: number;
+  /** ITU-R P.834 refractivity and Bullington double-horizon apex geometry */
+  readonly kFactor: number;
+  readonly refractivityGradNPerKm: number;
+  readonly maxEarthBulgeM: number;
+  readonly bullingtonApex?: BullingtonApexData | null;
+  readonly fresnelZone2RadiusMidM: number;
+  readonly fresnelZone3RadiusMidM: number;
   /** False only when profile inputs are numerically invalid or traverse out-of-coverage terrain; no sample is emitted in that case. */
   readonly valid: boolean;
   /** Explicit terrain coverage status; false if any sample along the propagation profile is unmapped. */
@@ -62,6 +74,9 @@ export interface LinkProfile {
   /** Explanatory description when profile is invalid or extends outside DEM coverage. */
   readonly invalidReason?: string;
 }
+
+export type ProfileData = LinkProfile;
+export type LinkProfileAnalysis = LinkProfile;
 
 export interface BuildLinkProfileInput {
   readonly selectedGroundNodeId: number;
@@ -94,6 +109,17 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
   const slantDistanceM = Math.hypot(horizontalDistanceM, dz);
   const isCoverageComplete = input.obstruction.isCoverageComplete !== false;
   let invalidReason: string | undefined = undefined;
+
+  const kFactor = input.effectiveEarthRadiusM / 6371000.0;
+  const refractivityGradNPerKm = EnvironmentConfig.refractivityGradientFromK(kFactor);
+  const maxEarthBulgeM = slantDistanceM > 0
+    ? input.computeEarthBulgeM(slantDistanceM / 2.0, slantDistanceM / 2.0, input.effectiveEarthRadiusM)
+    : 0.0;
+  const midF1 = slantDistanceM > 0
+    ? Math.sqrt(Math.max(0, (input.wavelengthM * (slantDistanceM * 0.5) * (slantDistanceM * 0.5)) / slantDistanceM))
+    : 0.0;
+  const fresnelZone2RadiusMidM = Math.SQRT2 * midF1;
+  const fresnelZone3RadiusMidM = Math.sqrt(3.0) * midF1;
 
   let valid = isCoverageComplete &&
     finitePosition(node) && finitePosition(acn) &&
@@ -144,6 +170,12 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
           invalidReason = 'Propagation profile values contain non-finite numbers';
           break;
         }
+        const f2RadiusM = Math.SQRT2 * fresnelRadiusM;
+        const f3RadiusM = Math.sqrt(3.0) * fresnelRadiusM;
+        const clr = losMslM - effectiveTerrainMslM;
+        const nu = (d1M > 0 && d2M > 0)
+          ? -clr * Math.sqrt((2.0 / input.wavelengthM) * (1.0 / d1M + 1.0 / d2M))
+          : 0.0;
         samples.push({
           horizontalGroundDistanceM: along * horizontalDistanceM,
           slantDistanceM: d1M,
@@ -151,9 +183,13 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
           effectiveTerrainElevationMslM: effectiveTerrainMslM,
           losElevationMslM: losMslM,
           fresnelRadiusM,
+          fresnel2RadiusM: f2RadiusM,
+          fresnel3RadiusM: f3RadiusM,
+          earthBulgeM: bulgeM,
+          nu,
           lowerFresnelElevationMslM: losMslM - offsetM,
           upperFresnelElevationMslM: losMslM + offsetM,
-          effectiveTerrainClearanceM: losMslM - effectiveTerrainMslM,
+          effectiveTerrainClearanceM: clr,
         });
       }
     } catch {
@@ -190,6 +226,12 @@ export function buildLinkProfile(input: BuildLinkProfileInput): LinkProfile {
     crestRadiusM: input.obstruction.crestRadiusM,
     curvatureLossDb: input.obstruction.curvatureLossDb,
     bullingtonApexDistM: input.obstruction.bullingtonApexDistM,
+    kFactor,
+    refractivityGradNPerKm,
+    maxEarthBulgeM,
+    bullingtonApex: input.obstruction.bullingtonApex ?? null,
+    fresnelZone2RadiusMidM,
+    fresnelZone3RadiusMidM,
     obstacleBlocked: input.obstruction.obstacleBlocked === true,
     obstacleIntervals: intervals,
     samples,

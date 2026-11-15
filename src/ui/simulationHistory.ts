@@ -162,6 +162,12 @@ export function createHistoricalRecordSnapshot(input: {
     obstacleBlocked: input.profile?.obstacleBlocked ?? input.obstruction.obstacleBlocked,
     obstacleIntervals: Object.freeze(clonedIntervals),
     samples: Object.freeze(clonedSamples),
+    kFactor: input.profile?.kFactor ?? (4.0 / 3.0),
+    refractivityGradNPerKm: input.profile?.refractivityGradNPerKm ?? -39.25,
+    maxEarthBulgeM: input.profile?.maxEarthBulgeM ?? 0,
+    bullingtonApex: input.profile?.bullingtonApex ? Object.freeze({ ...input.profile.bullingtonApex }) : null,
+    fresnelZone2RadiusMidM: input.profile?.fresnelZone2RadiusMidM ?? 0,
+    fresnelZone3RadiusMidM: input.profile?.fresnelZone3RadiusMidM ?? 0,
     valid: input.profile?.valid ?? true,
   });
 

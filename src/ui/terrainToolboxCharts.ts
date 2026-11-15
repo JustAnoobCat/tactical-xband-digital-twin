@@ -269,9 +269,56 @@ export function renderTransectProfileCanvas(
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // 0.6 F1 lower corridor envelope
-  ctx.strokeStyle = HIGHLAND_THEME.signal.sageStrokeSoft;
+  // 1st Fresnel Zone (F1) upper and lower ellipse envelope (8.0 GHz)
+  ctx.strokeStyle = 'rgba(0, 229, 255, 0.45)';
   ctx.lineWidth = 1;
+  ctx.setLineDash([2, 4]);
+  // Upper F1
+  ctx.beginPath();
+  samples.forEach((s, i) => {
+    const px = xOf(s.cumulativeDistM);
+    const py = yOf(s.losMslM + s.fresnelRadiusM);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+  // Lower F1
+  ctx.beginPath();
+  samples.forEach((s, i) => {
+    const px = xOf(s.cumulativeDistM);
+    const py = yOf(s.losMslM - s.fresnelRadiusM);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Red shading where terrain intrudes into 0.6 F1
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1];
+    const b = samples[i];
+    if (b.effectiveTerrainMslM > b.lowerFresnel06MslM || a.effectiveTerrainMslM > a.lowerFresnel06MslM) {
+      const x0 = xOf(a.cumulativeDistM);
+      const x1 = xOf(b.cumulativeDistM);
+      const y0Terrain = yOf(a.effectiveTerrainMslM);
+      const y1Terrain = yOf(b.effectiveTerrainMslM);
+      const y0F1 = yOf(a.lowerFresnel06MslM);
+      const y1F1 = yOf(b.lowerFresnel06MslM);
+
+      ctx.fillStyle = 'rgba(255, 42, 84, 0.35)';
+      ctx.beginPath();
+      ctx.moveTo(x0, y0Terrain);
+      ctx.lineTo(x1, y1Terrain);
+      ctx.lineTo(x1, y1F1);
+      ctx.lineTo(x0, y0F1);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // 0.6 F1 lower corridor envelope (dashed)
+  ctx.strokeStyle = HIGHLAND_THEME.signal.sageStrokeSoft;
+  ctx.lineWidth = 1.2;
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
   samples.forEach((s, i) => {
@@ -333,7 +380,7 @@ export function renderTransectProfileCanvas(
     }
   }
 
-  // Hover crosshair
+  // Hover crosshair & tooltip
   if (hoverSampleIdx !== null && samples[hoverSampleIdx]) {
     const hs = samples[hoverSampleIdx];
     const hx = xOf(hs.cumulativeDistM);
@@ -348,6 +395,19 @@ export function renderTransectProfileCanvas(
     ctx.beginPath();
     ctx.arc(hx, hy, 3.5, 0, Math.PI * 2);
     ctx.fill();
+
+    // Tooltip readout on canvas: Dist: X.XX km | Elev: XXXX m | F1 Clr: XX.X m
+    const tipText = `Dist: ${(hs.cumulativeDistM / 1000).toFixed(2)} km | Elev: ${Math.round(hs.terrainMslM)} m | F1 Clr: ${hs.clearanceM.toFixed(1)} m`;
+    ctx.font = `600 9px ${HIGHLAND_THEME.font.mono}`;
+    const tw = ctx.measureText(tipText).width;
+    const tx = Math.max(plotX + 2, Math.min(plotX + plotW - tw - 6, hx - tw / 2));
+    ctx.fillStyle = 'rgba(6, 8, 13, 0.88)';
+    ctx.fillRect(tx - 2, plotY + 4, tw + 6, 13);
+    ctx.strokeStyle = HIGHLAND_THEME.signal.amberBright;
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(tx - 2, plotY + 4, tw + 6, 13);
+    ctx.fillStyle = HIGHLAND_THEME.signal.amberBright;
+    ctx.fillText(tipText, tx + 1, plotY + 14);
   }
 
   // Frame & X axis labels

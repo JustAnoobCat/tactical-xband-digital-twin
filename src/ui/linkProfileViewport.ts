@@ -377,9 +377,22 @@ export function summarizeProfileStatus(profile: LinkProfile | null, legacyObstru
   };
 }
 
+export interface ProfileHoverInfo {
+  readonly canvasX: number;
+  readonly distKm: number;
+  readonly elevM: number;
+  readonly bulgeM: number;
+  readonly losM: number;
+  readonly clearanceM: number;
+  readonly nu: number;
+}
+
 export interface RenderProfileOptions {
   readonly showFresnel?: boolean;
   readonly showObstacles?: boolean;
+  readonly showMultiFresnel?: boolean;
+  readonly showBullingtonRays?: boolean;
+  readonly hoverInfo?: ProfileHoverInfo | null;
   readonly titlePrefix?: string;
 }
 
@@ -517,9 +530,82 @@ function drawTypedProfileContent(
 
   const showFresnel = options?.showFresnel !== false;
   const showObstacles = options?.showObstacles !== false;
+  const showMultiFresnel = options?.showMultiFresnel === true;
 
-  // 1. First Fresnel zone (0.6 F1 band)
+  // 1. Multi-Order Fresnel Zones (F3, F2, F1, and 0.6 F1)
   if (showFresnel) {
+    if (showMultiFresnel) {
+      // Outer dashed F3 zone (rgba(148, 163, 184, 0.16))
+      ctx.save();
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.04)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        const r3 = s.fresnel3RadiusM ?? (Math.sqrt(3.0) * s.fresnelRadiusM);
+        const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
+        const y = viewport.yToCanvas(s.losElevationMslM + r3, layout);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      for (let i = samples.length - 1; i >= 0; i--) {
+        const s = samples[i];
+        const r3 = s.fresnel3RadiusM ?? (Math.sqrt(3.0) * s.fresnelRadiusM);
+        const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
+        const y = viewport.yToCanvas(s.losElevationMslM - r3, layout);
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Outer dashed F2 zone (rgba(56, 189, 248, 0.22))
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.05)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        const r2 = s.fresnel2RadiusM ?? (Math.SQRT2 * s.fresnelRadiusM);
+        const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
+        const y = viewport.yToCanvas(s.losElevationMslM + r2, layout);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      for (let i = samples.length - 1; i >= 0; i--) {
+        const s = samples[i];
+        const r2 = s.fresnel2RadiusM ?? (Math.SQRT2 * s.fresnelRadiusM);
+        const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
+        const y = viewport.yToCanvas(s.losElevationMslM - r2, layout);
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Primary F1 outer envelope
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = 'rgba(233, 196, 106, 0.35)';
+      ctx.beginPath();
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
+        const y = viewport.yToCanvas(s.losElevationMslM + s.fresnelRadiusM, layout);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        const x = viewport.xToCanvas(s.horizontalGroundDistanceM / 1000, layout);
+        const y = viewport.yToCanvas(s.losElevationMslM - s.fresnelRadiusM, layout);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.beginPath();
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i];
@@ -559,7 +645,7 @@ function drawTypedProfileContent(
     }
     ctx.stroke();
 
-    // Label 0.6 F₁ boundary near midpoint
+    // Label boundaries near midpoint
     const midSample = samples[Math.floor(samples.length * 0.52)];
     if (midSample) {
       const fx = viewport.xToCanvas(midSample.horizontalGroundDistanceM / 1000, layout);
@@ -569,6 +655,14 @@ function drawTypedProfileContent(
         ctx.fillStyle = HIGHLAND_THEME.signal.ochre;
         ctx.textAlign = 'center';
         ctx.fillText('0.6 F₁', fx, fy + 10);
+      }
+      if (showMultiFresnel) {
+        const r2 = midSample.fresnel2RadiusM ?? (Math.SQRT2 * midSample.fresnelRadiusM);
+        const r3 = midSample.fresnel3RadiusM ?? (Math.sqrt(3.0) * midSample.fresnelRadiusM);
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.75)';
+        ctx.fillText('F₂', fx + 16, viewport.yToCanvas(midSample.losElevationMslM - r2, layout) + 9);
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
+        ctx.fillText('F₃', fx + 32, viewport.yToCanvas(midSample.losElevationMslM - r3, layout) + 9);
       }
     }
     ctx.restore();
@@ -777,6 +871,153 @@ function drawTypedProfileContent(
     ctx.textAlign = 'left';
     ctx.fillText(txt, badgeX + 5, badgeY + 12);
   }
+
+  // 6. Bullington Double-Horizon Tangent Rays & Virtual Apex (ITU-R P.526-15)
+  if (options?.showBullingtonRays !== false && profile.bullingtonApex) {
+    const apex = profile.bullingtonApex;
+    const dSlantM = Math.max(1e-3, profile.slantDistanceM);
+    const horizScale = profile.horizontalGroundDistanceM / dSlantM;
+
+    const sBullHorizKm = (apex.distM * horizScale) / 1000.0;
+    const txHorizKm = (apex.txHorizonDistM * horizScale) / 1000.0;
+    const rxHorizKm = (apex.rxHorizonDistM * horizScale) / 1000.0;
+
+    const xTx = viewport.xToCanvas(0, layout);
+    const yTx = viewport.yToCanvas(samples[0].losElevationMslM, layout);
+    const xRx = viewport.xToCanvas(samples.at(-1)!.horizontalGroundDistanceM / 1000.0, layout);
+    const yRx = viewport.yToCanvas(samples.at(-1)!.losElevationMslM, layout);
+
+    const xApex = viewport.xToCanvas(sBullHorizKm, layout);
+    const yApex = viewport.yToCanvas(apex.elevM, layout);
+    const yLosApex = viewport.yToCanvas(apex.losHeightM, layout);
+
+    const xTxPeak = viewport.xToCanvas(txHorizKm, layout);
+    const yTxPeak = viewport.yToCanvas(apex.txHorizonElevM, layout);
+    const xRxPeak = viewport.xToCanvas(rxHorizKm, layout);
+    const yRxPeak = viewport.yToCanvas(apex.rxHorizonElevM, layout);
+
+    ctx.save();
+    // Dashed amber TX tangent ray
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(xTx, yTx);
+    ctx.lineTo(xApex, yApex);
+    ctx.stroke();
+
+    // Dashed amber RX tangent ray
+    ctx.beginPath();
+    ctx.moveTo(xRx, yRx);
+    ctx.lineTo(xApex, yApex);
+    ctx.stroke();
+
+    // Vertical dashed drop line to LOS chord
+    ctx.setLineDash([2, 2]);
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(xApex, yApex);
+    ctx.lineTo(xApex, yLosApex);
+    ctx.stroke();
+
+    // Horizon tangent contact markers
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.arc(xTxPeak, yTxPeak, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(xRxPeak, yRxPeak, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Prominent crimson/amber apex triangle marker
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.moveTo(xApex, yApex - 8);
+    ctx.lineTo(xApex - 6, yApex + 2);
+    ctx.lineTo(xApex + 6, yApex + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Apex HUD badge
+    const apexLabel = `▲ BULLINGTON APEX (${(apex.distM / 1000).toFixed(1)} km, ν=${apex.diffractionParameterNu.toFixed(2)}, J=${apex.lossDb.toFixed(1)} dB)`;
+    ctx.font = `600 9.5px ${HIGHLAND_THEME.font.mono}`;
+    const badgeW = ctx.measureText(apexLabel).width + 8;
+    const badgeX = Math.max(layout.padL + 4, Math.min(layout.width - layout.padR - badgeW - 4, xApex - badgeW / 2));
+    const badgeY = Math.max(layout.padT + 14, yApex - 12);
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.fillRect(badgeX, badgeY - 11, badgeW, 14);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(badgeX, badgeY - 11, badgeW, 14);
+    ctx.fillStyle = '#fca5a5';
+    ctx.textAlign = 'left';
+    ctx.fillText(apexLabel, badgeX + 4, badgeY);
+
+    ctx.restore();
+  }
+
+  // 7. Interactive SPLAT! Crosshair Inspector HUD
+  if (options?.hoverInfo) {
+    const hInfo = options.hoverInfo;
+    const hx = hInfo.canvasX;
+    if (hx >= layout.padL && hx <= layout.padL + plotH * 10) {
+      ctx.save();
+      // Vertical cursor line
+      ctx.setLineDash([2, 2]);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hx, layout.padT);
+      ctx.lineTo(hx, layout.padT + plotH);
+      ctx.stroke();
+
+      // Points on terrain and LoS
+      const yTerr = viewport.yToCanvas(hInfo.elevM + hInfo.bulgeM, layout);
+      const yLos = viewport.yToCanvas(hInfo.losM, layout);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(hx, yTerr, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#eab308';
+      ctx.beginPath();
+      ctx.arc(hx, yLos, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // HUD badge text:
+      // s = XX.XX km | Elev+Bulge: XXXX m (Δh_bulge: +XX.X m) | LoS: XXXX m | Clr: +/-XX.X m | ν(s) = X.XX
+      const clrSign = hInfo.clearanceM >= 0 ? '+' : '';
+      const bulgeSign = hInfo.bulgeM >= 0 ? '+' : '';
+      const hudText = `s = ${hInfo.distKm.toFixed(2)} km | Elev+Bulge: ${Math.round(hInfo.elevM + hInfo.bulgeM)} m (Δh_bulge: ${bulgeSign}${hInfo.bulgeM.toFixed(1)} m) | LoS: ${Math.round(hInfo.losM)} m | Clr: ${clrSign}${hInfo.clearanceM.toFixed(1)} m | ν(s) = ${hInfo.nu.toFixed(2)}`;
+
+      ctx.font = `600 10px ${HIGHLAND_THEME.font.mono}`;
+      const hudW = ctx.measureText(hudText).width + 12;
+      const hudH = 18;
+      let hudX = hx - hudW / 2;
+      if (hudX < layout.padL + 4) hudX = layout.padL + 4;
+      if (hudX + hudW > layout.width - layout.padR - 4) hudX = layout.width - layout.padR - 4 - hudW;
+      const hudY = layout.padT + 8;
+
+      ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
+      ctx.fillRect(hudX, hudY, hudW, hudH);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(hudX, hudY, hudW, hudH);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(hudText, hudX + 6, hudY + hudH / 2);
+
+      ctx.restore();
+    }
+  }
 }
 
 function drawLegacyProfileContent(
@@ -837,10 +1078,15 @@ export function renderTerrainProfileViewport(
   viewport: LinkProfileViewportState,
   profile: LinkProfile | null,
   legacyPoints?: readonly [number, number, number, number][] | null,
+  options?: RenderProfileOptions,
 ): void {
   renderLinkProfileViewport(ctx, layout, viewport, profile, legacyPoints, {
-    showFresnel: false,
+    showFresnel: options?.showFresnel ?? false,
+    showMultiFresnel: options?.showMultiFresnel ?? false,
+    showBullingtonRays: options?.showBullingtonRays ?? true,
+    hoverInfo: options?.hoverInfo,
     titlePrefix: 'TERRAIN PROFILE',
+    ...options,
   });
 }
 

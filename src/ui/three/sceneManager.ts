@@ -68,9 +68,9 @@ export class ThreeSceneManager {
   // Placeholder root objects
   private placeholderGroup: THREE.Group;
 
-  // Authentic Terrain Geometry & Visualization State (M6.2.2)
+  // Authentic Terrain Geometry & Visualization State (M6.2.2 / M1.6)
   private cachedTerrainData: TerrainMeshDataPayload | null = null;
-  private terrainResolution: TerrainMeshResolution = 'native512';
+  private terrainResolution: TerrainMeshResolution = 'fast128';
   private terrainMesh: THREE.Mesh | null = null;
   private skirtMesh: THREE.Mesh | null = null;
   private datumGrid: THREE.Group | null = null;

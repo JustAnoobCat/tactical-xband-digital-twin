@@ -104,6 +104,9 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 .btn-close-toolbox:hover{background:var(--raised);color:var(--text);border-color:var(--line)}
 .terrain-toolbox-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .terrain-toolbox-row button{font-size:10px;padding:3px 6px}
+.terrain-toolbox-panel input, .terrain-toolbox-panel select, .terrain-toolbox-panel button, .terrain-toolbox-panel label{font-size:10px}
+.tb-obs-row{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3px 6px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:3px;margin-bottom:3px;font-size:10px}
+.tb-obs-delete-btn{border:none;background:rgba(239,68,68,.25);color:#ef4444;border-radius:2px;padding:1px 5px;cursor:pointer;font-size:11px;line-height:1}
 .terrain-toolbox-status{color:#b3afa7;line-height:1.35}
 .terrain-toolbox-list{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto}
 .terrain-toolbox-region{display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -810,6 +813,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <button type="button" class="tb-rail-btn" data-tb-rail-mode="region" title="Region Zonal &amp; Bridge Finder" aria-label="Region Zonal &amp; Bridge Finder">
               <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5,5 18,4 20,16 7,19"/></svg>
             </button>
+            <button type="button" class="tb-rail-btn" data-tb-rail-mode="obstacle" title="3D Obstacles &amp; RF Attenuation" aria-label="3D Obstacles &amp; RF Attenuation">
+              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/></svg>
+            </button>
           </div>
           <div class="tb-overlay-column">
             <div id="tb-picking-bar" class="tb-picking-bar" hidden>
@@ -829,10 +835,11 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <button type="button" class="tb-mode-tab" data-tb-mode="transect" role="tab" aria-selected="false">Transect</button>
               <button type="button" class="tb-mode-tab" data-tb-mode="probe" role="tab" aria-selected="false">Probe</button>
               <button type="button" class="tb-mode-tab" data-tb-mode="region" role="tab" aria-selected="false">Region</button>
+              <button type="button" class="tb-mode-tab" data-tb-mode="obstacle" role="tab" aria-selected="false">Obstacles</button>
             </div>
 
             <!-- Mode 1: DEM & Terrain Navigation -->
-            <div class="tb-mode-pane" data-tb-pane="dem">
+            <div class="tb-mode-pane" id="tb-pane-dem" data-tb-pane="dem">
               <div class="terrain-toolbox-row">
                 <button id="terrain-fit-btn" type="button" title="Fit active DEM bounds">Fit DEM</button>
                 <button id="terrain-fit-network-btn" type="button" title="Fit active ACN and ground terminals">Fit Network</button>
@@ -854,22 +861,28 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             </div>
 
             <!-- Mode 2: Transect & Polyline RF Profiler -->
-            <div class="tb-mode-pane" data-tb-pane="transect" hidden>
+            <div class="tb-mode-pane" id="tb-pane-transect" data-tb-pane="transect" hidden>
               <div class="terrain-toolbox-row">
-                <button id="terrain-measure-btn" type="button">2-Pt A→B</button>
-                <button id="tb-transect-poly-btn" type="button">Polyline</button>
-                <button id="tb-transect-finish-btn" type="button" disabled>Done</button>
-                <button id="terrain-measure-clear-btn" type="button">Clear</button>
+                <button id="terrain-measure-btn" type="button" aria-label="2-Point A to B Transect">2-Pt A→B</button>
+                <button id="tb-transect-poly-btn" type="button" aria-label="Polyline Transect">Polyline</button>
+                <button id="tb-transect-finish-btn" type="button" aria-label="Finish Polyline Transect" disabled>Done</button>
+                <button id="terrain-measure-clear-btn" type="button" aria-label="Clear Transect">Clear</button>
+              </div>
+              <div class="terrain-toolbox-row">
+                <label class="tool-label" for="tb-transect-tx-mast">TX Mast</label>
+                <input id="tb-transect-tx-mast" class="tb-input-sm" type="number" min="1" max="2000" step="1" value="10" style="width:48px" aria-label="TX Mast Height [m AGL]">
+                <label class="tool-label" for="tb-transect-rx-mast">RX Mast</label>
+                <input id="tb-transect-rx-mast" class="tb-input-sm" type="number" min="1" max="2000" step="1" value="2" style="width:48px" aria-label="RX Mast Height [m AGL]">
               </div>
               <div class="terrain-toolbox-row">
                 <label class="tool-label" for="tb-transect-height-a">A:</label>
-                <select id="tb-transect-height-a" class="tb-input-sm">
+                <select id="tb-transect-height-a" class="tb-input-sm" aria-label="Transect Vertex A Height Mode">
                   <option value="ground_2">Ground +2m</option>
                   <option value="ground_15">Ground +15m</option>
                   <option value="acn_alt">ACN Alt</option>
                 </select>
                 <label class="tool-label" for="tb-transect-height-b">B:</label>
-                <select id="tb-transect-height-b" class="tb-input-sm">
+                <select id="tb-transect-height-b" class="tb-input-sm" aria-label="Transect Vertex B Height Mode">
                   <option value="ground_2">Ground +2m</option>
                   <option value="ground_15">Ground +15m</option>
                   <option value="acn_alt">ACN Alt</option>
@@ -887,53 +900,105 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                   <option value="0.85">k = 0.85</option>
                   <option value="0.6666666667">k = 2/3</option>
                 </select>
-                <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-transect-obstacles" checked> 3D Obs</label>
+                <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-transect-obstacles" checked aria-label="Include 3D Obstacles in Transect"> 3D Obs</label>
+              </div>
+              <div class="tb-kv-grid" style="margin-top:4px">
+                <span>Min F1 Clearance</span><span id="tb-transect-fresnel">-- m (100%)</span>
+                <span>ITU-R P.526 Diff</span><span id="tb-transect-diffraction">0.0 dB</span>
+                <span>Est. 8GHz SNR/MOD</span><span id="tb-transect-snr">-- dB / --</span>
               </div>
             </div>
 
             <!-- Mode 3: Site Probe & Altitude Sweep -->
-            <div class="tb-mode-pane" data-tb-pane="probe" hidden>
+            <div class="tb-mode-pane" id="tb-pane-probe" data-tb-pane="probe" hidden>
               <div class="terrain-toolbox-row">
-                <button id="tb-probe-pick-btn" type="button">Pick Probe Site</button>
-                <button id="tb-probe-clear-btn" type="button">Clear</button>
+                <button id="tb-probe-pick-btn" type="button" aria-label="Pick Probe Site on Map">Pick Probe Site</button>
+                <button id="tb-probe-clear-btn" type="button" aria-label="Clear Probe Site">Clear</button>
               </div>
               <div class="terrain-toolbox-row">
                 <label class="tool-label" for="tb-probe-agl">AGL(m)</label>
-                <input id="tb-probe-agl" class="tb-input-sm" type="number" min="0" max="500" step="1" value="2" style="width:48px">
+                <input id="tb-probe-agl" class="tb-input-sm" type="number" min="0" max="500" step="1" value="2" style="width:48px" aria-label="Probe Terminal AGL">
                 <label class="tool-label" for="tb-probe-radius">R(km)</label>
-                <input id="tb-probe-radius" class="tb-input-sm" type="number" min="5" max="60" step="1" value="24" style="width:46px">
+                <input id="tb-probe-radius" class="tb-input-sm" type="number" min="5" max="60" step="1" value="24" style="width:46px" aria-label="Probe Viewshed Radius">
                 <select id="tb-probe-target" class="tb-input-sm" aria-label="Probe viewshed target height" title="Viewshed target height">
                   <option value="ground_agl">Gnd +2m</option>
                   <option value="acn_alt">ACN Alt</option>
                 </select>
               </div>
               <div class="terrain-toolbox-row">
-                <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-probe-obstacles" checked> 3D Obs</label>
+                <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-probe-obstacles" checked aria-label="Include 3D Obstacles in Probe"> 3D Obs</label>
                 <label class="tool-label" for="tb-sweep-target">Sweep</label>
-                <select id="tb-sweep-target" class="tb-input-sm">
+                <select id="tb-sweep-target" class="tb-input-sm" aria-label="Probe Sweep Target">
                   <option value="probe">Probe</option>
                   <option value="region">Region</option>
                   <option value="nodes">Nodes</option>
                 </select>
               </div>
+              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-cyan, #00e5ff)">Virtual Terminal Link to ACN</div>
+              <div class="tb-kv-grid">
+                <span>ACN Slant Range</span><span id="tb-probe-acn-range">-- km</span>
+                <span>Elevation Angle</span><span id="tb-probe-acn-el">--°</span>
+                <span>Line-of-Sight</span><span id="tb-probe-acn-los">--</span>
+                <span>Est. 8 GHz SINR</span><span id="tb-probe-acn-sinr">-- dB</span>
+                <span>Supported MODCOD</span><span id="tb-probe-acn-modcod">--</span>
+              </div>
+              <div class="terrain-toolbox-row" style="margin-top:6px">
+                <button id="tb-probe-spawn-node" type="button" aria-label="Spawn Ground Terminal at Probed Coordinate" class="primary" style="width:100%">+ Spawn Terminal at Probe Point</button>
+              </div>
             </div>
 
             <!-- Mode 4: Region Zonal & Bridge Finder -->
-            <div class="tb-mode-pane" data-tb-pane="region" hidden>
+            <div class="tb-mode-pane" id="tb-pane-region" data-tb-pane="region" hidden>
               <div class="terrain-toolbox-row">
-                <button id="terrain-region-btn" type="button">Draw region</button>
-                <button id="terrain-region-finish-btn" type="button" disabled>Finish</button>
-                <button id="terrain-region-cancel-btn" type="button" disabled>Cancel</button>
+                <button id="terrain-region-btn" type="button" aria-label="Draw Region on Map">Draw region</button>
+                <button id="terrain-region-finish-btn" type="button" aria-label="Finish Drawing Region" disabled>Finish</button>
+                <button id="terrain-region-cancel-btn" type="button" aria-label="Cancel Region Drawing" disabled>Cancel</button>
                 <span id="tb-region-live-area" class="tb-chip">Area: --</span>
               </div>
               <div id="terrain-toolbox-regions" class="terrain-toolbox-list" aria-label="Drawn regions"></div>
               <div class="terrain-toolbox-row">
-                <button id="tb-bridge-a-btn" type="button">Pick A</button>
-                <button id="tb-bridge-b-btn" type="button">Pick B</button>
+                <button id="tb-bridge-a-btn" type="button" aria-label="Pick Bridge Endpoint A">Pick A</button>
+                <button id="tb-bridge-b-btn" type="button" aria-label="Pick Bridge Endpoint B">Pick B</button>
                 <label class="tool-label" for="tb-bridge-agl">AGL</label>
-                <input id="tb-bridge-agl" class="tb-input-sm" type="number" min="1" max="500" step="1" value="15" style="width:44px">
-                <button id="tb-bridge-find-btn" type="button" disabled>Find Bridge</button>
-                <button id="tb-bridge-clear-btn" type="button">Clear</button>
+                <input id="tb-bridge-agl" class="tb-input-sm" type="number" min="1" max="500" step="1" value="15" style="width:44px" aria-label="Bridge Relay AGL">
+                <button id="tb-bridge-find-btn" type="button" aria-label="Find Joint Relay Bridge" disabled>Find Bridge</button>
+                <button id="tb-bridge-clear-btn" type="button" aria-label="Clear Joint Relay Bridge">Clear</button>
+              </div>
+              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-amber, #ffab00)">Zonal RF &amp; Local Summit</div>
+              <div class="tb-kv-grid">
+                <span>Local Summit ▲</span><span id="tb-region-summit">-- m @ (--, --)</span>
+                <span>Ruggedness / Slope</span><span id="tb-region-ruggedness">TRI -- m / --°</span>
+                <span>ACN LoS Coverage</span><span id="tb-region-los-pct">--% (0/36)</span>
+              </div>
+            </div>
+
+            <!-- Mode 5: 3D Obstacles & Excalidraw Ergonomics -->
+            <div class="tb-mode-pane" id="tb-pane-obstacle" data-tb-pane="obstacle" hidden>
+              <div class="terrain-toolbox-row">
+                <label class="tool-label" for="tb-obs-shape-select">Shape</label>
+                <select id="tb-obs-shape-select" class="tb-input-sm" aria-label="Obstacle Geometry Shape">
+                  <option value="wall">Ridge Wall (Segment)</option>
+                  <option value="block">Bunker / Block (Thick Barrier)</option>
+                  <option value="peak">Peak / Dome (Prominence)</option>
+                </select>
+              </div>
+              <div class="terrain-toolbox-row">
+                <label class="tool-label" for="tb-obs-material-select">Material</label>
+                <select id="tb-obs-material-select" class="tb-input-sm" aria-label="Obstacle RF Material Profile">
+                  <option value="granite">Alpine Granite (Opaque Knife-Edge)</option>
+                  <option value="concrete">Reinforced Concrete (35 dB Cap)</option>
+                  <option value="foliage">Dense Conifer Foliage (ITU-R P.833 0.25 dB/m)</option>
+                </select>
+              </div>
+              <div class="terrain-toolbox-row">
+                <button id="tb-obs-place-btn" type="button" aria-label="Place Obstacle on Map">Place Obs</button>
+                <button id="tb-obs-undo" type="button" aria-label="Undo Obstacle Action" disabled>Undo</button>
+                <button id="tb-obs-redo" type="button" aria-label="Redo Obstacle Action" disabled>Redo</button>
+                <button id="tb-obs-clear-btn" type="button" aria-label="Clear All Obstacles">Clear</button>
+              </div>
+              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--text, #f2efe9)">Obstacle Inventory</div>
+              <div id="tb-obs-list" class="terrain-toolbox-list" aria-label="Obstacle Inventory List">
+                <span class="terrain-toolbox-status">No obstacles placed.</span>
               </div>
             </div>
 
@@ -1409,7 +1474,10 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="legend">
           <span><i style="background:#8a95e6"></i>Control</span><span><i style="background:#e09f3e"></i>C2 signaling</span><span><i style="background:#52b788"></i>Voice (PTT)</span><span><i style="background:#e9c46a"></i>Video</span><span><i style="background:#d97736"></i>Photo/data</span><span><i style="background:#e05347"></i>Wasted / Conflict</span><span><i style="background:rgba(82, 183, 136,0.22);border:1px dashed #74c69d"></i>Reclaimed airtime</span><span><i style="background:#1e2229;outline:1px solid var(--line2)"></i>Headroom</span>
         </div>
-        <div class="waterfall-canvas-container"><canvas id="waterfall-canvas"></canvas></div>
+        <div class="waterfall-canvas-container" id="gantt-canvas-wrap">
+          <canvas id="waterfall-canvas" aria-label="TDMA Superframe Gantt &amp; Slot Allocation Inspector"></canvas>
+          <canvas id="gantt-canvas" style="display:none;" aria-hidden="true"></canvas>
+        </div>
       </div>
       <div class="panel" id="allocation-inspector">
         <div class="panel-head"><span class="sec-title">Allocation for the selected terminal</span><span class="badge-sub">current frame</span></div>
@@ -1419,6 +1487,83 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div class="inspector-metric"><span>Segments</span><strong id="alloc-segments">--</strong></div>
         </div>
         <p class="inspector-footnote" id="alloc-inspector-note">Waiting for current-frame scheduler allocations. This panel reports only allocation fields supplied by worker telemetry.</p>
+      </div>
+
+      <!-- Wireshark Layer-1 / Layer-2 X-Band MAC PDU Frame Dissector Panel -->
+      <div class="panel" id="pdu-dissector-panel">
+        <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <span class="sec-title">LAYER-1 / LAYER-2 X-BAND MAC PDU FRAME DISSECTOR [DVB-S2X / 3GPP 5QI]</span>
+            <span class="badge-sub" id="pdu-slot-subhead">LIVE BURST INSPECTION</span>
+          </div>
+          <button id="btn-pdu-auto-follow" type="button" class="btn" aria-label="Toggle Auto-Follow Active TDMA Slot" style="font-size:11px;padding:3px 10px;cursor:pointer">Auto-Follow Top Slot [ON]</button>
+        </div>
+        <p class="lede" style="margin-bottom:10px;font-size:11.5px">Real-time bit-level protocol dissector capturing DVB-S2X PLHEADER framing, strict 3GPP 5QI priority byte multiplexing, speed-of-light Timing Advance guard-bands, and frame delivery status.</p>
+
+        <!-- Visual Stacked Byte-Packing Bar -->
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:11px">
+            <span style="font-weight:600;color:var(--text)">5QI Sub-PDU Byte Multiplexing Distribution</span>
+            <span id="pdu-capacity-readout" style="font-family:var(--mono);color:var(--accent)">0 bits / 0 B</span>
+          </div>
+          <div id="pdu-byte-bar" aria-label="Visual 5QI Byte Multiplexing Bar" style="display:flex;width:100%;height:18px;border-radius:4px;overflow:hidden;background:#161b22;border:1px solid var(--line)">
+            <div id="pdu-bar-framing" style="width:0%;background:#8a95e6" title="Framing Overhead (PLHEADER+CRC)"></div>
+            <div id="pdu-bar-c2" style="width:0%;background:#ef4444" title="5QI-69 C2"></div>
+            <div id="pdu-bar-voice" style="width:0%;background:#38bdf8" title="5QI-65 Voice"></div>
+            <div id="pdu-bar-video" style="width:0%;background:#10b981" title="5QI-67 Video"></div>
+            <div id="pdu-bar-photo" style="width:0%;background:#f59e0b" title="5QI-70 Photo"></div>
+            <div id="pdu-bar-padding" style="width:100%;background:#334155" title="Padding / Headroom"></div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;font-size:10.5px;color:var(--text-muted)">
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#8a95e6"></i><span id="pdu-leg-framing">Framing: 0B (0%)</span></span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#ef4444"></i><span id="pdu-leg-c2">5QI-69 C2: 0B (0%)</span></span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#38bdf8"></i><span id="pdu-leg-voice">5QI-65 Voice: 0B (0%)</span></span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#10b981"></i><span id="pdu-leg-video">5QI-67 Video: 0B (0%)</span></span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#f59e0b"></i><span id="pdu-leg-photo">5QI-70 Photo: 0B (0%)</span></span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#334155"></i><span id="pdu-leg-padding">Padding: 0B (100%)</span></span>
+          </div>
+        </div>
+
+        <!-- 3-Layer Protocol Dissector Readout Grid -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px;margin-bottom:12px">
+          <div id="pdu-layer1-phy" class="inspector-metric" style="background:#0d1117;border:1px solid var(--line);border-radius:4px;padding:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;border-bottom:1px solid var(--line);padding-bottom:4px">L1 PHY BURST PARAMETERS</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:10.5px">
+              <span style="color:var(--text-muted)">Slot Window:</span><span id="pdu-phy-window" style="font-family:var(--mono);color:var(--text)">[-- .. --] ms</span>
+              <span style="color:var(--text-muted)">Timing Advance τ_TA:</span><span id="pdu-phy-ta" style="font-family:var(--mono);color:var(--hi-amber,#f59e0b)">-- μs</span>
+              <span style="color:var(--text-muted)">Sector / Antenna:</span><span id="pdu-phy-sector" style="font-family:var(--mono);color:var(--text)">--</span>
+              <span style="color:var(--text-muted)">MODCOD / η:</span><span id="pdu-phy-modcod" style="font-family:var(--mono);color:var(--text)">--</span>
+              <span style="color:var(--text-muted)">Burst Capacity:</span><span id="pdu-phy-cap" style="font-family:var(--mono);color:var(--accent)">-- bits</span>
+            </div>
+          </div>
+          <div id="pdu-layer2-mac" class="inspector-metric" style="background:#0d1117;border:1px solid var(--line);border-radius:4px;padding:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;border-bottom:1px solid var(--line);padding-bottom:4px">L2 MAC 5QI MULTIPLEXING</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:10.5px">
+              <span style="color:var(--text-muted)">PLHEADER + CRC:</span><span id="pdu-mac-framing" style="font-family:var(--mono);color:#8a95e6">--</span>
+              <span style="color:var(--text-muted)">5QI 69 (C2):</span><span id="pdu-mac-c2" style="font-family:var(--mono);color:#ef4444">--</span>
+              <span style="color:var(--text-muted)">5QI 65 (Voice):</span><span id="pdu-mac-voice" style="font-family:var(--mono);color:#38bdf8">--</span>
+              <span style="color:var(--text-muted)">5QI 67 (Video):</span><span id="pdu-mac-video" style="font-family:var(--mono);color:#10b981">--</span>
+              <span style="color:var(--text-muted)">5QI 70 (Photo):</span><span id="pdu-mac-photo" style="font-family:var(--mono);color:#f59e0b">--</span>
+              <span style="color:var(--text-muted)">Padding / Idle:</span><span id="pdu-mac-padding" style="font-family:var(--mono);color:var(--text-muted)">--</span>
+            </div>
+          </div>
+          <div id="pdu-layer3-sched" class="inspector-metric" style="background:#0d1117;border:1px solid var(--line);border-radius:4px;padding:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;border-bottom:1px solid var(--line);padding-bottom:4px">L3 SCHEDULER TRACE</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:10.5px">
+              <span style="color:var(--text-muted)">Scheduler:</span><span id="pdu-sched-type" style="font-family:var(--mono);color:var(--text)">--</span>
+              <span style="color:var(--text-muted)">Burst Mode:</span><span id="pdu-sched-mode" style="font-family:var(--mono);color:var(--text)">--</span>
+              <span style="color:var(--text-muted)">Delivery Status:</span><span id="pdu-sched-status" style="font-family:var(--mono);font-weight:700">--</span>
+              <span style="color:var(--text-muted)">Slant Range:</span><span id="pdu-sched-range" style="font-family:var(--mono);color:var(--text)">-- km</span>
+              <span style="color:var(--text-muted)">Channel SNR:</span><span id="pdu-sched-snr" style="font-family:var(--mono);color:var(--text)">-- dB</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hexadecimal Frame Header Strip -->
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">DETERMINISTIC 16-BYTE HEXADECIMAL FRAME HEADER [DVB-S2X PLHEADER + CRC32]</div>
+          <pre id="pdu-hex-dump" style="background:#07090c;color:#38bdf8;padding:8px 12px;border-radius:4px;font-family:var(--mono);font-size:10.5px;overflow-x:auto;margin:0;border:1px solid var(--line);line-height:1.4;white-space:pre" aria-label="Deterministic MAC PDU Hex Header Dump">58 42 -- -- -- -- -- -- -- -- -- -- -- -- -- [SYNC:XB | SEC:-- | NID:-- | CRC32:--]</pre>
+        </div>
       </div>
       <div class="panel table-card">
         <div class="panel-head"><span class="sec-title">Session comparison: static TDMA vs Tac-TAD</span><span class="badge-sub">this session</span></div>
@@ -1526,7 +1671,27 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <span id="terrain-crest-badge" class="kpi-badge badge-neutral">PEAK: --</span>
           </div>
         </div>
-        <div class="fresnel-canvas-box"><canvas id="terrain-canvas" aria-label="Terrain path profile and top view canvas"></canvas></div>
+        <!-- Atmospheric Refractivity & Multi-Order Fresnel Zone Control Strip -->
+        <div id="prof-controls-strip" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.3);border-bottom:1px solid rgba(255,255,255,0.06);flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label for="prof-refractivity-select" style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">Refractivity (K-factor):</label>
+            <select id="prof-refractivity-select" aria-label="ITU-R P.834 Atmospheric Refractivity K-Factor Regime" style="font-size:11px;font-family:var(--mono);padding:3px 6px;background:#0d1117;color:var(--text);border:1px solid rgba(255,255,255,0.15);border-radius:4px" onchange="onRefractivityChange(this.value)">
+              <option value="0.80">Sub-Refractive Ducting Inversion (K = 0.80 | +39 N/km)</option>
+              <option value="1.18">High-Altitude Dry Alpine (K = 1.18 | -24 N/km)</option>
+              <option value="1.3333333333333333" selected>ITU-R Standard Atmosphere (K = 1.333 | -39 N/km)</option>
+              <option value="2.00">Super-Refractive Layer (K = 2.00 | -78 N/km)</option>
+              <option value="4.00">Tropospheric Trapping (K = 4.00 | -118 N/km)</option>
+            </select>
+            <button type="button" id="prof-toggle-fresnel-orders" class="secondary active" aria-label="Toggle Multi-Order Fresnel Zones F1 F2 F3" aria-pressed="true" onclick="toggleMultiOrderFresnel()" style="font-size:10.5px;padding:3px 8px;font-family:var(--mono)">Fresnel Zones F1–F3 &amp; Apex [ON]</button>
+          </div>
+          <div id="prof-physics-readout" style="font-size:10.5px;font-family:var(--mono);color:var(--hi-cyan-bright);letter-spacing:0.02em">
+            K-Factor: 1.33 (-39 N/km) | Midpoint Bulge: +5.89 m | Bullington Apex: -- | R_crest: --
+          </div>
+        </div>
+        <div class="fresnel-canvas-box" id="profile-canvas-container">
+          <canvas id="terrain-canvas" data-alias="profile-canvas" aria-label="Terrain path profile and top view canvas"></canvas>
+          <canvas id="profile-canvas" style="display:none" aria-hidden="true"></canvas>
+        </div>
       </div>
 
       <!-- Orbit-Integrated Coverage & Optimal Relay Advisor Section -->
@@ -2438,6 +2603,84 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         </div>
 
         <div id="authoring-pane-traj" class="authoring-studio-pane active">
+        <!-- ===== QGroundControl / ForeFlight Mission & Trajectory Workstation Card ===== -->
+        <details class="flight-planner-workstation" open style="margin-bottom:12px;border:1px solid var(--line);border-radius:6px;background:rgba(255,255,255,0.02);padding:10px">
+          <summary style="cursor:pointer;font-weight:600;font-size:12px;display:flex;align-items:center;justify-content:space-between">
+            <span><strong>QGroundControl / ForeFlight Mission Planner</strong> <small class="muted" style="font-size:11px">Aerospace Patterns &amp; Vertical Profile</small></span>
+            <span id="fp-cfit-badge" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(0,255,136,0.15);color:var(--hi-emerald);border:1px solid rgba(0,255,136,0.3)">ENVELOPE SAFE</span>
+          </summary>
+
+          <!-- 1. Flight Pattern & Cruise Kinematics Bar -->
+          <div style="margin-top:10px;padding:8px 10px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);border-radius:4px">
+            <div style="display:grid;grid-template-columns:1.8fr 1fr 1fr auto;gap:8px;align-items:end">
+              <div>
+                <label for="fp-pattern-select" style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:2px">Aerospace Pattern</label>
+                <select id="fp-pattern-select" aria-label="Aerospace Flight Pattern Generator" style="width:100%;padding:4px 6px;background:var(--hi-void);border:1px solid var(--line);border-radius:4px;color:var(--text);font-size:11px">
+                  <option value="ellipse_orbit">Standard Elliptical Orbit</option>
+                  <option value="racetrack_hold">Racetrack Holding Pattern</option>
+                  <option value="figure8_valley">Figure-8 Cross-Valley Relay</option>
+                  <option value="canyon_transit">Kargil Canyon Corridor Transit</option>
+                </select>
+              </div>
+              <div>
+                <label for="fp-cruise-alt-input" style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:2px">Cruise Alt [m MSL]</label>
+                <input type="number" id="fp-cruise-alt-input" min="3500" max="8500" step="100" value="5000" aria-label="Mission Cruise Altitude MSL in meters" style="width:100%;padding:4px 6px;background:var(--hi-void);border:1px solid var(--line);border-radius:4px;color:var(--text);font-size:11px">
+              </div>
+              <div>
+                <label for="fp-cruise-speed-input" style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:2px">Cruise Speed [m/s]</label>
+                <input type="number" id="fp-cruise-speed-input" min="25" max="120" step="5" value="50" aria-label="ACN Cruise Airspeed TAS in meters per second" style="width:100%;padding:4px 6px;background:var(--hi-void);border:1px solid var(--line);border-radius:4px;color:var(--text);font-size:11px">
+              </div>
+              <div>
+                <button type="button" id="btn-fp-apply-pattern" aria-label="Generate and Apply Flight Pattern to ACN" class="primary" style="padding:5px 10px;font-size:11px;font-weight:600;white-space:nowrap">Apply Pattern</button>
+              </div>
+            </div>
+            <div id="fp-pattern-desc" style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.3">
+              Standard 8-waypoint closed elliptical orbit optimized for continuous circular high-elevation coverage.
+            </div>
+          </div>
+
+          <!-- 2. ForeFlight Vertical Terrain Clearance Profile Canvas -->
+          <div style="margin-top:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:11px;font-weight:600;color:var(--text);letter-spacing:0.02em">ForeFlight Vertical Terrain Clearance Profile (MSL vs Distance)</span>
+              <span style="font-size:10px;font-family:var(--mono);color:var(--muted)">
+                <span style="display:inline-block;width:8px;height:2px;background:#38bdf8;vertical-align:middle;margin-right:2px"></span> UAV
+                <span style="display:inline-block;width:8px;height:2px;background:#f59e0b;vertical-align:middle;margin-left:6px;margin-right:2px"></span> +300m AGL
+                <span style="display:inline-block;width:8px;height:8px;background:#1e293b;border:1px solid #475569;vertical-align:middle;margin-left:6px;margin-right:2px"></span> Terrain
+              </span>
+            </div>
+            <canvas id="fp-vertical-profile-canvas" height="170" aria-label="ForeFlight Vertical Terrain Clearance Profile Canvas" style="width:100%;height:170px;display:block;background:#080b12;border-radius:4px;border:1px solid rgba(255,255,255,0.08)"></canvas>
+          </div>
+
+          <!-- 3. Aerodynamic & Coverage Flight Envelope Telemetry Strip -->
+          <div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:6px">
+            <div style="padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:4px">
+              <span style="font-size:10px;color:var(--muted);display:block;text-transform:uppercase">Circuit Distance</span>
+              <b id="fp-dist-km" style="font-size:11px;color:var(--hi-cyan-bright);font-family:var(--mono)">-- km</b>
+            </div>
+            <div style="padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:4px">
+              <span style="font-size:10px;color:var(--muted);display:block;text-transform:uppercase">Orbit Period</span>
+              <b id="fp-period-s" style="font-size:11px;color:var(--hi-cyan-bright);font-family:var(--mono)">-- s</b>
+            </div>
+            <div style="padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:4px">
+              <span style="font-size:10px;color:var(--muted);display:block;text-transform:uppercase">Min Clearance</span>
+              <b id="fp-min-agl" style="font-size:11px;color:var(--hi-emerald);font-family:var(--mono)">-- m AGL</b>
+            </div>
+            <div style="padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:4px">
+              <span style="font-size:10px;color:var(--muted);display:block;text-transform:uppercase">Peak Bank Angle</span>
+              <b id="fp-peak-bank" style="font-size:11px;color:var(--hi-amber-bright);font-family:var(--mono)">--°</b>
+            </div>
+            <div style="padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:4px">
+              <span style="font-size:10px;color:var(--muted);display:block;text-transform:uppercase">Min Turn Radius</span>
+              <b id="fp-min-turn-radius" style="font-size:11px;color:var(--hi-amber-bright);font-family:var(--mono)">-- m</b>
+            </div>
+            <div style="padding:6px 8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:4px">
+              <span style="font-size:10px;color:var(--muted);display:block;text-transform:uppercase">Route LoS Coverage</span>
+              <b id="fp-los-coverage" style="font-size:11px;color:var(--hi-emerald);font-family:var(--mono)">--%</b>
+            </div>
+          </div>
+        </details>
+
         <details class="trajectory-editor" open>
           <summary><strong>Flight-path editor</strong> <small id="trajectory-commit-label" class="muted">Trajectory and altitude</small></summary>
           <div style="margin-top:9px">
@@ -2766,9 +3009,22 @@ import {
 } from './src/core/hgtMosaic.ts';
 import { REAL_LADAKH_DEM_METADATA } from './src/core/terrain.ts';
 import { MAX_ACN_WAYPOINTS, RFConfig, EnvironmentConfig } from './src/core/config.ts';
+import {
+  generateFlightPatternWaypoints,
+  evaluateFlightPlanProfile,
+} from './src/core/trajectory.ts';
+import { dissectTdmaSlotAllocation } from './src/core/pduDissector.ts';
 import { parseEditorNumber, TrajectoryEditorState } from './src/ui/trajectoryEditorState.ts';
 import { obstacleContainsPoint, obstacleFootprintPoints } from './src/core/obstacles.ts';
 import { ObstacleEditorState, OBSTACLE_EDITOR_LIMITS, resolveSpatialCanvasTarget } from './src/ui/obstacleEditorState.ts';
+import {
+  computeTransectRfMetrics,
+  evaluateVirtualTerminalLink,
+  computeZonalSummitAndRuggedness,
+  ObstacleHistoryManager,
+  OBSTACLE_PRESETS,
+  MATERIAL_PROFILES,
+} from './src/ui/terrainAnalysisController.ts';
 import { routeCommandResult } from './src/ui/commandResultRouter.ts';
 import { LinkProfileViewportState, renderTerrainProfileViewport, summarizeProfileStatus } from './src/ui/linkProfileViewport.ts';
 import {
@@ -2921,7 +3177,7 @@ import {
 } from './src/ui/terrainToolboxCharts.ts';
 import { DiagnosticsTracker } from './src/ui/workbench/diagnosticsTelemetry.ts';
 
-const $ = id => document.getElementById(id);
+const $ = id => (id === 'profile-canvas' ? (document.getElementById('terrain-canvas') || document.getElementById('profile-canvas')) : document.getElementById(id));
 const radarLabelPlacer = new RadarLabelPlacer();
 const diagnosticsTracker = new DiagnosticsTracker();
 let currentOverviewSubview = 'ops';
@@ -4301,6 +4557,8 @@ let tbOrbitResult = null;
 let tbSweepResult = null;
 let tbSelectedRegionId = null;
 let tbZonalStats = null;
+let tbRegionSummitResult = null;
+let tbObstacleHistory = null;
 let tbBridgeA = null;
 let tbBridgeB = null;
 let tbBridgeResult = null;
@@ -4477,6 +4735,7 @@ let spatialLocked = false;
 let viewshedHeatmapEnabled = false;
 const trajectoryEditor = new TrajectoryEditorState();
 const obstacleEditor = new ObstacleEditorState();
+tbObstacleHistory = new ObstacleHistoryManager(obstacleEditor.draft);
 // Terrain Path Profile View Mode & Viewport States (Feature 6A)
 let terrainProfileViewMode = 'profile'; // 'profile' | 'top'
 const terrainProfileViewport = new LinkProfileViewportState();
@@ -5940,7 +6199,105 @@ function renderHillshadeFromWorker(data, size, boundsKm, terrainMode, bounds) {
 
 const radarCanvas = $('radar-canvas'), radarCtx = radarCanvas.getContext('2d');
 const waterfallCanvas = $('waterfall-canvas'), waterfallCtx = waterfallCanvas.getContext('2d');
+const ganttCanvas = waterfallCanvas;
+let activeRenderedGanttSlots = [];
+const ganttHoverState = {
+  active: false,
+  x: 0,
+  y: 0,
+  hoveredSlot: null,
+};
+const pduDissectorState = {
+  pinnedSlot: null,
+  autoFollow: true,
+};
+
+if (waterfallCanvas) {
+  waterfallCanvas.addEventListener('mousemove', (e) => {
+    const rect = waterfallCanvas.getBoundingClientRect();
+    const cssX = e.clientX - rect.left;
+    const cssY = e.clientY - rect.top;
+    ganttHoverState.active = true;
+    ganttHoverState.x = cssX;
+    ganttHoverState.y = cssY;
+
+    let hit = null;
+    for (let i = activeRenderedGanttSlots.length - 1; i >= 0; i--) {
+      const s = activeRenderedGanttSlots[i];
+      if (cssX >= s.x && cssX <= s.x + s.w && cssY >= s.y && cssY <= s.y + s.h) {
+        hit = s;
+        break;
+      }
+    }
+    ganttHoverState.hoveredSlot = hit;
+    waterfallCanvas.style.cursor = hit ? 'pointer' : 'crosshair';
+    schedulerNeedsRender = true;
+    drawWaterfall();
+  });
+
+  waterfallCanvas.addEventListener('mouseleave', () => {
+    ganttHoverState.active = false;
+    ganttHoverState.hoveredSlot = null;
+    waterfallCanvas.style.cursor = 'default';
+    schedulerNeedsRender = true;
+    drawWaterfall();
+  });
+
+  waterfallCanvas.addEventListener('click', (e) => {
+    const rect = waterfallCanvas.getBoundingClientRect();
+    const cssX = e.clientX - rect.left;
+    const cssY = e.clientY - rect.top;
+    let clicked = null;
+    for (let i = activeRenderedGanttSlots.length - 1; i >= 0; i--) {
+      const s = activeRenderedGanttSlots[i];
+      if (cssX >= s.x && cssX <= s.x + s.w && cssY >= s.y && cssY <= s.y + s.h) {
+        clicked = s;
+        break;
+      }
+    }
+    if (clicked) {
+      pduDissectorState.pinnedSlot = clicked;
+      pduDissectorState.autoFollow = false;
+      schedulerNeedsRender = true;
+      drawWaterfall();
+    }
+  });
+}
+
+$('btn-pdu-auto-follow')?.addEventListener('click', () => {
+  pduDissectorState.autoFollow = !pduDissectorState.autoFollow;
+  if (pduDissectorState.autoFollow) {
+    pduDissectorState.pinnedSlot = null;
+  }
+  schedulerNeedsRender = true;
+  drawWaterfall();
+});
 const terrainCanvas = $('terrain-canvas'), terrainCtx = terrainCanvas ? terrainCanvas.getContext('2d') : null;
+let profMultiFresnelOrders = true;
+let profHoverInfo = null;
+
+window.onRefractivityChange = function(val) {
+  const k = parseFloat(val);
+  if (!Number.isFinite(k) || k <= 0) return;
+  worker.postMessage({
+    type: 'SET_SCIENTIFIC_PARAMS',
+    earthRadiusFactorK: k,
+  });
+  terrainNeedsRender = true;
+  drawFresnel();
+};
+
+window.toggleMultiOrderFresnel = function() {
+  profMultiFresnelOrders = !profMultiFresnelOrders;
+  const btn = $('prof-toggle-fresnel-orders');
+  if (btn) {
+    btn.setAttribute('aria-pressed', String(profMultiFresnelOrders));
+    btn.classList.toggle('active', profMultiFresnelOrders);
+    btn.textContent = profMultiFresnelOrders ? 'Fresnel Zones F1–F3 & Apex [ON]' : 'Fresnel Zones F1–F3 & Apex [OFF]';
+  }
+  terrainNeedsRender = true;
+  drawFresnel();
+};
 const polarAntennaCanvas = $('polar-antenna-canvas'), polarAntennaCtx = polarAntennaCanvas ? polarAntennaCanvas.getContext('2d') : null;
 const linkWaterfallCanvas = $('link-waterfall-canvas'), linkWaterfallCtx = linkWaterfallCanvas ? linkWaterfallCanvas.getContext('2d') : null;
 const ecdfDelayCanvas = $('ecdf-delay-canvas'), ecdfDelayCtx = ecdfDelayCanvas ? ecdfDelayCanvas.getContext('2d') : null;
@@ -8170,6 +8527,55 @@ function refreshTrajectoryEditor() {
   applyMapLibreLayerState();
   if (terrainMapMode === 'maplibre') updateMapLibreOverlay();
   if (typeof drawRadar === 'function' && stageViewMode !== '3d') drawRadar();
+  renderFlightPlanVerticalProfile();
+}
+
+function applyObstacleHistoryChange(nextObstacles) {
+  if (!nextObstacles) return;
+  obstacleEditor.setDraftSet(nextObstacles);
+  refreshObstacleEditor();
+  renderObstacleInventoryList();
+  refreshTerrainToolbox();
+  if (terrainMapMode !== 'maplibre') drawRadar();
+}
+
+function renderObstacleInventoryList() {
+  const container = $('tb-obs-list');
+  if (!container) return;
+  const undoBtn = $('tb-obs-undo');
+  const redoBtn = $('tb-obs-redo');
+  if (undoBtn && typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) undoBtn.disabled = !tbObstacleHistory.canUndo;
+  if (redoBtn && typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) redoBtn.disabled = !tbObstacleHistory.canRedo;
+
+  const draft = obstacleEditor?.draft;
+  if (!draft || draft.length === 0) {
+    container.innerHTML = '<span class="terrain-toolbox-status" style="font-size:10px;">No obstacles in draft.</span>';
+    return;
+  }
+  container.innerHTML = draft.map((obs, idx) => {
+    const shapeLabel = obs.shape === 'cone' ? 'Peak / Dome' : (obs.depthM > obs.widthM * 3 || obs.widthM > obs.depthM * 3 ? 'Ridge Wall' : 'Bunker / Block');
+    const dimText = obs.shape === 'cone' ? `r=${Math.round(obs.radiusM || 50)}m, h=${Math.round(obs.heightM)}m` : `${Math.round(obs.widthM)}×${Math.round(obs.depthM)}m, h=${Math.round(obs.heightM)}m`;
+    return `
+      <div class="tb-obs-row" data-obs-id="${obs.id}">
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${obs.id}">
+          <strong>#${idx + 1}</strong> ${shapeLabel} <span style="opacity:0.65;">(${dimText})</span>
+        </span>
+        <button type="button" class="tb-obs-delete-btn" data-obs-id="${obs.id}" aria-label="Delete obstacle ${obs.id}">×</button>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.tb-obs-delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-obs-id');
+      if (!id) return;
+      if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) tbObstacleHistory.pushState(obstacleEditor.draft);
+      const next = obstacleEditor.draft.filter(o => o.id !== id);
+      applyObstacleHistoryChange(next);
+      setTerrainToolStatus(`Obstacle ${id} removed.`);
+    });
+  });
 }
 
 function refreshObstacleEditor() {
@@ -8243,6 +8649,7 @@ function refreshObstacleEditor() {
   applyMapLibreLayerState();
   if (terrainMapMode === 'maplibre') updateMapLibreOverlay();
   if (typeof drawRadar === 'function' && stageViewMode !== '3d') drawRadar();
+  renderObstacleInventoryList();
 }
 
 function editSelectedObstacleFromInputs(id) {
@@ -8536,6 +8943,311 @@ $('trajectory-remove-point').addEventListener('click', () => {
 $('trajectory-apply').addEventListener('click', applyTrajectoryDraft);
 $('trajectory-cancel').addEventListener('click', cancelTrajectoryDraft);
 refreshTrajectoryEditor();
+
+/* ---------- QGroundControl / ForeFlight Flight Planner Workstation ---------- */
+
+const FP_PATTERN_DESCRIPTIONS = {
+  ellipse_orbit: 'Standard 8-waypoint closed elliptical orbit optimized for continuous circular high-elevation coverage.',
+  racetrack_hold: '8-waypoint holding pattern with parallel straight legs and constant-radius 180° turn endcaps.',
+  figure8_valley: '8-waypoint Lemniscate of Gerono cross-valley patrol crossing the high central ridge between North/South valleys.',
+  canyon_transit: '6-waypoint terrain-skimming alpine corridor route with stepped waypoint altitudes (4,800m -> 5,350m -> 4,900m MSL).',
+};
+
+function renderFlightPlanVerticalProfile() {
+  const canvas = $('fp-vertical-profile-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const sync = syncCanvasDpr(canvas, ctx);
+  const w = sync.cssWidth || canvas.clientWidth || 400;
+  const h = sync.cssHeight || canvas.clientHeight || 170;
+  if (w <= 0 || h <= 0) return;
+
+  const speed = parseFloat($('fp-cruise-speed-input')?.value || $('traj-speed-mps')?.value || '50') || 50;
+  const cruiseAlt = parseFloat($('fp-cruise-alt-input')?.value || $('traj-altitude-msl')?.value || '5000') || 5000;
+  const draft = trajectoryEditor?.preview;
+
+  let waypointsToEvaluate = null;
+  if (draft && draft.mode === 'waypoints' && draft.points && draft.points.length >= 3) {
+    waypointsToEvaluate = draft.points.map(p => ({
+      xM: p.xM,
+      yM: p.yM,
+      zM: p.zM !== undefined && Number.isFinite(p.zM) ? p.zM : cruiseAlt,
+    }));
+  } else {
+    const pattern = $('fp-pattern-select')?.value || 'ellipse_orbit';
+    try {
+      waypointsToEvaluate = generateFlightPatternWaypoints(pattern, { cruiseAltM: cruiseAlt });
+    } catch (_) {
+      waypointsToEvaluate = generateFlightPatternWaypoints('ellipse_orbit', { cruiseAltM: cruiseAlt });
+    }
+  }
+
+  let summary;
+  try {
+    summary = evaluateFlightPlanProfile(waypointsToEvaluate, speed, mainTerrainEngine);
+  } catch (err) {
+    return;
+  }
+
+  // Update Envelope Badges
+  const distEl = $('fp-dist-km');
+  if (distEl) distEl.textContent = `${summary.totalDistanceKm.toFixed(1)} km`;
+
+  const periodEl = $('fp-period-s');
+  if (periodEl) periodEl.textContent = `${summary.orbitPeriodS.toFixed(0)} s`;
+
+  const minAglEl = $('fp-min-agl');
+  if (minAglEl) {
+    const isSafe = summary.cfitWarningCount === 0;
+    minAglEl.textContent = `${summary.minClearanceAglM.toFixed(0)} m AGL (${isSafe ? 'SAFE' : 'CFIT WARN'})`;
+    minAglEl.style.color = isSafe ? 'var(--hi-emerald)' : 'var(--hi-vermilion)';
+  }
+
+  const peakBankEl = $('fp-peak-bank');
+  if (peakBankEl) peakBankEl.textContent = `${summary.peakBankAngleDeg.toFixed(1)}°`;
+
+  const turnRadEl = $('fp-min-turn-radius');
+  if (turnRadEl) turnRadEl.textContent = Number.isFinite(summary.minTurnRadiusM) ? `${summary.minTurnRadiusM.toFixed(0)} m` : '∞';
+
+  const losCovEl = $('fp-los-coverage');
+  if (losCovEl) losCovEl.textContent = `${summary.predictedLoSCoveragePct.toFixed(1)}%`;
+
+  const cfitBadge = $('fp-cfit-badge');
+  if (cfitBadge) {
+    if (summary.cfitWarningCount > 0) {
+      cfitBadge.textContent = 'TERRAIN PROXIMITY WARNING';
+      cfitBadge.style.background = 'rgba(255, 42, 84, 0.2)';
+      cfitBadge.style.color = '#ff2a54';
+      cfitBadge.style.border = '1px solid rgba(255, 42, 84, 0.4)';
+    } else {
+      cfitBadge.textContent = 'ENVELOPE SAFE';
+      cfitBadge.style.background = 'rgba(0, 255, 136, 0.15)';
+      cfitBadge.style.color = 'var(--hi-emerald)';
+      cfitBadge.style.border = '1px solid rgba(0, 255, 136, 0.3)';
+    }
+  }
+
+  // Render ForeFlight Canvas
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#080b12';
+  ctx.fillRect(0, 0, w, h);
+
+  const samples = summary.samples;
+  if (!samples || samples.length === 0) return;
+
+  const padL = 48;
+  const padR = 20;
+  const padT = 24;
+  const padB = 22;
+  const plotW = Math.max(10, w - padL - padR);
+  const plotH = Math.max(10, h - padT - padB);
+
+  const minDem = Math.min(...samples.map(s => s.demAltM));
+  const maxAcn = Math.max(...samples.map(s => s.acnAltM));
+  const altMin = Math.max(0, Math.floor((minDem - 400) / 500) * 500);
+  const altMax = Math.max(altMin + 1500, Math.ceil((maxAcn + 400) / 500) * 500);
+  const altRange = altMax - altMin;
+  const distMax = summary.totalDistanceKm > 0 ? summary.totalDistanceKm : 1.0;
+
+  const toX = (distKm) => padL + (distKm / distMax) * plotW;
+  const toY = (altM) => padT + (1.0 - (altM - altMin) / altRange) * plotH;
+
+  // Grid Lines & Labels
+  ctx.lineWidth = 1;
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+
+  const altSteps = 4;
+  for (let i = 0; i <= altSteps; i++) {
+    const aVal = altMin + (i / altSteps) * altRange;
+    const y = toY(aVal);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + plotW, y);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.fillText(`${Math.round(aVal)}m`, padL - 4, y);
+  }
+
+  const distSteps = 4;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let j = 0; j <= distSteps; j++) {
+    const dVal = (j / distSteps) * distMax;
+    const x = toX(dVal);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + plotH);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.fillText(`${dVal.toFixed(0)}k`, x, padT + plotH + 4);
+  }
+
+  // 1. Terrain Polygon (Dark Slate)
+  ctx.beginPath();
+  ctx.moveTo(toX(samples[0].distKm), toY(altMin));
+  for (let i = 0; i < samples.length; i++) {
+    ctx.lineTo(toX(samples[i].distKm), toY(samples[i].demAltM));
+  }
+  ctx.lineTo(toX(samples[samples.length - 1].distKm), toY(altMin));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+  ctx.fill();
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // 2. Dashed Amber +300m AGL Minimum Safe Clearance Line
+  ctx.beginPath();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < samples.length; i++) {
+    const safeAlt = samples[i].demAltM + 300.0;
+    const x = toX(samples[i].distKm);
+    const y = toY(safeAlt);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 3. Cyan UAV Altitude Trajectory Line (crimson on CFIT warning)
+  for (let i = 0; i < samples.length - 1; i++) {
+    const s1 = samples[i];
+    const s2 = samples[i + 1];
+    const x1 = toX(s1.distKm), y1 = toY(s1.acnAltM);
+    const x2 = toX(s2.distKm), y2 = toY(s2.acnAltM);
+
+    const isWarning = s1.cfitWarning || s2.cfitWarning;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = isWarning ? '#ff2a54' : '#38bdf8';
+    ctx.lineWidth = isWarning ? 2.5 : 2.0;
+    ctx.stroke();
+  }
+
+  // 4. Waypoint Diamond Markers WP1..WPN
+  if (waypointsToEvaluate && waypointsToEvaluate.length >= 3) {
+    const numWp = waypointsToEvaluate.length;
+    for (let wIdx = 0; wIdx < numWp; wIdx++) {
+      const wpDistKm = (wIdx / numWp) * distMax;
+      const wpAlt = waypointsToEvaluate[wIdx].zM ?? cruiseAlt;
+      const wx = toX(wpDistKm);
+      const wy = toY(wpAlt);
+
+      ctx.beginPath();
+      ctx.moveTo(wx, wy - 5);
+      ctx.lineTo(wx + 4, wy);
+      ctx.lineTo(wx, wy + 5);
+      ctx.lineTo(wx - 4, wy);
+      ctx.closePath();
+      ctx.fillStyle = '#0284c7';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`W${wIdx + 1}`, wx, wy - 7);
+    }
+  }
+
+  // 5. Warning Badge overlay if CFIT warning
+  if (summary.cfitWarningCount > 0) {
+    ctx.fillStyle = 'rgba(255, 42, 84, 0.2)';
+    ctx.strokeStyle = '#ff2a54';
+    ctx.lineWidth = 1;
+    const badgeW = 185, badgeH = 18;
+    const bx = padL + plotW - badgeW - 6, by = padT + 6;
+    ctx.fillRect(bx, by, badgeW, badgeH);
+    ctx.strokeRect(bx, by, badgeW, badgeH);
+
+    ctx.fillStyle = '#ff2a54';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚠ TERRAIN PROXIMITY WARNING', bx + 6, by + badgeH / 2);
+  }
+}
+
+// Wire Flight Planner UI Event Handlers
+$('fp-pattern-select')?.addEventListener('change', e => {
+  const desc = FP_PATTERN_DESCRIPTIONS[e.target.value] || '';
+  const descEl = $('fp-pattern-desc');
+  if (descEl) descEl.textContent = desc;
+  renderFlightPlanVerticalProfile();
+});
+
+$('fp-cruise-alt-input')?.addEventListener('input', () => {
+  renderFlightPlanVerticalProfile();
+});
+
+$('fp-cruise-speed-input')?.addEventListener('input', () => {
+  renderFlightPlanVerticalProfile();
+});
+
+$('btn-fp-apply-pattern')?.addEventListener('click', () => {
+  const patternType = $('fp-pattern-select')?.value || 'ellipse_orbit';
+  const cruiseAlt = parseFloat($('fp-cruise-alt-input')?.value || '5000') || 5000;
+  const cruiseSpeed = parseFloat($('fp-cruise-speed-input')?.value || '50') || 50;
+
+  try {
+    const waypoints = generateFlightPatternWaypoints(patternType, {
+      cruiseAltM: cruiseAlt,
+    });
+
+    trajectoryEditor.setMode('waypoints');
+    trajectoryEditor.drafts.set('waypoints', {
+      mode: 'waypoints',
+      points: waypoints.map(wp => ({
+        xM: wp.xM,
+        yM: wp.yM,
+        zM: wp.zM ?? cruiseAlt,
+      })),
+    });
+    trajectoryEditor.selectedWaypoint = 0;
+
+    const modeSel = $('trajectory-mode');
+    if (modeSel) modeSel.value = 'waypoints';
+
+    const spdInp = $('traj-speed-mps');
+    if (spdInp) spdInp.value = String(cruiseSpeed);
+    const spdSlider = $('traj-speed-slider');
+    if (spdSlider) spdSlider.value = String(Math.min(300, Math.max(0, cruiseSpeed)));
+
+    const altInp = $('traj-altitude-msl');
+    if (altInp) altInp.value = String(cruiseAlt);
+
+    const altModeSel = $('traj-altitude-mode');
+    if (altModeSel) {
+      altModeSel.value = 'amsl';
+      updateAltitudeModeUI('amsl');
+    }
+
+    committedFlightParams.loiter_speed_mps = cruiseSpeed;
+    committedFlightParams.acn_altitude_m = cruiseAlt;
+    committedFlightParams.altitude_mode = 'amsl';
+
+    applyTrajectoryDraft();
+    renderFlightPlanVerticalProfile();
+    setTrajectoryMessage(`Applied ${patternType} (${waypoints.length} WPs, ${cruiseAlt}m MSL, ${cruiseSpeed}m/s) to simulation worker.`);
+  } catch (err) {
+    setTrajectoryMessage(`Pattern error: ${err?.message || err}`, true);
+  }
+});
+
+setTimeout(() => renderFlightPlanVerticalProfile(), 50);
 
 /* ---------- TDMA Waveform & Frame Editor Controls ---------- */
 const TDMA_PRESETS_UI = {
@@ -9346,6 +10058,9 @@ function recomputeTransect(isPreview = false) {
   if (tbTransectWaypoints.length < 2) {
     tbTransectResult = null;
     tbHoveredSampleIdx = null;
+    setText('tb-transect-fresnel', '-- m (100%)');
+    setText('tb-transect-diffraction', '0.0 dB');
+    setText('tb-transect-snr', '-- dB / --');
     renderToolboxDrawer();
     return;
   }
@@ -9362,6 +10077,17 @@ function recomputeTransect(isPreview = false) {
   if (tbHoveredSampleIdx !== null && (!tbTransectResult.samples[tbHoveredSampleIdx])) {
     tbHoveredSampleIdx = null;
   }
+
+  const txMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-tx-mast')?.value || '10') || 10));
+  const rxMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-rx-mast')?.value || '2') || 2));
+  if (tbTransectResult && tbTransectResult.samples && tbTransectResult.samples.length >= 2) {
+    const elevs = tbTransectResult.samples.map(s => s.terrainMslM);
+    const rf = computeTransectRfMetrics(elevs, tbTransectResult.totalHorizontalM, txMastM, rxMastM);
+    setText('tb-transect-fresnel', `${rf.minF1ClearanceM.toFixed(1)} m (${Math.round(rf.minF1ClearancePct)}%)`);
+    setText('tb-transect-diffraction', `${rf.p526DiffractionLossDb.toFixed(1)} dB`);
+    setText('tb-transect-snr', `${rf.estSnrDb.toFixed(1)} dB / ${rf.estModcod}`);
+  }
+
   renderMode1Provenance();
   renderToolboxDrawer();
 }
@@ -9431,10 +10157,32 @@ function recomputeProbeAnalysis() {
     tbViewshedCanvas = renderViewshedCanvas(tbViewshedResult, tbViewshedCanvas ?? undefined, 256);
     tbViewshedNeedsMapLibreSync = true;
     tbOrbitResult = computeOrbitPersistence(ctx, tbProbeSite.xM, tbProbeSite.yM, aglM, includeObstacles, nodeType);
+
+    // Virtual X-Band Terminal-to-ACN Link Probe (STK)
+    const probeDem = sampleDemSafe(ctx.terrainEngine, tbProbeSite.xM, tbProbeSite.yM).elevationM || 3500;
+    const acnPos = ctx.acnPositionMslM || [0, 0, 5000];
+    const probeLink = evaluateVirtualTerminalLink(
+      tbProbeSite.xM,
+      tbProbeSite.yM,
+      probeDem,
+      aglM,
+      acnPos,
+      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500
+    );
+    setText('tb-probe-acn-range', `${probeLink.slantRangeKm.toFixed(2)} km`);
+    setText('tb-probe-acn-el', `${probeLink.elevationDeg >= 0 ? '+' : ''}${probeLink.elevationDeg.toFixed(1)}°`);
+    setText('tb-probe-acn-los', probeLink.isLos ? 'CLEAR (LoS)' : 'SHADOWED');
+    setText('tb-probe-acn-sinr', `${probeLink.sinrDb.toFixed(1)} dB`);
+    setText('tb-probe-acn-modcod', probeLink.modcod);
   } else {
     tbViewshedResult = null;
     tbOrbitResult = null;
     tbViewshedNeedsMapLibreSync = true;
+    setText('tb-probe-acn-range', '-- km');
+    setText('tb-probe-acn-el', '--°');
+    setText('tb-probe-acn-los', '--');
+    setText('tb-probe-acn-sinr', '-- dB');
+    setText('tb-probe-acn-modcod', '--');
   }
 
   const activeRegion = terrainRegions.find(r => r.id === tbSelectedRegionId) || terrainRegions[0] || null;
@@ -9461,6 +10209,10 @@ function recomputeRegionZonal() {
   const activeRegion = terrainRegions.find(r => r.id === tbSelectedRegionId) || terrainRegions[terrainRegions.length - 1] || null;
   if (!activeRegion) {
     tbZonalStats = null;
+    tbRegionSummitResult = null;
+    setText('tb-region-summit', '-- m @ (--, --)');
+    setText('tb-region-ruggedness', 'TRI -- m / --°');
+    setText('tb-region-los-pct', '--% (0/36)');
     renderToolboxDrawer();
     return;
   }
@@ -9468,8 +10220,30 @@ function recomputeRegionZonal() {
   const ctx = buildToolboxSimContext();
   const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
   tbZonalStats = analyzeRegionZonal(ctx, activeRegion, { includeObstacles: true, nodeType });
+
+  // Compute QGIS Zonal Summit & Ruggedness
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of activeRegion.points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const acnPos = ctx.acnPositionMslM || [0, 0, 5000];
+  tbRegionSummitResult = computeZonalSummitAndRuggedness(
+    minX, maxX, minY, maxY,
+    (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
+    acnPos
+  );
+
+  const summitGeo = cartesianToGeodetic(tbRegionSummitResult.summitX, tbRegionSummitResult.summitY);
+  setText('tb-region-summit', `${Math.round(tbRegionSummitResult.summitElevationM)} m @ (${summitGeo.latDeg.toFixed(3)}°N, ${summitGeo.lonDeg.toFixed(3)}°E)`);
+  setText('tb-region-ruggedness', `TRI ${tbRegionSummitResult.terrainRuggednessIndexM.toFixed(1)} m · ${tbRegionSummitResult.meanSlopeDeg.toFixed(1)}°`);
+  setText('tb-region-los-pct', `${tbRegionSummitResult.losCoveragePct.toFixed(1)}% (${Math.round(tbRegionSummitResult.losCoveragePct * 0.36)}/36)`);
+
   renderMode1Provenance();
   renderToolboxDrawer();
+  if (terrainMapMode !== 'maplibre') drawRadar();
 }
 
 function runBridgeFinder() {
@@ -9559,6 +10333,8 @@ function refreshToolboxActionGates() {
   if (addBrBtn) addBrBtn.disabled = !canNode || !tbBridgeResult?.optimalBridge;
   const applyWpBtn = $('tb-apply-acn-waypoints-btn');
   if (applyWpBtn) applyWpBtn.disabled = !canApplyTransectAsAcnWaypoints(tbTransectWaypoints.length, ctx.spatialLocked, ctx.isHistoricalInspecting);
+  const spawnProbeBtn = $('tb-probe-spawn-node');
+  if (spawnProbeBtn) spawnProbeBtn.disabled = !canNode || !tbProbeSite;
 }
 
 function renderToolboxDrawer() {
@@ -9855,6 +10631,37 @@ function handleToolboxMapClick(point) {
     refreshTerrainToolbox();
     updateMapLibreToolSources();
     if (terrainMapMode !== 'maplibre') drawRadar();
+    return;
+  }
+  if (terrainToolMode === 'obstacle-place') {
+    const shapeMode = ($('tb-obs-shape-select')?.value || 'wall');
+    const preset = OBSTACLE_PRESETS[shapeMode] || OBSTACLE_PRESETS.wall;
+    const shapeType = preset.shapeType;
+    const baseHeight = preset.defaultHeightM;
+    const baseWidth = preset.defaultWidthM;
+    const baseDepth = preset.defaultDepthM;
+
+    if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+      tbObstacleHistory.pushState(obstacleEditor.draft);
+    }
+
+    try {
+      obstacleEditor.create(shapeType, point.x, point.y);
+      if (shapeType === 'cone') {
+        obstacleEditor.updateSelected({ radiusM: baseWidth / 2, heightM: baseHeight });
+      } else {
+        obstacleEditor.updateSelected({ widthM: baseWidth, depthM: baseDepth, heightM: baseHeight, rotationDeg: 0 });
+      }
+      setTerrainToolStatus(`Obstacle [${preset.label}] placed at (${Math.round(point.x)}, ${Math.round(point.y)}) m.`);
+    } catch (err) {
+      setTerrainToolStatus(`Could not place obstacle: ${err?.message || err}`);
+    }
+    terrainToolMode = 'idle';
+    refreshObstacleEditor();
+    renderObstacleInventoryList();
+    refreshTerrainToolbox();
+    if (terrainMapMode !== 'maplibre') drawRadar();
+    return;
   }
 }
 
@@ -9897,7 +10704,7 @@ function clearTerrainMeasurement() {
   tbTransectResult = null;
   tbHoveredSampleIdx = null;
   tbRubberBandPoint = null;
-  if (terrainToolMode === 'measure' || terrainToolMode === 'transect-2pt' || terrainToolMode === 'transect-poly') {
+  if (terrainToolMode === 'measure' || terrainToolMode === 'transect-2pt' || terrainToolMode === 'transect-poly' || terrainToolMode === 'obstacle-place') {
     terrainToolMode = 'idle';
   }
   renderMode1Provenance();
@@ -9938,6 +10745,14 @@ function refreshTerrainToolbox() {
   if (brABtn) brABtn.classList.toggle('active', terrainToolMode === 'bridge-a');
   if (brBBtn) brBBtn.classList.toggle('active', terrainToolMode === 'bridge-b');
   if (brFindBtn) brFindBtn.disabled = !(tbBridgeA && tbBridgeB);
+  const obsPlaceBtn = $('tb-obs-place-btn');
+  if (obsPlaceBtn) {
+    obsPlaceBtn.classList.toggle('active', terrainToolMode === 'obstacle-place');
+  }
+  if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+    if ($('tb-obs-undo')) $('tb-obs-undo').disabled = !tbObstacleHistory.canUndo;
+    if ($('tb-obs-redo')) $('tb-obs-redo').disabled = !tbObstacleHistory.canRedo;
+  }
 
   const tbStack = $('terrain-toolbox-stack');
   const pickingBar = $('tb-picking-bar');
@@ -9961,6 +10776,8 @@ function refreshTerrainToolbox() {
       pickingLabel.textContent = 'Click Bridge Endpoint A on map…';
     } else if (terrainToolMode === 'bridge-b') {
       pickingLabel.textContent = 'Click Bridge Endpoint B on map…';
+    } else if (terrainToolMode === 'obstacle-place') {
+      pickingLabel.textContent = 'Click map to place obstacle preset…';
     } else {
       pickingLabel.textContent = 'Picking on map…';
     }
@@ -10012,6 +10829,7 @@ function setupTerrainToolbox() {
       pane.hidden = pane.dataset.tbPane !== mode;
     });
     if (mode === 'dem') renderMode1Provenance();
+    if (mode === 'obstacle') renderObstacleInventoryList();
     renderToolboxDrawer();
     refreshTerrainToolbox();
   };
@@ -10113,7 +10931,7 @@ function setupTerrainToolbox() {
   });
   $('tb-transect-finish-btn')?.addEventListener('click', finishTransectPolyline);
   $('terrain-measure-clear-btn')?.addEventListener('click', clearTerrainMeasurement);
-  ['tb-transect-height-a', 'tb-transect-height-b', 'tb-transect-node-type', 'tb-transect-k', 'tb-transect-obstacles'].forEach(id => {
+  ['tb-transect-height-a', 'tb-transect-height-b', 'tb-transect-node-type', 'tb-transect-k', 'tb-transect-obstacles', 'tb-transect-tx-mast', 'tb-transect-rx-mast'].forEach(id => {
     $(id)?.addEventListener('change', () => {
       if (tbTransectWaypoints.length >= 2) {
         recomputeTransect(false);
@@ -10122,12 +10940,26 @@ function setupTerrainToolbox() {
       }
       if (tbProbeSite) recomputeProbeAnalysis();
     });
+    $(id)?.addEventListener('input', () => {
+      if (tbTransectWaypoints.length >= 2) {
+        recomputeTransect(false);
+        if (terrainMapMode !== 'maplibre') drawRadar();
+      }
+    });
   });
 
   $('tb-probe-pick-btn')?.addEventListener('click', () => {
     terrainToolMode = terrainToolMode === 'probe' ? 'idle' : 'probe';
     setTerrainToolStatus(terrainToolMode === 'probe' ? 'Click site on map to compute 360° viewshed & sweep.' : 'Probe cancelled.');
     refreshTerrainToolbox();
+  });
+  $('tb-probe-spawn-node')?.addEventListener('click', () => {
+    if (!tbProbeSite) {
+      setTerrainToolStatus('No active probe site to spawn terminal at.');
+      return;
+    }
+    const aglM = Math.max(1, Math.min(500, parseFloat($('tb-probe-agl')?.value || '2') || 2));
+    addToolboxNodeAt(tbProbeSite.xM, tbProbeSite.yM, aglM, 'PROBE-TERM');
   });
   $('tb-probe-clear-btn')?.addEventListener('click', () => {
     tbProbeSite = null;
@@ -10145,6 +10977,43 @@ function setupTerrainToolbox() {
   });
   ['tb-probe-agl', 'tb-probe-radius', 'tb-probe-target', 'tb-probe-obstacles', 'tb-sweep-target'].forEach(id => {
     $(id)?.addEventListener('change', () => recomputeProbeAnalysis());
+  });
+
+  $('tb-obs-place-btn')?.addEventListener('click', () => {
+    terrainToolMode = terrainToolMode === 'obstacle-place' ? 'idle' : 'obstacle-place';
+    setTerrainToolStatus(terrainToolMode === 'obstacle-place' ? 'Click map to place obstacle preset.' : 'Obstacle placement cancelled.');
+    refreshTerrainToolbox();
+    if (terrainMapMode !== 'maplibre') drawRadar();
+  });
+  $('tb-obs-undo')?.addEventListener('click', () => {
+    if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+      const prev = tbObstacleHistory.undo();
+      if (prev) {
+        applyObstacleHistoryChange(prev);
+        setTerrainToolStatus('Obstacle action undone.');
+      } else {
+        setTerrainToolStatus('Nothing to undo in obstacle history.');
+      }
+    }
+  });
+  $('tb-obs-redo')?.addEventListener('click', () => {
+    if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+      const next = tbObstacleHistory.redo();
+      if (next) {
+        applyObstacleHistoryChange(next);
+        setTerrainToolStatus('Obstacle action redone.');
+      } else {
+        setTerrainToolStatus('Nothing to redo in obstacle history.');
+      }
+    }
+  });
+  $('tb-obs-clear-btn')?.addEventListener('click', () => {
+    if (obstacleEditor.draft.length === 0) return;
+    if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+      tbObstacleHistory.pushState(obstacleEditor.draft);
+    }
+    applyObstacleHistoryChange([]);
+    setTerrainToolStatus('All draft obstacles cleared.');
   });
 
   $('terrain-region-btn')?.addEventListener('click', () => {
@@ -11453,10 +12322,12 @@ syncTabWithLocationHash();
 function resizeCanvases() {
   const chart1 = $('sched-chart-utilization');
   const chart2 = $('sched-chart-backlog');
-  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2, polarAntennaCanvas, linkWaterfallCanvas].forEach(cvs => {
+  const fpCanvas = $('fp-vertical-profile-canvas');
+  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2, polarAntennaCanvas, linkWaterfallCanvas, fpCanvas].forEach(cvs => {
     if (!cvs) return;
     syncCanvasDpr(cvs);
   });
+  renderFlightPlanVerticalProfile();
   if (threeController) {
     threeController.handleResize();
   }
@@ -12596,49 +13467,144 @@ function renderMapLibreKineticOverlay(ctx, w, h, frame) {
   // Draw aircraft chevron at acnPt
   drawAircraftChevron(ctx, acnPt.x, acnPt.y, headingDeg);
 
-  // 3. Project Nodes & Draw Animated Packet Flow Pulses
+  // 3. Project Nodes & Draw Scheduler-Synchronized Animated Packet Flow Pulses
   const nodes = frame.nodes_telemetry || [];
+  const schedMode = frame.scheduler_mode || 'tac_tad';
+  const isStaticSched = (schedMode === 'static');
+  const activeGantt = (isStaticSched ? (frame.static_gantt || frame.static_gantt_allocations) : (frame.tac_gantt || frame.tac_gantt_allocations))
+    || frame.active_gantt_allocations
+    || frame.tac_gantt
+    || frame.static_gantt
+    || [];
+
+  const scheduledAllocByNodeId = new Map();
+  if (Array.isArray(activeGantt)) {
+    for (const alloc of activeGantt) {
+      const nid = alloc.node_id ?? alloc.nodeId;
+      if (nid !== undefined && nid !== null) {
+        scheduledAllocByNodeId.set(Number(nid), alloc);
+      }
+    }
+  }
+
   ctx.save();
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
     const nPt = mapController.projectEnuToContainerPoint(node.x_m, node.y_m);
     if (!nPt) continue;
 
-    const isPreOcclusion = (node.registration_state === 'PRE_OCCLUSION_FLUSH');
+    const alloc = scheduledAllocByNodeId.get(node.node_id);
+    const isScheduled = Boolean(alloc);
+    const isOutage = Boolean(node.link_outage || node.state_name === 'OUTAGE' || node.state_name === 'HARD_SHADOW_CUTOFF');
+    const isPreOcclusion = Boolean(node.registration_state === 'PRE_OCCLUSION_FLUSH' || alloc?.is_pre_occlusion_flush);
     const isRelayed = isRelayActive && Boolean(node.is_relayed) && Boolean(relayPt);
-    const pulseColor = isPreOcclusion ? '#b388ff' : (isRelayed ? '#00e676' : '#00e5ff');
-    const t = (now * 0.0016 + i * 0.17) % 1.0;
 
-    let px, py;
-    if (isRelayed && relayPt) {
-      if (t < 0.5) {
-        const segT = t * 2.0;
-        px = nPt.x + (relayPt.x - nPt.x) * segT;
-        py = nPt.y + (relayPt.y - nPt.y) * segT;
-      } else {
-        const segT = (t - 0.5) * 2.0;
-        px = relayPt.x + (acnPt.x - relayPt.x) * segT;
-        py = relayPt.y + (acnPt.y - relayPt.y) * segT;
-      }
-    } else {
-      px = nPt.x + (acnPt.x - nPt.x) * t;
-      py = nPt.y + (acnPt.y - nPt.y) * t;
+    // Determine 5QI color hierarchy
+    let pulseColor = '#00e5ff'; // Default Cyan (5QI 65)
+    if (isPreOcclusion) {
+      pulseColor = '#b388ff'; // Violet
+    } else if ((alloc && ((alloc.c2_bytes ?? alloc.c2Bytes ?? 0) > 0)) || (node.c2_bytes ?? node.c2_backlog ?? 0) > 0) {
+      pulseColor = '#ff2a54'; // Crimson 5QI 69
+    } else if ((alloc && ((alloc.voice_bytes ?? alloc.voiceBytes ?? 0) > 0)) || (node.voice_bytes ?? node.voice_backlog ?? 0) > 0) {
+      pulseColor = '#00e5ff'; // Cyan 5QI 65
+    } else if ((alloc && ((alloc.video_bytes ?? alloc.videoBytes ?? 0) > 0)) || (node.video_bytes ?? node.video_backlog ?? 0) > 0) {
+      pulseColor = '#00e676'; // Emerald 5QI 67
+    } else if ((alloc && ((alloc.photo_bytes ?? alloc.photoBytes ?? 0) > 0)) || (node.photo_bytes ?? node.photo_backlog ?? 0) > 0) {
+      pulseColor = '#ffab00'; // Amber 5QI 70
+    } else if (isRelayed) {
+      pulseColor = '#00e676';
     }
 
-    // Packet pulse glow
-    ctx.beginPath();
-    ctx.arc(px, py, 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = pulseColor;
-    ctx.shadowColor = pulseColor;
-    ctx.shadowBlur = 8;
-    ctx.fill();
+    // Only animate uplink packet pulse trains on links where isScheduled && !isOutage
+    if (isScheduled && !isOutage) {
+      const t = (now * 0.0016 + i * 0.17) % 1.0;
+      let px, py;
+      if (isRelayed && relayPt) {
+        if (t < 0.5) {
+          const segT = t * 2.0;
+          px = nPt.x + (relayPt.x - nPt.x) * segT;
+          py = nPt.y + (relayPt.y - nPt.y) * segT;
+        } else {
+          const segT = (t - 0.5) * 2.0;
+          px = relayPt.x + (acnPt.x - relayPt.x) * segT;
+          py = relayPt.y + (acnPt.y - relayPt.y) * segT;
+        }
+      } else {
+        px = nPt.x + (acnPt.x - nPt.x) * t;
+        py = nPt.y + (acnPt.y - nPt.y) * t;
+      }
 
-    // Core white center
-    ctx.beginPath();
-    ctx.arc(px, py, 2.0, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.shadowBlur = 0;
+      // Packet pulse glow
+      ctx.beginPath();
+      ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = pulseColor;
+      ctx.shadowColor = pulseColor;
+      ctx.shadowBlur = 8;
+      ctx.fill();
+
+      // Core white center
+      ctx.beginPath();
+      ctx.arc(px, py, 2.0, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Render [TX] ${durationMs}ms · ${modcod} or FLUSHING [Φ_evac] badge next to scheduled node
+      const durationMs = alloc.duration_ms ?? alloc.durationMs ?? (typeof alloc.duration_s === 'number' ? alloc.duration_s * 1000 : 5);
+      const modcod = alloc.modcod_name ?? alloc.modcodName ?? node.modcod_name ?? 'QPSK 1/2';
+      const txBadgeText = isPreOcclusion
+        ? 'FLUSHING [Φ_evac]'
+        : `[TX] ${Math.round(durationMs)}ms · ${modcod}`;
+
+      ctx.save();
+      ctx.font = `700 9.5px ${MONO}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const textX = nPt.x + 12;
+      const textY = nPt.y - 10;
+      const metrics = ctx.measureText(txBadgeText);
+      ctx.fillStyle = 'rgba(11, 15, 23, 0.85)';
+      ctx.fillRect(textX - 2, textY - 6, metrics.width + 4, 12);
+      ctx.strokeStyle = pulseColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(textX - 2, textY - 6, metrics.width + 4, 12);
+      ctx.fillStyle = pulseColor;
+      ctx.fillText(txBadgeText, textX, textY);
+      ctx.restore();
+    }
+
+    // When isStaticSched && isOutage && isScheduled, flash a crimson dashed line and [WASTED TX] badge
+    if (isStaticSched && isOutage && isScheduled) {
+      const flashPeriod = (now % 600) < 300;
+      if (flashPeriod) {
+        ctx.save();
+        ctx.strokeStyle = '#ff2a54';
+        ctx.lineWidth = 2.0;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(nPt.x, nPt.y);
+        ctx.lineTo(acnPt.x, acnPt.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // [WASTED TX] badge at link midpoint
+        const midX = (nPt.x + acnPt.x) * 0.5;
+        const midY = (nPt.y + acnPt.y) * 0.5;
+        const wastedText = '[WASTED TX]';
+        ctx.font = `700 10px ${MONO}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const wMet = ctx.measureText(wastedText);
+        ctx.fillStyle = 'rgba(255, 42, 84, 0.9)';
+        ctx.fillRect(midX - wMet.width * 0.5 - 4, midY - 7, wMet.width + 8, 14);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(midX - wMet.width * 0.5 - 4, midY - 7, wMet.width + 8, 14);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(wastedText, midX, midY);
+        ctx.restore();
+      }
+    }
 
     // Node HUD reticle if selected
     if (selectedNodeId === node.node_id) {
@@ -12889,6 +13855,25 @@ function drawRadar() {
       });
       if (terrainRegionDraft.length) drawToolPolygon(terrainRegionDraft, HIGHLAND_THEME.signal.ochre, '18', 1.5, true);
 
+      if (tbRegionSummitResult && Number.isFinite(tbRegionSummitResult.summitElevationM) && tbRegionSummitResult.summitElevationM > -9999) {
+        const sp = worldToScreen(tbRegionSummitResult.summitX, tbRegionSummitResult.summitY, w, h);
+        ctx.save();
+        ctx.fillStyle = '#fbbf24';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(sp.x, sp.y - 7);
+        ctx.lineTo(sp.x + 6, sp.y + 4);
+        ctx.lineTo(sp.x - 6, sp.y + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = `bold 10px ${MONO}`;
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText(`▲ MAX [${Math.round(tbRegionSummitResult.summitElevationM)}m]`, sp.x + 8, sp.y + 2);
+        ctx.restore();
+      }
+
       // Mode 2 Segmented Transect & Markers
       if (tbTransectResult && tbTransectResult.samples.length >= 2) {
         ctx.save();
@@ -12976,12 +13961,25 @@ function drawRadar() {
         const hs = tbTransectResult.samples[tbHoveredSampleIdx];
         const hp = worldToScreen(hs.xM, hs.yM, w, h);
         ctx.save();
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = HIGHLAND_THEME.signal.amberBright;
+        // Cyan reticle ring
+        ctx.strokeStyle = '#06b6d4';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(hp.x, hp.y, 5, 0, TAU);
+        ctx.arc(hp.x, hp.y, 7, 0, TAU);
+        ctx.stroke();
+        // Inner amber center dot
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(hp.x, hp.y, 3, 0, TAU);
         ctx.fill();
+        // Crosshair reticle ticks
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(hp.x - 11, hp.y); ctx.lineTo(hp.x - 5, hp.y);
+        ctx.moveTo(hp.x + 5, hp.y); ctx.lineTo(hp.x + 11, hp.y);
+        ctx.moveTo(hp.x, hp.y - 11); ctx.lineTo(hp.x, hp.y - 5);
+        ctx.moveTo(hp.x, hp.y + 5); ctx.lineTo(hp.x, hp.y + 11);
         ctx.stroke();
         ctx.restore();
       }
@@ -14281,7 +15279,8 @@ window.addEventListener('mousemove', (e) => {
     if (simTimelineController && simTimelineController.isHistoricalInspecting && hit !== null) {
       radarCanvas.style.cursor = 'not-allowed';
     } else {
-      radarCanvas.style.cursor = hit !== null || linkHit !== null || acnHover ? 'pointer'
+      radarCanvas.style.cursor = terrainToolMode !== 'idle' ? 'crosshair'
+        : hit !== null || linkHit !== null || acnHover ? 'pointer'
         : obstacleEditor.mode === 'place' && !spatialLocked ? 'crosshair'
         : obstacleHover ? (spatialLocked ? 'pointer' : 'grab') : 'grab';
     }
@@ -15343,6 +16342,28 @@ function drawWaterfall() {
     const subframeOffsetMs = dataCommVisualizer.getCurrentSubframeOffsetMs();
     const activeSlot = activeTimeline.resolveAt(subframeOffsetMs);
 
+    const renderedGanttSlots = [];
+    const drawTaGuard = (x, y, w, h, taUs) => {
+      if (w <= 8) return;
+      const taMs = Math.max(0.05, (taUs || 100.0) / 1000.0);
+      const taPx = Math.max(3, Math.min(w * 0.45, (taMs / superframeDurationMs) * plotW));
+      const gx = x + w - taPx;
+      g.save();
+      gfxRRect(g, gx, y, taPx, h, 2);
+      g.fillStyle = 'rgba(245, 158, 11, 0.28)';
+      g.fill();
+      g.clip();
+      g.strokeStyle = 'rgba(245, 158, 11, 0.75)';
+      g.lineWidth = 1;
+      for (let k = -h; k < taPx + h; k += 4) {
+        g.beginPath();
+        g.moveTo(gx + k, y + h);
+        g.lineTo(gx + k + h, y);
+        g.stroke();
+      }
+      g.restore();
+    };
+
     // Time grid (dynamic based on superframe duration)
     g.font = `10px ${MONO}`; g.textAlign = 'center'; g.lineWidth = 1;
     const stepMs = gfxNiceStep(superframeDurationMs, 10);
@@ -15434,9 +16455,14 @@ function drawWaterfall() {
         gfxRRect(g, sx, sy, sw, sh, 2);
         g.strokeStyle = isActiveStatic ? HIGHLAND_THEME.signal.amberBright : (nid === sel ? '#ffffff' : (out ? HIGHLAND_THEME.signal.vermilionBright : HIGHLAND_THEME.signal.ashStrokeSoft));
         g.lineWidth = isActiveStatic ? 2.0 : (nid === sel ? 1.8 : 1); g.stroke();
+
+        const taUs = alloc.timing_advance_us ?? alloc.timingAdvanceUs ?? (n?.slant_range_m ? ((2.0 * n.slant_range_m) / 299792458.0) * 1e6 : 100.0);
+        drawTaGuard(sx, sy, sw, sh, taUs);
+        renderedGanttSlots.push({ x: sx, y: sy, w: sw, h: sh, alloc, schedulerType: 'Static', nodeId: nid, sectorId: secId, isOutage: out, isPreOcclusionFlush: false, taUs });
+
         if (sw > 16) {
           g.fillStyle = out ? HIGHLAND_THEME.signal.vermilionBright : (isActiveStatic ? HIGHLAND_THEME.signal.amberBright : HIGHLAND_THEME.text.muted); g.font = `10px ${MONO}`; g.textAlign = 'center';
-          g.fillText(`S${nid}`, sx + sw / 2, sy + sh / 2 + 3.5);
+          g.fillText(`S${nid}`, sx + (sw - 4) / 2, sy + sh / 2 + 3.5);
         }
       });
     } else if (staticUlSegments.length > 0) {
@@ -15480,9 +16506,15 @@ function drawWaterfall() {
         gfxRRect(g, sx, sy, sw, sh, 3);
         g.strokeStyle = isActiveStatic ? HIGHLAND_THEME.signal.amberBright : (nid === sel ? '#ffffff' : (out ? HIGHLAND_THEME.signal.vermilionBright : HIGHLAND_THEME.signal.ashStrokeSoft));
         g.lineWidth = isActiveStatic ? 2.0 : (nid === sel ? 1.8 : 1); g.stroke();
+
+        const n = nodes.find(nd => (nd.node_id ?? nd.nodeId) === nid);
+        const taUs = (seg.allocation?.timing_advance_us ?? seg.timing_advance_us) ?? (n?.slant_range_m ? ((2.0 * n.slant_range_m) / 299792458.0) * 1e6 : 100.0);
+        drawTaGuard(sx, sy, sw, sh, taUs);
+        renderedGanttSlots.push({ x: sx, y: sy, w: sw, h: sh, alloc: seg.allocation ?? seg, schedulerType: 'Static', nodeId: nid, sectorId: 0, isOutage: out, isPreOcclusionFlush: false, taUs });
+
         if (sw > 16) {
           g.fillStyle = out ? HIGHLAND_THEME.signal.vermilionBright : (isActiveStatic ? HIGHLAND_THEME.signal.amberBright : HIGHLAND_THEME.text.muted); g.font = `10px ${MONO}`; g.textAlign = 'center';
-          g.fillText(`S${nid}`, sx + sw / 2, sy + sh / 2 + 3.5);
+          g.fillText(`S${nid}`, sx + (sw - 4) / 2, sy + sh / 2 + 3.5);
         }
       });
     } else {
@@ -15559,9 +16591,14 @@ function drawWaterfall() {
         } else if (nid === sel) {
           g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke();
         }
+        const n = nodes.find(nd => (nd.node_id ?? nd.nodeId) === nid);
+        const taUs = alloc.timing_advance_us ?? alloc.timingAdvanceUs ?? (n?.slant_range_m ? ((2.0 * n.slant_range_m) / 299792458.0) * 1e6 : 100.0);
+        drawTaGuard(ax, y, Math.max(1.5, aw - 1), sh, taUs);
+        renderedGanttSlots.push({ x: ax, y, w: Math.max(1.5, aw - 1), h: sh, alloc, schedulerType: 'Tac-TAD', nodeId: nid, sectorId: secId, isOutage: false, isPreOcclusionFlush: Boolean(alloc.is_pre_occlusion_flush ?? alloc.isPreOcclusionFlush), taUs });
+
         if (aw > 20) {
           g.fillStyle = HIGHLAND_THEME.substrate.void; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
-          g.fillText(`S${nid}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
+          g.fillText(`S${nid}`, ax + (aw - 4) / 2 - 0.5, y + sh / 2 + 3.5);
         }
       });
 
@@ -15627,13 +16664,18 @@ function drawWaterfall() {
         } else if (nid === sel) {
           g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.stroke();
         }
+        const n = nodes.find(nd => (nd.node_id ?? nd.nodeId) === nid);
+        const taUs = (seg.allocation?.timing_advance_us ?? seg.timing_advance_us) ?? (n?.slant_range_m ? ((2.0 * n.slant_range_m) / 299792458.0) * 1e6 : 100.0);
+        drawTaGuard(ax, y, Math.max(1.5, aw - 1), sh, taUs);
         const secId = seg.allocation?.sector_id ?? seg.sector_id ?? seg.sectorId;
+        renderedGanttSlots.push({ x: ax, y, w: Math.max(1.5, aw - 1), h: sh, alloc: seg.allocation ?? seg, schedulerType: 'Tac-TAD', nodeId: nid, sectorId: secId ?? 0, isOutage: false, isPreOcclusionFlush: Boolean(seg.isPreOcclusionFlush), taUs });
+
         if (aw > 36 && secId !== undefined) {
           g.fillStyle = HIGHLAND_THEME.substrate.void; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
-          g.fillText(`S${nid}·sec${secId}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
+          g.fillText(`S${nid}·sec${secId}`, ax + (aw - 4) / 2 - 0.5, y + sh / 2 + 3.5);
         } else if (aw > 20) {
           g.fillStyle = HIGHLAND_THEME.substrate.void; g.font = `bold 10px ${MONO}`; g.textAlign = 'center';
-          g.fillText(`S${nid}`, ax + aw / 2 - 0.5, y + sh / 2 + 3.5);
+          g.fillText(`S${nid}`, ax + (aw - 4) / 2 - 0.5, y + sh / 2 + 3.5);
         }
       });
 
@@ -15714,8 +16756,224 @@ function drawWaterfall() {
       g.fillText(playheadText, px, padT - 11);
       g.restore();
     }
+
+    activeRenderedGanttSlots = renderedGanttSlots;
+
+    // Render Saleae Logic 2 Interactive Cursor, Timestamp Pill & Slot Highlights
+    if (ganttHoverState.active && ganttHoverState.x >= padL && ganttHoverState.x <= padL + plotW) {
+      const hx = Math.round(ganttHoverState.x) + 0.5;
+      g.save();
+      g.strokeStyle = '#00f0ff';
+      g.lineWidth = 1.0;
+      g.setLineDash([3, 2]);
+      g.beginPath();
+      g.moveTo(hx, padT - 4);
+      g.lineTo(hx, yTac + trackH + 6);
+      g.stroke();
+      g.setLineDash([]);
+
+      const hoverMs = Math.max(0, Math.min(superframeDurationMs, ((ganttHoverState.x - padL) / plotW) * superframeDurationMs));
+      const hoverUs = Math.round(hoverMs * 1000);
+      const pillText = `t = ${hoverMs.toFixed(3)} ms (${hoverUs} μs)`;
+      g.font = `600 10px ${MONO}`;
+      const tw = g.measureText(pillText).width;
+      const pillW = tw + 12, pillH = 18;
+      const pillX = Math.max(padL, Math.min(padL + plotW - pillW, ganttHoverState.x - pillW / 2));
+      const pillY = padT - 20;
+      gfxRRect(g, pillX, pillY, pillW, pillH, 3);
+      g.fillStyle = 'rgba(7, 9, 12, 0.95)';
+      g.fill();
+      g.strokeStyle = '#00f0ff';
+      g.lineWidth = 1.0;
+      g.stroke();
+      g.fillStyle = '#00f0ff';
+      g.textAlign = 'center';
+      g.fillText(pillText, pillX + pillW / 2, pillY + 12.5);
+      g.restore();
+
+      if (ganttHoverState.hoveredSlot) {
+        const hs = ganttHoverState.hoveredSlot;
+        g.save();
+        gfxRRect(g, hs.x - 1, hs.y - 1, hs.w + 2, hs.h + 2, 3);
+        g.strokeStyle = '#00f0ff';
+        g.lineWidth = 2.0;
+        g.stroke();
+        g.restore();
+      }
+    }
+
+    if (!pduDissectorState.autoFollow && pduDissectorState.pinnedSlot) {
+      const ps = pduDissectorState.pinnedSlot;
+      const match = renderedGanttSlots.find(s => s.nodeId === ps.nodeId && s.sectorId === ps.sectorId && s.schedulerType === ps.schedulerType);
+      const highlightSlot = match || ps;
+      g.save();
+      gfxRRect(g, highlightSlot.x - 1, highlightSlot.y - 1, highlightSlot.w + 2, highlightSlot.h + 2, 3);
+      g.strokeStyle = HIGHLAND_THEME.signal.amberBright;
+      g.lineWidth = 2.0;
+      g.stroke();
+      g.restore();
+    }
+
+    updatePduDissectorPanel(nodes, schedMode, subframeOffsetMs);
   } catch (err) {
     console.error('Error drawing waterfall canvas:', err);
+  }
+}
+
+function updatePduDissectorPanel(nodes, schedMode, subframeOffsetMs) {
+  try {
+    const dissectorPanel = $('pdu-dissector-panel');
+    if (!dissectorPanel) return;
+
+    let targetSlot = null;
+    let inspectionReason = 'AUTO-FOLLOW TOP ACTIVE SLOT';
+
+    if (ganttHoverState.active && ganttHoverState.hoveredSlot) {
+      targetSlot = ganttHoverState.hoveredSlot;
+      inspectionReason = `HOVER INSPECTION: NID:${targetSlot.nodeId} · SEC:S${targetSlot.sectorId} (${targetSlot.schedulerType})`;
+    } else if (!pduDissectorState.autoFollow && pduDissectorState.pinnedSlot) {
+      const match = activeRenderedGanttSlots.find(s =>
+        s.nodeId === pduDissectorState.pinnedSlot.nodeId &&
+        s.sectorId === pduDissectorState.pinnedSlot.sectorId &&
+        s.schedulerType === pduDissectorState.pinnedSlot.schedulerType
+      );
+      targetSlot = match || pduDissectorState.pinnedSlot;
+      inspectionReason = `PINNED SLOT: NID:${targetSlot.nodeId} · SEC:S${targetSlot.sectorId} (${targetSlot.schedulerType})`;
+    } else {
+      const currentSched = schedMode === 'static' ? 'Static' : 'Tac-TAD';
+      const selId = typeof selectedNodeId === 'number' ? selectedNodeId : -1;
+      let candidate = null;
+      if (selId >= 0) {
+        candidate = activeRenderedGanttSlots.find(s => s.nodeId === selId && s.schedulerType === currentSched);
+      }
+      if (!candidate && activeRenderedGanttSlots.length > 0) {
+        candidate = activeRenderedGanttSlots.find(s => s.schedulerType === currentSched) || activeRenderedGanttSlots[0];
+      }
+      targetSlot = candidate;
+      if (targetSlot) {
+        inspectionReason = `LIVE AUTO-TRACKING: NID:${targetSlot.nodeId} · SEC:S${targetSlot.sectorId} (${targetSlot.schedulerType})`;
+      } else {
+        inspectionReason = 'LIVE AUTO-TRACKING: IDLE FRAME';
+      }
+    }
+
+    const subhead = $('pdu-slot-subhead');
+    if (subhead) subhead.textContent = inspectionReason;
+
+    const autoBtn = $('btn-pdu-auto-follow');
+    if (autoBtn) {
+      if (pduDissectorState.autoFollow) {
+        autoBtn.textContent = 'Auto-Follow Top Slot [ON]';
+        autoBtn.style.borderColor = 'var(--line)';
+        autoBtn.style.color = 'var(--text)';
+      } else {
+        autoBtn.textContent = 'Auto-Follow Top Slot [PINNED]';
+        autoBtn.style.borderColor = 'var(--hi-amber, #f59e0b)';
+        autoBtn.style.color = 'var(--hi-amber, #f59e0b)';
+      }
+    }
+
+    if (!targetSlot) return;
+
+    const nid = targetSlot.nodeId ?? 0;
+    const n = Array.isArray(nodes) ? nodes.find(nd => (nd.node_id ?? nd.nodeId) === nid) : null;
+    const alloc = targetSlot.alloc || {};
+
+    const pdu = dissectTdmaSlotAllocation(
+      {
+        nodeId: nid,
+        sectorId: targetSlot.sectorId ?? alloc.sector_id ?? alloc.sectorId ?? 0,
+        slotStartS: alloc.slot_start_s ?? (alloc.start_ms ? alloc.start_ms / 1000 : 0),
+        durationS: alloc.duration_s ?? (alloc.duration_ms ? alloc.duration_ms / 1000 : (targetSlot.w ? (targetSlot.w / 600) * 0.02 : 0.001)),
+        timingAdvanceUs: targetSlot.taUs ?? alloc.timing_advance_us ?? alloc.timingAdvanceUs,
+        modcodName: alloc.modcod_name ?? alloc.modcodName ?? n?.modcod_name ?? '16APSK 3/4',
+        spectralEfficiency: alloc.spectral_efficiency ?? alloc.spectralEfficiency ?? n?.spectral_efficiency_bps_hz ?? 2.966,
+        capacityBits: alloc.capacity_bits ?? alloc.capacityBits ?? (alloc.duration_ms ? Math.floor(alloc.duration_ms * 1e-3 * 20e6 * 2.5) : 5000),
+        isPreOcclusionFlush: Boolean(targetSlot.isPreOcclusionFlush ?? alloc.is_pre_occlusion_flush ?? alloc.isPreOcclusionFlush),
+        isOutage: Boolean(targetSlot.isOutage ?? n?.linkOutage ?? n?.link_outage ?? n?.is_outage),
+      },
+      targetSlot.schedulerType ?? 'Tac-TAD',
+      {
+        q_c2: n?.c2_bytes ?? (alloc.c2_bytes !== undefined ? alloc.c2_bytes : (n?.c2_backlog ? n.c2_backlog * 128 : 128)),
+        q_voice: n?.voice_bytes ?? (alloc.voice_bytes !== undefined ? alloc.voice_bytes : 0),
+        q_video: n?.video_bytes ?? (alloc.video_bytes !== undefined ? alloc.video_bytes : 0),
+        q_photo: n?.photo_bytes ?? (alloc.photo_bytes !== undefined ? alloc.photo_bytes : 0),
+        slant_range_m: n?.slant_range_m ?? 25000.0,
+        snr_db: n?.snr_db ?? 16.0,
+        is_outage: Boolean(targetSlot.isOutage ?? n?.linkOutage ?? n?.link_outage ?? n?.is_outage),
+      }
+    );
+
+    const capReadout = $('pdu-capacity-readout');
+    if (capReadout) {
+      capReadout.textContent = `${pdu.totalCapacityBits.toLocaleString()} bits / ${pdu.totalCapacityBytes.toLocaleString()} B`;
+    }
+
+    const totBits = Math.max(1, pdu.totalCapacityBits);
+    const pFraming = (pdu.framingOverheadBits / totBits) * 100;
+    const pC2 = (pdu.c2Bits / totBits) * 100;
+    const pVoice = (pdu.voiceBits / totBits) * 100;
+    const pVideo = (pdu.videoBits / totBits) * 100;
+    const pPhoto = (pdu.photoBits / totBits) * 100;
+    const pPadding = (pdu.paddingBits / totBits) * 100;
+
+    const bFraming = $('pdu-bar-framing'), bC2 = $('pdu-bar-c2'), bVoice = $('pdu-bar-voice');
+    const bVideo = $('pdu-bar-video'), bPhoto = $('pdu-bar-photo'), bPadding = $('pdu-bar-padding');
+
+    if (bFraming) bFraming.style.width = `${pFraming.toFixed(1)}%`;
+    if (bC2) bC2.style.width = `${pC2.toFixed(1)}%`;
+    if (bVoice) bVoice.style.width = `${pVoice.toFixed(1)}%`;
+    if (bVideo) bVideo.style.width = `${pVideo.toFixed(1)}%`;
+    if (bPhoto) bPhoto.style.width = `${pPhoto.toFixed(1)}%`;
+    if (bPadding) bPadding.style.width = `${pPadding.toFixed(1)}%`;
+
+    const lFraming = $('pdu-leg-framing'), lC2 = $('pdu-leg-c2'), lVoice = $('pdu-leg-voice');
+    const lVideo = $('pdu-leg-video'), lPhoto = $('pdu-leg-photo'), lPadding = $('pdu-leg-padding');
+
+    if (lFraming) lFraming.textContent = `Framing: ${pdu.framingOverheadBytes}B (${pFraming.toFixed(1)}%)`;
+    if (lC2) lC2.textContent = `5QI-69 C2: ${pdu.c2Bytes}B (${pC2.toFixed(1)}%)`;
+    if (lVoice) lVoice.textContent = `5QI-65 Voice: ${pdu.voiceBytes}B (${pVoice.toFixed(1)}%)`;
+    if (lVideo) lVideo.textContent = `5QI-67 Video: ${pdu.videoBytes}B (${pVideo.toFixed(1)}%)`;
+    if (lPhoto) lPhoto.textContent = `5QI-70 Photo: ${pdu.photoBytes}B (${pPhoto.toFixed(1)}%)`;
+    if (lPadding) lPadding.textContent = `Padding: ${pdu.paddingBytes}B (${pPadding.toFixed(1)}%)`;
+
+    const phyWin = $('pdu-phy-window'), phyTa = $('pdu-phy-ta'), phySec = $('pdu-phy-sector');
+    const phyMc = $('pdu-phy-modcod'), phyCap = $('pdu-phy-cap');
+
+    if (phyWin) phyWin.textContent = `[${pdu.slotStartMs.toFixed(2)} .. ${pdu.slotEndMs.toFixed(2)}] ms (${pdu.durationMs.toFixed(2)} ms)`;
+    if (phyTa) phyTa.textContent = `${pdu.timingAdvanceUs.toFixed(1)} μs`;
+    if (phySec) phySec.textContent = `Sector S${pdu.sectorId} (${pdu.sectorId * 90}° boresight)`;
+    if (phyMc) phyMc.textContent = `${pdu.modcodName} (${pdu.spectralEfficiency.toFixed(2)} bps/Hz)`;
+    if (phyCap) phyCap.textContent = `${pdu.totalCapacityBits.toLocaleString()} bits (${pdu.totalCapacityBytes.toLocaleString()} B)`;
+
+    const macFraming = $('pdu-mac-framing'), macC2 = $('pdu-mac-c2'), macVoice = $('pdu-mac-voice');
+    const macVideo = $('pdu-mac-video'), macPhoto = $('pdu-mac-photo'), macPadding = $('pdu-mac-padding');
+
+    if (macFraming) macFraming.textContent = `${pdu.framingOverheadBytes} B (${pdu.framingOverheadBits} bits)`;
+    if (macC2) macC2.textContent = `${pdu.c2Bytes} B (${pdu.c2Bits} bits)`;
+    if (macVoice) macVoice.textContent = `${pdu.voiceBytes} B (${pdu.voiceBits} bits)`;
+    if (macVideo) macVideo.textContent = `${pdu.videoBytes} B (${pdu.videoBits} bits)`;
+    if (macPhoto) macPhoto.textContent = `${pdu.photoBytes} B (${pdu.photoBits} bits)`;
+    if (macPadding) macPadding.textContent = `${pdu.paddingBytes} B (${pdu.paddingBits} bits)`;
+
+    const schedType = $('pdu-sched-type'), schedModeEl = $('pdu-sched-mode'), schedStatus = $('pdu-sched-status');
+    const schedRange = $('pdu-sched-range'), schedSnr = $('pdu-sched-snr');
+
+    if (schedType) schedType.textContent = pdu.scheduler;
+    if (schedModeEl) schedModeEl.textContent = pdu.isPreOcclusionFlush ? 'PRE_OCCLUSION_FLUSH' : (pdu.isOutage ? 'STATIC_OUTAGE_WASTE' : 'NORMAL_PF');
+    if (schedStatus) {
+      schedStatus.textContent = pdu.deliveryStatus;
+      schedStatus.style.color = pdu.deliveryStatus === 'OUTAGE_WASTED_BURST' ? '#ef4444' : (pdu.deliveryStatus === 'PRE_OCCLUSION_EVAC_BURST' ? '#f59e0b' : '#10b981');
+    }
+    if (schedRange) schedRange.textContent = `${(pdu.slantRangeM / 1000).toFixed(2)} km`;
+    if (schedSnr) schedSnr.textContent = `${pdu.snrDb.toFixed(1)} dB`;
+
+    const hexDump = $('pdu-hex-dump');
+    if (hexDump) {
+      hexDump.textContent = pdu.hexHeaderDump;
+    }
+  } catch (err) {
+    console.warn('Error updating PDU dissector panel:', err);
   }
 }
 
@@ -15844,6 +17102,26 @@ function drawFresnel() {
           return;
         }
 
+        // Update Atmospheric Refractivity & Bullington Readout Strip
+        const profReadout = $('prof-physics-readout');
+        if (profReadout) {
+          if (profile) {
+            const kVal = profile.kFactor ?? 1.3333333333333333;
+            const gradVal = profile.refractivityGradNPerKm ?? 157.0 * (1.0 / kVal - 1.0);
+            const bulgeVal = profile.maxEarthBulgeM ?? 0;
+            const kStr = kVal.toFixed(Math.abs(kVal - 4.0 / 3.0) < 1e-4 ? 3 : 2);
+            const gradStr = `${gradVal > 0 ? '+' : ''}${Math.round(gradVal)} N/km`;
+            const bulgeStr = `+${bulgeVal.toFixed(2)} m`;
+            const apexStr = profile.bullingtonApex
+              ? `${(profile.bullingtonApex.distM / 1000).toFixed(1)} km (ν = ${profile.bullingtonApex.diffractionParameterNu.toFixed(2)}, J = ${profile.bullingtonApex.lossDb.toFixed(1)} dB)`
+              : '--';
+            const crestStr = profile.crestRadiusM !== undefined ? `${Math.round(profile.crestRadiusM)} m` : '--';
+            profReadout.textContent = `K-Factor: ${kStr} (${gradStr}) | Midpoint Bulge: ${bulgeStr} | Bullington Apex: ${apexStr} | R_crest: ${crestStr}`;
+          } else {
+            profReadout.textContent = 'K-Factor: 1.333 (-39 N/km) | Midpoint Bulge: +5.89 m | Bullington Apex: -- | R_crest: --';
+          }
+        }
+
         if (terrainProfileViewMode === 'top') {
           renderTerrainTopView(terrainCtx, tLayout, terrainTopViewport, profile, topViewOpts);
         } else if (terrainProfileViewMode === 'rf-top') {
@@ -15852,7 +17130,12 @@ function drawFresnel() {
           const transferState = histRecord ? histRecord.transferState : (f ? f.transfer_telemetry : null);
           renderRfTopView(terrainCtx, tLayout, terrainTopViewport, profile, lb, commStatus, transferState, topViewOpts);
         } else {
-          renderTerrainProfileViewport(terrainCtx, tLayout, terrainProfileViewport, profile, histRecord ? histRecord.profilePoints : (f ? f.profile_points : null));
+          renderTerrainProfileViewport(terrainCtx, tLayout, terrainProfileViewport, profile, histRecord ? histRecord.profilePoints : (f ? f.profile_points : null), {
+            showFresnel: profMultiFresnelOrders,
+            showMultiFresnel: profMultiFresnelOrders,
+            showBullingtonRays: profMultiFresnelOrders,
+            hoverInfo: profHoverInfo,
+          });
         }
       }
     }
@@ -15921,7 +17204,41 @@ function drawFresnel() {
 
     terrainCanvas.addEventListener('pointermove', (e) => {
       e.stopPropagation();
-      if (!isPanningTerrain) return;
+      if (!isPanningTerrain) {
+        if (terrainProfileViewMode === 'profile') {
+          const rect = terrainCanvas.getBoundingClientRect();
+          const canvasX = e.clientX - rect.left;
+          const tLay = getTerrainLayout();
+          const f = latestTelemetry ? latestTelemetry.fresnel_slice : null;
+          const prof = (f && f.profile && f.profile.valid && f.profile.samples && f.profile.samples.length >= 2) ? f.profile : null;
+          if (prof && prof.samples) {
+            const distKm = terrainProfileViewport.canvasToX(canvasX, tLay);
+            let closest = null;
+            let minDiff = Infinity;
+            for (let i = 0; i < prof.samples.length; i++) {
+              const s = prof.samples[i];
+              const diff = Math.abs(s.horizontalGroundDistanceM / 1000 - distKm);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closest = s;
+              }
+            }
+            if (closest) {
+              profHoverInfo = {
+                canvasX,
+                distKm: closest.horizontalGroundDistanceM / 1000,
+                elevM: closest.terrainElevationMslM,
+                bulgeM: closest.earthBulgeM ?? (closest.effectiveTerrainElevationMslM - closest.terrainElevationMslM),
+                losM: closest.losElevationMslM,
+                clearanceM: closest.effectiveTerrainClearanceM,
+                nu: closest.nu ?? 0,
+              };
+              drawFresnel();
+            }
+          }
+        }
+        return;
+      }
       const dx = e.clientX - panStartX;
       const dy = e.clientY - panStartY;
       panStartX = e.clientX;
@@ -15932,6 +17249,13 @@ function drawFresnel() {
         terrainProfileViewport.pan(dx, dy, getTerrainLayout());
       }
       drawFresnel();
+    });
+
+    terrainCanvas.addEventListener('pointerleave', () => {
+      if (profHoverInfo) {
+        profHoverInfo = null;
+        drawFresnel();
+      }
     });
 
     const endPanTerrain = (e) => {
@@ -15998,40 +17322,51 @@ function drawFresnel() {
    MAIN RENDER LOOP
    ==================================================================== */
 let lastTimelineAnimTimeMs = 0;
+let last3dSecondaryCanvasThrottleMs = 0;
 function animationLoop(timestampMs) {
   try {
     const now = typeof timestampMs === 'number' ? timestampMs : performance.now();
     const isPlayingHistory = Boolean(simTimelineController?.isPlayingHistory);
+    const is3dMode = (stageViewMode === '3d');
+    const allowSecondaryRedraw = !is3dMode || (now - last3dSecondaryCanvasThrottleMs >= 125); // 8 Hz (125 ms) throttling in 3D mode
+
     if (simTimelineController) {
       if (lastTimelineAnimTimeMs > 0 && isPlayingHistory) {
         const dtS = Math.min((now - lastTimelineAnimTimeMs) / 1000, 0.1);
         simTimelineController.advanceHistoricalPlayback(dtS);
       }
-      simTimelineController.renderIfDirty();
+      if (allowSecondaryRedraw) {
+        simTimelineController.renderIfDirty();
+      }
     }
     lastTimelineAnimTimeMs = now;
+    if (allowSecondaryRedraw && is3dMode) {
+      last3dSecondaryCanvasThrottleMs = now;
+    }
 
     // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty or MapLibre kinetic overlay active (skips when in 3D mode)
-    if (stageViewMode !== '3d' && (radarNeedsRender || isPlayingHistory || terrainMapMode === 'maplibre')) {
+    if (!is3dMode && (radarNeedsRender || isPlayingHistory || terrainMapMode === 'maplibre')) {
       drawRadar();
       radarNeedsRender = false;
     }
 
-    // 2. Analytical workspace canvases in right-hand column - gated by active tab
-    const activeTab = document.querySelector('.tab-content.active');
-    if (activeTab) {
-      if (activeTab.id === 'tab-scheduler' && (schedulerNeedsRender || isPlayingHistory || !isPaused)) {
-        drawWaterfall();
-        if (latestTelemetry) {
-          drawPolarAntennaScope(latestTelemetry);
-          drawEcdfDelayScope(latestTelemetry);
-          drawSensitivitySweepScope(latestTelemetry);
+    // 2. Analytical workspace canvases in right-hand column - gated by active tab (throttled to 8 Hz in 3D mode)
+    if (allowSecondaryRedraw) {
+      const activeTab = document.querySelector('.tab-content.active');
+      if (activeTab) {
+        if (activeTab.id === 'tab-scheduler' && (schedulerNeedsRender || isPlayingHistory || !isPaused)) {
+          drawWaterfall();
+          if (latestTelemetry) {
+            drawPolarAntennaScope(latestTelemetry);
+            drawEcdfDelayScope(latestTelemetry);
+            drawSensitivitySweepScope(latestTelemetry);
+          }
+          schedulerNeedsRender = false;
+        } else if (activeTab.id === 'tab-terrain' && (terrainNeedsRender || isPlayingHistory || !isPaused)) {
+          drawFresnel();
+          if (latestTelemetry) drawLinkWaterfallCanvas(latestTelemetry);
+          terrainNeedsRender = false;
         }
-        schedulerNeedsRender = false;
-      } else if (activeTab.id === 'tab-terrain' && (terrainNeedsRender || isPlayingHistory || !isPaused)) {
-        drawFresnel();
-        if (latestTelemetry) drawLinkWaterfallCanvas(latestTelemetry);
-        terrainNeedsRender = false;
       }
     }
   } catch (err) {

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import type { TerrainBoundsTelemetry } from '../../core/terrain';
 
 export type StageViewMode = '2d' | '3d';
-export type TerrainMeshResolution = 'native512' | 'balanced256';
+export type TerrainMeshResolution = 'native512' | 'balanced256' | 'fast128';
 
 export interface TerrainMeshDataPayload {
   readonly terrainMode: 'real' | 'synthetic';

@@ -2171,6 +2171,9 @@ export class SimulationWorkerManager {
         const cqiFeedbackDelayMs = msg.cqiFeedbackDelayMs !== undefined && Number.isFinite(msg.cqiFeedbackDelayMs)
           ? msg.cqiFeedbackDelayMs
           : this.envConfig.cqiFeedbackDelayMs;
+        const kFactor = msg.earthRadiusFactorK !== undefined && Number.isFinite(msg.earthRadiusFactorK)
+          ? Math.max(0.5, Math.min(10.0, msg.earthRadiusFactorK))
+          : this.envConfig.earthRadiusFactorK;
 
         this.envConfig = new EnvironmentConfig({
           ...this.envConfig,
@@ -2181,6 +2184,8 @@ export class SimulationWorkerManager {
           activeRelayEnabled,
           ricianFadingEnabled,
           cqiFeedbackDelayMs,
+          earthRadiusFactorK: kFactor,
+          effectiveEarthRadiusFactor: kFactor,
         });
         this.lookaheadEngine.setEnvConfig(this.envConfig);
         for (let i = 0; i < this.nodesStatic.length; i++) {
@@ -2196,7 +2201,7 @@ export class SimulationWorkerManager {
         if (msg.ricianFadingEnabled !== undefined && !msg.ricianFadingEnabled) {
           this.nodeSinrHistory.clear();
         }
-        if (msg.activeRelayEnabled !== undefined || msg.ricianFadingEnabled !== undefined || msg.cqiFeedbackDelayMs !== undefined) {
+        if (msg.activeRelayEnabled !== undefined || msg.ricianFadingEnabled !== undefined || msg.cqiFeedbackDelayMs !== undefined || msg.earthRadiusFactorK !== undefined) {
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         }
         return result(true);
@@ -2435,6 +2440,10 @@ export class SimulationWorkerManager {
         if (p.carrier_freq_ghz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, carrierFrequencyHz: p.carrier_freq_ghz * 1e9 });
         if (p.channel_bandwidth_mhz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, channelBandwidthHz: p.channel_bandwidth_mhz * 1e6 });
         if (p.rain_rate_mmh !== undefined) this.envConfig = new EnvironmentConfig({ ...this.envConfig, rainRateMmH: p.rain_rate_mmh });
+        if (p.earthRadiusFactorK !== undefined && Number.isFinite(p.earthRadiusFactorK)) {
+          const k = Math.max(0.5, Math.min(10.0, p.earthRadiusFactorK));
+          this.envConfig = new EnvironmentConfig({ ...this.envConfig, earthRadiusFactorK: k, effectiveEarthRadiusFactor: k });
+        }
         if (nextFlightConfig && nextTrajectory) {
           this.flightConfig = nextFlightConfig;
           this.trajectoryEngine = nextTrajectory;
@@ -2443,7 +2452,7 @@ export class SimulationWorkerManager {
             this.liveVzMps = 0.0;
           }
         }
-        if (changesTrajectory || p.coverage_radius_km !== undefined || p.carrier_freq_ghz !== undefined || p.channel_bandwidth_mhz !== undefined || p.rain_rate_mmh !== undefined) {
+        if (changesTrajectory || p.coverage_radius_km !== undefined || p.carrier_freq_ghz !== undefined || p.channel_bandwidth_mhz !== undefined || p.rain_rate_mmh !== undefined || p.earthRadiusFactorK !== undefined) {
           this.lookaheadEngine = new PredictiveLookAheadEngine(
             this.terrainEngine, this.linkEngine, this.rfConfig, this.envConfig, this.flightConfig, this.trajectoryEngine
           );

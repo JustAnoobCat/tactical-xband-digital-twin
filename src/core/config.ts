@@ -139,6 +139,7 @@ export class RFConfig implements IRFConfig {
 
 export interface IEnvironmentConfig {
   readonly effectiveEarthRadiusFactor: number;
+  readonly earthRadiusFactorK?: number;
   readonly trueEarthRadiusM: number;
   readonly rainRateMmH: number;
   readonly rainCellLengthKm: number;
@@ -156,6 +157,7 @@ export interface IEnvironmentConfig {
 
 export class EnvironmentConfig implements IEnvironmentConfig {
   public readonly effectiveEarthRadiusFactor: number;
+  public readonly earthRadiusFactorK: number = 4.0 / 3.0;
   public readonly trueEarthRadiusM: number;
   public readonly rainRateMmH: number;
   public readonly rainCellLengthKm: number;
@@ -170,8 +172,28 @@ export class EnvironmentConfig implements IEnvironmentConfig {
   public readonly ricianFadingEnabled: boolean = false;
   public readonly cqiFeedbackDelayMs: number = 0;
 
+  /**
+   * ITU-R P.834-9: Refractivity vertical gradient dN/dh from effective Earth radius factor K.
+   * Formula: dN/dh = 157.0 * (1.0 / kFactor - 1.0) [N-units/km]
+   */
+  public static refractivityGradientFromK(kFactor: number): number {
+    if (!Number.isFinite(kFactor) || kFactor <= 0.0) return -39.25;
+    return 157.0 * (1.0 / kFactor - 1.0);
+  }
+
+  /**
+   * ITU-R P.834-9: Effective Earth radius in metres for a given K factor.
+   * Formula: R_eff = K * 6,371,000.0 m (WGS-84 volumetric mean)
+   */
+  public static effectiveEarthRadiusM(kFactor: number = 4.0 / 3.0): number {
+    const k = Math.max(0.5, Math.min(10.0, kFactor));
+    return k * 6371000.0;
+  }
+
   constructor(init?: Partial<IEnvironmentConfig>) {
-    this.effectiveEarthRadiusFactor = init?.effectiveEarthRadiusFactor ?? 4.0 / 3.0; // ITU-R P.834 k-factor
+    const rawK = init?.earthRadiusFactorK ?? init?.effectiveEarthRadiusFactor ?? 4.0 / 3.0;
+    this.earthRadiusFactorK = Math.max(0.5, Math.min(10.0, rawK));
+    this.effectiveEarthRadiusFactor = this.earthRadiusFactorK; // ITU-R P.834 k-factor
     this.trueEarthRadiusM = init?.trueEarthRadiusM ?? 6371000.0; // WGS-84 volumetric mean
     this.rainRateMmH = init?.rainRateMmH ?? 0.0; // Precipitation rate (mm/h)
     this.rainCellLengthKm = init?.rainCellLengthKm ?? 10.0; // Convective cell extent
@@ -188,10 +210,10 @@ export class EnvironmentConfig implements IEnvironmentConfig {
   }
 
   /**
-   * Effective Earth radius: R'_e = k * R_true (~8,494,666.67 m)
+   * Effective Earth radius: R'_e = k * R_true (~8,494,666.67 m for standard K=4/3)
    */
   public get effectiveEarthRadiusM(): number {
-    return this.trueEarthRadiusM * this.effectiveEarthRadiusFactor;
+    return this.trueEarthRadiusM * this.earthRadiusFactorK;
   }
 }
 

@@ -175,6 +175,15 @@ export class ObstacleEditorState {
     this.message = 'Obstacle removed from draft. Apply to commit the removal.';
   }
 
+  public setDraftSet(next: readonly Obstacle[]): void {
+    this.assertEditable();
+    this.draftSet = cloneSet(next);
+    if (this.selected && !this.draftSet.some(o => o.id === this.selected)) {
+      this.selected = this.draftSet.at(-1)?.id ?? null;
+    }
+    this.message = 'Draft updated. Apply to commit it.';
+  }
+
   public validate(): string | null {
     try {
       if (this.draftSet.length > MAX_OBSTACLES) throw new Error(`Obstacle set cannot exceed ${MAX_OBSTACLES} items.`);

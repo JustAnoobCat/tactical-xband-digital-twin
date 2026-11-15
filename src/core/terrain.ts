@@ -20,6 +20,18 @@ export interface SlantGeometry {
   readonly timingAdvanceS: number;
 }
 
+export interface BullingtonApexData {
+  readonly distM: number;
+  readonly elevM: number;
+  readonly losHeightM: number;
+  readonly diffractionParameterNu: number;
+  readonly lossDb: number;
+  readonly txHorizonDistM: number;
+  readonly txHorizonElevM: number;
+  readonly rxHorizonDistM: number;
+  readonly rxHorizonElevM: number;
+}
+
 export interface TerrainObstruction {
   readonly minClearanceM: number;
   readonly fresnelRadiusM: number;
@@ -37,6 +49,7 @@ export interface TerrainObstruction {
   readonly crestRadiusM?: number;
   readonly curvatureLossDb?: number;
   readonly bullingtonApexDistM?: number;
+  readonly bullingtonApex?: BullingtonApexData | null;
 }
 
 // Regional 1,200 x 1,200 km Theater Extent (+/- 600 km from origin)
@@ -729,6 +742,11 @@ const candidateUrls = url
    * In 'synthetic' mode (or fallback when real DEM is not loaded):
    *   - Procedural 2D fBm terrain across the full 1,200 km regional theater extent.
    */
+  /** Alias for getElevation for compatibility with terrain profiler callers. */
+  public getElevationAt(xM: number, yM: number): number {
+    return this.getElevation(xM, yM);
+  }
+
   public getElevation(xM: number, yM: number): number {
     if (this.customElevationFn) {
       return this.customElevationFn(xM, yM);
@@ -1090,6 +1108,47 @@ const candidateUrls = url
     let crestRadiusM: number | undefined = undefined;
     let curvatureLossDb: number | undefined = undefined;
     let bullingtonApexDistM: number | undefined = undefined;
+    let bullingtonApex: BullingtonApexData | null = null;
+
+    if (iTx !== -1 && iRx !== -1 && d3D > 0) {
+      if (iTx !== iRx) {
+        const apex = TerrainEngine.computeBullingtonApex(nz, az, d3D, sTxMax, sRxMax, sTxDistM, sRxDistM);
+        const txHorizonElevM = nz + sTxMax * sTxDistM;
+        const rxHorizonElevM = az + sRxMax * (d3D - sRxDistM);
+        const losHeightM = nz + (apex.sBull / d3D) * (az - nz);
+        const hBull = apex.zBull - losHeightM;
+        const nu = hBull * Math.sqrt((2.0 / wavelength) * (1.0 / Math.max(1e-3, apex.sBull) + 1.0 / Math.max(1e-3, d3D - apex.sBull)));
+        const lossDb = TerrainEngine.computeKnifeEdgeLossDb(Math.max(0, hBull), apex.sBull, d3D - apex.sBull, wavelength);
+        bullingtonApex = {
+          distM: apex.sBull,
+          elevM: apex.zBull,
+          losHeightM,
+          diffractionParameterNu: nu,
+          lossDb: Math.max(0, lossDb),
+          txHorizonDistM: sTxDistM,
+          txHorizonElevM,
+          rxHorizonDistM: sRxDistM,
+          rxHorizonElevM,
+        };
+      } else {
+        const txHorizonElevM = nz + sTxMax * critD1;
+        const losHeightM = nz + (critD1 / d3D) * (az - nz);
+        const hBull = txHorizonElevM - losHeightM;
+        const nu = hBull * Math.sqrt((2.0 / wavelength) * (1.0 / Math.max(1e-3, critD1) + 1.0 / Math.max(1e-3, critD2)));
+        const lossDb = TerrainEngine.computeKnifeEdgeLossDb(Math.max(0, hBull), critD1, critD2, wavelength);
+        bullingtonApex = {
+          distM: critD1,
+          elevM: txHorizonElevM,
+          losHeightM,
+          diffractionParameterNu: nu,
+          lossDb: Math.max(0, lossDb),
+          txHorizonDistM: critD1,
+          txHorizonElevM,
+          rxHorizonDistM: critD1,
+          rxHorizonElevM: txHorizonElevM,
+        };
+      }
+    }
 
     if (minClearanceRatio >= 0.6) {
       diffractionLossDb = 0.0;
@@ -1202,6 +1261,7 @@ const candidateUrls = url
       crestRadiusM,
       curvatureLossDb,
       bullingtonApexDistM,
+      bullingtonApex,
     };
   }
 }
