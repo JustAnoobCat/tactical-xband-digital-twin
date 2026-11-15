@@ -106,7 +106,11 @@ const REGISTERED_SUITES = [
   { id: 'verify:toolbox-upgrade', name: '3D MapLibre Fix & Deep Toolbox Upgrade (TBU-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyToolboxDeepUpgrade.ts'], category: 'ui' },
   { id: 'verify:flight-planner', name: 'QGroundControl Flight Planner & Vertical Terrain Profile (FPU-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyFlightPlannerUpgrade.ts'], category: 'ui' },
   { id: 'verify:tdma-dissector', name: 'TDMA Logic Analyzer & MAC PDU Dissector (TLA-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTdmaLogicAnalyzerDissector.ts'], category: 'ui' },
-  { id: 'verify:path-refractivity', name: 'Path Profile Bullington & Atmospheric Refractivity (PPR-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPathProfileRefractivity.ts'], category: 'rf' }
+  { id: 'verify:path-refractivity', name: 'Path Profile Bullington & Atmospheric Refractivity (PPR-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPathProfileRefractivity.ts'], category: 'rf' },
+  { id: 'verify:vsa-constellation', name: 'DVB-S2X I/Q Constellation, EVM & LDPC BLER Analyzer (VSA-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVsaConstellationUpgrade.ts'], category: 'vsa' },
+  { id: 'verify:qos-sla', name: '3GPP 5QI SLA Compliance & Jain\'s Fairness (QSF-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyQosSlaAndFairness.ts'], category: 'sla' },
+  { id: 'verify:ntn-signaling', name: '3GPP Rel-17 NTN RACH & Handover Signaling (NRS-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyNtnRachSignalingUpgrade.ts'], category: 'ntn' },
+  { id: 'verify:worker-dossier', name: '50 Hz Worker Jitter Profiler & Reproducible Dossier (WJD-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWorkerJitterAndDossierUpgrade.ts'], category: 'profiler' }
 ];
 
 // -----------------------------------------------------------------------------
