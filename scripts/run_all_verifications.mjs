@@ -110,7 +110,11 @@ const REGISTERED_SUITES = [
   { id: 'verify:vsa-constellation', name: 'DVB-S2X I/Q Constellation, EVM & LDPC BLER Analyzer (VSA-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyVsaConstellationUpgrade.ts'], category: 'vsa' },
   { id: 'verify:qos-sla', name: '3GPP 5QI SLA Compliance & Jain\'s Fairness (QSF-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyQosSlaAndFairness.ts'], category: 'sla' },
   { id: 'verify:ntn-signaling', name: '3GPP Rel-17 NTN RACH & Handover Signaling (NRS-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyNtnRachSignalingUpgrade.ts'], category: 'ntn' },
-  { id: 'verify:worker-dossier', name: '50 Hz Worker Jitter Profiler & Reproducible Dossier (WJD-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWorkerJitterAndDossierUpgrade.ts'], category: 'profiler' }
+  { id: 'verify:worker-dossier', name: '50 Hz Worker Jitter Profiler & Reproducible Dossier (WJD-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWorkerJitterAndDossierUpgrade.ts'], category: 'profiler' },
+  { id: 'verify:geodetic-ruler', name: 'CAD/GIS Precision Geodetic & RF LoS Ruler (PGR-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionGeodeticRuler.ts'], category: 'ui' },
+  { id: 'verify:cursor-probe', name: 'CAD/STK Precision Cursor RF Probe & Unit Spawner (PCP-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionCursorProbeTool2.ts'], category: 'ui' },
+  { id: 'verify:ao-swath', name: 'CAD/QGIS Precision AO Swath & Dead-Zone Scanner (PAS-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionAoSwathTool3.ts'], category: 'ui' },
+  { id: 'verify:cad-obstacle', name: 'Precision CAD Obstacle Link-Slicer Engine (PCO-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionCadObstacleTool4.ts'], category: 'ui' }
 ];
 
 // -----------------------------------------------------------------------------

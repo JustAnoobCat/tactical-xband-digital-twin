@@ -906,6 +906,13 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <span>Min F1 Clearance</span><span id="tb-transect-fresnel">-- m (100%)</span>
                 <span>ITU-R P.526 Diff</span><span id="tb-transect-diffraction">0.0 dB</span>
                 <span>Est. 8GHz SNR/MOD</span><span id="tb-transect-snr">-- dB / --</span>
+                <span>Azimuth / Back-Az</span><span id="tb-transect-azimuth">--° / --°</span>
+                <span>Vert Angle / Grade</span><span id="tb-transect-vert-angle">--° / --%</span>
+                <span>Blocking Peak</span><span id="tb-transect-blocking-peak">--</span>
+              </div>
+              <div class="terrain-toolbox-row" style="margin-top:6px">
+                <button id="btn-transect-swap-ab" type="button" aria-label="Swap Point A and Point B Direction" style="flex:1">⇄ Swap A ↔ B</button>
+                <button id="btn-transect-spawn-peak-relay" type="button" aria-label="Spawn Relay Terminal at Blocking Ridge Peak" class="primary" style="flex:1.4">▲ Spawn Relay on Peak</button>
               </div>
             </div>
 
@@ -916,6 +923,8 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <button id="tb-probe-clear-btn" type="button" aria-label="Clear Probe Site">Clear</button>
               </div>
               <div class="terrain-toolbox-row">
+                <label class="tool-label" for="tb-probe-mast-input">Mast(m)</label>
+                <input id="tb-probe-mast-input" class="tb-input-sm" type="number" min="1" max="200" step="1" value="2" style="width:48px" aria-label="Probe Antenna Mast Height in meters AGL">
                 <label class="tool-label" for="tb-probe-agl">AGL(m)</label>
                 <input id="tb-probe-agl" class="tb-input-sm" type="number" min="0" max="500" step="1" value="2" style="width:48px" aria-label="Probe Terminal AGL">
                 <label class="tool-label" for="tb-probe-radius">R(km)</label>
@@ -934,6 +943,17 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                   <option value="nodes">Nodes</option>
                 </select>
               </div>
+              <div class="terrain-toolbox-row" style="margin-top:4px">
+                <label class="tool-label" for="tb-probe-unit-select">Deploy Type</label>
+                <select id="tb-probe-unit-select" class="tb-input-sm" style="flex:1" aria-label="Unit Type to Deploy at Probe Point">
+                  <option value="soldier">Soldier Terminal (30 dBm)</option>
+                  <option value="mcp">Mobile Command Post [MCP] (40 dBm)</option>
+                  <option value="jammer">Relocate EW Jammer Here</option>
+                </select>
+              </div>
+              <div class="terrain-toolbox-row" style="margin-top:4px">
+                <button id="btn-probe-snap-best" type="button" aria-label="Snap Probe to Highest SINR Peak within 2 km" style="width:100%">▲ Snap to Best Signal Peak (2 km)</button>
+              </div>
               <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-cyan, #00e5ff)">Virtual Terminal Link to ACN</div>
               <div class="tb-kv-grid">
                 <span>ACN Slant Range</span><span id="tb-probe-acn-range">-- km</span>
@@ -941,13 +961,16 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <span>Line-of-Sight</span><span id="tb-probe-acn-los">--</span>
                 <span>Est. 8 GHz SINR</span><span id="tb-probe-acn-sinr">-- dB</span>
                 <span>Supported MODCOD</span><span id="tb-probe-acn-modcod">--</span>
+                <span>Horizon Mask / Sky</span><span id="tb-probe-horizon-mask">--° / --%</span>
+                <span>Sector &amp; Boresight</span><span id="tb-probe-sector-bore">--</span>
+                <span>Vs Pinned [P1]</span><span id="tb-probe-delta-pin">--</span>
               </div>
               <div class="terrain-toolbox-row" style="margin-top:6px">
                 <button id="tb-probe-spawn-node" type="button" aria-label="Spawn Ground Terminal at Probed Coordinate" class="primary" style="width:100%">+ Spawn Terminal at Probe Point</button>
               </div>
             </div>
 
-            <!-- Mode 4: Region Zonal & Bridge Finder -->
+            <!-- Mode 4: Region Zonal & Precision AO Swath Scanner -->
             <div class="tb-mode-pane" id="tb-pane-region" data-tb-pane="region" hidden>
               <div class="terrain-toolbox-row">
                 <button id="terrain-region-btn" type="button" aria-label="Draw Region on Map">Draw region</button>
@@ -964,12 +987,25 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <button id="tb-bridge-find-btn" type="button" aria-label="Find Joint Relay Bridge" disabled>Find Bridge</button>
                 <button id="tb-bridge-clear-btn" type="button" aria-label="Clear Joint Relay Bridge">Clear</button>
               </div>
-              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-amber, #ffab00)">Zonal RF &amp; Local Summit</div>
+              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-amber, #ffab00)">Precision AO Swath &amp; RF Matrix</div>
               <div class="tb-kv-grid">
+                <span>AO Dimensions</span><span id="tb-region-dimensions">-- km × -- km | -- km @ --°</span>
+                <span>AO Bounds</span><span id="tb-region-bounds">--</span>
+                <span>AO Area</span><span id="tb-region-area">-- km²</span>
                 <span>Local Summit ▲</span><span id="tb-region-summit">-- m @ (--, --)</span>
+                <span>Valley Floor ▼</span><span id="tb-region-valley-floor">-- m MSL (ΔZ -- m)</span>
+                <span>Mean / Min / Max Elev</span><span id="tb-region-mean">-- m</span>
+                <span>Min / Max Range</span><span id="tb-region-minmax">-- / -- m</span>
+                <span>Elev StdDev / TRI</span><span id="tb-region-std">-- m</span>
                 <span>Ruggedness / Slope</span><span id="tb-region-ruggedness">TRI -- m / --°</span>
-                <span>ACN LoS Coverage</span><span id="tb-region-los-pct">--% (0/36)</span>
+                <span>ACN LoS Coverage</span><span id="tb-region-los-pct">--% (0/64)</span>
+                <span>SINR &amp; Outage</span><span id="tb-region-sinr-stats">-- dB | Dead-Zone --%</span>
               </div>
+              <div class="terrain-toolbox-row" style="margin-top:6px;gap:4px;flex-direction:column;">
+                <button id="btn-region-deploy-squad" type="button" aria-label="Auto-Deploy 4-Node Tactical Squad in Selected AO" class="primary" style="width:100%">✚ Auto-Deploy 4-Node Squad in AO</button>
+                <button id="btn-region-spawn-summit-relay" type="button" aria-label="Spawn MCP Relay on AO Summit Peak" style="width:100%">▲ Spawn MCP Relay on AO Summit Peak</button>
+              </div>
+              <canvas id="tb-region-canvas" width="280" height="70" style="display:none;width:100%;border-radius:3px;"></canvas>
             </div>
 
             <!-- Mode 5: 3D Obstacles & Excalidraw Ergonomics -->
@@ -996,6 +1032,27 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <button id="tb-obs-redo" type="button" aria-label="Redo Obstacle Action" disabled>Redo</button>
                 <button id="tb-obs-clear-btn" type="button" aria-label="Clear All Obstacles">Clear</button>
               </div>
+
+              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-amber, #ffab00)">CAD Barrier &amp; 3D Link Slicer</div>
+              <div class="tb-kv-grid">
+                <span>CAD Barrier</span><span id="tb-obs-cad-metrics">-- m @ --° | Crest -- m MSL</span>
+                <span>3D Link Slice</span><span id="tb-obs-slice-summary">Intersected: -- | Slicing 0 / Overflying 0</span>
+              </div>
+              <div class="terrain-toolbox-row" style="margin-top:4px;">
+                <button id="btn-obs-auto-height" type="button" aria-label="Auto-Match Barrier Height to Slice Intersected 3D Links" style="width:100%">⚡ Auto-Size Height to Slice Links</button>
+              </div>
+
+              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-cyan, #00e5ff)">One-Click Node Link Slicer</div>
+              <div class="terrain-toolbox-row">
+                <label class="tool-label" for="tb-obs-target-node-select">Target</label>
+                <select id="tb-obs-target-node-select" class="tb-input-sm" aria-label="Select Ground Node Link to Block" style="flex:1;">
+                  <option value="none">Select Ground Node…</option>
+                </select>
+              </div>
+              <div class="terrain-toolbox-row" style="margin-top:4px;">
+                <button id="btn-obs-slice-node-link" type="button" aria-label="Auto-Drop Perpendicular Barrier Across Selected Node Link" class="primary" style="width:100%">✂ Drop Ridge Across Node's Link</button>
+              </div>
+
               <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--text, #f2efe9)">Obstacle Inventory</div>
               <div id="tb-obs-list" class="terrain-toolbox-list" aria-label="Obstacle Inventory List">
                 <span class="terrain-toolbox-status">No obstacles placed.</span>
@@ -3233,6 +3290,27 @@ import {
   evaluateWorkerRealTimeProfile,
   generateExperimentDossierMarkdown,
 } from './src/core/workerJitterProfiler.ts';
+import {
+  computeGeodeticRulerMetrics,
+  snapPointToAngleIncrement,
+  evaluateRulerProfileAndBlockingPeak,
+  compassRoseLabel,
+} from './src/core/geodeticRulerEngine.ts';
+import {
+  evaluateCursorRfProbe,
+  findOptimalSignalPeakInRadius,
+} from './src/core/cursorProbeEngine.ts';
+import {
+  constrainSquareRegion,
+  evaluateAoSwathAnalysis,
+} from './src/core/aoSwathScannerEngine.ts';
+import {
+  computeSegmentIntersection2D,
+  snapBarrierAngle,
+  evaluateBarrierLinkIntersections,
+  generatePerpendicularLinkSlicerObstacle,
+  computeP526DiffractionDb,
+} from './src/core/cadObstacleSlicerEngine.ts';
 import { parseEditorNumber, TrajectoryEditorState } from './src/ui/trajectoryEditorState.ts';
 import { obstacleContainsPoint, obstacleFootprintPoints } from './src/core/obstacles.ts';
 import { ObstacleEditorState, OBSTACLE_EDITOR_LIMITS, resolveSpatialCanvasTarget } from './src/ui/obstacleEditorState.ts';
@@ -4773,9 +4851,18 @@ let tbTransectPolyDone = false;
 let tbTransectResult = null;
 let tbHoveredSampleIdx = null;
 let tbRubberBandPoint = null;
+let tbRulerMetrics = null;
+let tbRulerEvaluation = null;
+let tbRulerPreviewMetrics = null;
+let tbRulerPreviewEval = null;
+let tbActiveSnap = null;
+let tbLineHover = null;
+let isShiftKeyDown = false;
 let draggedToolboxVertex = null;
 let mapLibreToolboxVertexDrag = null;
 let tbProbeSite = null;
+let tbProbePinnedP1 = null;
+let tbCursorProbeLive = null;
 let tbViewshedResult = null;
 let tbViewshedCanvas = null;
 let tbViewshedNeedsMapLibreSync = false;
@@ -4784,7 +4871,22 @@ let tbSweepResult = null;
 let tbSelectedRegionId = null;
 let tbZonalStats = null;
 let tbRegionSummitResult = null;
+let tbAoSwathBox = null;
+let tbAoSwathReport = null;
+let tbAoHoverCell = null;
+let tbDraggedAoCorner = null;
+let tbAoSwathAnchor = null;
 let tbObstacleHistory = null;
+let tbCadObstacleReport = null;
+let tbObsDrawingAnchor = null;
+let tbObsRubberBandPoint = null;
+let tbObsSelectedId = null;
+let tbObsHoverHandle = null;
+let tbObsDraggedHandle = null;
+let tbObsDragOrigin = null;
+window.addEventListener('keydown', e => { if (e.key === 'Shift') isShiftKeyDown = true; });
+window.addEventListener('keyup', e => { if (e.key === 'Shift') isShiftKeyDown = false; });
+window.addEventListener('blur', () => { isShiftKeyDown = false; });
 let tbBridgeA = null;
 let tbBridgeB = null;
 let tbBridgeResult = null;
@@ -7352,9 +7454,22 @@ function updateMapLibreToolSources() {
 }
 
 function mapLibreToolClick(event) {
-  if (!mapLibreInstance || terrainToolMode === 'idle') return;
+  if (!mapLibreInstance) return;
+  if (terrainToolMode === 'idle' && tbActiveMode !== 'probe') return;
   const point = mapLibreToolPoint(event.lngLat ? [event.lngLat.lng, event.lngLat.lat] : null);
   if (!point) return;
+  if (tbActiveMode === 'probe' && terrainToolMode === 'idle') {
+    tbProbeSite = { xM: point.x, yM: point.y, lng: point.lng, lat: point.lat };
+    recomputeProbeAnalysis();
+    if (tbCursorProbeLive) {
+      tbProbePinnedP1 = tbCursorProbeLive;
+    }
+    setTerrainToolStatus(`Probe set & [P1] pinned at ${point.lat.toFixed(4)}°, ${point.lng.toFixed(4)}°.`);
+    refreshTerrainToolbox();
+    updateMapLibreToolSources();
+    updateMapLibreOverlay();
+    return;
+  }
   handleToolboxMapClick(point);
 }
 
@@ -8553,6 +8668,26 @@ function initializeMapLibre() {
           updateToolboxTransectHoverUi();
           updateMapLibreToolSources();
         }
+      } else if (tbActiveMode === 'probe' || terrainToolMode === 'probe') {
+        const mastM = Math.max(1, Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2));
+        const simCtx = buildToolboxSimContext();
+        const acnPos = simCtx.acnPositionMslM || [0, 0, 5000];
+        const acnHeading = Number.isFinite(latestTelemetry?.acn_heading_deg)
+          ? latestTelemetry.acn_heading_deg
+          : (Number.isFinite(latestTelemetry?.acn_telemetry?.heading_rad)
+              ? ((latestTelemetry.acn_telemetry.heading_rad * 180 / Math.PI) % 360 + 360) % 360
+              : 0);
+
+        tbCursorProbeLive = evaluateCursorRfProbe(
+          { xM: local.xM, yM: local.yM },
+          mastM,
+          acnPos,
+          acnHeading,
+          (x, y) => sampleDemSafe(simCtx.terrainEngine, x, y).elevationM || 3500,
+          tbProbePinnedP1
+        );
+        updateProbeUiReadouts(tbCursorProbeLive);
+        updateMapLibreOverlay();
       }
       if (mapLibreNodeDrag) {
         if (!mapLibreNodeDrag.moved && Math.hypot(event.point.x - mapLibreNodeDrag.startPoint.x, event.point.y - mapLibreNodeDrag.startPoint.y) >= 3) {
@@ -9016,11 +9151,13 @@ function renderObstacleInventoryList() {
     container.innerHTML = '<span class="terrain-toolbox-status" style="font-size:10px;">No obstacles in draft.</span>';
     return;
   }
+  const selId = tbObsSelectedId || obstacleEditor?.selectedId;
   container.innerHTML = draft.map((obs, idx) => {
+    const isSel = (obs.id === selId);
     const shapeLabel = obs.shape === 'cone' ? 'Peak / Dome' : (obs.depthM > obs.widthM * 3 || obs.widthM > obs.depthM * 3 ? 'Ridge Wall' : 'Bunker / Block');
     const dimText = obs.shape === 'cone' ? `r=${Math.round(obs.radiusM || 50)}m, h=${Math.round(obs.heightM)}m` : `${Math.round(obs.widthM)}×${Math.round(obs.depthM)}m, h=${Math.round(obs.heightM)}m`;
     return `
-      <div class="tb-obs-row" data-obs-id="${obs.id}">
+      <div class="tb-obs-row" data-obs-id="${obs.id}" style="${isSel ? 'border-color:var(--hi-amber,#ffab00);background:rgba(255,171,0,0.12);' : ''};cursor:pointer;">
         <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${obs.id}">
           <strong>#${idx + 1}</strong> ${shapeLabel} <span style="opacity:0.65;">(${dimText})</span>
         </span>
@@ -9029,6 +9166,18 @@ function renderObstacleInventoryList() {
     `;
   }).join('');
 
+  container.querySelectorAll('.tb-obs-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+      const id = row.getAttribute('data-obs-id');
+      if (!id) return;
+      tbObsSelectedId = id;
+      if (obstacleEditor) obstacleEditor.select(id);
+      recomputeCadObstacleAnalysis();
+      renderObstacleInventoryList();
+      if (terrainMapMode !== 'maplibre') drawRadar();
+    });
+  });
+
   container.querySelectorAll('.tb-obs-delete-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -9036,10 +9185,149 @@ function renderObstacleInventoryList() {
       if (!id) return;
       if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) tbObstacleHistory.pushState(obstacleEditor.draft);
       const next = obstacleEditor.draft.filter(o => o.id !== id);
+      if (tbObsSelectedId === id) tbObsSelectedId = null;
       applyObstacleHistoryChange(next);
+      recomputeCadObstacleAnalysis();
       setTerrainToolStatus(`Obstacle ${id} removed.`);
     });
   });
+}
+
+function getObstacleEndpoints(obs) {
+  if (!obs) return null;
+  const cx = Number(obs.xM ?? obs.x_m ?? 0);
+  const cy = Number(obs.yM ?? obs.y_m ?? 0);
+  if (obs.shape === 'cone') {
+    const r = Number(obs.radiusM ?? obs.radius_m ?? 100);
+    return {
+      v1: { x: cx - r, y: cy },
+      v2: { x: cx + r, y: cy },
+      center: { x: cx, y: cy },
+      lengthM: r * 2,
+      heightM: Number(obs.heightM ?? obs.height_m ?? 120),
+      shape: 'peak',
+      material: 'granite',
+    };
+  }
+  const w = Number(obs.widthM ?? obs.width_m ?? 40);
+  const d = Number(obs.depthM ?? obs.depth_m ?? 500);
+  const rotRad = (Number(obs.rotationDeg ?? obs.rotation_deg ?? 0)) * Math.PI / 180.0;
+  const len = Math.max(w, d);
+  const halfL = len * 0.5;
+  let nx = 0, ny = 0;
+  if (d >= w) {
+    nx = -Math.sin(rotRad);
+    ny = Math.cos(rotRad);
+  } else {
+    nx = Math.cos(rotRad);
+    ny = Math.sin(rotRad);
+  }
+  return {
+    v1: { x: cx - nx * halfL, y: cy - ny * halfL },
+    v2: { x: cx + nx * halfL, y: cy + ny * halfL },
+    center: { x: cx, y: cy },
+    lengthM: len,
+    heightM: Number(obs.heightM ?? obs.height_m ?? 120),
+    shape: obs.shape || 'wall',
+    material: 'granite',
+  };
+}
+
+function recomputeCadObstacleAnalysis() {
+  const ctx = buildToolboxSimContext();
+  const nodes = ctx.groundNodes || [];
+  const acnPos = ctx.acnPositionMslM
+    ? { x: ctx.acnPositionMslM[0], y: ctx.acnPositionMslM[1], z: ctx.acnPositionMslM[2] }
+    : { x: 0, y: 0, z: 5000 };
+
+  const getElevation = (x, y) => {
+    return sampleDemSafe(mainTerrainEngine, x, y).elevationM || 3500;
+  };
+
+  const nodeSel = $('tb-obs-target-node-select');
+  if (nodeSel && nodes.length > 0) {
+    const currentVal = nodeSel.value;
+    const optionsHtml = '<option value="none">Select Ground Node…</option>' +
+      nodes.map(n => `<option value="${n.nodeId}">S${n.nodeId} (${n.name || 'Terminal'})</option>`).join('');
+    if (nodeSel.innerHTML !== optionsHtml) {
+      nodeSel.innerHTML = optionsHtml;
+      if (currentVal && nodes.some(n => String(n.nodeId) === currentVal)) {
+        nodeSel.value = currentVal;
+      }
+    }
+  }
+
+  if (tbObsDrawingAnchor && tbObsRubberBandPoint) {
+    const shapeType = $('tb-obs-shape-select')?.value || 'wall';
+    const materialType = $('tb-obs-material-select')?.value || 'granite';
+    const preset = OBSTACLE_PRESETS[shapeType] || OBSTACLE_PRESETS.wall;
+    const wallHeightM = preset.defaultHeightM || 120;
+
+    tbCadObstacleReport = evaluateBarrierLinkIntersections(
+      tbObsDrawingAnchor,
+      tbObsRubberBandPoint,
+      wallHeightM,
+      shapeType,
+      materialType,
+      nodes,
+      acnPos,
+      getElevation,
+    );
+  } else {
+    const draft = obstacleEditor?.draft || [];
+    let targetObs = draft.find(o => o.id === tbObsSelectedId || o.id === obstacleEditor?.selectedId);
+    if (!targetObs && draft.length > 0) {
+      targetObs = draft[draft.length - 1];
+    }
+
+    if (targetObs) {
+      const ep = getObstacleEndpoints(targetObs);
+      const materialType = $('tb-obs-material-select')?.value || 'granite';
+      tbCadObstacleReport = evaluateBarrierLinkIntersections(
+        ep.v1,
+        ep.v2,
+        targetObs.heightM || 120,
+        targetObs.shape || 'wall',
+        materialType,
+        nodes,
+        acnPos,
+        getElevation,
+      );
+    } else {
+      tbCadObstacleReport = null;
+    }
+  }
+
+  const rep = tbCadObstacleReport;
+  const metricsEl = $('tb-obs-cad-metrics');
+  const sliceEl = $('tb-obs-slice-summary');
+  const autoHeightBtn = $('btn-obs-auto-height');
+
+  if (rep) {
+    if (metricsEl) {
+      metricsEl.textContent = `${Math.round(rep.lengthM)} m @ ${rep.strikeAzimuthDeg.toFixed(1)}° | Crest ${Math.round(rep.midTopElevM)} m MSL (H=${Math.round(rep.wallHeightM)}m)`;
+    }
+    if (sliceEl) {
+      if (rep.intersections.length === 0) {
+        sliceEl.textContent = 'Intersected: 0 | Clear Airspace (No Links Crossed)';
+      } else {
+        sliceEl.textContent = `Intersected: ${rep.intersections.length} | Slicing ${rep.slicedNodeIds.length} / Overflying ${rep.overflyingNodeIds.length} (Min H: ${Math.round(rep.maxRequiredHeightToSliceAllM)} m)`;
+      }
+    }
+    if (autoHeightBtn) {
+      autoHeightBtn.disabled = rep.intersections.length === 0;
+      autoHeightBtn.textContent = rep.intersections.length > 0
+        ? `⚡ Auto-Size Height to Slice (${Math.round(rep.recommendedAutoHeightM)} m)`
+        : '⚡ Auto-Size Height to Slice Links';
+    }
+  } else {
+    if (metricsEl) metricsEl.textContent = '-- m @ --° | Crest -- m MSL';
+    if (sliceEl) sliceEl.textContent = 'Intersected: -- | Slicing 0 / Overflying 0';
+    if (autoHeightBtn) {
+      autoHeightBtn.disabled = true;
+      autoHeightBtn.textContent = '⚡ Auto-Size Height to Slice Links';
+    }
+  }
 }
 
 function refreshObstacleEditor() {
@@ -10518,13 +10806,80 @@ function buildTransectWaypointInputs(waypoints) {
   });
 }
 
+function findMagneticSnapTarget(px, py, w, h, snapThresholdPx = 15) {
+  let bestDist = snapThresholdPx;
+  let snapTarget = null;
+
+  // 1. Ground Nodes
+  const currentNodes = (simTimelineController && simTimelineController.isHistoricalInspecting)
+    ? (simTimelineController.getActiveSpatialSnapshot()?.nodes.map(n => ({ node_id: n.nodeId, x_m: n.posX, y_m: n.posY })) || [])
+    : (latestTelemetry?.nodes_telemetry || []);
+  for (const n of currentNodes) {
+    const nx = n.x_m !== undefined ? n.x_m : (n.position ? n.position[0] : 0);
+    const ny = n.y_m !== undefined ? n.y_m : (n.position ? n.position[1] : 0);
+    const sp = worldToScreen(nx, ny, w, h);
+    const d = Math.hypot(px - sp.x, py - sp.y);
+    if (d <= bestDist) {
+      bestDist = d;
+      snapTarget = { xM: nx, yM: ny, label: `Node S${n.node_id}`, sp };
+    }
+  }
+
+  // 2. Relay [MCP-OPT]
+  const advisor = latestTelemetry?.relay_advisor;
+  if (advisor && Array.isArray(advisor.optimalPosEnu) && advisor.optimalPosEnu.length >= 2) {
+    const rx = advisor.optimalPosEnu[0];
+    const ry = advisor.optimalPosEnu[1];
+    const sp = worldToScreen(rx, ry, w, h);
+    const d = Math.hypot(px - sp.x, py - sp.y);
+    if (d <= bestDist) {
+      bestDist = d;
+      snapTarget = { xM: rx, yM: ry, label: 'Relay MCP-OPT', sp };
+    }
+  }
+
+  // 3. EW Jammer [EW-JAM]
+  if (latestTelemetry?.jammer_enabled) {
+    const jPos = latestTelemetry.jammer_pos_enu || [3200, -2800, 0];
+    const jx = jPos[0], jy = jPos[1];
+    const sp = worldToScreen(jx, jy, w, h);
+    const d = Math.hypot(px - sp.x, py - sp.y);
+    if (d <= bestDist) {
+      bestDist = d;
+      snapTarget = { xM: jx, yM: jy, label: 'EW-JAM', sp };
+    }
+  }
+
+  // 4. ACN
+  const acn = (simTimelineController && simTimelineController.isHistoricalInspecting)
+    ? simTimelineController.getActiveSpatialSnapshot()?.acn
+    : latestTelemetry?.acn_telemetry;
+  const acnX = acn ? (acn.posX ?? acn.pos_x) : null;
+  const acnY = acn ? (acn.posY ?? acn.pos_y) : null;
+  if (Number.isFinite(acnX) && Number.isFinite(acnY)) {
+    const sp = worldToScreen(acnX, acnY, w, h);
+    const d = Math.hypot(px - sp.x, py - sp.y);
+    if (d <= bestDist) {
+      bestDist = d;
+      snapTarget = { xM: acnX, yM: acnY, label: 'ACN', sp };
+    }
+  }
+
+  return snapTarget;
+}
+
 function recomputeTransect(isPreview = false) {
   if (tbTransectWaypoints.length < 2) {
     tbTransectResult = null;
     tbHoveredSampleIdx = null;
+    tbRulerMetrics = null;
+    tbRulerEvaluation = null;
     setText('tb-transect-fresnel', '-- m (100%)');
     setText('tb-transect-diffraction', '0.0 dB');
     setText('tb-transect-snr', '-- dB / --');
+    setText('tb-transect-azimuth', '--° / --°');
+    setText('tb-transect-vert-angle', '--° / --%');
+    setText('tb-transect-blocking-peak', '--');
     renderToolboxDrawer();
     return;
   }
@@ -10550,6 +10905,35 @@ function recomputeTransect(isPreview = false) {
     setText('tb-transect-fresnel', `${rf.minF1ClearanceM.toFixed(1)} m (${Math.round(rf.minF1ClearancePct)}%)`);
     setText('tb-transect-diffraction', `${rf.p526DiffractionLossDb.toFixed(1)} dB`);
     setText('tb-transect-snr', `${rf.estSnrDb.toFixed(1)} dB / ${rf.estModcod}`);
+
+    // Compute CAD Precision Geodetic Ruler Metrics & Blocking Crest
+    const wpA = tbTransectWaypoints[0];
+    const wpB = tbTransectWaypoints[1];
+    const demA = sampleDemSafe(ctx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
+    const demB = sampleDemSafe(ctx.terrainEngine, wpB.xM, wpB.yM).elevationM || 3500;
+
+    tbRulerMetrics = computeGeodeticRulerMetrics(
+      { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
+      { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM },
+    );
+
+    tbRulerEvaluation = evaluateRulerProfileAndBlockingPeak(
+      { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
+      { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM },
+      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
+      { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3 },
+    );
+
+    setText('tb-transect-azimuth', `${tbRulerMetrics.azimuthDeg.toFixed(1)}° ${tbRulerMetrics.cardinalOctant} / ${tbRulerMetrics.backAzimuthDeg.toFixed(1)}°`);
+    setText('tb-transect-vert-angle', `${tbRulerMetrics.verticalAngleDeg >= 0 ? '+' : ''}${tbRulerMetrics.verticalAngleDeg.toFixed(1)}° / ${tbRulerMetrics.gradePct >= 0 ? '+' : ''}${tbRulerMetrics.gradePct.toFixed(1)}%`);
+
+    if (!tbRulerEvaluation.isLineOfSightClear && tbRulerEvaluation.blockingPeak) {
+      const bp = tbRulerEvaluation.blockingPeak;
+      const bpGeo = cartesianToGeodetic(bp.xM, bp.yM);
+      setText('tb-transect-blocking-peak', `Peak @ (${bpGeo.latDeg.toFixed(3)}°, ${bpGeo.lonDeg.toFixed(3)}°) · ${Math.round(bp.zMslM)} m (+${Math.round(bp.intrusionM)} m)`);
+    } else {
+      setText('tb-transect-blocking-peak', `Clear LoS (Min Clr: ${Math.round(tbRulerEvaluation.minClearanceM)} m)`);
+    }
   }
 
   renderMode1Provenance();
@@ -10568,6 +10952,25 @@ function recomputeRubberBandPreview(cursorPt) {
     nodeType,
     sampleCount: 64,
   });
+
+  const wpA = tbTransectWaypoints[0];
+  const txMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-tx-mast')?.value || '10') || 10));
+  const rxMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-rx-mast')?.value || '2') || 2));
+  const demA = sampleDemSafe(ctx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
+  const demB = sampleDemSafe(ctx.terrainEngine, cursorPt.x, cursorPt.y).elevationM || 3500;
+
+  tbRulerPreviewMetrics = computeGeodeticRulerMetrics(
+    { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
+    { xM: cursorPt.x, yM: cursorPt.y, groundElevationM: demB, mastHeightM: rxMastM },
+  );
+
+  tbRulerPreviewEval = evaluateRulerProfileAndBlockingPeak(
+    { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
+    { xM: cursorPt.x, yM: cursorPt.y, groundElevationM: demB, mastHeightM: rxMastM },
+    (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
+    { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3 },
+  );
+
   renderToolboxDrawer();
 }
 
@@ -10599,6 +11002,35 @@ function updateToolboxTransectHoverUi() {
   if (terrainMapMode !== 'maplibre') drawRadar();
 }
 
+function updateProbeUiReadouts(analysis) {
+  if (!analysis) {
+    setText('tb-probe-acn-range', '-- km');
+    setText('tb-probe-acn-el', '--°');
+    setText('tb-probe-acn-los', '--');
+    setText('tb-probe-acn-sinr', '-- dB');
+    setText('tb-probe-acn-modcod', '--');
+    setText('tb-probe-horizon-mask', '--° / --%');
+    setText('tb-probe-sector-bore', '--');
+    setText('tb-probe-delta-pin', '--');
+    return;
+  }
+  setText('tb-probe-acn-range', `${analysis.d3dKm.toFixed(2)} km`);
+  setText('tb-probe-acn-el', `${analysis.elToAcnDeg >= 0 ? '+' : ''}${analysis.elToAcnDeg.toFixed(1)}°`);
+  setText('tb-probe-acn-los', analysis.isLos ? 'CLEAR (LoS)' : 'SHADOWED');
+  setText('tb-probe-acn-sinr', `${analysis.estSinrDb.toFixed(1)} dB`);
+  setText('tb-probe-acn-modcod', `${analysis.modcodName} (${analysis.estBitrateMbps.toFixed(2)} Mbps)`);
+  setText('tb-probe-horizon-mask', `${analysis.horizonMaskAngleDeg.toFixed(1)}° / ${analysis.skyOpennessPct.toFixed(0)}%`);
+  setText('tb-probe-sector-bore', `S${analysis.activeSectorId} (${analysis.offBoresightDeg.toFixed(1)}° off)`);
+  if (analysis.deltaVsPin) {
+    const d = analysis.deltaVsPin;
+    const sinrSign = d.deltaSinrDb >= 0 ? '+' : '';
+    const elevSign = d.deltaElevM >= 0 ? '+' : '';
+    setText('tb-probe-delta-pin', `ΔSINR: ${sinrSign}${d.deltaSinrDb.toFixed(1)}dB | ΔElev: ${elevSign}${Math.round(d.deltaElevM)}m | ${d.distFromPinKm.toFixed(2)}km @ ${Math.round(d.bearingFromPinDeg)}°`);
+  } else {
+    setText('tb-probe-delta-pin', 'Click to Pin [P1]');
+  }
+}
+
 function recomputeProbeAnalysis() {
   const ctx = buildToolboxSimContext();
   const aglM = Math.max(0, Math.min(500, parseFloat($('tb-probe-agl')?.value || '2') || 2));
@@ -10622,31 +11054,31 @@ function recomputeProbeAnalysis() {
     tbViewshedNeedsMapLibreSync = true;
     tbOrbitResult = computeOrbitPersistence(ctx, tbProbeSite.xM, tbProbeSite.yM, aglM, includeObstacles, nodeType);
 
-    // Virtual X-Band Terminal-to-ACN Link Probe (STK)
-    const probeDem = sampleDemSafe(ctx.terrainEngine, tbProbeSite.xM, tbProbeSite.yM).elevationM || 3500;
+    // CAD/STK-Grade Precision Cursor RF Link Probe & 360° Horizon Mask Engine (Tool #2)
+    const mastM = Math.max(1, Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2));
     const acnPos = ctx.acnPositionMslM || [0, 0, 5000];
-    const probeLink = evaluateVirtualTerminalLink(
-      tbProbeSite.xM,
-      tbProbeSite.yM,
-      probeDem,
-      aglM,
+    const acnHeading = Number.isFinite(latestTelemetry?.acn_heading_deg)
+      ? latestTelemetry.acn_heading_deg
+      : (Number.isFinite(latestTelemetry?.acn_telemetry?.heading_rad)
+          ? ((latestTelemetry.acn_telemetry.heading_rad * 180 / Math.PI) % 360 + 360) % 360
+          : 0);
+
+    const probeAnalysis = evaluateCursorRfProbe(
+      { xM: tbProbeSite.xM, yM: tbProbeSite.yM },
+      mastM,
       acnPos,
-      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500
+      acnHeading,
+      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
+      tbProbePinnedP1
     );
-    setText('tb-probe-acn-range', `${probeLink.slantRangeKm.toFixed(2)} km`);
-    setText('tb-probe-acn-el', `${probeLink.elevationDeg >= 0 ? '+' : ''}${probeLink.elevationDeg.toFixed(1)}°`);
-    setText('tb-probe-acn-los', probeLink.isLos ? 'CLEAR (LoS)' : 'SHADOWED');
-    setText('tb-probe-acn-sinr', `${probeLink.sinrDb.toFixed(1)} dB`);
-    setText('tb-probe-acn-modcod', probeLink.modcod);
+    tbCursorProbeLive = probeAnalysis;
+    updateProbeUiReadouts(probeAnalysis);
   } else {
     tbViewshedResult = null;
     tbOrbitResult = null;
     tbViewshedNeedsMapLibreSync = true;
-    setText('tb-probe-acn-range', '-- km');
-    setText('tb-probe-acn-el', '--°');
-    setText('tb-probe-acn-los', '--');
-    setText('tb-probe-acn-sinr', '-- dB');
-    setText('tb-probe-acn-modcod', '--');
+    tbCursorProbeLive = null;
+    updateProbeUiReadouts(null);
   }
 
   const activeRegion = terrainRegions.find(r => r.id === tbSelectedRegionId) || terrainRegions[0] || null;
@@ -10671,40 +11103,95 @@ function recomputeProbeAnalysis() {
 
 function recomputeRegionZonal() {
   const activeRegion = terrainRegions.find(r => r.id === tbSelectedRegionId) || terrainRegions[terrainRegions.length - 1] || null;
-  if (!activeRegion) {
+  if (!activeRegion && !tbAoSwathBox) {
     tbZonalStats = null;
     tbRegionSummitResult = null;
+    tbAoSwathReport = null;
+    setText('tb-region-dimensions', '-- km × -- km | -- km @ --°');
+    setText('tb-region-bounds', '--');
+    setText('tb-region-area', '-- km²');
     setText('tb-region-summit', '-- m @ (--, --)');
+    setText('tb-region-valley-floor', '-- m MSL (ΔZ -- m)');
+    setText('tb-region-mean', '-- m');
+    setText('tb-region-minmax', '-- / -- m');
+    setText('tb-region-std', '-- m');
     setText('tb-region-ruggedness', 'TRI -- m / --°');
-    setText('tb-region-los-pct', '--% (0/36)');
+    setText('tb-region-los-pct', '--% (0/64)');
+    setText('tb-region-sinr-stats', '-- dB | Dead-Zone --%');
     renderToolboxDrawer();
+    refreshToolboxActionGates();
     return;
   }
-  tbSelectedRegionId = activeRegion.id;
-  const ctx = buildToolboxSimContext();
-  const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
-  tbZonalStats = analyzeRegionZonal(ctx, activeRegion, { includeObstacles: true, nodeType });
 
-  // Compute QGIS Zonal Summit & Ruggedness
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const p of activeRegion.points) {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
+  let minX, maxX, minY, maxY;
+  if (tbAoSwathBox) {
+    minX = Math.min(tbAoSwathBox.x1, tbAoSwathBox.x2);
+    maxX = Math.max(tbAoSwathBox.x1, tbAoSwathBox.x2);
+    minY = Math.min(tbAoSwathBox.y1, tbAoSwathBox.y2);
+    maxY = Math.max(tbAoSwathBox.y1, tbAoSwathBox.y2);
+  } else if (activeRegion) {
+    minX = Infinity; maxX = -Infinity; minY = Infinity; maxY = -Infinity;
+    for (const p of activeRegion.points) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    tbAoSwathBox = { x1: minX, y1: minY, x2: maxX, y2: maxY };
+  } else {
+    return;
   }
+
+  const ctx = buildToolboxSimContext();
   const acnPos = ctx.acnPositionMslM || [0, 0, 5000];
-  tbRegionSummitResult = computeZonalSummitAndRuggedness(
-    minX, maxX, minY, maxY,
+  const acnHeading = Number.isFinite(latestTelemetry?.acn_heading_deg)
+    ? latestTelemetry.acn_heading_deg
+    : (Number.isFinite(latestTelemetry?.acn_telemetry?.heading_rad)
+        ? ((latestTelemetry.acn_telemetry.heading_rad * 180 / Math.PI) % 360 + 360) % 360
+        : 0);
+
+  tbAoSwathReport = evaluateAoSwathAnalysis(
+    minX, minY, maxX, maxY,
+    acnPos,
+    acnHeading,
     (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
-    acnPos
+    8
   );
 
-  const summitGeo = cartesianToGeodetic(tbRegionSummitResult.summitX, tbRegionSummitResult.summitY);
-  setText('tb-region-summit', `${Math.round(tbRegionSummitResult.summitElevationM)} m @ (${summitGeo.latDeg.toFixed(3)}°N, ${summitGeo.lonDeg.toFixed(3)}°E)`);
-  setText('tb-region-ruggedness', `TRI ${tbRegionSummitResult.terrainRuggednessIndexM.toFixed(1)} m · ${tbRegionSummitResult.meanSlopeDeg.toFixed(1)}°`);
-  setText('tb-region-los-pct', `${tbRegionSummitResult.losCoveragePct.toFixed(1)}% (${Math.round(tbRegionSummitResult.losCoveragePct * 0.36)}/36)`);
+  const rep = tbAoSwathReport;
+  const summitGeo = cartesianToGeodetic(rep.summitPeak.xM, rep.summitPeak.yM);
 
+  tbRegionSummitResult = {
+    summitX: rep.summitPeak.xM,
+    summitY: rep.summitPeak.yM,
+    summitElevationM: rep.summitPeak.zMslM,
+    minElevationM: rep.valleyFloor.zMslM,
+    meanElevationM: rep.meanElevM,
+    maxElevationM: rep.summitPeak.zMslM,
+    terrainRuggednessIndexM: rep.triM,
+    meanSlopeDeg: rep.meanSlopeDeg,
+    losCoveragePct: rep.losCoveragePct,
+    validSampleCount: rep.cells.length,
+  };
+
+  if (activeRegion) {
+    const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
+    tbZonalStats = analyzeRegionZonal(ctx, activeRegion, { includeObstacles: true, nodeType });
+  }
+
+  setText('tb-region-dimensions', `${rep.widthKm.toFixed(2)} km × ${rep.heightKm.toFixed(2)} km | ${rep.diagonalKm.toFixed(2)} km @ ${rep.diagonalAzimuthDeg.toFixed(1)}°`);
+  setText('tb-region-bounds', `[${(rep.minX / 1000).toFixed(1)}, ${(rep.minY / 1000).toFixed(1)}] to [${(rep.maxX / 1000).toFixed(1)}, ${(rep.maxY / 1000).toFixed(1)}] km`);
+  setText('tb-region-area', `${rep.areaKm2.toFixed(2)} km²`);
+  setText('tb-region-summit', `${Math.round(rep.summitPeak.zMslM)} m @ (${summitGeo.latDeg.toFixed(3)}°N, ${summitGeo.lonDeg.toFixed(3)}°E)`);
+  setText('tb-region-valley-floor', `${Math.round(rep.valleyFloor.zMslM)} m MSL (Relief: ${Math.round(rep.reliefM)} m)`);
+  setText('tb-region-mean', `${Math.round(rep.meanElevM)} m`);
+  setText('tb-region-minmax', `${Math.round(rep.valleyFloor.zMslM)} / ${Math.round(rep.summitPeak.zMslM)} m`);
+  setText('tb-region-std', `σ ${rep.stdElevM.toFixed(1)} m | TRI ${rep.triM.toFixed(1)} m`);
+  setText('tb-region-ruggedness', `TRI ${rep.triM.toFixed(1)} m · ${rep.meanSlopeDeg.toFixed(1)}°`);
+  setText('tb-region-los-pct', `${rep.losCoveragePct.toFixed(1)}% (${Math.round(rep.losCoveragePct * 0.64)}/64)`);
+  setText('tb-region-sinr-stats', `Mean ${rep.meanSinrDb.toFixed(1)} dB [${rep.minSinrDb.toFixed(1)} .. ${rep.maxSinrDb.toFixed(1)}] | Outage ${rep.deadZonePct.toFixed(1)}%`);
+
+  refreshToolboxActionGates();
   renderMode1Provenance();
   renderToolboxDrawer();
   if (terrainMapMode !== 'maplibre') drawRadar();
@@ -10799,6 +11286,10 @@ function refreshToolboxActionGates() {
   if (applyWpBtn) applyWpBtn.disabled = !canApplyTransectAsAcnWaypoints(tbTransectWaypoints.length, ctx.spatialLocked, ctx.isHistoricalInspecting);
   const spawnProbeBtn = $('tb-probe-spawn-node');
   if (spawnProbeBtn) spawnProbeBtn.disabled = !canNode || !tbProbeSite;
+  const deploySquadBtn = $('btn-region-deploy-squad');
+  if (deploySquadBtn) deploySquadBtn.disabled = !canNode || !tbAoSwathReport?.squadDeployCoords;
+  const spawnSummitBtn = $('btn-region-spawn-summit-relay');
+  if (spawnSummitBtn) spawnSummitBtn.disabled = !canNode || !tbAoSwathReport?.summitPeak;
 }
 
 function renderToolboxDrawer() {
@@ -11035,16 +11526,32 @@ function finishTransectPolyline() {
 function handleToolboxMapClick(point) {
   if (terrainToolMode === 'transect-2pt' || terrainToolMode === 'measure') {
     if (tbTransectWaypoints.length >= 2 || tbTransectWaypoints.length === 0) {
-      tbTransectWaypoints = [{ xM: point.x, yM: point.y, lng: point.lng, lat: point.lat }];
+      let clickPt = point;
+      if (tbActiveSnap) {
+        const geo = cartesianToGeodetic(tbActiveSnap.xM, tbActiveSnap.yM);
+        clickPt = { x: tbActiveSnap.xM, y: tbActiveSnap.yM, lng: geo.lonDeg, lat: geo.latDeg };
+      }
+      tbTransectWaypoints = [{ xM: clickPt.x, yM: clickPt.y, lng: clickPt.lng, lat: clickPt.lat }];
       tbTransectResult = null;
-      tbRubberBandPoint = point;
-      setTerrainToolStatus('Click point B on the map to complete transect.');
+      tbRulerMetrics = null;
+      tbRulerEvaluation = null;
+      tbRubberBandPoint = clickPt;
+      tbActiveSnap = null;
+      setTerrainToolStatus('Aiming Point B on map (Shift: 15° snap, 15px magnetic snap).');
     } else {
-      tbTransectWaypoints.push({ xM: point.x, yM: point.y, lng: point.lng, lat: point.lat });
+      let clickPt = point;
+      if (tbRubberBandPoint) {
+        clickPt = tbRubberBandPoint;
+      } else if (tbActiveSnap) {
+        const geo = cartesianToGeodetic(tbActiveSnap.xM, tbActiveSnap.yM);
+        clickPt = { x: tbActiveSnap.xM, y: tbActiveSnap.yM, lng: geo.lonDeg, lat: geo.latDeg };
+      }
+      tbTransectWaypoints.push({ xM: clickPt.x, yM: clickPt.y, lng: clickPt.lng, lat: clickPt.lat });
       tbRubberBandPoint = null;
+      tbActiveSnap = null;
       terrainToolMode = 'idle';
       recomputeTransect(false);
-      setTerrainToolStatus(`Transect A→B (${terrainDistanceText(tbTransectResult?.totalHorizontalM ?? 0)}).`);
+      setTerrainToolStatus(`Transect A→B locked (${terrainDistanceText(tbTransectResult?.totalHorizontalM ?? 0)}).`);
     }
     refreshTerrainToolbox();
     updateMapLibreToolSources();
@@ -11063,6 +11570,17 @@ function handleToolboxMapClick(point) {
   }
   if (terrainToolMode === 'region') {
     terrainRegionDraft.push(point);
+    if (terrainRegionDraft.length >= 2) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of terrainRegionDraft) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      tbAoSwathBox = { x1: minX, y1: minY, x2: maxX, y2: maxY };
+      recomputeRegionZonal();
+    }
     const liveArea = terrainRegionDraft.length >= 3 ? computePolygonAreaKm2(terrainRegionDraft) : 0;
     setText('tb-region-live-area', liveArea > 0 ? `Area: ${liveArea.toFixed(2)} km²` : 'Area: --');
     setTerrainToolStatus(`${terrainRegionDraft.length} point${terrainRegionDraft.length === 1 ? '' : 's'} selected. Finish at 3+.`);
@@ -11075,8 +11593,13 @@ function handleToolboxMapClick(point) {
     tbProbeSite = { xM: point.x, yM: point.y, lng: point.lng, lat: point.lat };
     terrainToolMode = 'idle';
     recomputeProbeAnalysis();
-    setTerrainToolStatus(`Probe set at ${point.lat.toFixed(4)}°, ${point.lng.toFixed(4)}°.`);
+    if (tbCursorProbeLive) {
+      tbProbePinnedP1 = tbCursorProbeLive;
+    }
+    setTerrainToolStatus(`Probe set & [P1] pinned at ${point.lat.toFixed(4)}°, ${point.lng.toFixed(4)}°.`);
     refreshTerrainToolbox();
+    updateMapLibreToolSources();
+    if (terrainMapMode !== 'maplibre') drawRadar();
     return;
   }
   if (terrainToolMode === 'bridge-a') {
@@ -11131,6 +11654,14 @@ function handleToolboxMapClick(point) {
 
 function finishTerrainRegion() {
   if (terrainRegionDraft.length < 3) {
+    if (tbAoSwathBox) {
+      setTerrainToolStatus('AO Swath locked.');
+      terrainToolMode = 'idle';
+      refreshTerrainToolbox();
+      recomputeRegionZonal();
+      drawRadar();
+      return;
+    }
     setTerrainToolStatus('A region needs at least three points.');
     return;
   }
@@ -11155,6 +11686,8 @@ function finishTerrainRegion() {
 function cancelTerrainTool() {
   terrainToolMode = 'idle';
   terrainRegionDraft = [];
+  tbAoSwathAnchor = null;
+  tbDraggedAoCorner = null;
   tbRubberBandPoint = null;
   setText('tb-region-live-area', 'Area: --');
   updateMapLibreToolSources();
@@ -11168,6 +11701,15 @@ function clearTerrainMeasurement() {
   tbTransectResult = null;
   tbHoveredSampleIdx = null;
   tbRubberBandPoint = null;
+  tbRulerMetrics = null;
+  tbRulerEvaluation = null;
+  tbRulerPreviewMetrics = null;
+  tbRulerPreviewEval = null;
+  tbActiveSnap = null;
+  tbLineHover = null;
+  setText('tb-transect-azimuth', '--° / --°');
+  setText('tb-transect-vert-angle', '--° / --%');
+  setText('tb-transect-blocking-peak', '--');
   if (terrainToolMode === 'measure' || terrainToolMode === 'transect-2pt' || terrainToolMode === 'transect-poly' || terrainToolMode === 'obstacle-place') {
     terrainToolMode = 'idle';
   }
@@ -11293,7 +11835,16 @@ function setupTerrainToolbox() {
       pane.hidden = pane.dataset.tbPane !== mode;
     });
     if (mode === 'dem') renderMode1Provenance();
-    if (mode === 'obstacle') renderObstacleInventoryList();
+    if (mode === 'obstacle') {
+      renderObstacleInventoryList();
+      recomputeCadObstacleAnalysis();
+    }
+    if (mode === 'region') {
+      if (!tbAoSwathBox) {
+        tbAoSwathBox = { x1: -4000, y1: -3000, x2: 4000, y2: 3000 };
+      }
+      recomputeRegionZonal();
+    }
     renderToolboxDrawer();
     refreshTerrainToolbox();
   };
@@ -11412,40 +11963,203 @@ function setupTerrainToolbox() {
     });
   });
 
-  $('tb-probe-pick-btn')?.addEventListener('click', () => {
-    terrainToolMode = terrainToolMode === 'probe' ? 'idle' : 'probe';
-    setTerrainToolStatus(terrainToolMode === 'probe' ? 'Click site on map to compute 360° viewshed & sweep.' : 'Probe cancelled.');
-    refreshTerrainToolbox();
+  $('btn-transect-swap-ab')?.addEventListener('click', () => {
+    if (tbTransectWaypoints.length >= 2) {
+      const tmp = tbTransectWaypoints[0];
+      tbTransectWaypoints[0] = tbTransectWaypoints[1];
+      tbTransectWaypoints[1] = tmp;
+
+      const txInput = $('tb-transect-tx-mast');
+      const rxInput = $('tb-transect-rx-mast');
+      if (txInput && rxInput) {
+        const tmpVal = txInput.value;
+        txInput.value = rxInput.value;
+        rxInput.value = tmpVal;
+      }
+
+      recomputeTransect(false);
+      setTerrainToolStatus('Transect endpoints A ↔ B swapped.');
+      updateMapLibreToolSources();
+      if (terrainMapMode !== 'maplibre') drawRadar();
+    } else {
+      setTerrainToolStatus('Requires at least 2 points to swap A and B.');
+    }
   });
-  $('tb-probe-spawn-node')?.addEventListener('click', () => {
-    if (!tbProbeSite) {
-      setTerrainToolStatus('No active probe site to spawn terminal at.');
+
+  $('btn-transect-spawn-peak-relay')?.addEventListener('click', () => {
+    if (tbTransectWaypoints.length < 2) {
+      setTerrainToolStatus('No active transect to spawn relay on.');
       return;
     }
-    const aglM = Math.max(1, Math.min(500, parseFloat($('tb-probe-agl')?.value || '2') || 2));
-    addToolboxNodeAt(tbProbeSite.xM, tbProbeSite.yM, aglM, 'PROBE-TERM');
+    const ctx = buildToolboxSimContext();
+    if (!canAddNodeFromToolbox(ctx.groundNodes.length, ctx.spatialLocked, ctx.isHistoricalInspecting)) {
+      setTerrainToolStatus(`Cannot add node (locked, historical, or at ${MAX_ACTIVE_GROUND_NODES} node limit).`);
+      return;
+    }
+
+    const wpA = tbTransectWaypoints[0];
+    const wpB = tbTransectWaypoints[1];
+    const txMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-tx-mast')?.value || '10') || 10));
+    const rxMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-rx-mast')?.value || '2') || 2));
+    const demA = sampleDemSafe(ctx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
+    const demB = sampleDemSafe(ctx.terrainEngine, wpB.xM, wpB.yM).elevationM || 3500;
+    const rulerEval = evaluateRulerProfileAndBlockingPeak(
+      { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
+      { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM },
+      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
+    );
+
+    if (!rulerEval.isLineOfSightClear && rulerEval.blockingPeak) {
+      const bp = rulerEval.blockingPeak;
+      addToolboxNodeAt(bp.xM, bp.yM, 15, 'PEAK-RELAY');
+      setTerrainToolStatus(`Spawned Relay on Blocking Peak at (${Math.round(bp.xM)}, ${Math.round(bp.yM)}) m.`);
+    } else {
+      addToolboxNodeAt(wpB.xM, wpB.yM, rxMastM, 'TERMINAL-B');
+      setTerrainToolStatus(`Clear LoS: Spawned Terminal at Point B (${Math.round(wpB.xM)}, ${Math.round(wpB.yM)}) m.`);
+    }
   });
+
+  $('tb-probe-pick-btn')?.addEventListener('click', () => {
+    terrainToolMode = terrainToolMode === 'probe' ? 'idle' : 'probe';
+    setTerrainToolStatus(terrainToolMode === 'probe' ? 'Click site on map to pin [P1] or compute viewshed & sweep.' : 'Probe cancelled.');
+    refreshTerrainToolbox();
+  });
+
+  $('btn-probe-snap-best')?.addEventListener('click', () => {
+    const ctx = buildToolboxSimContext();
+    const curX = tbProbeSite ? tbProbeSite.xM : (tbCursorProbeLive ? tbCursorProbeLive.probeX : 0);
+    const curY = tbProbeSite ? tbProbeSite.yM : (tbCursorProbeLive ? tbCursorProbeLive.probeY : 0);
+    const mastM = Math.max(1, Math.min(200, parseFloat($('tb-probe-mast-input')?.value || '2') || 2));
+    const acnPos = ctx.acnPositionMslM || [0, 0, 5000];
+    const acnHeading = Number.isFinite(latestTelemetry?.acn_heading_deg)
+      ? latestTelemetry.acn_heading_deg
+      : (Number.isFinite(latestTelemetry?.acn_telemetry?.heading_rad)
+          ? ((latestTelemetry.acn_telemetry.heading_rad * 180 / Math.PI) % 360 + 360) % 360
+          : 0);
+
+    const peak = findOptimalSignalPeakInRadius(
+      curX,
+      curY,
+      2000,
+      mastM,
+      acnPos,
+      acnHeading,
+      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500
+    );
+
+    const geo = cartesianToGeodetic(peak.bestX, peak.bestY);
+    tbProbeSite = { xM: peak.bestX, yM: peak.bestY, lng: geo.lonDeg, lat: geo.latDeg };
+    recomputeProbeAnalysis();
+    setTerrainToolStatus(`Snapped to Peak: (${Math.round(peak.bestX)}, ${Math.round(peak.bestY)}) m | Elev: ${Math.round(peak.bestZ)}m MSL | SINR: ${peak.bestSinrDb.toFixed(1)} dB (${peak.bestModcod})`);
+    refreshTerrainToolbox();
+    updateMapLibreToolSources();
+    if (terrainMapMode !== 'maplibre') drawRadar();
+  });
+
+  $('tb-probe-spawn-node')?.addEventListener('click', () => {
+    const targetPt = tbProbeSite || (tbCursorProbeLive ? { xM: tbCursorProbeLive.probeX, yM: tbCursorProbeLive.probeY } : null);
+    if (!targetPt) {
+      setTerrainToolStatus('No active probe site or cursor to spawn unit at.');
+      return;
+    }
+    const mastM = Math.max(1, Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2));
+    const deployType = $('tb-probe-unit-select')?.value || 'soldier';
+
+    if (deployType === 'jammer') {
+      sendCommand({
+        type: 'SET_SCIENTIFIC_PARAMS',
+        jammerEnabled: true,
+        jammerPosEnu: [targetPt.xM, targetPt.yM, 0.0],
+      });
+      setTerrainToolStatus(`Relocated EW Jammer to (${Math.round(targetPt.xM)}, ${Math.round(targetPt.yM)}) m.`);
+    } else if (deployType === 'mcp') {
+      const ctx = buildToolboxSimContext();
+      if (!canAddNodeFromToolbox(ctx.groundNodes.length, ctx.spatialLocked, ctx.isHistoricalInspecting)) {
+        setTerrainToolStatus(`Cannot add node (locked, historical, or at ${MAX_ACTIVE_GROUND_NODES} node limit).`);
+        return;
+      }
+      sendCommand(buildNodeAddCommand({
+        xM: targetPt.xM,
+        yM: targetPt.yM,
+        aglM: mastM,
+        role: 'mcp',
+        callsign: 'MCP-PROBE',
+        txPowerDbm: 40.0,
+      }));
+      setTerrainToolStatus(`Spawned Mobile Command Post [MCP] at (${Math.round(targetPt.xM)}, ${Math.round(targetPt.yM)}) m, Mast ${mastM.toFixed(1)} m.`);
+    } else {
+      const ctx = buildToolboxSimContext();
+      if (!canAddNodeFromToolbox(ctx.groundNodes.length, ctx.spatialLocked, ctx.isHistoricalInspecting)) {
+        setTerrainToolStatus(`Cannot add node (locked, historical, or at ${MAX_ACTIVE_GROUND_NODES} node limit).`);
+        return;
+      }
+      sendCommand(buildNodeAddCommand({
+        xM: targetPt.xM,
+        yM: targetPt.yM,
+        aglM: mastM,
+        role: 'soldier',
+        callsign: 'SOLDIER-PROBE',
+        txPowerDbm: 30.0,
+      }));
+      setTerrainToolStatus(`Spawned Soldier Terminal at (${Math.round(targetPt.xM)}, ${Math.round(targetPt.yM)}) m, Mast ${mastM.toFixed(1)} m.`);
+    }
+    refreshTerrainToolbox();
+    updateMapLibreToolSources();
+    if (terrainMapMode !== 'maplibre') drawRadar();
+  });
+
   $('tb-probe-clear-btn')?.addEventListener('click', () => {
     tbProbeSite = null;
+    tbProbePinnedP1 = null;
+    tbCursorProbeLive = null;
     tbViewshedResult = null;
     tbOrbitResult = null;
     tbSweepResult = null;
     tbViewshedNeedsMapLibreSync = true;
     if (terrainToolMode === 'probe') terrainToolMode = 'idle';
+    updateProbeUiReadouts(null);
     renderMode1Provenance();
     renderToolboxDrawer();
     updateMapLibreToolSources();
     applyMapLibreLayerState();
     refreshTerrainToolbox();
+    setTerrainToolStatus('Probe site & Pinned [P1] cleared.');
     if (terrainMapMode !== 'maplibre') drawRadar();
   });
-  ['tb-probe-agl', 'tb-probe-radius', 'tb-probe-target', 'tb-probe-obstacles', 'tb-sweep-target'].forEach(id => {
-    $(id)?.addEventListener('change', () => recomputeProbeAnalysis());
+
+  $('tb-probe-mast-input')?.addEventListener('input', () => {
+    const val = $('tb-probe-mast-input')?.value;
+    if (val && $('tb-probe-agl')) $('tb-probe-agl').value = val;
+    if (tbProbeSite) recomputeProbeAnalysis();
+    if (terrainMapMode !== 'maplibre') drawRadar();
+  });
+  $('tb-probe-agl')?.addEventListener('input', () => {
+    const val = $('tb-probe-agl')?.value;
+    if (val && $('tb-probe-mast-input')) $('tb-probe-mast-input').value = val;
+  });
+
+  ['tb-probe-agl', 'tb-probe-mast-input', 'tb-probe-radius', 'tb-probe-target', 'tb-probe-obstacles', 'tb-sweep-target', 'tb-probe-unit-select'].forEach(id => {
+    $(id)?.addEventListener('change', () => {
+      if (tbProbeSite) recomputeProbeAnalysis();
+    });
+  });
+
+  $('tb-obs-shape-select')?.addEventListener('change', () => {
+    recomputeCadObstacleAnalysis();
+    if (terrainMapMode !== 'maplibre') drawRadar();
+  });
+  $('tb-obs-material-select')?.addEventListener('change', () => {
+    recomputeCadObstacleAnalysis();
+    if (terrainMapMode !== 'maplibre') drawRadar();
+  });
+  $('tb-obs-target-node-select')?.addEventListener('change', () => {
+    recomputeCadObstacleAnalysis();
+    if (terrainMapMode !== 'maplibre') drawRadar();
   });
 
   $('tb-obs-place-btn')?.addEventListener('click', () => {
     terrainToolMode = terrainToolMode === 'obstacle-place' ? 'idle' : 'obstacle-place';
-    setTerrainToolStatus(terrainToolMode === 'obstacle-place' ? 'Click map to place obstacle preset.' : 'Obstacle placement cancelled.');
+    setTerrainToolStatus(terrainToolMode === 'obstacle-place' ? 'Drag on map to extrude CAD barrier (Hold Shift for 15° angle snap).' : 'Obstacle placement cancelled.');
     refreshTerrainToolbox();
     if (terrainMapMode !== 'maplibre') drawRadar();
   });
@@ -11454,6 +12168,7 @@ function setupTerrainToolbox() {
       const prev = tbObstacleHistory.undo();
       if (prev) {
         applyObstacleHistoryChange(prev);
+        recomputeCadObstacleAnalysis();
         setTerrainToolStatus('Obstacle action undone.');
       } else {
         setTerrainToolStatus('Nothing to undo in obstacle history.');
@@ -11465,6 +12180,7 @@ function setupTerrainToolbox() {
       const next = tbObstacleHistory.redo();
       if (next) {
         applyObstacleHistoryChange(next);
+        recomputeCadObstacleAnalysis();
         setTerrainToolStatus('Obstacle action redone.');
       } else {
         setTerrainToolStatus('Nothing to redo in obstacle history.');
@@ -11476,21 +12192,158 @@ function setupTerrainToolbox() {
     if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
       tbObstacleHistory.pushState(obstacleEditor.draft);
     }
+    tbObsSelectedId = null;
     applyObstacleHistoryChange([]);
+    recomputeCadObstacleAnalysis();
     setTerrainToolStatus('All draft obstacles cleared.');
+  });
+
+  $('btn-obs-auto-height')?.addEventListener('click', () => {
+    if (!tbCadObstacleReport || tbCadObstacleReport.intersections.length === 0) return;
+    const targetHeight = tbCadObstacleReport.recommendedAutoHeightM;
+    const draft = obstacleEditor?.draft || [];
+    let targetObs = draft.find(o => o.id === tbObsSelectedId || o.id === obstacleEditor?.selectedId);
+    if (!targetObs && draft.length > 0) targetObs = draft[draft.length - 1];
+    if (!targetObs) return;
+
+    if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+      tbObstacleHistory.pushState(obstacleEditor.draft);
+    }
+    targetObs.heightM = targetHeight;
+    obstacleEditor.updateSelected({ heightM: targetHeight });
+    syncObstacleFieldMirror(true);
+    recomputeCadObstacleAnalysis();
+    renderObstacleInventoryList();
+    setTerrainToolStatus(`Barrier height matched to ${Math.round(targetHeight)} m AGL. All intersected links physically sliced.`);
+    if (terrainMapMode !== 'maplibre') drawRadar();
+  });
+
+  $('btn-obs-slice-node-link')?.addEventListener('click', () => {
+    const ctx = buildToolboxSimContext();
+    const nodes = ctx.groundNodes || [];
+    if (nodes.length === 0) {
+      setTerrainToolStatus('No active ground nodes available to slice.');
+      return;
+    }
+    const acnPos = ctx.acnPositionMslM
+      ? { x: ctx.acnPositionMslM[0], y: ctx.acnPositionMslM[1], z: ctx.acnPositionMslM[2] }
+      : { x: 0, y: 0, z: 5000 };
+
+    const nodeSel = $('tb-obs-target-node-select');
+    let targetNode = null;
+    const selVal = nodeSel?.value;
+    if (selVal && selVal !== 'none') {
+      targetNode = nodes.find(n => String(n.nodeId) === selVal);
+    }
+    if (!targetNode) {
+      targetNode = nodes[0];
+      if (nodeSel) nodeSel.value = String(targetNode.nodeId);
+    }
+
+    const getElevation = (x, y) => sampleDemSafe(mainTerrainEngine, x, y).elevationM || 3500;
+    const slicer = generatePerpendicularLinkSlicerObstacle(
+      { x: targetNode.xM, y: targetNode.yM, z: targetNode.terrainMslM + targetNode.aglM },
+      acnPos,
+      getElevation,
+      0.35,
+      1400.0,
+    );
+
+    if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+      tbObstacleHistory.pushState(obstacleEditor.draft);
+    }
+
+    try {
+      obstacleEditor.create('cuboid', slicer.center.x, slicer.center.y);
+      obstacleEditor.updateSelected({
+        widthM: slicer.widthM,
+        depthM: slicer.depthM,
+        heightM: slicer.optimalHeightM,
+        rotationDeg: slicer.strikeAzimuthDeg,
+      });
+      tbObsSelectedId = obstacleEditor.selectedId;
+      syncObstacleFieldMirror(true);
+      setTerrainToolStatus(`✂ Dropped perpendicular barrier (W=${Math.round(slicer.widthM)}m, H=${Math.round(slicer.optimalHeightM)}m) across S${targetNode.nodeId}'s link!`);
+    } catch (err) {
+      setTerrainToolStatus(`Could not create link slicer obstacle: ${err?.message || err}`);
+    }
+
+    refreshObstacleEditor();
+    renderObstacleInventoryList();
+    recomputeCadObstacleAnalysis();
+    refreshTerrainToolbox();
+    if (terrainMapMode !== 'maplibre') drawRadar();
   });
 
   $('terrain-region-btn')?.addEventListener('click', () => {
     terrainMeasurement = null;
     terrainRegionDraft = [];
+    tbAoSwathAnchor = null;
     terrainToolMode = terrainToolMode === 'region' ? 'idle' : 'region';
-    setTerrainToolStatus(terrainToolMode === 'region' ? 'Click 3+ polygon vertices, then Finish.' : 'Region drawing cancelled.');
+    setTerrainToolStatus(terrainToolMode === 'region' ? 'Drag or click on map to define AO Swath (Hold Shift for 1:1 square).' : 'Region mode idle.');
     refreshTerrainToolbox();
     updateMapLibreToolSources();
     drawRadar();
   });
   $('terrain-region-finish-btn')?.addEventListener('click', finishTerrainRegion);
   $('terrain-region-cancel-btn')?.addEventListener('click', cancelTerrainTool);
+  $('btn-region-deploy-squad')?.addEventListener('click', () => {
+    if (!tbAoSwathReport?.squadDeployCoords) {
+      setTerrainToolStatus('No active AO swath to deploy squad into. Define an AO swath first.');
+      return;
+    }
+    const ctx = buildToolboxSimContext();
+    if (ctx.spatialLocked || ctx.isHistoricalInspecting) {
+      setTerrainToolStatus('Cannot deploy units: Spatial Lock is active or in Historical Inspection mode.');
+      return;
+    }
+    const availableSlots = MAX_ACTIVE_GROUND_NODES - ctx.groundNodes.length;
+    if (availableSlots < 4) {
+      setTerrainToolStatus(`Cannot deploy 4-node squad: only ${availableSlots} node slots available (limit ${MAX_ACTIVE_GROUND_NODES}).`);
+      return;
+    }
+    const coords = tbAoSwathReport.squadDeployCoords;
+    const squadLabels = ['SQUAD-ALPHA-1', 'SQUAD-BRAVO-2', 'SQUAD-CHARLIE-3', 'SQUAD-DELTA-4'];
+    for (let i = 0; i < 4; i++) {
+      const pt = coords[i];
+      sendCommand(buildNodeAddCommand({
+        xM: pt[0],
+        yM: pt[1],
+        aglM: 2.0,
+        role: 'soldier',
+        callsign: squadLabels[i],
+        txPowerDbm: 30.0,
+      }));
+    }
+    setTerrainToolStatus('Auto-deployed 4-Node Tactical Squad across AO quadrants [SW, NW, SE, NE].');
+    refreshTerrainToolbox();
+  });
+  $('btn-region-spawn-summit-relay')?.addEventListener('click', () => {
+    if (!tbAoSwathReport?.summitPeak) {
+      setTerrainToolStatus('No active AO summit peak identified. Define an AO swath first.');
+      return;
+    }
+    const ctx = buildToolboxSimContext();
+    if (ctx.spatialLocked || ctx.isHistoricalInspecting) {
+      setTerrainToolStatus('Cannot deploy unit: Spatial Lock is active or in Historical Inspection mode.');
+      return;
+    }
+    if (!canAddNodeFromToolbox(ctx.groundNodes.length, ctx.spatialLocked, ctx.isHistoricalInspecting)) {
+      setTerrainToolStatus(`Cannot add node: at ${MAX_ACTIVE_GROUND_NODES} node limit or locked.`);
+      return;
+    }
+    const summit = tbAoSwathReport.summitPeak;
+    sendCommand(buildNodeAddCommand({
+      xM: summit.xM,
+      yM: summit.yM,
+      aglM: 15.0,
+      role: 'mcp',
+      callsign: 'MCP-SUMMIT',
+      txPowerDbm: 40.0,
+    }));
+    setTerrainToolStatus(`Spawned MCP Relay on AO Summit Peak (${Math.round(summit.zMslM)}m MSL, 15m Mast).`);
+    refreshTerrainToolbox();
+  });
   $('terrain-toolbox-regions')?.addEventListener('change', event => {
     const target = event.target;
     const row = target.closest('[data-region-id]');
@@ -11595,6 +12448,8 @@ function setupTerrainToolbox() {
     setTerrainToolboxExpanded(false);
   });
 
+  tbAoSwathBox = { x1: -4000, y1: -3000, x2: 4000, y2: 3000 };
+  recomputeRegionZonal();
   setTbMode('dem');
   setText('tb-span-readout', `Span: ${((currentRadarRangeM * 2) / 1000).toFixed(1)} km`);
 }
@@ -14833,6 +15688,1386 @@ function renderMapLibreKineticOverlay(ctx, w, h, frame) {
     ctx.fillText('[MCP-OPT]', relayPt.x, relayPt.y - 7);
     ctx.restore();
   }
+
+  // Overlay CAD/GIS Geodetic & RF Ruler on MapLibre kinetic overlay
+  renderGeodeticRulerOverlay(ctx, w, h);
+  renderPrecisionCursorProbeOverlay(ctx, w, h);
+  renderPrecisionAoSwathOverlay(ctx, w, h);
+  renderPrecisionCadObstacleOverlay(ctx, w, h);
+}
+
+function findCadObstacleHandleHit(px, py, w, h) {
+  if (tbActiveMode !== 'obstacle' && terrainToolMode !== 'obstacle-place') return null;
+  const draft = obstacleEditor?.draft || [];
+  const targetObs = draft.find(o => o.id === tbObsSelectedId || o.id === obstacleEditor?.selectedId);
+  if (!targetObs) return null;
+
+  const projectPoint = (xM, yM) => {
+    if (terrainMapMode === 'maplibre' && mapController && typeof mapController.projectEnuToContainerPoint === 'function') {
+      const pt = mapController.projectEnuToContainerPoint(xM, yM);
+      if (pt) return pt;
+    }
+    return worldToScreen(xM, yM, w, h);
+  };
+
+  const ep = getObstacleEndpoints(targetObs);
+  if (!ep) return null;
+
+  const p1 = projectPoint(ep.v1.x, ep.v1.y);
+  const p2 = projectPoint(ep.v2.x, ep.v2.y);
+  const pc = projectPoint(ep.center.x, ep.center.y);
+  const hitDistPx = 14;
+
+  if (p1 && Math.hypot(px - p1.x, py - p1.y) <= hitDistPx) {
+    return { handle: 'V1', obstacle: targetObs };
+  }
+  if (p2 && Math.hypot(px - p2.x, py - p2.y) <= hitDistPx) {
+    return { handle: 'V2', obstacle: targetObs };
+  }
+  if (pc && Math.hypot(px - pc.x, py - pc.y) <= hitDistPx) {
+    return { handle: 'CENTER', obstacle: targetObs };
+  }
+  return null;
+}
+
+function renderPrecisionCadObstacleOverlay(ctx, w, h) {
+  const isObsActive = (tbActiveMode === 'obstacle' || terrainToolMode === 'obstacle-place');
+  if (!isObsActive && !tbObsDrawingAnchor && !tbCadObstacleReport) return;
+
+  const projectPoint = (xM, yM) => {
+    if (terrainMapMode === 'maplibre' && mapController && typeof mapController.projectEnuToContainerPoint === 'function') {
+      const pt = mapController.projectEnuToContainerPoint(xM, yM);
+      if (pt) return pt;
+    }
+    return worldToScreen(xM, yM, w, h);
+  };
+
+  ctx.save();
+
+  // 1. Render Active Rubber-Banding Drawing Barrier
+  if (tbObsDrawingAnchor && tbObsRubberBandPoint) {
+    const pA = projectPoint(tbObsDrawingAnchor.x, tbObsDrawingAnchor.y);
+    const pB = projectPoint(tbObsRubberBandPoint.x, tbObsRubberBandPoint.y);
+    if (pA && pB) {
+      ctx.save();
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Endpoint handles [V1] and [V2]
+      ctx.fillStyle = '#00e5ff';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pA.x, pA.y, 6, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(pB.x, pB.y, 6, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = `bold 9px ${MONO}`;
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillText('[V1]', pA.x + 8, pA.y - 6);
+      ctx.fillText('[V2]', pB.x + 8, pB.y - 6);
+
+      // Midpoint CAD Dimensions Callout
+      const midX = (pA.x + pB.x) * 0.5;
+      const midY = (pA.y + pB.y) * 0.5;
+      const lenM = Math.hypot(tbObsRubberBandPoint.x - tbObsDrawingAnchor.x, tbObsRubberBandPoint.y - tbObsDrawingAnchor.y);
+      const azDeg = (Math.atan2(tbObsRubberBandPoint.x - tbObsDrawingAnchor.x, tbObsRubberBandPoint.y - tbObsDrawingAnchor.y) * 180 / Math.PI + 360) % 360;
+
+      const dimText = `L: ${Math.round(lenM)}m @ ${azDeg.toFixed(1)}° (Extruding)`;
+      const dimW = ctx.measureText(dimText).width + 12;
+      ctx.fillStyle = 'rgba(11, 15, 23, 0.90)';
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(midX - dimW * 0.5, midY - 18, dimW, 16, 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#00e5ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(dimText, midX, midY - 6);
+      ctx.restore();
+    }
+  } else {
+    // 2. Render Excalidraw Handles for Selected Placed Obstacle
+    const draft = obstacleEditor?.draft || [];
+    const targetObs = draft.find(o => o.id === tbObsSelectedId || o.id === obstacleEditor?.selectedId);
+    if (targetObs) {
+      const ep = getObstacleEndpoints(targetObs);
+      if (ep) {
+        const p1 = projectPoint(ep.v1.x, ep.v1.y);
+        const p2 = projectPoint(ep.v2.x, ep.v2.y);
+        const pc = projectPoint(ep.center.x, ep.center.y);
+
+        if (p1 && p2 && pc) {
+          ctx.save();
+          // Centerline spine
+          ctx.strokeStyle = 'rgba(255, 171, 0, 0.7)';
+          ctx.lineWidth = 1.8;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Dimension Tag
+          const midX = (p1.x + p2.x) * 0.5;
+          const midY = (p1.y + p2.y) * 0.5;
+          const azDeg = (Math.atan2(ep.v2.x - ep.v1.x, ep.v2.y - ep.v1.y) * 180 / Math.PI + 360) % 360;
+          const dimTag = `${Math.round(ep.lengthM)}m @ ${azDeg.toFixed(1)}° | H=${Math.round(targetObs.heightM)}m`;
+          const dW = ctx.measureText(dimTag).width + 10;
+          ctx.fillStyle = 'rgba(11, 15, 23, 0.85)';
+          ctx.strokeStyle = '#ffab00';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(midX - dW * 0.5, midY - 18, dW, 15, 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = `600 8.5px ${MONO}`;
+          ctx.fillStyle = '#ffab00';
+          ctx.textAlign = 'center';
+          ctx.fillText(dimTag, midX, midY - 7);
+
+          // Handle [V1]
+          const isV1 = (tbObsDraggedHandle === 'V1');
+          ctx.fillStyle = isV1 ? '#ffab00' : '#00e5ff';
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(p1.x - 4.5, p1.y - 4.5, 9, 9, 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = `bold 8px ${MONO}`;
+          ctx.fillStyle = isV1 ? '#ffab00' : '#00e5ff';
+          ctx.textAlign = 'center';
+          ctx.fillText('[V1]', p1.x, p1.y - 7);
+
+          // Handle [V2]
+          const isV2 = (tbObsDraggedHandle === 'V2');
+          ctx.fillStyle = isV2 ? '#ffab00' : '#00e5ff';
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(p2.x - 4.5, p2.y - 4.5, 9, 9, 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = `bold 8px ${MONO}`;
+          ctx.fillStyle = isV2 ? '#ffab00' : '#00e5ff';
+          ctx.textAlign = 'center';
+          ctx.fillText('[V2]', p2.x, p2.y - 7);
+
+          // Center Translation Handle [✥]
+          const isCtr = (tbObsDraggedHandle === 'CENTER');
+          ctx.fillStyle = isCtr ? '#00e676' : '#ffab00';
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(pc.x - 5.5, pc.y - 5.5, 11, 11, 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(pc.x - 3, pc.y); ctx.lineTo(pc.x + 3, pc.y);
+          ctx.moveTo(pc.x, pc.y - 3); ctx.lineTo(pc.x + 3, pc.y);
+          ctx.stroke();
+          ctx.font = `bold 8px ${MONO}`;
+          ctx.fillStyle = isCtr ? '#00e676' : '#ffab00';
+          ctx.textAlign = 'center';
+          ctx.fillText('[✥]', pc.x, pc.y + 14);
+
+          ctx.restore();
+        }
+      }
+    }
+  }
+
+  // 3. Render Link-Intersection Reticles (⊗) and Badges
+  if (tbCadObstacleReport && tbCadObstacleReport.intersections) {
+    tbCadObstacleReport.intersections.forEach(int => {
+      const sp = projectPoint(int.xM, int.yM);
+      if (!sp) return;
+
+      const isBlocked = (int.sliceVerdict === 'SLICED_BLOCKED');
+      const isGrazing = (int.sliceVerdict === 'FRESNEL_GRAZING');
+      const retColor = isBlocked ? '#ff2a54' : (isGrazing ? '#ff9100' : '#ffab00');
+
+      ctx.save();
+      // Reticle Circle (radius 9px)
+      ctx.strokeStyle = retColor;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, 9, 0, TAU);
+      ctx.stroke();
+
+      // Cross inside circle ⊗
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(sp.x - 6, sp.y - 6);
+      ctx.lineTo(sp.x + 6, sp.y + 6);
+      ctx.moveTo(sp.x + 6, sp.y - 6);
+      ctx.lineTo(sp.x - 6, sp.y + 6);
+      ctx.stroke();
+
+      // Glow ring if blocked
+      if (isBlocked) {
+        ctx.strokeStyle = 'rgba(255, 42, 84, 0.4)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, 14, 0, TAU);
+        ctx.stroke();
+      }
+
+      // Contextual Badge
+      const badgeText = isBlocked
+        ? `✂ S${int.nodeId} BLOCKED (-${int.diffractionLossDb.toFixed(1)}dB · Ray ${Math.round(int.zRayMslM)}m <= Wall ${Math.round(int.zWallTopMslM)}m)`
+        : (isGrazing
+          ? `⚡ S${int.nodeId} FRESNEL GRAZING (-${int.diffractionLossDb.toFixed(1)}dB · Need H >= ${int.requiredBlockingHeightM}m)`
+          : `⚠ S${int.nodeId} FLIES OVER (+${Math.round(Math.abs(int.intrusionM))}m · Need H >= ${int.requiredBlockingHeightM}m)`);
+
+      ctx.font = `600 9px ${MONO}`;
+      const bw = ctx.measureText(badgeText).width + 12;
+      const bx = sp.x + 12;
+      const by = sp.y - 10;
+
+      const clampedBx = Math.max(8, Math.min(w - bw - 8, bx));
+      const clampedBy = Math.max(16, Math.min(h - 20, by));
+
+      ctx.fillStyle = 'rgba(11, 15, 23, 0.94)';
+      ctx.strokeStyle = retColor;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(clampedBx, clampedBy - 8, bw, 18, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = retColor;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, clampedBx + 6, clampedBy + 1);
+      ctx.restore();
+    });
+  }
+
+  ctx.restore();
+
+}
+
+function renderGeodeticRulerOverlay(ctx, w, h) {
+  const isTransectTool = (terrainToolMode === 'transect-2pt' || terrainToolMode === 'measure' || tbActiveMode === 'transect');
+  if (!isTransectTool && tbTransectWaypoints.length < 2) return;
+
+  const now = performance.now();
+  const txMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-tx-mast')?.value || '10') || 10));
+  const rxMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-rx-mast')?.value || '2') || 2));
+
+  // Unified projection helper (supporting both 2D Radar and MapLibre overlay)
+  const projectPoint = (xM, yM) => {
+    if (terrainMapMode === 'maplibre' && mapController && typeof mapController.projectEnuToContainerPoint === 'function') {
+      const pt = mapController.projectEnuToContainerPoint(xM, yM);
+      if (pt) return pt;
+    }
+    return worldToScreen(xM, yM, w, h);
+  };
+
+  // Helper for High-Contrast Dark Glass Callout Box
+  const drawGlassBox = (bx, by, lines, accentColor = '#00e5ff') => {
+    ctx.save();
+    ctx.font = `600 10px ${MONO}`;
+    let maxW = 0;
+    lines.forEach(l => {
+      const m = ctx.measureText(l.text || l);
+      if (m.width > maxW) maxW = m.width;
+    });
+    const padX = 8, padY = 6;
+    const boxW = maxW + padX * 2;
+    const boxH = lines.length * 15 + padY * 2;
+
+    const clampedX = Math.max(10, Math.min(w - boxW - 10, bx));
+    const clampedY = Math.max(10, Math.min(h - boxH - 10, by));
+
+    ctx.fillStyle = 'rgba(11, 15, 23, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(clampedX, clampedY, boxW, boxH, 4);
+    ctx.fill();
+
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    lines.forEach((l, idx) => {
+      ctx.fillStyle = l.color || '#f2efe9';
+      ctx.fillText(l.text || l, clampedX + padX, clampedY + padY + 11 + idx * 15);
+    });
+    ctx.restore();
+  };
+
+  // ---------------------------------------------------------------------------
+  // Phase 1: Aiming Point A
+  // ---------------------------------------------------------------------------
+  if ((terrainToolMode === 'transect-2pt' || terrainToolMode === 'measure') && tbTransectWaypoints.length === 0) {
+    if (tbActiveSnap) {
+      ctx.save();
+      const snapScreen = projectPoint(tbActiveSnap.xM, tbActiveSnap.yM);
+      const pulseR = 12 + Math.sin(now * 0.008) * 3;
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.arc(snapScreen.x, snapScreen.y, pulseR, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.font = `bold 10px ${MONO}`;
+      ctx.fillStyle = '#00e5ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(`[SNAP: ${tbActiveSnap.label}]`, snapScreen.x, snapScreen.y - 18);
+      ctx.restore();
+    }
+
+    if (isMouseInsideRadar) {
+      const geo = cartesianToGeodetic(mouseWorldX, mouseWorldY);
+      const elev = sampleDemSafe(mainTerrainEngine, mouseWorldX, mouseWorldY).elevationM || 3500;
+      drawGlassBox(mouseScreenX + 16, mouseScreenY - 14, [
+        { text: `AIM POINT A · ${geo.latDeg.toFixed(3)}°N, ${geo.lonDeg.toFixed(3)}°E`, color: '#00e5ff' },
+        { text: `Elev: ${Math.round(elev)} m MSL (Mast: ${txMastM}m)`, color: '#b3afa7' },
+      ], '#00e5ff');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: Rubber-Banding A → Cursor before clicking B
+  // ---------------------------------------------------------------------------
+  if ((terrainToolMode === 'transect-2pt' || terrainToolMode === 'measure') && tbTransectWaypoints.length === 1 && tbRubberBandPoint) {
+    const wpA = tbTransectWaypoints[0];
+    const pA = projectPoint(wpA.xM, wpA.yM);
+    const pB = projectPoint(tbRubberBandPoint.x, tbRubberBandPoint.y);
+
+    const metrics = tbRulerPreviewMetrics || computeGeodeticRulerMetrics(
+      { xM: wpA.xM, yM: wpA.yM, groundElevationM: sampleDemSafe(mainTerrainEngine, wpA.xM, wpA.yM).elevationM, mastHeightM: txMastM },
+      { xM: tbRubberBandPoint.x, yM: tbRubberBandPoint.y, groundElevationM: sampleDemSafe(mainTerrainEngine, tbRubberBandPoint.x, tbRubberBandPoint.y).elevationM, mastHeightM: rxMastM },
+    );
+    const evalRes = tbRulerPreviewEval || evaluateRulerProfileAndBlockingPeak(
+      { xM: wpA.xM, yM: wpA.yM, groundElevationM: sampleDemSafe(mainTerrainEngine, wpA.xM, wpA.yM).elevationM, mastHeightM: txMastM },
+      { xM: tbRubberBandPoint.x, yM: tbRubberBandPoint.y, groundElevationM: sampleDemSafe(mainTerrainEngine, tbRubberBandPoint.x, tbRubberBandPoint.y).elevationM, mastHeightM: rxMastM },
+      (x, y) => sampleDemSafe(mainTerrainEngine, x, y).elevationM || 3500,
+    );
+
+    // 1. Point A Handle
+    ctx.save();
+    ctx.fillStyle = '#00e5ff';
+    ctx.strokeStyle = '#0b0f17';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pA.x, pA.y, 6.5, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = `bold 10px ${MONO}`;
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillText('[A]', pA.x + 8, pA.y - 6);
+    ctx.restore();
+
+    // 2. Protractor Angle Arc at Point A
+    ctx.save();
+    // True North Reference Line (Straight Up = Canvas -y)
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pA.x, pA.y - 48);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = `bold 9px ${MONO}`;
+    ctx.fillStyle = '#00e5ff';
+    ctx.textAlign = 'center';
+    ctx.fillText('0° N', pA.x, pA.y - 52);
+
+    // Swept Protractor Arc
+    const azRad = (metrics.azimuthDeg * Math.PI) / 180.0;
+    const arcRadius = 38;
+    const startAngle = -Math.PI / 2; // North
+    const endAngle = startAngle + azRad;
+
+    ctx.fillStyle = 'rgba(0, 229, 255, 0.08)';
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.arc(pA.x, pA.y, arcRadius, startAngle, endAngle, false);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(pA.x, pA.y, arcRadius, startAngle, endAngle, false);
+    ctx.stroke();
+
+    const midAngle = startAngle + azRad * 0.5;
+    const tagX = pA.x + Math.cos(midAngle) * (arcRadius + 14);
+    const tagY = pA.y + Math.sin(midAngle) * (arcRadius + 14);
+    ctx.fillStyle = '#00e5ff';
+    ctx.font = `bold 9px ${MONO}`;
+    ctx.fillText(`${metrics.azimuthDeg.toFixed(1)}° ${metrics.cardinalOctant}`, tagX, tagY);
+    ctx.restore();
+
+    // 3. Graduated Kilometer Ticks along shaft
+    const dHorizM = metrics.horizontalDistanceM;
+    if (dHorizM > 500) {
+      ctx.save();
+      const stepM = dHorizM > 10000 ? 2000 : 1000;
+      const screenLen = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+      if (screenLen > 10) {
+        const ux = (pB.x - pA.x) / screenLen;
+        const uy = (pB.y - pA.y) / screenLen;
+        const vx = -uy;
+        const vy = ux;
+        ctx.strokeStyle = 'rgba(242, 239, 233, 0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.font = `8px ${MONO}`;
+        ctx.fillStyle = 'rgba(242, 239, 233, 0.7)';
+        ctx.textAlign = 'center';
+
+        for (let dist = stepM; dist < dHorizM; dist += stepM) {
+          const u = dist / dHorizM;
+          const tx = pA.x + u * (pB.x - pA.x);
+          const ty = pA.y + u * (pB.y - pA.y);
+          ctx.beginPath();
+          ctx.moveTo(tx - vx * 4, ty - vy * 4);
+          ctx.lineTo(tx + vx * 4, ty + vy * 4);
+          ctx.stroke();
+          ctx.fillText(`${(dist / 1000).toFixed(0)}k`, tx + vx * 10, ty + vy * 10);
+        }
+      }
+      ctx.restore();
+    }
+
+    // 4. Split-Color LoS / Shadow Ray-Marching
+    ctx.save();
+    if (evalRes.isLineOfSightClear || !evalRes.blockingPeak) {
+      ctx.strokeStyle = '#00e676';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+    } else {
+      const bp = evalRes.blockingPeak;
+      const pPeak = projectPoint(bp.xM, bp.yM);
+
+      // Emerald segment A -> Blocking Peak
+      ctx.strokeStyle = '#00e676';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pPeak.x, pPeak.y);
+      ctx.stroke();
+
+      // Dashed Crimson segment Blocking Peak -> Cursor
+      ctx.strokeStyle = '#ff2a54';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pPeak.x, pPeak.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Pulsing ✕ BLOCKING PEAK Reticle
+      const pulseWave = 6 + (now * 0.015) % 10;
+      ctx.strokeStyle = 'rgba(255, 42, 84, 0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pPeak.x, pPeak.y, pulseWave, 0, TAU);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ff2a54';
+      ctx.beginPath();
+      ctx.arc(pPeak.x, pPeak.y, 5, 0, TAU);
+      ctx.fill();
+
+      const peakText = `✕ BLOCKING PEAK [${Math.round(bp.zMslM)}m]`;
+      ctx.font = `bold 9.5px ${MONO}`;
+      const mText = ctx.measureText(peakText);
+      ctx.fillStyle = 'rgba(20, 10, 15, 0.9)';
+      ctx.fillRect(pPeak.x - mText.width * 0.5 - 4, pPeak.y - 20, mText.width + 8, 14);
+      ctx.strokeStyle = '#ff2a54';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(pPeak.x - mText.width * 0.5 - 4, pPeak.y - 20, mText.width + 8, 14);
+      ctx.fillStyle = '#ff2a54';
+      ctx.textAlign = 'center';
+      ctx.fillText(peakText, pPeak.x, pPeak.y - 9);
+    }
+    ctx.restore();
+
+    // 5. Point B Cursor Tag & Angle Snap Pill
+    if (tbRubberBandPoint.isAngleSnapped) {
+      ctx.save();
+      ctx.font = `bold 9px ${MONO}`;
+      ctx.fillStyle = '#ffab00';
+      ctx.fillText(`[SHIFT: 15° SNAP]`, pB.x + 10, pB.y - 8);
+      ctx.restore();
+    } else if (tbRubberBandPoint.snapLabel) {
+      ctx.save();
+      ctx.font = `bold 9px ${MONO}`;
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillText(`[SNAP: ${tbRubberBandPoint.snapLabel}]`, pB.x + 10, pB.y - 8);
+      ctx.restore();
+    }
+
+    // 6. Live Midpoint Dark Glass Callout Pill
+    const midX = (pA.x + pB.x) * 0.5 + 14;
+    const midY = (pA.y + pB.y) * 0.5 - 34;
+
+    const rfPreview = tbTransectResult?.worstLinkStatus;
+    const snrText = rfPreview ? `${rfPreview.snrDb.toFixed(1)} dB (${rfPreview.modcodName.split(' ')[0]})` : '-- dB';
+
+    drawGlassBox(midX, midY, [
+      { text: `Horiz: ${metrics.dHorizKm.toFixed(2)} km | 3D Slant: ${metrics.d3dKm.toFixed(2)} km`, color: '#00e5ff' },
+      { text: `Azimuth: ${metrics.azimuthDeg.toFixed(1)}° ${metrics.cardinalOctant} (Back: ${metrics.backAzimuthDeg.toFixed(1)}°)`, color: '#ffab00' },
+      { text: `Vert ΔZ: ${metrics.deltaZM >= 0 ? '+' : ''}${Math.round(metrics.deltaZM)} m | Elev Angle: ${metrics.verticalAngleDeg >= 0 ? '+' : ''}${metrics.verticalAngleDeg.toFixed(1)}° (${metrics.gradePct >= 0 ? '+' : ''}${metrics.gradePct.toFixed(1)}%)`, color: '#00e676' },
+      { text: `8 GHz Link: ${evalRes.isLineOfSightClear ? 'CLEAR LoS' : 'BLOCKED'} · SNR ${snrText}`, color: evalRes.isLineOfSightClear ? '#00e676' : '#ff2a54' },
+    ], evalRes.isLineOfSightClear ? '#00e5ff' : '#ff2a54');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 3: Locked Line A ↔ B
+  // ---------------------------------------------------------------------------
+  if (tbTransectWaypoints.length >= 2) {
+    const wpA = tbTransectWaypoints[0];
+    const wpB = tbTransectWaypoints[1];
+    const pA = projectPoint(wpA.xM, wpA.yM);
+    const pB = projectPoint(wpB.xM, wpB.yM);
+
+    const metrics = tbRulerMetrics || computeGeodeticRulerMetrics(
+      { xM: wpA.xM, yM: wpA.yM, groundElevationM: sampleDemSafe(mainTerrainEngine, wpA.xM, wpA.yM).elevationM, mastHeightM: txMastM },
+      { xM: wpB.xM, yM: wpB.yM, groundElevationM: sampleDemSafe(mainTerrainEngine, wpB.xM, wpB.yM).elevationM, mastHeightM: rxMastM },
+    );
+    const evalRes = tbRulerEvaluation || evaluateRulerProfileAndBlockingPeak(
+      { xM: wpA.xM, yM: wpA.yM, groundElevationM: sampleDemSafe(mainTerrainEngine, wpA.xM, wpA.yM).elevationM, mastHeightM: txMastM },
+      { xM: wpB.xM, yM: wpB.yM, groundElevationM: sampleDemSafe(mainTerrainEngine, wpB.xM, wpB.yM).elevationM, mastHeightM: rxMastM },
+      (x, y) => sampleDemSafe(mainTerrainEngine, x, y).elevationM || 3500,
+    );
+
+    // 1. Protractor Arc at Point A
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pA.x, pA.y - 48);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = `bold 9px ${MONO}`;
+    ctx.fillStyle = '#00e5ff';
+    ctx.textAlign = 'center';
+    ctx.fillText('0° N', pA.x, pA.y - 52);
+
+    const azRad = (metrics.azimuthDeg * Math.PI) / 180.0;
+    const arcRadius = 38;
+    const startAngle = -Math.PI / 2;
+    const endAngle = startAngle + azRad;
+
+    ctx.fillStyle = 'rgba(0, 229, 255, 0.08)';
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.arc(pA.x, pA.y, arcRadius, startAngle, endAngle, false);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(pA.x, pA.y, arcRadius, startAngle, endAngle, false);
+    ctx.stroke();
+
+    const midAngle = startAngle + azRad * 0.5;
+    const tagX = pA.x + Math.cos(midAngle) * (arcRadius + 14);
+    const tagY = pA.y + Math.sin(midAngle) * (arcRadius + 14);
+    ctx.fillStyle = '#00e5ff';
+    ctx.font = `bold 9px ${MONO}`;
+    ctx.fillText(`${metrics.azimuthDeg.toFixed(1)}° ${metrics.cardinalOctant}`, tagX, tagY);
+    ctx.restore();
+
+    // 2. Graduated Kilometer Ticks along shaft
+    const dHorizM = metrics.horizontalDistanceM;
+    if (dHorizM > 500) {
+      ctx.save();
+      const stepM = dHorizM > 10000 ? 2000 : 1000;
+      const screenLen = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+      if (screenLen > 10) {
+        const ux = (pB.x - pA.x) / screenLen;
+        const uy = (pB.y - pA.y) / screenLen;
+        const vx = -uy;
+        const vy = ux;
+        ctx.strokeStyle = 'rgba(242, 239, 233, 0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.font = `8px ${MONO}`;
+        ctx.fillStyle = 'rgba(242, 239, 233, 0.7)';
+        ctx.textAlign = 'center';
+
+        for (let dist = stepM; dist < dHorizM; dist += stepM) {
+          const u = dist / dHorizM;
+          const tx = pA.x + u * (pB.x - pA.x);
+          const ty = pA.y + u * (pB.y - pA.y);
+          ctx.beginPath();
+          ctx.moveTo(tx - vx * 4, ty - vy * 4);
+          ctx.lineTo(tx + vx * 4, ty + vy * 4);
+          ctx.stroke();
+          ctx.fillText(`${(dist / 1000).toFixed(0)}k`, tx + vx * 10, ty + vy * 10);
+        }
+      }
+      ctx.restore();
+    }
+
+    // 3. Split-Color LoS / Shadow Ray
+    ctx.save();
+    if (evalRes.isLineOfSightClear || !evalRes.blockingPeak) {
+      ctx.strokeStyle = '#00e676';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+    } else {
+      const bp = evalRes.blockingPeak;
+      const pPeak = projectPoint(bp.xM, bp.yM);
+
+      ctx.strokeStyle = '#00e676';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pPeak.x, pPeak.y);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ff2a54';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pPeak.x, pPeak.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const pulseWave = 6 + (now * 0.015) % 10;
+      ctx.strokeStyle = 'rgba(255, 42, 84, 0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pPeak.x, pPeak.y, pulseWave, 0, TAU);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ff2a54';
+      ctx.beginPath();
+      ctx.arc(pPeak.x, pPeak.y, 5, 0, TAU);
+      ctx.fill();
+
+      const peakText = `✕ BLOCKING PEAK [${Math.round(bp.zMslM)}m]`;
+      ctx.font = `bold 9.5px ${MONO}`;
+      const mText = ctx.measureText(peakText);
+      ctx.fillStyle = 'rgba(20, 10, 15, 0.9)';
+      ctx.fillRect(pPeak.x - mText.width * 0.5 - 4, pPeak.y - 20, mText.width + 8, 14);
+      ctx.strokeStyle = '#ff2a54';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(pPeak.x - mText.width * 0.5 - 4, pPeak.y - 20, mText.width + 8, 14);
+      ctx.fillStyle = '#ff2a54';
+      ctx.textAlign = 'center';
+      ctx.fillText(peakText, pPeak.x, pPeak.y - 9);
+    }
+    ctx.restore();
+
+    // 4. Draggable Handles [A] and [B]
+    ctx.save();
+    // Handle A
+    ctx.fillStyle = '#00e5ff';
+    ctx.strokeStyle = '#0b0f17';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pA.x, pA.y, 7, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = `bold 10px ${MONO}`;
+    ctx.fillStyle = '#00e5ff';
+    ctx.textAlign = 'center';
+    ctx.fillText('[A]', pA.x, pA.y - 10);
+
+    // Handle B
+    ctx.fillStyle = evalRes.isLineOfSightClear ? '#00e676' : '#ffab00';
+    ctx.strokeStyle = '#0b0f17';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pB.x, pB.y, 7, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = evalRes.isLineOfSightClear ? '#00e676' : '#ffab00';
+    ctx.fillText('[B]', pB.x, pB.y - 10);
+    ctx.restore();
+
+    // 5. On-Line Sliding Cross-Section Bead (Hover within 18px of segment)
+    if (tbLineHover) {
+      ctx.save();
+      const hx = tbLineHover.screenX;
+      const hy = tbLineHover.screenY;
+
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 8, 0, TAU);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffab00';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 3.5, 0, TAU);
+      ctx.fill();
+
+      // Crosshair ticks
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(hx - 12, hy); ctx.lineTo(hx - 6, hy);
+      ctx.moveTo(hx + 6, hy); ctx.lineTo(hx + 12, hy);
+      ctx.moveTo(hx, hy - 12); ctx.lineTo(hx, hy - 6);
+      ctx.moveTo(hx, hy + 6); ctx.lineTo(hx, hy + 12);
+      ctx.stroke();
+
+      const hs = tbHoveredSampleIdx !== null ? tbTransectResult?.samples[tbHoveredSampleIdx] : null;
+      const distKm = (tbLineHover.sM / 1000).toFixed(2);
+      const gElev = hs ? hs.terrainMslM.toFixed(0) : '--';
+      const rElev = hs ? hs.losMslM.toFixed(0) : '--';
+      const clrVal = hs ? `${hs.clearanceM >= 0 ? '+' : ''}${hs.clearanceM.toFixed(1)}` : '--';
+
+      drawGlassBox(hx + 14, hy - 20, [
+        { text: `s = ${distKm} km | Ground: ${gElev} m | Ray: ${rElev} m | Clr: ${clrVal} m`, color: '#00e5ff' },
+      ], '#00e5ff');
+      ctx.restore();
+    }
+
+    // 6. Midpoint Dark Glass Callout Box
+    const midX = (pA.x + pB.x) * 0.5 + 14;
+    const midY = (pA.y + pB.y) * 0.5 - 34;
+
+    const rfLink = tbTransectResult?.worstLinkStatus;
+    const snrText = rfLink ? `${rfLink.snrDb.toFixed(1)} dB (${rfLink.modcodName.split(' ')[0]})` : '-- dB';
+
+    drawGlassBox(midX, midY, [
+      { text: `Horiz: ${metrics.dHorizKm.toFixed(2)} km | 3D Slant: ${metrics.d3dKm.toFixed(2)} km`, color: '#00e5ff' },
+      { text: `Azimuth: ${metrics.azimuthDeg.toFixed(1)}° ${metrics.cardinalOctant} (Back: ${metrics.backAzimuthDeg.toFixed(1)}°)`, color: '#ffab00' },
+      { text: `Vert ΔZ: ${metrics.deltaZM >= 0 ? '+' : ''}${Math.round(metrics.deltaZM)} m | Elev Angle: ${metrics.verticalAngleDeg >= 0 ? '+' : ''}${metrics.verticalAngleDeg.toFixed(1)}° (${metrics.gradePct >= 0 ? '+' : ''}${metrics.gradePct.toFixed(1)}%)`, color: '#00e676' },
+      { text: `8 GHz Link: ${evalRes.isLineOfSightClear ? 'CLEAR LoS' : 'BLOCKED'} · SNR ${snrText}`, color: evalRes.isLineOfSightClear ? '#00e676' : '#ff2a54' },
+    ], evalRes.isLineOfSightClear ? '#00e5ff' : '#ff2a54');
+  }
+}
+
+function renderPrecisionCursorProbeOverlay(ctx, w, h) {
+  const isProbeActive = (tbActiveMode === 'probe' || terrainToolMode === 'probe');
+  if (!isProbeActive && !tbProbeSite && !tbProbePinnedP1) return;
+
+  const now = performance.now();
+  const mastM = Math.max(1, Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2));
+  const simCtx = buildToolboxSimContext();
+  const acnPos = simCtx.acnPositionMslM || [0, 0, 5000];
+  const acnHeading = Number.isFinite(latestTelemetry?.acn_heading_deg)
+    ? latestTelemetry.acn_heading_deg
+    : (Number.isFinite(latestTelemetry?.acn_telemetry?.heading_rad)
+        ? ((latestTelemetry.acn_telemetry.heading_rad * 180 / Math.PI) % 360 + 360) % 360
+        : 0);
+
+  const projectPoint = (xM, yM) => {
+    if (terrainMapMode === 'maplibre' && mapController && typeof mapController.projectEnuToContainerPoint === 'function') {
+      const pt = mapController.projectEnuToContainerPoint(xM, yM);
+      if (pt) return pt;
+    }
+    return worldToScreen(xM, yM, w, h);
+  };
+
+  let pX = mouseWorldX;
+  let pY = mouseWorldY;
+  if (!isMouseInsideRadar) {
+    if (tbProbeSite) {
+      pX = tbProbeSite.xM;
+      pY = tbProbeSite.yM;
+    } else if (tbProbePinnedP1) {
+      pX = tbProbePinnedP1.probeX;
+      pY = tbProbePinnedP1.probeY;
+    } else {
+      return;
+    }
+  }
+
+  const analysis = evaluateCursorRfProbe(
+    { xM: pX, yM: pY },
+    mastM,
+    acnPos,
+    acnHeading,
+    (x, y) => sampleDemSafe(mainTerrainEngine, x, y).elevationM || 3500,
+    tbProbePinnedP1
+  );
+
+  const pScreen = projectPoint(pX, pY);
+  const pAcn = projectPoint(acnPos[0], acnPos[1]);
+  if (!pScreen || !pAcn) return;
+
+  // 1. Live Cursor -> ACN Vector
+  ctx.save();
+  if (analysis.isLos || !analysis.blockingRidgePeak) {
+    // Solid Emerald LoS Ray
+    ctx.strokeStyle = '#00e676';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(pScreen.x, pScreen.y);
+    ctx.lineTo(pAcn.x, pAcn.y);
+    ctx.stroke();
+
+    // Pulse dot travelling from probe to ACN
+    const travelT = (now % 1500) / 1500.0;
+    const pulseX = pScreen.x + travelT * (pAcn.x - pScreen.x);
+    const pulseY = pScreen.y + travelT * (pAcn.y - pScreen.y);
+    ctx.fillStyle = '#00e676';
+    ctx.shadowColor = '#00e676';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(pulseX, pulseY, 3.5, 0, TAU);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  } else {
+    // Occluded: Split at blockingRidgePeak
+    const bp = analysis.blockingRidgePeak;
+    const pPeak = projectPoint(bp.xM, bp.yM);
+
+    // Visible ray segment up to peak: solid emerald
+    ctx.strokeStyle = '#00e676';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(pScreen.x, pScreen.y);
+    ctx.lineTo(pPeak.x, pPeak.y);
+    ctx.stroke();
+
+    // Shadowed segment beyond peak: dashed crimson
+    ctx.strokeStyle = '#ff2a54';
+    ctx.lineWidth = 2.0;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pPeak.x, pPeak.y);
+    ctx.lineTo(pAcn.x, pAcn.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Pulsing blocking ridge reticle
+    const pulseR = 8.0 + Math.sin(now * 0.008) * 2.5;
+    ctx.strokeStyle = '#ff2a54';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(pPeak.x, pPeak.y, pulseR, 0, TAU);
+    ctx.stroke();
+
+    // Cross X
+    ctx.beginPath();
+    ctx.moveTo(pPeak.x - 4, pPeak.y - 4);
+    ctx.lineTo(pPeak.x + 4, pPeak.y + 4);
+    ctx.moveTo(pPeak.x + 4, pPeak.y - 4);
+    ctx.lineTo(pPeak.x - 4, pPeak.y + 4);
+    ctx.stroke();
+
+    // Badge tag
+    const ridgeText = `✕ BLOCKING RIDGE [${Math.round(bp.zMslM)}m]`;
+    ctx.font = `bold 9.5px ${MONO}`;
+    const tm = ctx.measureText(ridgeText);
+    ctx.fillStyle = 'rgba(11, 15, 23, 0.9)';
+    ctx.fillRect(pPeak.x - tm.width / 2 - 4, pPeak.y - 18, tm.width + 8, 14);
+    ctx.strokeStyle = '#ff2a54';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pPeak.x - tm.width / 2 - 4, pPeak.y - 18, tm.width + 8, 14);
+    ctx.fillStyle = '#ff2a54';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ridgeText, pPeak.x, pPeak.y - 11);
+  }
+  ctx.restore();
+
+  // 2. 360° Polar Horizon Mask Ring around Probe Cursor
+  ctx.save();
+  const ringOuterR = 34.0;
+  const ringInnerR = 22.0;
+  const numBins = analysis.horizonMask16.length;
+
+  for (let k = 0; k < numBins; k++) {
+    const bin = analysis.horizonMask16[k];
+    const azRad = (bin.azimuthDeg * Math.PI) / 180.0;
+    const startAng = -Math.PI / 2 + azRad - (11.25 * Math.PI) / 180.0;
+    const endAng = -Math.PI / 2 + azRad + (11.25 * Math.PI) / 180.0;
+
+    ctx.beginPath();
+    ctx.arc(pScreen.x, pScreen.y, ringOuterR, startAng, endAng, false);
+    ctx.arc(pScreen.x, pScreen.y, ringInnerR, endAng, startAng, true);
+    ctx.closePath();
+
+    if (bin.isBlockedAtAcnEl) {
+      ctx.fillStyle = 'rgba(255, 42, 84, 0.55)';
+      ctx.strokeStyle = '#ff2a54';
+    } else {
+      ctx.fillStyle = 'rgba(0, 230, 118, 0.55)';
+      ctx.strokeStyle = '#00e676';
+    }
+    ctx.fill();
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
+
+  // Ring Reticle & Crosshair
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(pScreen.x, pScreen.y, 4, 0, TAU);
+  ctx.stroke();
+
+  // Mini crosshair ticks
+  ctx.beginPath();
+  ctx.moveTo(pScreen.x, pScreen.y - ringOuterR - 3); ctx.lineTo(pScreen.x, pScreen.y - ringOuterR);
+  ctx.moveTo(pScreen.x, pScreen.y + ringOuterR); ctx.lineTo(pScreen.x, pScreen.y + ringOuterR + 3);
+  ctx.moveTo(pScreen.x - ringOuterR - 3, pScreen.y); ctx.lineTo(pScreen.x - ringOuterR, pScreen.y);
+  ctx.moveTo(pScreen.x + ringOuterR, pScreen.y); ctx.lineTo(pScreen.x + ringOuterR + 3, pScreen.y);
+  ctx.stroke();
+
+  // Sky openness header tag above ring
+  const skyText = `360° SKY: ${analysis.skyOpennessPct.toFixed(0)}%`;
+  ctx.font = `bold 8.5px ${MONO}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  const skyM = ctx.measureText(skyText);
+  ctx.fillStyle = 'rgba(11, 15, 23, 0.88)';
+  ctx.fillRect(pScreen.x - skyM.width / 2 - 3, pScreen.y - ringOuterR - 15, skyM.width + 6, 12);
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(pScreen.x - skyM.width / 2 - 3, pScreen.y - ringOuterR - 15, skyM.width + 6, 12);
+  ctx.fillStyle = '#00e5ff';
+  ctx.fillText(skyText, pScreen.x, pScreen.y - ringOuterR - 4);
+
+  // Clearance and elevation footer tag below ring
+  const elSign = analysis.elToAcnDeg >= 0 ? '+' : '';
+  const clrSign = analysis.clearanceAngleDeg >= 0 ? '+' : '';
+  const maskText = `MASK: ${analysis.horizonMaskAngleDeg.toFixed(1)}° | EL: ${elSign}${analysis.elToAcnDeg.toFixed(1)}° | CLR: ${clrSign}${analysis.clearanceAngleDeg.toFixed(1)}°`;
+  const maskM = ctx.measureText(maskText);
+  ctx.fillRect(pScreen.x - maskM.width / 2 - 3, pScreen.y + ringOuterR + 4, maskM.width + 6, 12);
+  ctx.strokeStyle = analysis.isLos ? '#00e676' : '#ff2a54';
+  ctx.strokeRect(pScreen.x - maskM.width / 2 - 3, pScreen.y + ringOuterR + 4, maskM.width + 6, 12);
+  ctx.fillStyle = analysis.isLos ? '#00e676' : '#ff2a54';
+  ctx.textBaseline = 'top';
+  ctx.fillText(maskText, pScreen.x, pScreen.y + ringOuterR + 6);
+  ctx.restore();
+
+  // 3. Pinned Reference [P1] Anchor & Differential Comparison Vector
+  if (tbProbePinnedP1) {
+    const p1Screen = projectPoint(tbProbePinnedP1.probeX, tbProbePinnedP1.probeY);
+    if (p1Screen) {
+      ctx.save();
+      ctx.fillStyle = '#00e5ff';
+      ctx.strokeStyle = '#0b0f17';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(p1Screen.x, p1Screen.y, 6.0, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = `bold 10px ${MONO}`;
+      ctx.fillStyle = '#00e5ff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`[P1] ${(tbProbePinnedP1.estSinrDb ?? 0).toFixed(1)} dB`, p1Screen.x + 9, p1Screen.y);
+
+      // Dashed Cyan Chord to moving cursor if moved away from [P1]
+      const distPx = Math.hypot(pScreen.x - p1Screen.x, pScreen.y - p1Screen.y);
+      if (distPx > 8 && analysis.deltaVsPin) {
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.8)';
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(p1Screen.x, p1Screen.y);
+        ctx.lineTo(pScreen.x, pScreen.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Floating Differential Callout Pill
+        const midX = (p1Screen.x + pScreen.x) / 2;
+        const midY = (p1Screen.y + pScreen.y) / 2;
+        const d = analysis.deltaVsPin;
+        const sSign = d.deltaSinrDb >= 0 ? '+' : '';
+        const eSign = d.deltaElevM >= 0 ? '+' : '';
+        const diffText = `ΔSINR: ${sSign}${d.deltaSinrDb.toFixed(1)} dB | ΔElev: ${eSign}${Math.round(d.deltaElevM)} m | Dist: ${d.distFromPinKm.toFixed(2)} km @ ${Math.round(d.bearingFromPinDeg)}°`;
+
+        ctx.font = `bold 9.5px ${MONO}`;
+        const diffM = ctx.measureText(diffText);
+        ctx.fillStyle = 'rgba(11, 15, 23, 0.94)';
+        ctx.fillRect(midX - diffM.width / 2 - 5, midY - 14, diffM.width + 10, 16);
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(midX - diffM.width / 2 - 5, midY - 14, diffM.width + 10, 16);
+        ctx.fillStyle = d.deltaSinrDb >= 0 ? '#00e676' : '#ffab00';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(diffText, midX, midY - 6);
+      }
+      ctx.restore();
+    }
+  }
+}
+
+function findAoSwathCornerHit(px, py, w, h, thresholdPx = 14) {
+  if (!tbAoSwathBox) return null;
+  const projectPoint = (xM, yM) => {
+    if (terrainMapMode === 'maplibre' && mapController && typeof mapController.projectEnuToContainerPoint === 'function') {
+      const pt = mapController.projectEnuToContainerPoint(xM, yM);
+      if (pt) return pt;
+    }
+    return worldToScreen(xM, yM, w, h);
+  };
+
+  const minX = Math.min(tbAoSwathBox.x1, tbAoSwathBox.x2);
+  const maxX = Math.max(tbAoSwathBox.x1, tbAoSwathBox.x2);
+  const minY = Math.min(tbAoSwathBox.y1, tbAoSwathBox.y2);
+  const maxY = Math.max(tbAoSwathBox.y1, tbAoSwathBox.y2);
+
+  const corners = [
+    { corner: 'NW', xM: minX, yM: maxY },
+    { corner: 'NE', xM: maxX, yM: maxY },
+    { corner: 'SE', xM: maxX, yM: minY },
+    { corner: 'SW', xM: minX, yM: minY },
+  ];
+
+  for (const c of corners) {
+    const sp = projectPoint(c.xM, c.yM);
+    if (sp && Math.hypot(px - sp.x, py - sp.y) <= thresholdPx) {
+      return c.corner;
+    }
+  }
+  return null;
+}
+
+function renderPrecisionAoSwathOverlay(ctx, w, h) {
+  const isRegionActive = (tbActiveMode === 'region' || terrainToolMode === 'region');
+  if (!isRegionActive && !tbAoSwathBox) return;
+  if (!tbAoSwathBox && !tbAoSwathAnchor) return;
+
+  const projectPoint = (xM, yM) => {
+    if (terrainMapMode === 'maplibre' && mapController && typeof mapController.projectEnuToContainerPoint === 'function') {
+      const pt = mapController.projectEnuToContainerPoint(xM, yM);
+      if (pt) return pt;
+    }
+    return worldToScreen(xM, yM, w, h);
+  };
+
+  const drawGlassBox = (bx, by, lines, accentColor = '#00e5ff') => {
+    ctx.save();
+    ctx.font = `600 10px ${MONO}`;
+    let maxW = 0;
+    lines.forEach(l => {
+      const m = ctx.measureText(l.text || l);
+      if (m.width > maxW) maxW = m.width;
+    });
+    const padX = 8, padY = 6;
+    const boxW = maxW + padX * 2;
+    const boxH = lines.length * 15 + padY * 2;
+
+    const clampedX = Math.max(10, Math.min(w - boxW - 10, bx));
+    const clampedY = Math.max(10, Math.min(h - boxH - 10, by));
+
+    ctx.fillStyle = 'rgba(11, 15, 23, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(clampedX, clampedY, boxW, boxH, 4);
+    ctx.fill();
+
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    lines.forEach((l, idx) => {
+      ctx.fillStyle = l.color || '#f2efe9';
+      ctx.fillText(l.text || l, clampedX + padX, clampedY + padY + 11 + idx * 15);
+    });
+    ctx.restore();
+  };
+
+  const b = tbAoSwathBox;
+  if (!b) return;
+
+  const minX = Math.min(b.x1, b.x2);
+  const maxX = Math.max(b.x1, b.x2);
+  const minY = Math.min(b.y1, b.y2);
+  const maxY = Math.max(b.y1, b.y2);
+
+  const pNW = projectPoint(minX, maxY);
+  const pNE = projectPoint(maxX, maxY);
+  const pSE = projectPoint(maxX, minY);
+  const pSW = projectPoint(minX, minY);
+  if (!pNW || !pNE || !pSE || !pSW) return;
+
+  ctx.save();
+
+  // 1. Draw 64-Cell Zonal Matrix Tiles
+  if (tbAoSwathReport && tbAoSwathReport.cells) {
+    for (const cell of tbAoSwathReport.cells) {
+      const cNW = projectPoint(cell.minX, cell.maxY);
+      const cSE = projectPoint(cell.maxX, cell.minY);
+      if (!cNW || !cSE) continue;
+      const rx = Math.min(cNW.x, cSE.x);
+      const ry = Math.min(cNW.y, cSE.y);
+      const rw = Math.abs(cSE.x - cNW.x);
+      const rh = Math.abs(cSE.y - cNW.y);
+
+      if (cell.zoneClass === 'HIGH_RATE_LOS') {
+        ctx.fillStyle = 'rgba(0, 230, 118, 0.18)';
+      } else if (cell.zoneClass === 'MARGINAL_DIFFRACTED') {
+        ctx.fillStyle = 'rgba(255, 171, 0, 0.20)';
+      } else {
+        ctx.fillStyle = 'rgba(255, 42, 84, 0.24)';
+      }
+      ctx.fillRect(rx, ry, rw, rh);
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(rx, ry, rw, rh);
+    }
+  }
+
+  // 2. Swath Boundary & Dashed Diagonal
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 2.0;
+  ctx.beginPath();
+  ctx.moveTo(pNW.x, pNW.y);
+  ctx.lineTo(pNE.x, pNE.y);
+  ctx.lineTo(pSE.x, pSE.y);
+  ctx.lineTo(pSW.x, pSW.y);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Dashed diagonal from SW to NE
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = 'rgba(0, 229, 255, 0.6)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(pSW.x, pSW.y);
+  ctx.lineTo(pNE.x, pNE.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 3. CAD Dimension Callouts
+  if (tbAoSwathReport) {
+    const rep = tbAoSwathReport;
+    ctx.font = `bold 10px ${MONO}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    // Top edge: Width
+    const midTopX = (pNW.x + pNE.x) * 0.5;
+    const midTopY = (pNW.y + pNE.y) * 0.5 - 10;
+    const wText = `← W: ${rep.widthKm.toFixed(2)} km →`;
+    const wWidth = ctx.measureText(wText).width + 12;
+    ctx.fillStyle = 'rgba(11, 15, 23, 0.90)';
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(midTopX - wWidth * 0.5, midTopY - 8, wWidth, 16, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillText(wText, midTopX, midTopY);
+
+    // Height edge (along right side between NE and SE)
+    const midRightX = (pNE.x + pSE.x) * 0.5 + 10;
+    const midRightY = (pNE.y + pSE.y) * 0.5;
+    const hText = `↕ H: ${rep.heightKm.toFixed(2)} km`;
+    const hWidth = ctx.measureText(hText).width + 12;
+    ctx.fillStyle = 'rgba(11, 15, 23, 0.90)';
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(midRightX, midRightY - 8, hWidth, 16, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillText(hText, midRightX + hWidth * 0.5, midRightY);
+
+    // Diagonal dimension badge along center of diagonal
+    const midDiagX = (pSW.x + pNE.x) * 0.5;
+    const midDiagY = (pSW.y + pNE.y) * 0.5;
+    const diagText = `Diag: ${rep.diagonalKm.toFixed(2)} km @ ${rep.diagonalAzimuthDeg.toFixed(1)}° · Area: ${rep.areaKm2.toFixed(2)} km²`;
+    const diagWidth = ctx.measureText(diagText).width + 16;
+    ctx.fillStyle = 'rgba(11, 15, 23, 0.92)';
+    ctx.strokeStyle = '#ffab00';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(midDiagX - diagWidth * 0.5, midDiagY - 9, diagWidth, 18, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffab00';
+    ctx.fillText(diagText, midDiagX, midDiagY);
+
+    // 4. On-Canvas Extreme Pins
+    // Summit Peak (Gold triangle)
+    const pSummit = projectPoint(rep.summitPeak.xM, rep.summitPeak.yM);
+    if (pSummit) {
+      ctx.fillStyle = '#ffab00';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(pSummit.x, pSummit.y - 7);
+      ctx.lineTo(pSummit.x + 6, pSummit.y + 5);
+      ctx.lineTo(pSummit.x - 6, pSummit.y + 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      const sumBadge = `▲ SUMMIT [${Math.round(rep.summitPeak.zMslM)}m · ${rep.summitPeak.sinrDb.toFixed(1)}dB]`;
+      const sWidth = ctx.measureText(sumBadge).width + 8;
+      ctx.fillStyle = 'rgba(11, 15, 23, 0.88)';
+      ctx.strokeStyle = '#ffab00';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(pSummit.x + 8, pSummit.y - 8, sWidth, 16, 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffab00';
+      ctx.textAlign = 'left';
+      ctx.fillText(sumBadge, pSummit.x + 12, pSummit.y);
+    }
+
+    // Valley Floor (Cyan inverted triangle)
+    const pValley = projectPoint(rep.valleyFloor.xM, rep.valleyFloor.yM);
+    if (pValley) {
+      ctx.fillStyle = '#00e5ff';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(pValley.x, pValley.y + 7);
+      ctx.lineTo(pValley.x + 6, pValley.y - 5);
+      ctx.lineTo(pValley.x - 6, pValley.y - 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      const valBadge = `▼ VALLEY [${Math.round(rep.valleyFloor.zMslM)}m]`;
+      const vWidth = ctx.measureText(valBadge).width + 8;
+      ctx.fillStyle = 'rgba(11, 15, 23, 0.88)';
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(pValley.x + 8, pValley.y - 8, vWidth, 16, 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#00e5ff';
+      ctx.textAlign = 'left';
+      ctx.fillText(valBadge, pValley.x + 12, pValley.y);
+    }
+
+    // Worst Dead Zone (Crimson cross)
+    const pDzk = projectPoint(rep.worstDeadZone.xM, rep.worstDeadZone.yM);
+    if (pDzk) {
+      ctx.strokeStyle = '#ff2a54';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(pDzk.x - 5, pDzk.y - 5);
+      ctx.lineTo(pDzk.x + 5, pDzk.y + 5);
+      ctx.moveTo(pDzk.x + 5, pDzk.y - 5);
+      ctx.lineTo(pDzk.x - 5, pDzk.y + 5);
+      ctx.stroke();
+
+      const dzBadge = `✕ DEAD ZONE [${rep.worstDeadZone.sinrDb.toFixed(1)}dB]`;
+      const dWidth = ctx.measureText(dzBadge).width + 8;
+      ctx.fillStyle = 'rgba(11, 15, 23, 0.88)';
+      ctx.strokeStyle = '#ff2a54';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(pDzk.x + 8, pDzk.y - 8, dWidth, 16, 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ff2a54';
+      ctx.textAlign = 'left';
+      ctx.fillText(dzBadge, pDzk.x + 12, pDzk.y);
+    }
+
+    // 5. Squad Tactical Deployment Coordinate Markers
+    if (rep.squadDeployCoords) {
+      const quadLabels = ['Q-SW', 'Q-NW', 'Q-SE', 'Q-NE'];
+      rep.squadDeployCoords.forEach((pt, qIdx) => {
+        const sqPt = projectPoint(pt[0], pt[1]);
+        if (sqPt) {
+          ctx.strokeStyle = '#00e676';
+          ctx.fillStyle = 'rgba(0, 230, 118, 0.3)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(sqPt.x, sqPt.y, 4, 0, TAU);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = `600 8px ${MONO}`;
+          ctx.fillStyle = '#00e676';
+          ctx.textAlign = 'center';
+          ctx.fillText(quadLabels[qIdx], sqPt.x, sqPt.y + 10);
+        }
+      });
+    }
+  }
+
+  // 6. 4 Draggable Corner Handles [NW, NE, SE, SW]
+  const corners = [
+    { corner: 'NW', pt: pNW },
+    { corner: 'NE', pt: pNE },
+    { corner: 'SE', pt: pSE },
+    { corner: 'SW', pt: pSW },
+  ];
+
+  corners.forEach(c => {
+    const isDragged = (tbDraggedAoCorner === c.corner);
+    const size = isDragged ? 10 : 8;
+    ctx.fillStyle = isDragged ? '#ffab00' : '#00e5ff';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(c.pt.x - size * 0.5, c.pt.y - size * 0.5, size, size, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(c.pt.x, c.pt.y, 1.5, 0, TAU);
+    ctx.fill();
+  });
+
+  // 7. Hover Cell Inspector
+  if (isMouseInsideRadar && tbAoHoverCell && tbAoSwathReport) {
+    const hc = tbAoHoverCell;
+    const cNW = projectPoint(hc.minX, hc.maxY);
+    const cSE = projectPoint(hc.maxX, hc.minY);
+    if (cNW && cSE) {
+      const rx = Math.min(cNW.x, cSE.x);
+      const ry = Math.min(cNW.y, cSE.y);
+      const rw = Math.abs(cSE.x - cNW.x);
+      const rh = Math.abs(cSE.y - cNW.y);
+
+      ctx.fillStyle = 'rgba(0, 229, 255, 0.35)';
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.strokeRect(rx, ry, rw, rh);
+
+      const zoneColor = hc.zoneClass === 'HIGH_RATE_LOS' ? '#00e676' : (hc.zoneClass === 'MARGINAL_DIFFRACTED' ? '#ffab00' : '#ff2a54');
+      drawGlassBox(mouseScreenX + 16, mouseScreenY - 14, [
+        { text: `AO Cell [${hc.col}, ${hc.row}] · ${Math.round(hc.zMslM)}m MSL`, color: '#00e5ff' },
+        { text: `Slope ${hc.slopeDeg.toFixed(1)}° · TRI ${hc.triM.toFixed(1)}m`, color: '#b3afa7' },
+        { text: `SINR: ${hc.sinrDb.toFixed(1)} dB (${hc.modcodName}) · ${hc.zoneClass.replace(/_/g, ' ')}`, color: zoneColor },
+      ], '#00e5ff');
+    }
+  }
+
+  ctx.restore();
 }
 
 function drawRadar() {
@@ -14998,65 +17233,75 @@ function drawRadar() {
         ctx.restore();
       }
 
-      // Mode 2 Segmented Transect & Markers
-      if (tbTransectResult && tbTransectResult.samples.length >= 2) {
-        ctx.save();
-        ctx.lineWidth = 3;
-        for (let i = 1; i < tbTransectResult.samples.length; i++) {
-          const a = tbTransectResult.samples[i - 1];
-          const b = tbTransectResult.samples[i];
-          const pa = worldToScreen(a.xM, a.yM, w, h);
-          const pb = worldToScreen(b.xM, b.yM, w, h);
-          ctx.strokeStyle = TRANSECT_STATUS_COLORS[b.status] || HIGHLAND_THEME.signal.sage;
-          ctx.setLineDash(b.status === 'grazing' ? [6, 3] : (b.status === 'shadow' || b.status === 'obstacle' ? [4, 4] : []));
+      // Precision Cursor RF Link Probe & 360° Horizon Mask (Tool #2)
+      renderPrecisionCursorProbeOverlay(ctx, w, h);
+
+      // Precision AO Swath & Dead-Zone Scanner (Tool #3)
+      renderPrecisionAoSwathOverlay(ctx, w, h);
+
+      // CAD/GIS-Grade Precision Geodetic & RF Line-of-Sight Ruler (Tool #1)
+      if (tbTransectWaypoints.length <= 2) {
+        renderGeodeticRulerOverlay(ctx, w, h);
+      } else {
+        if (tbTransectResult && tbTransectResult.samples.length >= 2) {
+          ctx.save();
+          ctx.lineWidth = 3;
+          for (let i = 1; i < tbTransectResult.samples.length; i++) {
+            const a = tbTransectResult.samples[i - 1];
+            const b = tbTransectResult.samples[i];
+            const pa = worldToScreen(a.xM, a.yM, w, h);
+            const pb = worldToScreen(b.xM, b.yM, w, h);
+            ctx.strokeStyle = TRANSECT_STATUS_COLORS[b.status] || HIGHLAND_THEME.signal.sage;
+            ctx.setLineDash(b.status === 'grazing' ? [6, 3] : (b.status === 'shadow' || b.status === 'obstacle' ? [4, 4] : []));
+            ctx.beginPath();
+            ctx.moveTo(pa.x, pa.y);
+            ctx.lineTo(pb.x, pb.y);
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.restore();
+        } else if (tbTransectWaypoints.length >= 2) {
+          ctx.save();
+          ctx.strokeStyle = HIGHLAND_THEME.signal.amber;
+          ctx.lineWidth = 2.5;
           ctx.beginPath();
-          ctx.moveTo(pa.x, pa.y);
-          ctx.lineTo(pb.x, pb.y);
+          tbTransectWaypoints.forEach((wp, idx) => {
+            const p = worldToScreen(wp.xM, wp.yM, w, h);
+            if (idx === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          });
           ctx.stroke();
+          ctx.restore();
         }
-        ctx.setLineDash([]);
-        ctx.restore();
-      } else if (tbTransectWaypoints.length >= 2) {
-        ctx.save();
-        ctx.strokeStyle = HIGHLAND_THEME.signal.amber;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
+        if (terrainToolMode === 'transect-poly' && tbTransectWaypoints.length >= 1 && tbRubberBandPoint) {
+          const lastWp = worldToScreen(tbTransectWaypoints[tbTransectWaypoints.length - 1].xM, tbTransectWaypoints[tbTransectWaypoints.length - 1].yM, w, h);
+          const curPt = worldToScreen(tbRubberBandPoint.x, tbRubberBandPoint.y, w, h);
+          ctx.save();
+          ctx.strokeStyle = HIGHLAND_THEME.signal.ochre;
+          ctx.lineWidth = 1.8;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.moveTo(lastWp.x, lastWp.y);
+          ctx.lineTo(curPt.x, curPt.y);
+          ctx.stroke();
+          ctx.restore();
+        }
         tbTransectWaypoints.forEach((wp, idx) => {
           const p = worldToScreen(wp.xM, wp.yM, w, h);
-          if (idx === 0) ctx.moveTo(p.x, p.y);
-          else ctx.lineTo(p.x, p.y);
+          ctx.save();
+          ctx.fillStyle = HIGHLAND_THEME.signal.amberBright;
+          ctx.strokeStyle = HIGHLAND_THEME.substrate.void;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 4.5, 0, TAU);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = `bold 9.5px ${MONO}`;
+          ctx.fillStyle = HIGHLAND_THEME.text.primary;
+          ctx.fillText(`T${idx + 1}`, p.x + 6, p.y - 4);
+          ctx.restore();
         });
-        ctx.stroke();
-        ctx.restore();
       }
-      if ((terrainToolMode === 'transect-2pt' || terrainToolMode === 'transect-poly') && tbTransectWaypoints.length >= 1 && tbRubberBandPoint) {
-        const lastWp = worldToScreen(tbTransectWaypoints[tbTransectWaypoints.length - 1].xM, tbTransectWaypoints[tbTransectWaypoints.length - 1].yM, w, h);
-        const curPt = worldToScreen(tbRubberBandPoint.x, tbRubberBandPoint.y, w, h);
-        ctx.save();
-        ctx.strokeStyle = HIGHLAND_THEME.signal.ochre;
-        ctx.lineWidth = 1.8;
-        ctx.setLineDash([5, 4]);
-        ctx.beginPath();
-        ctx.moveTo(lastWp.x, lastWp.y);
-        ctx.lineTo(curPt.x, curPt.y);
-        ctx.stroke();
-        ctx.restore();
-      }
-      tbTransectWaypoints.forEach((wp, idx) => {
-        const p = worldToScreen(wp.xM, wp.yM, w, h);
-        ctx.save();
-        ctx.fillStyle = HIGHLAND_THEME.signal.amberBright;
-        ctx.strokeStyle = HIGHLAND_THEME.substrate.void;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4.5, 0, TAU);
-        ctx.fill();
-        ctx.stroke();
-        ctx.font = `bold 9.5px ${MONO}`;
-        ctx.fillStyle = HIGHLAND_THEME.text.primary;
-        ctx.fillText(`T${idx + 1}`, p.x + 6, p.y - 4);
-        ctx.restore();
-      });
       if (tbTransectResult?.dominantCrest) {
         const c = tbTransectResult.dominantCrest;
         const cp = worldToScreen(c.xM, c.yM, w, h);
@@ -16105,6 +18350,9 @@ function drawRadar() {
       ctx.restore();
     }
 
+    // Precision CAD Obstacle Link Slicer & Excalidraw Micro-Interactions (Tool #4)
+    renderPrecisionCadObstacleOverlay(ctx, w, h);
+
     // Note: Live geographic coordinates & terrain elevation HUD are rendered
     // via the interactive HTML overlay (#radar-cursor-hud) for native crispness and DMS hover.
 
@@ -16144,9 +18392,65 @@ radarCanvas.addEventListener('mousedown', (e) => {
   const w = radarCanvas.parentElement.clientWidth, h = radarCanvas.parentElement.clientHeight;
   if (e.button === 0) {
     const world = screenToWorld(px, py, w, h);
+    if (terrainToolMode === 'obstacle-place' || tbActiveMode === 'obstacle') {
+      const handleHit = findCadObstacleHandleHit(px, py, w, h);
+      if (handleHit) {
+        tbObsDraggedHandle = handleHit.handle;
+        tbObsDragOrigin = { ...world };
+        radarCanvas.style.cursor = 'grabbing';
+        return;
+      }
+      const draft = obstacleEditor?.draft || [];
+      const geometry = getRadarGeometry(w, h);
+      const tolM = 16 / geometry.scale;
+      const clickedObs = draft.find(o => obstacleContainsPoint(o, world.x, world.y, tolM));
+      if (clickedObs) {
+        tbObsSelectedId = clickedObs.id;
+        obstacleEditor.select(clickedObs.id);
+        recomputeCadObstacleAnalysis();
+        renderObstacleInventoryList();
+        drawRadar();
+        return;
+      }
+      if (terrainToolMode === 'obstacle-place') {
+        tbObsDrawingAnchor = { x: world.x, y: world.y };
+        tbObsRubberBandPoint = { x: world.x, y: world.y };
+        radarCanvas.style.cursor = 'crosshair';
+        return;
+      }
+    }
     if (terrainToolMode !== 'idle') {
+      if (terrainToolMode === 'region') {
+        const cornerHit = findAoSwathCornerHit(px, py, w, h);
+        if (cornerHit) {
+          tbDraggedAoCorner = cornerHit;
+          radarCanvas.style.cursor = (cornerHit === 'NW' || cornerHit === 'SE') ? 'nwse-resize' : 'nesw-resize';
+          return;
+        }
+      }
       const geo = cartesianToGeodetic(world.x, world.y);
       handleToolboxMapClick({ x: world.x, y: world.y, lng: geo.lonDeg, lat: geo.latDeg });
+      return;
+    }
+    if (tbActiveMode === 'region') {
+      const cornerHit = findAoSwathCornerHit(px, py, w, h);
+      if (cornerHit) {
+        tbDraggedAoCorner = cornerHit;
+        radarCanvas.style.cursor = (cornerHit === 'NW' || cornerHit === 'SE') ? 'nwse-resize' : 'nesw-resize';
+        return;
+      }
+    }
+    if (tbActiveMode === 'probe') {
+      const geo = cartesianToGeodetic(world.x, world.y);
+      tbProbeSite = { xM: world.x, yM: world.y, lng: geo.lonDeg, lat: geo.latDeg };
+      recomputeProbeAnalysis();
+      if (tbCursorProbeLive) {
+        tbProbePinnedP1 = tbCursorProbeLive;
+      }
+      setTerrainToolStatus(`Probe set & [P1] pinned at ${geo.latDeg.toFixed(4)}°, ${geo.lonDeg.toFixed(4)}°.`);
+      refreshTerrainToolbox();
+      updateMapLibreToolSources();
+      drawRadar();
       return;
     }
     if (tbActiveMode === 'transect' && tbTransectWaypoints.length > 0 && mapLayerRegistry.getEffectiveVisibility('eng.measurements', getContextualMapContext())) {
@@ -16311,8 +18615,36 @@ radarCanvas.addEventListener('mouseleave', () => {
   updateRadarCursorReadout(0, 0, false);
 });
 
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Shift') {
+    isShiftKeyDown = true;
+    if (terrainToolMode === 'transect-2pt' && tbTransectWaypoints.length === 1) {
+      const wpA = tbTransectWaypoints[0];
+      const [snapX, snapY] = snapPointToAngleIncrement(wpA.xM, wpA.yM, mouseWorldX, mouseWorldY, 15);
+      const geo = cartesianToGeodetic(snapX, snapY);
+      tbRubberBandPoint = { x: snapX, y: snapY, lng: geo.lonDeg, lat: geo.latDeg, isAngleSnapped: true };
+      tbActiveSnap = null;
+      recomputeRubberBandPreview(tbRubberBandPoint);
+      drawRadar();
+    }
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'Shift') {
+    isShiftKeyDown = false;
+    if (terrainToolMode === 'transect-2pt' && tbTransectWaypoints.length === 1) {
+      const geo = cartesianToGeodetic(mouseWorldX, mouseWorldY);
+      tbRubberBandPoint = { x: mouseWorldX, y: mouseWorldY, lng: geo.lonDeg, lat: geo.latDeg };
+      recomputeRubberBandPreview(tbRubberBandPoint);
+      drawRadar();
+    }
+  }
+});
+
 window.addEventListener('mousemove', (e) => {
-  if (!draggedEntity && !draggedToolboxVertex && !isPanning && (terrainMapMode !== 'radar' || stageViewMode !== '2d')) {
+  isShiftKeyDown = Boolean(e.shiftKey);
+  if (!draggedEntity && !draggedToolboxVertex && !tbDraggedAoCorner && !tbAoSwathAnchor && !isPanning && (terrainMapMode !== 'radar' || stageViewMode !== '2d')) {
     return;
   }
   const rect = radarCanvas.getBoundingClientRect();
@@ -16333,11 +18665,67 @@ window.addEventListener('mousemove', (e) => {
     updateRadarCursorReadout(0, 0, false);
   }
 
+  if (tbDraggedAoCorner && insideRadar && tbAoSwathBox) {
+    const minX = Math.min(tbAoSwathBox.x1, tbAoSwathBox.x2);
+    const maxX = Math.max(tbAoSwathBox.x1, tbAoSwathBox.x2);
+    const minY = Math.min(tbAoSwathBox.y1, tbAoSwathBox.y2);
+    const maxY = Math.max(tbAoSwathBox.y1, tbAoSwathBox.y2);
+
+    let targetX = mouseWorldX;
+    let targetY = mouseWorldY;
+
+    if (tbDraggedAoCorner === 'NW') {
+      if (isShiftKeyDown) {
+        [targetX, targetY] = constrainSquareRegion(maxX, minY, targetX, targetY);
+      }
+      tbAoSwathBox = { x1: targetX, y1: targetY, x2: maxX, y2: minY };
+    } else if (tbDraggedAoCorner === 'NE') {
+      if (isShiftKeyDown) {
+        [targetX, targetY] = constrainSquareRegion(minX, minY, targetX, targetY);
+      }
+      tbAoSwathBox = { x1: minX, y1: minY, x2: targetX, y2: targetY };
+    } else if (tbDraggedAoCorner === 'SE') {
+      if (isShiftKeyDown) {
+        [targetX, targetY] = constrainSquareRegion(minX, maxY, targetX, targetY);
+      }
+      tbAoSwathBox = { x1: minX, y1: maxY, x2: targetX, y2: targetY };
+    } else if (tbDraggedAoCorner === 'SW') {
+      if (isShiftKeyDown) {
+        [targetX, targetY] = constrainSquareRegion(maxX, maxY, targetX, targetY);
+      }
+      tbAoSwathBox = { x1: targetX, y1: targetY, x2: maxX, y2: maxY };
+    }
+    recomputeRegionZonal();
+    drawRadar();
+    return;
+  }
+
+  if (tbAoSwathAnchor && insideRadar) {
+    let curX = mouseWorldX;
+    let curY = mouseWorldY;
+    if (isShiftKeyDown) {
+      [curX, curY] = constrainSquareRegion(tbAoSwathAnchor.x, tbAoSwathAnchor.y, curX, curY);
+    }
+    tbAoSwathBox = { x1: tbAoSwathAnchor.x, y1: tbAoSwathAnchor.y, x2: curX, y2: curY };
+    recomputeRegionZonal();
+    drawRadar();
+    return;
+  }
+
   if (draggedToolboxVertex && insideRadar) {
-    const geo = cartesianToGeodetic(mouseWorldX, mouseWorldY);
+    let targetX = mouseWorldX;
+    let targetY = mouseWorldY;
+    if (isShiftKeyDown && tbTransectWaypoints.length >= 2) {
+      const otherIdx = draggedToolboxVertex.index === 0 ? 1 : 0;
+      const other = tbTransectWaypoints[otherIdx];
+      const [sX, sY] = snapPointToAngleIncrement(other.xM, other.yM, mouseWorldX, mouseWorldY, 15);
+      targetX = sX;
+      targetY = sY;
+    }
+    const geo = cartesianToGeodetic(targetX, targetY);
     tbTransectWaypoints[draggedToolboxVertex.index] = {
-      xM: mouseWorldX,
-      yM: mouseWorldY,
+      xM: targetX,
+      yM: targetY,
       lng: geo.lonDeg,
       lat: geo.latDeg,
     };
@@ -16346,20 +18734,176 @@ window.addEventListener('mousemove', (e) => {
     return;
   }
 
+  if (tbObsDraggedHandle && insideRadar) {
+    const draft = obstacleEditor?.draft || [];
+    const targetObs = draft.find(o => o.id === tbObsSelectedId || o.id === obstacleEditor?.selectedId);
+    if (targetObs) {
+      if (tbObsDraggedHandle === 'CENTER' && tbObsDragOrigin) {
+        const dx = mouseWorldX - tbObsDragOrigin.x;
+        const dy = mouseWorldY - tbObsDragOrigin.y;
+        targetObs.xM += dx;
+        targetObs.yM += dy;
+        tbObsDragOrigin = { x: mouseWorldX, y: mouseWorldY };
+      } else if (tbObsDraggedHandle === 'V1' || tbObsDraggedHandle === 'V2') {
+        const ep = getObstacleEndpoints(targetObs);
+        const fixedPt = tbObsDraggedHandle === 'V1' ? ep.v2 : ep.v1;
+        let movingPt = { x: mouseWorldX, y: mouseWorldY };
+        if (isShiftKeyDown) {
+          movingPt = snapBarrierAngle(fixedPt, movingPt, 15);
+        }
+        const newCx = (fixedPt.x + movingPt.x) * 0.5;
+        const newCy = (fixedPt.y + movingPt.y) * 0.5;
+        const newLen = Math.max(20, Math.hypot(movingPt.x - fixedPt.x, movingPt.y - fixedPt.y));
+        const newRotDeg = (Math.atan2(movingPt.x - fixedPt.x, movingPt.y - fixedPt.y) * 180 / Math.PI + 360) % 360;
+
+        targetObs.xM = newCx;
+        targetObs.yM = newCy;
+        if (targetObs.shape === 'cone') {
+          targetObs.radiusM = newLen * 0.5;
+        } else {
+          targetObs.depthM = newLen;
+          targetObs.rotationDeg = newRotDeg;
+        }
+      }
+      syncObstacleFieldMirror(true);
+      recomputeCadObstacleAnalysis();
+      drawRadar();
+      return;
+    }
+  }
+
+  if (tbObsDrawingAnchor && insideRadar) {
+    let curPt = { x: mouseWorldX, y: mouseWorldY };
+    if (isShiftKeyDown) {
+      curPt = snapBarrierAngle(tbObsDrawingAnchor, curPt, 15);
+    }
+    tbObsRubberBandPoint = curPt;
+    recomputeCadObstacleAnalysis();
+    drawRadar();
+    return;
+  }
+
   if (!draggedEntity && !isPanning && insideRadar) {
-    if ((terrainToolMode === 'transect-2pt' || terrainToolMode === 'transect-poly') && tbTransectWaypoints.length >= 1) {
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+
+    if ((tbActiveMode === 'obstacle' || terrainToolMode === 'obstacle-place') && !tbObsDraggedHandle && !tbObsDrawingAnchor) {
+      const handleHit = findCadObstacleHandleHit(px, py, w, h);
+      if (handleHit) {
+        radarCanvas.style.cursor = handleHit.handle === 'CENTER' ? 'move' : 'crosshair';
+        return;
+      }
+    }
+
+    if ((terrainToolMode === 'transect-2pt' || terrainToolMode === 'measure') && tbTransectWaypoints.length === 0) {
+      tbActiveSnap = findMagneticSnapTarget(px, py, w, h, 15);
+      drawRadar();
+    } else if ((terrainToolMode === 'transect-2pt' || terrainToolMode === 'measure') && tbTransectWaypoints.length === 1) {
+      const wpA = tbTransectWaypoints[0];
+      if (isShiftKeyDown) {
+        const [snapX, snapY] = snapPointToAngleIncrement(wpA.xM, wpA.yM, mouseWorldX, mouseWorldY, 15);
+        const geo = cartesianToGeodetic(snapX, snapY);
+        tbRubberBandPoint = { x: snapX, y: snapY, lng: geo.lonDeg, lat: geo.latDeg, isAngleSnapped: true };
+        tbActiveSnap = null;
+      } else {
+        const snap = findMagneticSnapTarget(px, py, w, h, 15);
+        tbActiveSnap = snap;
+        if (snap) {
+          const geo = cartesianToGeodetic(snap.xM, snap.yM);
+          tbRubberBandPoint = { x: snap.xM, y: snap.yM, lng: geo.lonDeg, lat: geo.latDeg, snapLabel: snap.label };
+        } else {
+          const geo = cartesianToGeodetic(mouseWorldX, mouseWorldY);
+          tbRubberBandPoint = { x: mouseWorldX, y: mouseWorldY, lng: geo.lonDeg, lat: geo.latDeg };
+        }
+      }
+      recomputeRubberBandPreview(tbRubberBandPoint);
+      drawRadar();
+    } else if (terrainToolMode === 'transect-poly' && tbTransectWaypoints.length >= 1) {
       const geo = cartesianToGeodetic(mouseWorldX, mouseWorldY);
       tbRubberBandPoint = { x: mouseWorldX, y: mouseWorldY, lng: geo.lonDeg, lat: geo.latDeg };
       recomputeRubberBandPreview(tbRubberBandPoint);
       drawRadar();
+    } else if (terrainToolMode === 'idle' && tbActiveMode === 'transect' && tbTransectWaypoints.length >= 2) {
+      const pA = worldToScreen(tbTransectWaypoints[0].xM, tbTransectWaypoints[0].yM, w, h);
+      const pB = worldToScreen(tbTransectWaypoints[1].xM, tbTransectWaypoints[1].yM, w, h);
+      const segDx = pB.x - pA.x;
+      const segDy = pB.y - pA.y;
+      const segLenSq = segDx * segDx + segDy * segDy;
+      if (segLenSq > 0) {
+        const t = Math.max(0, Math.min(1, ((px - pA.x) * segDx + (py - pA.y) * segDy) / segLenSq));
+        const projX = pA.x + t * segDx;
+        const projY = pA.y + t * segDy;
+        const distPerp = Math.hypot(px - projX, py - projY);
+        if (distPerp <= 18) {
+          const totalDist = Math.hypot(tbTransectWaypoints[1].xM - tbTransectWaypoints[0].xM, tbTransectWaypoints[1].yM - tbTransectWaypoints[0].yM);
+          tbLineHover = {
+            t,
+            screenX: projX,
+            screenY: projY,
+            sM: t * totalDist,
+          };
+          if (tbTransectResult && tbTransectResult.samples.length > 0) {
+            const sampleIdx = Math.max(0, Math.min(tbTransectResult.samples.length - 1, Math.round(t * (tbTransectResult.samples.length - 1))));
+            if (sampleIdx !== tbHoveredSampleIdx) {
+              tbHoveredSampleIdx = sampleIdx;
+              updateToolboxTransectHoverUi();
+            }
+          }
+          drawRadar();
+        } else if (tbLineHover) {
+          tbLineHover = null;
+          drawRadar();
+        }
+      }
     } else if (terrainToolMode === 'idle' && tbActiveMode === 'transect' && tbTransectResult?.samples.length) {
       const nearestIdx = findNearestTransectSampleIndex(mouseWorldX, mouseWorldY, currentRadarRangeM * 0.03);
       if (nearestIdx !== tbHoveredSampleIdx) {
         tbHoveredSampleIdx = nearestIdx;
         updateToolboxTransectHoverUi();
       }
+    } else if (tbActiveMode === 'probe' || terrainToolMode === 'probe') {
+      const mastM = Math.max(1, Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2));
+      const simCtx = buildToolboxSimContext();
+      const acnPos = simCtx.acnPositionMslM || [0, 0, 5000];
+      const acnHeading = Number.isFinite(latestTelemetry?.acn_heading_deg)
+        ? latestTelemetry.acn_heading_deg
+        : (Number.isFinite(latestTelemetry?.acn_telemetry?.heading_rad)
+            ? ((latestTelemetry.acn_telemetry.heading_rad * 180 / Math.PI) % 360 + 360) % 360
+            : 0);
+
+      tbCursorProbeLive = evaluateCursorRfProbe(
+        { xM: mouseWorldX, yM: mouseWorldY },
+        mastM,
+        acnPos,
+        acnHeading,
+        (x, y) => sampleDemSafe(mainTerrainEngine, x, y).elevationM || 3500,
+        tbProbePinnedP1
+      );
+      updateProbeUiReadouts(tbCursorProbeLive);
+      drawRadar();
+    } else if (tbActiveMode === 'region' || terrainToolMode === 'region') {
+      const cornerHit = findAoSwathCornerHit(px, py, w, h);
+      if (cornerHit) {
+        radarCanvas.style.cursor = (cornerHit === 'NW' || cornerHit === 'SE') ? 'nwse-resize' : 'nesw-resize';
+      } else if (terrainToolMode === 'region') {
+        radarCanvas.style.cursor = 'crosshair';
+      } else {
+        radarCanvas.style.cursor = 'default';
+      }
+
+      if (tbAoSwathReport && tbAoSwathReport.cells) {
+        let hover = null;
+        for (const c of tbAoSwathReport.cells) {
+          if (mouseWorldX >= c.minX && mouseWorldX <= c.maxX && mouseWorldY >= c.minY && mouseWorldY <= c.maxY) {
+            hover = c;
+            break;
+          }
+        }
+        if (hover !== tbAoHoverCell) {
+          tbAoHoverCell = hover;
+          drawRadar();
+        }
+      }
     }
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
     const hoverCtx = getContextualMapContext();
     let hit = null, best = 14;
     if (mapLayerRegistry.getEffectiveVisibility('entities.groundNodes', hoverCtx)) {
@@ -16400,10 +18944,19 @@ window.addEventListener('mousemove', (e) => {
       const world = screenToWorld(px, py, w, h), toleranceM = 12 / getRadarGeometry(w, h).scale;
       obstacleHover = obstacleEditor.draft.some(obstacle => obstacleContainsPoint(obstacle, world.x, world.y, toleranceM));
     }
+    let handleHover = false;
+    if (tbActiveMode === 'transect' && tbTransectWaypoints.length >= 2) {
+      const pA = worldToScreen(tbTransectWaypoints[0].xM, tbTransectWaypoints[0].yM, w, h);
+      const pB = worldToScreen(tbTransectWaypoints[1].xM, tbTransectWaypoints[1].yM, w, h);
+      if (Math.hypot(px - pA.x, py - pA.y) <= 12 || Math.hypot(px - pB.x, py - pB.y) <= 12) {
+        handleHover = true;
+      }
+    }
     if (simTimelineController && simTimelineController.isHistoricalInspecting && hit !== null) {
       radarCanvas.style.cursor = 'not-allowed';
     } else {
-      radarCanvas.style.cursor = terrainToolMode !== 'idle' ? 'crosshair'
+      radarCanvas.style.cursor = handleHover ? 'grab'
+        : terrainToolMode !== 'idle' ? 'crosshair'
         : hit !== null || linkHit !== null || acnHover ? 'pointer'
         : obstacleEditor.mode === 'place' && !spatialLocked ? 'crosshair'
         : obstacleHover ? (spatialLocked ? 'pointer' : 'grab') : 'grab';
@@ -16451,6 +19004,78 @@ window.addEventListener('mousemove', (e) => {
 
 const finishRadarDrag = (e) => {
   const wasPanning = isPanning;
+  if (tbDraggedAoCorner) {
+    tbDraggedAoCorner = null;
+    recomputeRegionZonal();
+    drawRadar();
+  }
+  if (tbAoSwathAnchor) {
+    tbAoSwathAnchor = null;
+    terrainToolMode = 'idle';
+    refreshTerrainToolbox();
+    setTerrainToolStatus('AO Swath locked. Drag corner handles to resize, or deploy squad/relay.');
+    recomputeRegionZonal();
+    drawRadar();
+  }
+  if (tbObsDraggedHandle) {
+    if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+      tbObstacleHistory.pushState(obstacleEditor.draft);
+    }
+    tbObsDraggedHandle = null;
+    tbObsDragOrigin = null;
+    setTerrainToolStatus('Obstacle barrier updated.');
+    recomputeCadObstacleAnalysis();
+    renderObstacleInventoryList();
+    drawRadar();
+  }
+  if (tbObsDrawingAnchor) {
+    const pA = tbObsDrawingAnchor;
+    let pB = tbObsRubberBandPoint || { x: mouseWorldX, y: mouseWorldY };
+    if (isShiftKeyDown) {
+      pB = snapBarrierAngle(pA, pB, 15);
+    }
+    const dist = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+    const shapeMode = ($('tb-obs-shape-select')?.value || 'wall');
+    const preset = OBSTACLE_PRESETS[shapeMode] || OBSTACLE_PRESETS.wall;
+
+    if (typeof tbObstacleHistory !== 'undefined' && tbObstacleHistory) {
+      tbObstacleHistory.pushState(obstacleEditor.draft);
+    }
+
+    if (dist >= 30.0) {
+      const cx = (pA.x + pB.x) * 0.5;
+      const cy = (pA.y + pB.y) * 0.5;
+      const rotDeg = (Math.atan2(pB.x - pA.x, pB.y - pA.y) * 180.0 / Math.PI + 360.0) % 360.0;
+      obstacleEditor.create('cuboid', cx, cy);
+      obstacleEditor.updateSelected({
+        widthM: shapeMode === 'block' ? 100 : 35,
+        depthM: dist,
+        heightM: preset.defaultHeightM || 120,
+        rotationDeg: rotDeg,
+      });
+      tbObsSelectedId = obstacleEditor.selectedId;
+      setTerrainToolStatus(`CAD barrier (L=${Math.round(dist)}m @ ${rotDeg.toFixed(1)}°) extruded.`);
+    } else {
+      obstacleEditor.create(preset.shapeType, pA.x, pA.y);
+      if (preset.shapeType === 'cone') {
+        obstacleEditor.updateSelected({ radiusM: preset.defaultWidthM / 2, heightM: preset.defaultHeightM });
+      } else {
+        obstacleEditor.updateSelected({ widthM: preset.defaultWidthM, depthM: preset.defaultDepthM, heightM: preset.defaultHeightM, rotationDeg: 0 });
+      }
+      tbObsSelectedId = obstacleEditor.selectedId;
+      setTerrainToolStatus(`Obstacle [${preset.label}] placed at (${Math.round(pA.x)}, ${Math.round(pA.y)}) m.`);
+    }
+    tbObsDrawingAnchor = null;
+    tbObsRubberBandPoint = null;
+    terrainToolMode = 'idle';
+    syncObstacleFieldMirror(true);
+    refreshObstacleEditor();
+    renderObstacleInventoryList();
+    recomputeCadObstacleAnalysis();
+    refreshTerrainToolbox();
+
+    drawRadar();
+  }
   if (draggedToolboxVertex) {
     draggedToolboxVertex = null;
     recomputeTransect(false);
