@@ -114,7 +114,9 @@ const REGISTERED_SUITES = [
   { id: 'verify:geodetic-ruler', name: 'CAD/GIS Precision Geodetic & RF LoS Ruler (PGR-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionGeodeticRuler.ts'], category: 'ui' },
   { id: 'verify:cursor-probe', name: 'CAD/STK Precision Cursor RF Probe & Unit Spawner (PCP-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionCursorProbeTool2.ts'], category: 'ui' },
   { id: 'verify:ao-swath', name: 'CAD/QGIS Precision AO Swath & Dead-Zone Scanner (PAS-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionAoSwathTool3.ts'], category: 'ui' },
-  { id: 'verify:cad-obstacle', name: 'Precision CAD Obstacle Link-Slicer Engine (PCO-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionCadObstacleTool4.ts'], category: 'ui' }
+  { id: 'verify:cad-obstacle', name: 'Precision CAD Obstacle Link-Slicer Engine (PCO-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionCadObstacleTool4.ts'], category: 'ui' },
+  { id: 'verify:intuitive-toolbox', name: 'Intuitive Toolbox Right-Panel Docking & Ergonomic UX (ITU-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyIntuitiveToolboxUx.ts'], category: 'ui' },
+  { id: 'verify:ux-51-polish', name: 'Comprehensive 51-Point Tactical Digital Twin UX Polish (UXP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyComprehensive51PointUxPolish.ts'], category: 'ui' }
 ];
 
 // -----------------------------------------------------------------------------

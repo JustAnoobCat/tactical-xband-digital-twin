@@ -311,12 +311,12 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
         railRectH: railRect?.height ?? 0,
         maxRailRight,
         radarH: radarRect?.height ?? 0,
-        speedReadoutHidden: speedReadoutStyle ? speedReadoutStyle.width === '1px' && speedReadoutStyle.height === '1px' : false,
+        speedReadoutVisible: speedReadout ? speedReadoutStyle.display !== 'none' && !speedReadout.classList.contains('sr-only') : false,
         sub10Els,
         unlabeledControls,
       };
     });
-    assert.equal(chromeMetrics.speedReadoutHidden, true, 'Duplicate #sim-speed-readout must be visually hidden (.sr-only)');
+    assert.equal(chromeMetrics.speedReadoutVisible, true, '#sim-speed-readout must be visually displayed in monospace (not .sr-only)');
     assert.deepEqual(chromeMetrics.sub10Els, [], `Found visible DOM text < 10px: ${chromeMetrics.sub10Els.join(', ')}`);
     assert.deepEqual(chromeMetrics.unlabeledControls, [], `Unlabeled form/toolbox controls: ${chromeMetrics.unlabeledControls.join(', ')}`);
     if (viewport.width <= 1120 && viewport.width > 860) {
@@ -622,6 +622,7 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
     await page.click('#btn-author-tab-traj');
     assert.equal(await page.locator('#authoring-pane-traj').evaluate(el => el.classList.contains('active')), true, 'Flight Trajectory pane must activate');
 
+    await page.locator('details.trajectory-editor summary').click();
     await page.selectOption('#trajectory-mode', 'waypoints');
     await page.waitForSelector('#trajectory-place-point', { state: 'visible' });
     await page.click('#trajectory-place-point');

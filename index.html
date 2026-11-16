@@ -104,7 +104,7 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 .btn-close-toolbox:hover{background:var(--raised);color:var(--text);border-color:var(--line)}
 .terrain-toolbox-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .terrain-toolbox-row button{font-size:10px;padding:3px 6px}
-.terrain-toolbox-panel input, .terrain-toolbox-panel select, .terrain-toolbox-panel button, .terrain-toolbox-panel label{font-size:10px}
+.terrain-toolbox-panel input, .terrain-toolbox-panel select, .terrain-toolbox-panel button, .terrain-toolbox-panel label{font-size:12px}
 .tb-obs-row{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3px 6px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:3px;margin-bottom:3px;font-size:10px}
 .tb-obs-delete-btn{border:none;background:rgba(239,68,68,.25);color:#ef4444;border-radius:2px;padding:1px 5px;cursor:pointer;font-size:11px;line-height:1}
 .terrain-toolbox-status{color:#b3afa7;line-height:1.35}
@@ -117,6 +117,10 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 .map-node-tooltip .tip-title{font-weight:700;color:#faf8f4;margin-bottom:3px}.map-node-tooltip .tip-row{color:#b3afa7}.map-node-tooltip .tip-row b{color:#f2efe9;font-weight:500}
 .map-node-details{flex:none;width:270px;max-width:100%;background:rgba(23,26,31,.97);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto;padding:10px 12px;z-index:5;color:var(--text)}
 .map-node-details.is-empty,.map-node-details.is-closed{display:none!important}
+.map-node-details.is-empty .map-node-actions, .map-node-details.is-empty .node-rf-quick-toggles { display: none !important; }
+.seg button:disabled { opacity: 0.38; cursor: not-allowed; }
+#radar-container[data-tb-picking="true"] { box-shadow: inset 0 0 0 2px var(--hi-amber, #ffab00) !important; cursor: crosshair !important; }
+.diag-json-pre, #diag-raw-json-pre.diag-json-pre { max-height: 55vh; overflow-y: auto; }
 .map-node-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
 .btn-close-inspector{background:transparent;border:1px solid transparent;color:var(--muted);font-size:16px;cursor:pointer;padding:1px 6px;border-radius:4px;line-height:1}
 .btn-close-inspector:hover{background:var(--raised);color:var(--text);border-color:var(--line)}
@@ -573,6 +577,309 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     width: 88px;
   }
 }
+
+/* Scoped Styling for Docked Terrain Toolbox Inspector in .detail-viewport */
+#terrain-toolbox.terrain-toolbox-viewport {
+  position: relative;
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--hi-bg, #0b0f17);
+  box-sizing: border-box;
+  color: var(--hi-text-primary, #f1f5f9);
+  z-index: 4;
+}
+
+.tb-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hi-line-subtle, rgba(148, 163, 184, 0.14));
+}
+
+.tb-view-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tb-badge {
+  font-family: var(--hi-mono, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 7px;
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--hi-cyan, #00e5ff);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 4px;
+}
+
+.tb-btn-exit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(255, 42, 84, 0.12);
+  border: 1px solid rgba(255, 42, 84, 0.35);
+  color: #ff6b8b;
+  border-radius: 4px;
+  font-family: var(--hi-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tb-btn-exit:hover {
+  background: rgba(255, 42, 84, 0.25);
+  border-color: #ff2a54;
+  color: #ffffff;
+}
+
+#tb-step-guide-banner {
+  padding: 10px 14px;
+  background: rgba(23, 31, 48, 0.95);
+  border: 1px solid var(--hi-amber, #ffab00);
+  border-left: 4px solid var(--hi-amber, #ffab00);
+  border-radius: 5px;
+  font-family: var(--hi-mono, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--hi-amber-bright, #fbbf24);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* Override .terrain-toolbox-panel inside #terrain-toolbox for roomy full-width layout */
+#terrain-toolbox .terrain-toolbox-panel {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-shadow: none !important;
+  border: 1px solid var(--hi-line-subtle, rgba(148, 163, 184, 0.14)) !important;
+  background: var(--hi-surface, #101622) !important;
+  border-radius: 6px !important;
+  padding: 12px !important;
+  font-size: 12px !important;
+}
+
+#terrain-toolbox input,
+#terrain-toolbox select,
+#terrain-toolbox button,
+#terrain-toolbox label,
+#terrain-toolbox .terrain-toolbox-panel input,
+#terrain-toolbox .terrain-toolbox-panel select,
+#terrain-toolbox .terrain-toolbox-panel button,
+#terrain-toolbox .terrain-toolbox-panel label {
+  font-size: 12px !important;
+}
+
+#terrain-toolbox .terrain-toolbox-panel.is-collapsed {
+  display: none !important;
+}
+
+#terrain-toolbox[data-tb-picking="true"] .terrain-toolbox-panel,
+#terrain-toolbox[data-tb-picking="true"] .terrain-toolbox-drawer {
+  display: none !important;
+}
+
+.detail-viewport[data-tb-open="true"] > .tab-content {
+  display: none !important;
+}
+
+/* Override .terrain-toolbox-drawer inside #terrain-toolbox */
+#terrain-toolbox .terrain-toolbox-drawer {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-shadow: none !important;
+  border: 1px solid var(--hi-line-subtle, rgba(148, 163, 184, 0.14)) !important;
+  background: var(--hi-surface, #101622) !important;
+  border-radius: 6px !important;
+  padding: 12px !important;
+  font-size: 12px !important;
+}
+
+#terrain-toolbox input,
+#terrain-toolbox select,
+#terrain-toolbox button,
+#terrain-toolbox label,
+#terrain-toolbox .terrain-toolbox-panel input,
+#terrain-toolbox .terrain-toolbox-panel select,
+#terrain-toolbox .terrain-toolbox-panel button,
+#terrain-toolbox .terrain-toolbox-panel label {
+  font-size: 12px !important;
+}
+
+#terrain-toolbox .terrain-toolbox-drawer.is-collapsed {
+  display: none !important;
+}
+
+/* 4 Tool Tabs Layout */
+#terrain-toolbox .tb-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+#terrain-toolbox .tb-mode-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: var(--hi-surface, #101622);
+  border: 1px solid var(--hi-line-subtle, rgba(148, 163, 184, 0.14));
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+#terrain-toolbox .tb-mode-tab:hover {
+  background: var(--hi-raised, #161f30);
+  border-color: var(--hi-amber, #ffab00);
+}
+
+#terrain-toolbox .tb-mode-tab.active {
+  background: rgba(255, 171, 0, 0.12);
+  border-color: var(--hi-amber, #ffab00);
+}
+
+.tb-tool-title {
+  font-family: var(--hi-sans, sans-serif);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hi-text-bright, #ffffff);
+}
+
+.tb-tool-sub {
+  font-family: var(--hi-mono, monospace);
+  font-size: 9.5px;
+  color: var(--hi-text-muted, #94a3b8);
+  margin-top: 2px;
+}
+
+/* Floating 1-row HUD pill bar on Map */
+.map-active-tool-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(11, 15, 23, 0.92);
+  border: 1px solid var(--hi-line-strong, rgba(148, 163, 184, 0.28));
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+#terrain-toolbox-stack {
+  z-index: 25 !important;
+}
+
+#terrain-toolbox-stack .tb-picking-bar {
+  z-index: 30 !important;
+  pointer-events: auto !important;
+}
+
+#radar-container[data-tb-picking="true"] #map-active-tool-bar,
+#terrain-toolbox-stack[data-tb-picking="true"] ~ #map-active-tool-bar {
+  display: none !important;
+}
+
+.map-tool-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--hi-text-muted, #94a3b8);
+  font-family: var(--hi-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.map-tool-pill-btn:hover {
+  background: var(--hi-raised, #161f30);
+  color: var(--hi-text-bright, #ffffff);
+  border-color: var(--hi-line-subtle);
+}
+
+.map-tool-pill-btn.active {
+  background: rgba(255, 171, 0, 0.15);
+  border-color: var(--hi-amber, #ffab00);
+  color: var(--hi-amber-bright, #fbbf24);
+}
+
+.map-tool-exit {
+  color: #ff6b8b;
+  border: 1px solid rgba(255, 42, 84, 0.3);
+}
+
+.map-tool-exit:hover {
+  background: rgba(255, 42, 84, 0.25);
+  border-color: #ff2a54;
+  color: #ffffff;
+}
+
+.map-tool-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--hi-line-strong, rgba(148, 163, 184, 0.28));
+}
+
+/* Spacious Drawer Canvases */
+#terrain-toolbox #tb-transect-canvas,
+#terrain-toolbox #tb-region-canvas,
+#terrain-toolbox #tb-polar-canvas,
+#terrain-toolbox #tb-sweep-canvas {
+  height: 200px !important;
+  width: 100% !important;
+}
+
+#terrain-toolbox .tb-canvas-box {
+  height: 200px;
+  width: 100%;
+}
+
+/* 2-Column Metrics Grid with 13-15px values */
+#terrain-toolbox .tb-kv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+  font-size: 11px;
+}
+
+#terrain-toolbox .tb-kv-grid span:nth-child(even) {
+  font-family: var(--hi-mono, monospace);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--hi-text-bright, #ffffff);
+}
 </style>
 <link rel="stylesheet" href="./frontend/c2-console-theme.css">
 </head>
@@ -595,7 +902,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <div class="deck-group">
       <span class="deck-label">Playback speed</span>
       <div class="sim-speed-ctrl" role="group" aria-label="Simulation speed controller">
-        <span id="sim-speed-readout" class="sim-speed-readout sr-only" title="Playback speed multiplier — changes frame cadence only, not aircraft airspeed">1.0×</span>
+        <span id="sim-speed-readout" class="sim-speed-readout" style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);min-width:30px;display:inline-block;" title="Playback speed multiplier — changes frame cadence only, not aircraft airspeed">1.0×</span>
         <span id="sim-achieved-readout" class="sim-speed-achieved" title="Achieved simulation rate" style="display:none;"></span>
         <input type="range" id="sim-speed-slider" class="sim-speed-slider" min="0.1" max="10" step="0.05" value="1.0" aria-label="Simulation speed slider" title="Playback speed (0.1×–10×) — changes frame cadence only, not aircraft airspeed" oninput="onSpeedSliderInput(this.value)">
         <input type="number" id="sim-speed-input" class="sim-speed-input" min="0.1" max="10" step="0.05" value="1.0" aria-label="Simulation speed numeric entry" title="Playback speed (0.1×–10×) — changes frame cadence only, not aircraft airspeed" onchange="onSpeedNumInput(this.value)" oninput="onSpeedNumInput(this.value)">
@@ -679,7 +986,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <svg viewBox="0 0 16 16" width="12" height="12" style="pointer-events:none;" aria-hidden="true"><line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" stroke-width="2"/></svg>
           </button>
           <button id="timeline-btn-fit" class="btn btn-sm" title="Fit Horizon (60s)" aria-label="Fit 60s Horizon">Fit 60s</button>
-          <button id="timeline-btn-export-csv" class="btn btn-sm" title="Export CSV" aria-label="Export CSV">CSV</button>
+          <button id="timeline-btn-export-csv" class="btn btn-sm" title="Export 60-second rolling telemetry history as CSV" aria-label="Export 60-second rolling telemetry history as CSV">⬇ Export CSV</button>
           <button id="timeline-btn-toggle-expand" class="btn btn-sm btn-icon" title="Expand Frame Inspector ⤢" aria-label="Expand Frame Inspector">
             <svg viewBox="0 0 16 16" width="12" height="12" style="pointer-events:none;" aria-hidden="true"><polygon points="3,3 7,3 5,5 8,8 7,9 4,6 2,8" fill="currentColor"/><polygon points="13,13 9,13 11,11 8,8 9,7 12,10 14,8" fill="currentColor"/></svg>
           </button>
@@ -698,12 +1005,286 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   <section class="detail-viewport" id="detail-viewport" aria-label="Selected workspace">
   <div class="detail-status-strip" aria-label="Live terminal health and assessment">
     <div class="health-tally-strip" aria-label="Network terminal health summary">
-      <div class="health-chip is-sage"><span>Connected</span><b id="tally-connected">0</b></div>
-      <div class="health-chip is-ochre"><span>Degraded</span><b id="tally-degraded">0</b></div>
-      <div class="health-chip is-vermilion"><span>Blocked</span><b id="tally-blocked">0</b></div>
-      <div class="health-chip is-ash"><span>Outage / Unk</span><b id="tally-outage">0</b></div>
+      <div class="health-chip is-sage" role="button" tabindex="0" title="Click to inspect terminals in Terminals tab" style="cursor:pointer"><span>Connected</span><b id="tally-connected">0</b></div>
+      <div class="health-chip is-ochre" role="button" tabindex="0" title="Click to inspect terminals in Terminals tab" style="cursor:pointer"><span>Degraded</span><b id="tally-degraded">0</b></div>
+      <div class="health-chip is-vermilion" role="button" tabindex="0" title="Click to inspect terminals in Terminals tab" style="cursor:pointer"><span>Blocked</span><b id="tally-blocked">0</b></div>
+      <div class="health-chip is-ash" role="button" tabindex="0" title="Click to inspect terminals in Terminals tab" style="cursor:pointer"><span>Outage / Unk</span><b id="tally-outage">0</b></div>
     </div>
     <div class="situation-strip" id="situation-strip"><strong>Live assessment</strong><span id="overview-narrative" title="Telemetry synchronized. Watching terrain-aware links, terminal health, and delivery pressure.">Telemetry synchronized. Watching terrain-aware links, terminal health, and delivery pressure.</span><button id="btn-narrative-expand" class="btn-narrative-expand" type="button" aria-expanded="false" aria-controls="overview-narrative" title="Expand or collapse live assessment" aria-label="Expand or collapse live assessment"><svg viewBox="0 0 16 16" width="12" height="12" style="pointer-events:none;" aria-hidden="true"><path d="M3.5 6L8 10.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+  </div>
+
+  <div id="terrain-toolbox" class="terrain-toolbox-viewport" style="display:none;" aria-label="Terrain Toolbox Inspector">
+    <div class="tb-view-header">
+      <div class="tb-view-header-title">
+        <span class="tb-badge">TERRAIN TOOLBOX</span>
+        <h2 id="tb-active-tool-title" style="margin:0;font-size:14px;color:var(--hi-text-bright, #ffffff);">Measure Line &amp; LoS</h2>
+      </div>
+      <div class="tb-view-header-actions">
+        <button id="terrain-toolbox-close" class="tb-btn-exit" type="button" title="Exit Tool (Esc)" aria-label="Exit Tool">✕ Exit Tool (Esc)</button>
+      </div>
+    </div>
+    <div id="tb-step-guide-banner" class="tb-step-guide-banner" role="status" aria-live="polite">
+      STEP 1 OF 2: Click anywhere on the map (or click a Node) to set Start Point [A].
+    </div>
+    <div id="terrain-toolbox-panel" class="terrain-toolbox-panel is-collapsed" aria-label="Terrain toolbox">
+      <div class="terrain-toolbox-row">
+        <strong>Terrain Toolbox</strong>
+        <span id="tb-span-readout" class="tb-chip">Span: 120.0 km</span>
+        <button id="tb-navigate-btn" type="button" title="Return map pointer to navigate mode">Nav</button>
+        <button id="terrain-toolbox-close-btn" class="btn-close-toolbox" type="button" title="Collapse Terrain Toolbox" aria-label="Collapse Terrain Toolbox">×</button>
+      </div>
+      <div class="tb-mode-tabs" role="tablist" aria-label="Terrain toolbox modes">
+        <button type="button" class="tb-mode-tab" data-tb-mode="dem" id="tb-tool-dem" role="tab" aria-selected="false">
+          <span class="tb-tool-title">⛰ Terrain Navigate</span>
+          <span class="tb-tool-sub">Pan, zoom &amp; inspect</span>
+        </button>
+        <button type="button" class="tb-mode-tab active" data-tb-mode="transect" id="tb-tool-transect" role="tab" aria-selected="true">
+          <span class="tb-tool-title">📏 Measure Line &amp; LoS</span>
+          <span class="tb-tool-sub">Distance, Angle &amp; Sightline</span>
+        </button>
+        <button type="button" class="tb-mode-tab" data-tb-mode="probe" id="tb-tool-probe" role="tab" aria-selected="false">
+          <span class="tb-tool-title">📍 Signal Probe &amp; Spawn</span>
+          <span class="tb-tool-sub">Spot Signal &amp; Place Unit</span>
+        </button>
+        <button type="button" class="tb-mode-tab" data-tb-mode="region" id="tb-tool-region" role="tab" aria-selected="false">
+          <span class="tb-tool-title">⬚ Area Coverage Scan</span>
+          <span class="tb-tool-sub">Scan Valley &amp; Peaks</span>
+        </button>
+        <button type="button" class="tb-mode-tab" data-tb-mode="obstacle" id="tb-tool-obstacle" role="tab" aria-selected="false">
+          <span class="tb-tool-title">🧱 Build 3D Barrier</span>
+          <span class="tb-tool-sub">Draw Wall to Block Links</span>
+        </button>
+      </div>
+
+      <!-- Mode 1: DEM & Terrain Navigation -->
+      <div class="tb-mode-pane" id="tb-pane-dem" data-tb-pane="dem">
+        <div class="terrain-toolbox-row">
+          <button id="terrain-fit-btn" type="button" title="Fit active DEM bounds">Fit DEM</button>
+          <button id="terrain-fit-network-btn" type="button" title="Fit active ACN and ground terminals">Fit Network</button>
+          <button id="terrain-zoom-out-btn" type="button" title="Zoom out">−</button>
+          <button id="terrain-zoom-in-btn" type="button" title="Zoom in">+</button>
+        </div>
+        <div class="terrain-toolbox-row">
+          <label class="tool-label" for="tb-backdrop-mode">Backdrop</label>
+          <select id="tb-backdrop-mode" class="tb-input-sm">
+            <option value="relief">Relief</option>
+            <option value="slope">Slope (°)</option>
+            <option value="ridge">Ridge Crest</option>
+          </select>
+          <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-toggle-dem-layer" checked> DEM</label>
+          <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-toggle-contours-layer"> Ridges</label>
+        </div>
+        <div id="tb-dem-provenance" class="tb-kv-grid"></div>
+        <div id="tb-outside-dem-badge" class="outside-dem-alert" hidden>OUTSIDE DEM COVERAGE</div>
+      </div>
+
+      <!-- Mode 2: Transect & Polyline RF Profiler -->
+      <div class="tb-mode-pane" id="tb-pane-transect" data-tb-pane="transect" hidden>
+        <div class="terrain-toolbox-row">
+          <button id="terrain-measure-btn" type="button" aria-label="Measure Line &amp; LoS Transect">📏 Measure Line</button>
+          <button id="btn-toggle-ruler-ticks" type="button" aria-label="Toggle Ruler Scale Divisions on Map" aria-pressed="false">📏 Show Scale Divisions: OFF</button>
+          <button id="tb-transect-poly-btn" type="button" aria-label="Polyline Transect">Polyline</button>
+          <button id="tb-transect-finish-btn" type="button" aria-label="Finish Polyline Transect" disabled>Done</button>
+          <button id="terrain-measure-clear-btn" type="button" aria-label="Clear Transect">Clear</button>
+        </div>
+        <div class="terrain-toolbox-row">
+          <label class="tool-label" for="tb-transect-tx-mast">TX Mast (m AGL)</label>
+          <input id="tb-transect-tx-mast" class="tb-input-sm" type="number" min="1" max="2000" step="1" value="10" style="width:48px" aria-label="TX Mast Height (m AGL)">
+          <label class="tool-label" for="tb-transect-rx-mast">RX Mast (m AGL)</label>
+          <input id="tb-transect-rx-mast" class="tb-input-sm" type="number" min="1" max="2000" step="1" value="2" style="width:48px" aria-label="RX Mast Height (m AGL)">
+        </div>
+        <div class="terrain-toolbox-row">
+          <label class="tool-label" for="tb-transect-height-a">Point A mode</label>
+          <select id="tb-transect-height-a" class="tb-input-sm" aria-label="Transect Vertex A Height Mode">
+            <option value="ground_2">Ground +2m</option>
+            <option value="ground_15">Ground +15m</option>
+            <option value="acn_alt">ACN Alt</option>
+          </select>
+          <label class="tool-label" for="tb-transect-height-b">Point B mode</label>
+          <select id="tb-transect-height-b" class="tb-input-sm" aria-label="Transect Vertex B Height Mode">
+            <option value="ground_2">Ground +2m</option>
+            <option value="ground_15">Ground +15m</option>
+            <option value="acn_alt">ACN Alt</option>
+          </select>
+        </div>
+        <div class="terrain-toolbox-row">
+          <select id="tb-transect-node-type" class="tb-input-sm" aria-label="Transect terminal link profile" title="Terminal link profile">
+            <option value="soldier">Soldier (4W)</option>
+            <option value="mcp">MCP (20W)</option>
+          </select>
+          <select id="tb-transect-k" class="tb-input-sm" aria-label="Effective Earth k-factor" title="Effective Earth k-factor">
+            <option value="1.3333333333">k = 4/3</option>
+            <option value="1.15">k = 1.15</option>
+            <option value="1.0">k = 1.0</option>
+            <option value="0.85">k = 0.85</option>
+            <option value="0.6666666667">k = 2/3</option>
+          </select>
+          <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-transect-obstacles" checked aria-label="Include 3D Obstacles in Transect"> 3D Obs</label>
+        </div>
+        <div class="tb-kv-grid" style="margin-top:4px">
+          <span>Min F1 Clearance</span><span id="tb-transect-fresnel">-- m (100%)</span>
+          <span>ITU-R P.526 Diff</span><span id="tb-transect-diffraction">0.0 dB</span>
+          <span>Est. 8GHz SNR/MOD</span><span id="tb-transect-snr">-- dB / --</span>
+          <span>Azimuth / Back-Az</span><span id="tb-transect-azimuth">--° / --°</span>
+          <span>Vert Angle / Grade</span><span id="tb-transect-vert-angle">--° / --%</span>
+          <span>Blocking Peak</span><span id="tb-transect-blocking-peak">--</span>
+        </div>
+        <div class="terrain-toolbox-row" style="margin-top:6px">
+          <button id="btn-transect-swap-ab" type="button" aria-label="Swap Point A and Point B Direction" style="flex:1">⇄ Swap A ↔ B</button>
+          <button id="btn-transect-spawn-peak-relay" type="button" aria-label="Spawn Relay Terminal at Blocking Ridge Peak" class="primary" style="flex:1.4">▲ Spawn Relay on Peak</button>
+        </div>
+      </div>
+
+      <!-- Mode 3: Site Probe & Altitude Sweep -->
+      <div class="tb-mode-pane" id="tb-pane-probe" data-tb-pane="probe" hidden>
+        <div class="terrain-toolbox-row">
+          <button id="tb-probe-pick-btn" type="button" aria-label="Pick Probe Site on Map">Pick Probe Site</button>
+          <button id="tb-probe-clear-btn" type="button" aria-label="Clear Probe Site">Clear</button>
+        </div>
+        <div class="terrain-toolbox-row">
+          <label class="tool-label" for="tb-probe-mast-input">Mast(m)</label>
+          <input id="tb-probe-mast-input" class="tb-input-sm" type="number" min="1" max="200" step="1" value="2" style="width:48px" aria-label="Probe Antenna Mast Height in meters AGL">
+          <label class="tool-label" for="tb-probe-agl">AGL(m)</label>
+          <input id="tb-probe-agl" class="tb-input-sm" type="number" min="0" max="500" step="1" value="2" style="width:48px" aria-label="Probe Terminal AGL">
+          <label class="tool-label" for="tb-probe-radius">R(km)</label>
+          <input id="tb-probe-radius" class="tb-input-sm" type="number" min="5" max="60" step="1" value="24" style="width:46px" aria-label="Probe Viewshed Radius">
+          <select id="tb-probe-target" class="tb-input-sm" aria-label="Probe viewshed target height" title="Viewshed target height">
+            <option value="ground_agl">Gnd +2m</option>
+            <option value="acn_alt">ACN Alt</option>
+          </select>
+        </div>
+        <div class="terrain-toolbox-row">
+          <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-probe-obstacles" checked aria-label="Include 3D Obstacles in Probe"> 3D Obs</label>
+          <label class="tool-label" for="tb-sweep-target">Sweep</label>
+          <select id="tb-sweep-target" class="tb-input-sm" aria-label="Probe Sweep Target">
+            <option value="probe">Probe</option>
+            <option value="region">Region</option>
+            <option value="nodes">Nodes</option>
+          </select>
+        </div>
+        <div class="terrain-toolbox-row" style="margin-top:4px">
+          <label class="tool-label" for="tb-probe-unit-select">Deploy Type</label>
+          <select id="tb-probe-unit-select" class="tb-input-sm" style="flex:1" aria-label="Unit Type to Deploy at Probe Point">
+            <option value="soldier">Soldier Terminal (30 dBm)</option>
+            <option value="mcp">Mobile Command Post [MCP] (40 dBm)</option>
+            <option value="jammer">Relocate EW Jammer Here</option>
+          </select>
+        </div>
+        <div class="terrain-toolbox-row" style="margin-top:4px">
+          <button id="btn-probe-snap-best" type="button" aria-label="Snap Probe to Highest SINR Peak within 2 km" style="width:100%">▲ Snap to Best Signal Peak (2 km)</button>
+        </div>
+        <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-cyan, #00e5ff)">Virtual Terminal Link to ACN</div>
+        <div class="tb-kv-grid">
+          <span>ACN Slant Range</span><span id="tb-probe-acn-range">-- km</span>
+          <span>Elevation Angle</span><span id="tb-probe-acn-el">--°</span>
+          <span>Line-of-Sight</span><span id="tb-probe-acn-los">--</span>
+          <span>Est. 8 GHz SINR</span><span id="tb-probe-acn-sinr">-- dB</span>
+          <span>Supported MODCOD</span><span id="tb-probe-acn-modcod">--</span>
+          <span>Horizon Mask / Sky</span><span id="tb-probe-horizon-mask">--° / --%</span>
+          <span>Sector &amp; Boresight</span><span id="tb-probe-sector-bore">--</span>
+          <span>Vs Pinned [P1]</span><span id="tb-probe-delta-pin">--</span>
+        </div>
+        <div class="terrain-toolbox-row" style="margin-top:6px">
+          <button id="tb-probe-spawn-node" type="button" aria-label="Spawn Ground Terminal at Probed Coordinate" class="primary" style="width:100%">+ Spawn Terminal at Probe Point</button>
+        </div>
+      </div>
+
+      <!-- Mode 4: Region Zonal & Precision AO Swath Scanner -->
+      <div class="tb-mode-pane" id="tb-pane-region" data-tb-pane="region" hidden>
+        <div class="terrain-toolbox-row">
+          <button id="terrain-region-btn" type="button" aria-label="Draw Region on Map">Draw region</button>
+          <button id="terrain-region-finish-btn" type="button" aria-label="Finish Drawing Region" disabled>Finish</button>
+          <button id="terrain-region-cancel-btn" type="button" aria-label="Cancel Region Drawing" disabled>Cancel</button>
+          <span id="tb-region-live-area" class="tb-chip">Area: --</span>
+        </div>
+        <div id="terrain-toolbox-regions" class="terrain-toolbox-list" aria-label="Drawn regions"></div>
+        <div class="terrain-toolbox-row">
+          <button id="tb-bridge-a-btn" type="button" aria-label="Pick Bridge Endpoint A">Pick A</button>
+          <button id="tb-bridge-b-btn" type="button" aria-label="Pick Bridge Endpoint B">Pick B</button>
+          <label class="tool-label" for="tb-bridge-agl">AGL</label>
+          <input id="tb-bridge-agl" class="tb-input-sm" type="number" min="1" max="500" step="1" value="15" style="width:44px" aria-label="Bridge Relay AGL">
+          <button id="tb-bridge-find-btn" type="button" aria-label="Find Joint Relay Bridge" disabled>Find Bridge</button>
+          <button id="tb-bridge-clear-btn" type="button" aria-label="Clear Joint Relay Bridge">Clear</button>
+        </div>
+        <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-amber, #ffab00)">Precision AO Swath &amp; RF Matrix</div>
+        <div class="tb-kv-grid">
+          <span>AO Dimensions</span><span id="tb-region-dimensions">-- km × -- km | -- km @ --°</span>
+          <span>AO Bounds</span><span id="tb-region-bounds">--</span>
+          <span>AO Area</span><span id="tb-region-area">-- km²</span>
+          <span>Local Summit ▲</span><span id="tb-region-summit">-- m @ (--, --)</span>
+          <span>Valley Floor ▼</span><span id="tb-region-valley-floor">-- m MSL (ΔZ -- m)</span>
+          <span>Mean / Min / Max Elev</span><span id="tb-region-mean">-- m</span>
+          <span>Min / Max Range</span><span id="tb-region-minmax">-- / -- m</span>
+          <span>Elev StdDev / TRI</span><span id="tb-region-std">-- m</span>
+          <span>Ruggedness / Slope</span><span id="tb-region-ruggedness">TRI -- m / --°</span>
+          <span>ACN LoS Coverage</span><span id="tb-region-los-pct">--% (0/64)</span>
+          <span>SINR &amp; Outage</span><span id="tb-region-sinr-stats">-- dB | Dead-Zone --%</span>
+        </div>
+        <div class="terrain-toolbox-row" style="margin-top:6px;gap:4px;flex-direction:column;">
+          <button id="btn-region-deploy-squad" type="button" aria-label="Auto-Deploy 4-Node Tactical Squad in Selected AO" class="primary" style="width:100%">✚ Auto-Deploy 4-Node Squad in AO</button>
+          <button id="btn-region-spawn-summit-relay" type="button" aria-label="Spawn MCP Relay on AO Summit Peak" style="width:100%">▲ Spawn MCP Relay on AO Summit Peak</button>
+        </div>
+        <canvas id="tb-region-canvas" width="280" height="70" style="display:none;width:100%;border-radius:3px;"></canvas>
+      </div>
+
+      <!-- Mode 5: 3D Obstacles & Excalidraw Ergonomics -->
+      <div class="tb-mode-pane" id="tb-pane-obstacle" data-tb-pane="obstacle" hidden>
+        <div class="terrain-toolbox-row">
+          <label class="tool-label" for="tb-obs-shape-select">Shape</label>
+          <select id="tb-obs-shape-select" class="tb-input-sm" aria-label="Obstacle Geometry Shape">
+            <option value="wall">Ridge Wall (Segment)</option>
+            <option value="block">Bunker / Block (Thick Barrier)</option>
+            <option value="peak">Peak / Dome (Prominence)</option>
+          </select>
+        </div>
+        <div class="terrain-toolbox-row">
+          <label class="tool-label" for="tb-obs-material-select">Material</label>
+          <select id="tb-obs-material-select" class="tb-input-sm" aria-label="Obstacle RF Material Profile">
+            <option value="granite">Alpine Granite (Opaque Knife-Edge)</option>
+            <option value="concrete">Reinforced Concrete (35 dB Cap)</option>
+            <option value="foliage">Dense Conifer Foliage (ITU-R P.833 0.25 dB/m)</option>
+          </select>
+        </div>
+        <div class="terrain-toolbox-row">
+          <button id="tb-obs-place-btn" type="button" aria-label="Place Obstacle on Map">🗺 Click to Place</button>
+          <button id="tb-obs-undo" type="button" aria-label="Undo Obstacle Action" disabled>Undo</button>
+          <button id="tb-obs-redo" type="button" aria-label="Redo Obstacle Action" disabled>Redo</button>
+          <button id="tb-obs-clear-btn" type="button" aria-label="Clear All Obstacles">Clear</button>
+        </div>
+
+        <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-amber, #ffab00)">CAD Barrier &amp; 3D Link Slicer</div>
+        <div class="tb-kv-grid">
+          <span>CAD Barrier</span><span id="tb-obs-cad-metrics">Length: — m · Bearing: —° · Crest: — m MSL</span>
+          <span>3D Link Slice</span><span id="tb-obs-slice-summary">Intersected: — · Slicing 0 / Overflying 0</span>
+        </div>
+        <div class="terrain-toolbox-row" style="margin-top:4px;">
+          <button id="btn-obs-auto-height" type="button" aria-label="Auto-Match Barrier Height to Slice Intersected 3D Links" style="width:100%">⚡ Auto-Size Height to Slice Links</button>
+        </div>
+
+        <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-cyan, #00e5ff)">One-Click Node Link Slicer</div>
+        <div class="terrain-toolbox-row">
+          <label class="tool-label" for="tb-obs-target-node-select">Target</label>
+          <select id="tb-obs-target-node-select" class="tb-input-sm" aria-label="Select Ground Node Link to Block" style="flex:1;">
+            <option value="none">Select Ground Node…</option>
+          </select>
+        </div>
+        <div class="terrain-toolbox-row" style="margin-top:4px;">
+          <button id="btn-obs-slice-node-link" type="button" aria-label="Auto-Drop Perpendicular Barrier Across Selected Node Link" class="primary" style="width:100%">✂ Drop Ridge Across Node's Link</button>
+        </div>
+
+        <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--text, #f2efe9)">Obstacle Inventory</div>
+        <div id="tb-obs-list" class="terrain-toolbox-list" aria-label="Obstacle Inventory List">
+          <span class="terrain-toolbox-status">No obstacles placed.</span>
+        </div>
+      </div>
+
+      <div id="terrain-toolbox-status" class="terrain-toolbox-status">Tools ready. Coordinates remain geographic.</div>
+      <div id="tb-3d-scope-note" class="tb-3d-scope-note" hidden>2D / Geo only — switch to 2D Map (Radar or MapLibre) for Terrain Toolbox analysis.</div>
+    </div>
+
+    <div id="terrain-toolbox-drawer" class="terrain-toolbox-drawer is-collapsed" aria-label="Terrain toolbox analysis drawer">
+      <div id="tb-drawer-content"></div>
+    </div>
   </div>
 
   <!-- ===== OVERVIEW ===== -->
@@ -747,8 +1328,8 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               </div>
             </div>
             <div class="tool-utility-cluster">
-              <button id="toggle-viewshed-heatmap" type="button" aria-pressed="false" aria-label="Toggle Real-Time X-Band SINR Viewshed Heatmap" onclick="toggleViewshedHeatmap()" title="Toggle Real-Time Polar X-Band SINR Viewshed Heatmap">SINR Map</button>
-              <span class="map-live-dot" aria-hidden="true"></span>
+              <button id="toggle-viewshed-heatmap" type="button" aria-pressed="false" aria-label="Toggle Real-Time X-Band SINR Viewshed Heatmap" onclick="toggleViewshedHeatmap()" title="Signal-to-Interference+Noise Ratio coverage heatmap across terrain">SINR Map</button>
+              <span class="map-live-dot" role="status" aria-label="Live telemetry feed active"></span>
               <span class="map-chrome-mode" id="map-chrome-mode-badge">Live picture</span>
             </div>
           </div>
@@ -757,20 +1338,20 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <div class="tool-group">
                 <span class="tool-label">Range</span>
                 <div class="seg">
-                  <button id="zoom-30" onclick="setRadarRange(30000)">30 km</button>
-                  <button id="zoom-60" class="active" onclick="setRadarRange(60000)">60 km</button>
-                  <button id="zoom-100" onclick="setRadarRange(100000)">100 km</button>
-                  <button id="zoom-200" onclick="setRadarRange(200000)">200 km</button>
-                  <button onclick="centerMapOnACN()" title="Re-center on the airborne relay">Center</button>
+                  <button id="zoom-30" data-range="30000" onclick="setRadarRange(30000)">30 km</button>
+                  <button id="zoom-60" data-range="60000" class="active" onclick="setRadarRange(60000)">60 km</button>
+                  <button id="zoom-100" data-range="100000" onclick="setRadarRange(100000)">100 km</button>
+                  <button id="zoom-200" data-range="200000" onclick="setRadarRange(200000)">200 km</button>
+                  <button id="btn-center" onclick="centerMapOnACN()" title="Re-center on the airborne relay">Center</button>
                 </div>
               </div>
               <span class="sep" aria-hidden="true"></span>
               <div class="tool-group">
                 <span class="tool-label">Edit</span>
                 <div class="seg">
-                  <button id="obstacle-map-tool" type="button" aria-pressed="false" title="Select and move obstacle drafts on the map">Obstacle tool: OFF</button>
+                  <button id="obstacle-map-tool" type="button" aria-pressed="false" title="Open 3D Barrier tool in Terrain Toolbox">🧱 Edit Obstacles</button>
                 </div>
-                <button id="btn-spatial-lock" type="button" aria-pressed="false" onclick="toggleSpatialLock()" title="Prevent spatial scenario edits while locked">Spatial lock: OFF</button>
+                <button id="btn-spatial-lock" type="button" aria-pressed="false" onclick="toggleSpatialLock()" title="Lock or unlock scenario spatial edits">🔓 Lock Scenario</button>
               </div>
             </div>
             <div class="tool-utility-cluster">
@@ -793,6 +1374,14 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div id="maplibre-map" style="position:absolute;inset:0"></div>
           </div>
           <div id="map-node-tooltip" class="map-node-tooltip" role="tooltip" aria-live="polite"></div>
+          <div id="map-active-tool-bar" class="map-active-tool-bar" style="display:none;" role="toolbar" aria-label="Active map tool selector" aria-live="polite">
+            <button type="button" class="map-tool-pill-btn active" data-map-tool="transect" id="tb-bar-transect" tabindex="0" title="Measure Line &amp; LoS">📏 Measure Line</button>
+            <button type="button" class="map-tool-pill-btn" data-map-tool="probe" id="tb-bar-probe" tabindex="0" title="Signal Probe &amp; Spawn">📍 Signal Probe</button>
+            <button type="button" class="map-tool-pill-btn" data-map-tool="region" id="tb-bar-region" tabindex="0" title="Area Coverage Scan">⬚ Area Scan</button>
+            <button type="button" class="map-tool-pill-btn" data-map-tool="obstacle" id="tb-bar-obstacle" tabindex="0" title="Build 3D Barrier">🧱 3D Barrier</button>
+            <span class="map-tool-sep" aria-hidden="true"></span>
+            <button type="button" class="map-tool-pill-btn map-tool-exit" id="tb-bar-exit" tabindex="0" title="Exit Tool (Escape)" aria-label="Exit Tool">✕ Exit Tool (Esc)</button>
+          </div>
         <div id="terrain-toolbox-stack" class="terrain-toolbox-stack" data-tb-expanded="false" data-tb-picking="false">
           <div class="tb-icon-rail" role="toolbar" aria-label="Terrain toolbox quick modes">
             <button id="terrain-toolbox-toggle-btn" class="terrain-toolbox-toggle-btn tb-rail-toggle" type="button" title="Expand or collapse Terrain Toolbox" aria-label="Terrain Toolbox" aria-expanded="false">
@@ -823,249 +1412,6 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <button id="tb-picking-finish-btn" type="button" class="primary" hidden>Finish</button>
               <button id="tb-picking-cancel-btn" type="button">Cancel</button>
             </div>
-            <div id="terrain-toolbox-panel" class="terrain-toolbox-panel is-collapsed" aria-label="Terrain toolbox">
-            <div class="terrain-toolbox-row">
-              <strong>Terrain Toolbox</strong>
-              <span id="tb-span-readout" class="tb-chip">Span: 120.0 km</span>
-              <button id="tb-navigate-btn" type="button" title="Return map pointer to navigate mode">Nav</button>
-              <button id="terrain-toolbox-close-btn" class="btn-close-toolbox" type="button" title="Collapse Terrain Toolbox" aria-label="Collapse Terrain Toolbox">×</button>
-            </div>
-            <div class="tb-mode-tabs" role="tablist" aria-label="Terrain toolbox modes">
-              <button type="button" class="tb-mode-tab active" data-tb-mode="dem" role="tab" aria-selected="true">DEM</button>
-              <button type="button" class="tb-mode-tab" data-tb-mode="transect" role="tab" aria-selected="false">Transect</button>
-              <button type="button" class="tb-mode-tab" data-tb-mode="probe" role="tab" aria-selected="false">Probe</button>
-              <button type="button" class="tb-mode-tab" data-tb-mode="region" role="tab" aria-selected="false">Region</button>
-              <button type="button" class="tb-mode-tab" data-tb-mode="obstacle" role="tab" aria-selected="false">Obstacles</button>
-            </div>
-
-            <!-- Mode 1: DEM & Terrain Navigation -->
-            <div class="tb-mode-pane" id="tb-pane-dem" data-tb-pane="dem">
-              <div class="terrain-toolbox-row">
-                <button id="terrain-fit-btn" type="button" title="Fit active DEM bounds">Fit DEM</button>
-                <button id="terrain-fit-network-btn" type="button" title="Fit active ACN and ground terminals">Fit Network</button>
-                <button id="terrain-zoom-out-btn" type="button" title="Zoom out">−</button>
-                <button id="terrain-zoom-in-btn" type="button" title="Zoom in">+</button>
-              </div>
-              <div class="terrain-toolbox-row">
-                <label class="tool-label" for="tb-backdrop-mode">Backdrop</label>
-                <select id="tb-backdrop-mode" class="tb-input-sm">
-                  <option value="relief">Relief</option>
-                  <option value="slope">Slope (°)</option>
-                  <option value="ridge">Ridge Crest</option>
-                </select>
-                <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-toggle-dem-layer" checked> DEM</label>
-                <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-toggle-contours-layer"> Ridges</label>
-              </div>
-              <div id="tb-dem-provenance" class="tb-kv-grid"></div>
-              <div id="tb-outside-dem-badge" class="outside-dem-alert" hidden>OUTSIDE DEM COVERAGE</div>
-            </div>
-
-            <!-- Mode 2: Transect & Polyline RF Profiler -->
-            <div class="tb-mode-pane" id="tb-pane-transect" data-tb-pane="transect" hidden>
-              <div class="terrain-toolbox-row">
-                <button id="terrain-measure-btn" type="button" aria-label="2-Point A to B Transect">2-Pt A→B</button>
-                <button id="tb-transect-poly-btn" type="button" aria-label="Polyline Transect">Polyline</button>
-                <button id="tb-transect-finish-btn" type="button" aria-label="Finish Polyline Transect" disabled>Done</button>
-                <button id="terrain-measure-clear-btn" type="button" aria-label="Clear Transect">Clear</button>
-              </div>
-              <div class="terrain-toolbox-row">
-                <label class="tool-label" for="tb-transect-tx-mast">TX Mast</label>
-                <input id="tb-transect-tx-mast" class="tb-input-sm" type="number" min="1" max="2000" step="1" value="10" style="width:48px" aria-label="TX Mast Height [m AGL]">
-                <label class="tool-label" for="tb-transect-rx-mast">RX Mast</label>
-                <input id="tb-transect-rx-mast" class="tb-input-sm" type="number" min="1" max="2000" step="1" value="2" style="width:48px" aria-label="RX Mast Height [m AGL]">
-              </div>
-              <div class="terrain-toolbox-row">
-                <label class="tool-label" for="tb-transect-height-a">A:</label>
-                <select id="tb-transect-height-a" class="tb-input-sm" aria-label="Transect Vertex A Height Mode">
-                  <option value="ground_2">Ground +2m</option>
-                  <option value="ground_15">Ground +15m</option>
-                  <option value="acn_alt">ACN Alt</option>
-                </select>
-                <label class="tool-label" for="tb-transect-height-b">B:</label>
-                <select id="tb-transect-height-b" class="tb-input-sm" aria-label="Transect Vertex B Height Mode">
-                  <option value="ground_2">Ground +2m</option>
-                  <option value="ground_15">Ground +15m</option>
-                  <option value="acn_alt">ACN Alt</option>
-                </select>
-              </div>
-              <div class="terrain-toolbox-row">
-                <select id="tb-transect-node-type" class="tb-input-sm" aria-label="Transect terminal link profile" title="Terminal link profile">
-                  <option value="soldier">Soldier (4W)</option>
-                  <option value="mcp">MCP (20W)</option>
-                </select>
-                <select id="tb-transect-k" class="tb-input-sm" aria-label="Effective Earth k-factor" title="Effective Earth k-factor">
-                  <option value="1.3333333333">k = 4/3</option>
-                  <option value="1.15">k = 1.15</option>
-                  <option value="1.0">k = 1.0</option>
-                  <option value="0.85">k = 0.85</option>
-                  <option value="0.6666666667">k = 2/3</option>
-                </select>
-                <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-transect-obstacles" checked aria-label="Include 3D Obstacles in Transect"> 3D Obs</label>
-              </div>
-              <div class="tb-kv-grid" style="margin-top:4px">
-                <span>Min F1 Clearance</span><span id="tb-transect-fresnel">-- m (100%)</span>
-                <span>ITU-R P.526 Diff</span><span id="tb-transect-diffraction">0.0 dB</span>
-                <span>Est. 8GHz SNR/MOD</span><span id="tb-transect-snr">-- dB / --</span>
-                <span>Azimuth / Back-Az</span><span id="tb-transect-azimuth">--° / --°</span>
-                <span>Vert Angle / Grade</span><span id="tb-transect-vert-angle">--° / --%</span>
-                <span>Blocking Peak</span><span id="tb-transect-blocking-peak">--</span>
-              </div>
-              <div class="terrain-toolbox-row" style="margin-top:6px">
-                <button id="btn-transect-swap-ab" type="button" aria-label="Swap Point A and Point B Direction" style="flex:1">⇄ Swap A ↔ B</button>
-                <button id="btn-transect-spawn-peak-relay" type="button" aria-label="Spawn Relay Terminal at Blocking Ridge Peak" class="primary" style="flex:1.4">▲ Spawn Relay on Peak</button>
-              </div>
-            </div>
-
-            <!-- Mode 3: Site Probe & Altitude Sweep -->
-            <div class="tb-mode-pane" id="tb-pane-probe" data-tb-pane="probe" hidden>
-              <div class="terrain-toolbox-row">
-                <button id="tb-probe-pick-btn" type="button" aria-label="Pick Probe Site on Map">Pick Probe Site</button>
-                <button id="tb-probe-clear-btn" type="button" aria-label="Clear Probe Site">Clear</button>
-              </div>
-              <div class="terrain-toolbox-row">
-                <label class="tool-label" for="tb-probe-mast-input">Mast(m)</label>
-                <input id="tb-probe-mast-input" class="tb-input-sm" type="number" min="1" max="200" step="1" value="2" style="width:48px" aria-label="Probe Antenna Mast Height in meters AGL">
-                <label class="tool-label" for="tb-probe-agl">AGL(m)</label>
-                <input id="tb-probe-agl" class="tb-input-sm" type="number" min="0" max="500" step="1" value="2" style="width:48px" aria-label="Probe Terminal AGL">
-                <label class="tool-label" for="tb-probe-radius">R(km)</label>
-                <input id="tb-probe-radius" class="tb-input-sm" type="number" min="5" max="60" step="1" value="24" style="width:46px" aria-label="Probe Viewshed Radius">
-                <select id="tb-probe-target" class="tb-input-sm" aria-label="Probe viewshed target height" title="Viewshed target height">
-                  <option value="ground_agl">Gnd +2m</option>
-                  <option value="acn_alt">ACN Alt</option>
-                </select>
-              </div>
-              <div class="terrain-toolbox-row">
-                <label class="tb-chip" style="cursor:pointer"><input type="checkbox" id="tb-probe-obstacles" checked aria-label="Include 3D Obstacles in Probe"> 3D Obs</label>
-                <label class="tool-label" for="tb-sweep-target">Sweep</label>
-                <select id="tb-sweep-target" class="tb-input-sm" aria-label="Probe Sweep Target">
-                  <option value="probe">Probe</option>
-                  <option value="region">Region</option>
-                  <option value="nodes">Nodes</option>
-                </select>
-              </div>
-              <div class="terrain-toolbox-row" style="margin-top:4px">
-                <label class="tool-label" for="tb-probe-unit-select">Deploy Type</label>
-                <select id="tb-probe-unit-select" class="tb-input-sm" style="flex:1" aria-label="Unit Type to Deploy at Probe Point">
-                  <option value="soldier">Soldier Terminal (30 dBm)</option>
-                  <option value="mcp">Mobile Command Post [MCP] (40 dBm)</option>
-                  <option value="jammer">Relocate EW Jammer Here</option>
-                </select>
-              </div>
-              <div class="terrain-toolbox-row" style="margin-top:4px">
-                <button id="btn-probe-snap-best" type="button" aria-label="Snap Probe to Highest SINR Peak within 2 km" style="width:100%">▲ Snap to Best Signal Peak (2 km)</button>
-              </div>
-              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-cyan, #00e5ff)">Virtual Terminal Link to ACN</div>
-              <div class="tb-kv-grid">
-                <span>ACN Slant Range</span><span id="tb-probe-acn-range">-- km</span>
-                <span>Elevation Angle</span><span id="tb-probe-acn-el">--°</span>
-                <span>Line-of-Sight</span><span id="tb-probe-acn-los">--</span>
-                <span>Est. 8 GHz SINR</span><span id="tb-probe-acn-sinr">-- dB</span>
-                <span>Supported MODCOD</span><span id="tb-probe-acn-modcod">--</span>
-                <span>Horizon Mask / Sky</span><span id="tb-probe-horizon-mask">--° / --%</span>
-                <span>Sector &amp; Boresight</span><span id="tb-probe-sector-bore">--</span>
-                <span>Vs Pinned [P1]</span><span id="tb-probe-delta-pin">--</span>
-              </div>
-              <div class="terrain-toolbox-row" style="margin-top:6px">
-                <button id="tb-probe-spawn-node" type="button" aria-label="Spawn Ground Terminal at Probed Coordinate" class="primary" style="width:100%">+ Spawn Terminal at Probe Point</button>
-              </div>
-            </div>
-
-            <!-- Mode 4: Region Zonal & Precision AO Swath Scanner -->
-            <div class="tb-mode-pane" id="tb-pane-region" data-tb-pane="region" hidden>
-              <div class="terrain-toolbox-row">
-                <button id="terrain-region-btn" type="button" aria-label="Draw Region on Map">Draw region</button>
-                <button id="terrain-region-finish-btn" type="button" aria-label="Finish Drawing Region" disabled>Finish</button>
-                <button id="terrain-region-cancel-btn" type="button" aria-label="Cancel Region Drawing" disabled>Cancel</button>
-                <span id="tb-region-live-area" class="tb-chip">Area: --</span>
-              </div>
-              <div id="terrain-toolbox-regions" class="terrain-toolbox-list" aria-label="Drawn regions"></div>
-              <div class="terrain-toolbox-row">
-                <button id="tb-bridge-a-btn" type="button" aria-label="Pick Bridge Endpoint A">Pick A</button>
-                <button id="tb-bridge-b-btn" type="button" aria-label="Pick Bridge Endpoint B">Pick B</button>
-                <label class="tool-label" for="tb-bridge-agl">AGL</label>
-                <input id="tb-bridge-agl" class="tb-input-sm" type="number" min="1" max="500" step="1" value="15" style="width:44px" aria-label="Bridge Relay AGL">
-                <button id="tb-bridge-find-btn" type="button" aria-label="Find Joint Relay Bridge" disabled>Find Bridge</button>
-                <button id="tb-bridge-clear-btn" type="button" aria-label="Clear Joint Relay Bridge">Clear</button>
-              </div>
-              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-amber, #ffab00)">Precision AO Swath &amp; RF Matrix</div>
-              <div class="tb-kv-grid">
-                <span>AO Dimensions</span><span id="tb-region-dimensions">-- km × -- km | -- km @ --°</span>
-                <span>AO Bounds</span><span id="tb-region-bounds">--</span>
-                <span>AO Area</span><span id="tb-region-area">-- km²</span>
-                <span>Local Summit ▲</span><span id="tb-region-summit">-- m @ (--, --)</span>
-                <span>Valley Floor ▼</span><span id="tb-region-valley-floor">-- m MSL (ΔZ -- m)</span>
-                <span>Mean / Min / Max Elev</span><span id="tb-region-mean">-- m</span>
-                <span>Min / Max Range</span><span id="tb-region-minmax">-- / -- m</span>
-                <span>Elev StdDev / TRI</span><span id="tb-region-std">-- m</span>
-                <span>Ruggedness / Slope</span><span id="tb-region-ruggedness">TRI -- m / --°</span>
-                <span>ACN LoS Coverage</span><span id="tb-region-los-pct">--% (0/64)</span>
-                <span>SINR &amp; Outage</span><span id="tb-region-sinr-stats">-- dB | Dead-Zone --%</span>
-              </div>
-              <div class="terrain-toolbox-row" style="margin-top:6px;gap:4px;flex-direction:column;">
-                <button id="btn-region-deploy-squad" type="button" aria-label="Auto-Deploy 4-Node Tactical Squad in Selected AO" class="primary" style="width:100%">✚ Auto-Deploy 4-Node Squad in AO</button>
-                <button id="btn-region-spawn-summit-relay" type="button" aria-label="Spawn MCP Relay on AO Summit Peak" style="width:100%">▲ Spawn MCP Relay on AO Summit Peak</button>
-              </div>
-              <canvas id="tb-region-canvas" width="280" height="70" style="display:none;width:100%;border-radius:3px;"></canvas>
-            </div>
-
-            <!-- Mode 5: 3D Obstacles & Excalidraw Ergonomics -->
-            <div class="tb-mode-pane" id="tb-pane-obstacle" data-tb-pane="obstacle" hidden>
-              <div class="terrain-toolbox-row">
-                <label class="tool-label" for="tb-obs-shape-select">Shape</label>
-                <select id="tb-obs-shape-select" class="tb-input-sm" aria-label="Obstacle Geometry Shape">
-                  <option value="wall">Ridge Wall (Segment)</option>
-                  <option value="block">Bunker / Block (Thick Barrier)</option>
-                  <option value="peak">Peak / Dome (Prominence)</option>
-                </select>
-              </div>
-              <div class="terrain-toolbox-row">
-                <label class="tool-label" for="tb-obs-material-select">Material</label>
-                <select id="tb-obs-material-select" class="tb-input-sm" aria-label="Obstacle RF Material Profile">
-                  <option value="granite">Alpine Granite (Opaque Knife-Edge)</option>
-                  <option value="concrete">Reinforced Concrete (35 dB Cap)</option>
-                  <option value="foliage">Dense Conifer Foliage (ITU-R P.833 0.25 dB/m)</option>
-                </select>
-              </div>
-              <div class="terrain-toolbox-row">
-                <button id="tb-obs-place-btn" type="button" aria-label="Place Obstacle on Map">Place Obs</button>
-                <button id="tb-obs-undo" type="button" aria-label="Undo Obstacle Action" disabled>Undo</button>
-                <button id="tb-obs-redo" type="button" aria-label="Redo Obstacle Action" disabled>Redo</button>
-                <button id="tb-obs-clear-btn" type="button" aria-label="Clear All Obstacles">Clear</button>
-              </div>
-
-              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-amber, #ffab00)">CAD Barrier &amp; 3D Link Slicer</div>
-              <div class="tb-kv-grid">
-                <span>CAD Barrier</span><span id="tb-obs-cad-metrics">-- m @ --° | Crest -- m MSL</span>
-                <span>3D Link Slice</span><span id="tb-obs-slice-summary">Intersected: -- | Slicing 0 / Overflying 0</span>
-              </div>
-              <div class="terrain-toolbox-row" style="margin-top:4px;">
-                <button id="btn-obs-auto-height" type="button" aria-label="Auto-Match Barrier Height to Slice Intersected 3D Links" style="width:100%">⚡ Auto-Size Height to Slice Links</button>
-              </div>
-
-              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--c2-cyan, #00e5ff)">One-Click Node Link Slicer</div>
-              <div class="terrain-toolbox-row">
-                <label class="tool-label" for="tb-obs-target-node-select">Target</label>
-                <select id="tb-obs-target-node-select" class="tb-input-sm" aria-label="Select Ground Node Link to Block" style="flex:1;">
-                  <option value="none">Select Ground Node…</option>
-                </select>
-              </div>
-              <div class="terrain-toolbox-row" style="margin-top:4px;">
-                <button id="btn-obs-slice-node-link" type="button" aria-label="Auto-Drop Perpendicular Barrier Across Selected Node Link" class="primary" style="width:100%">✂ Drop Ridge Across Node's Link</button>
-              </div>
-
-              <div class="tb-section-title" style="margin-top:6px;font-size:10px;font-weight:700;color:var(--text, #f2efe9)">Obstacle Inventory</div>
-              <div id="tb-obs-list" class="terrain-toolbox-list" aria-label="Obstacle Inventory List">
-                <span class="terrain-toolbox-status">No obstacles placed.</span>
-              </div>
-            </div>
-
-            <div id="terrain-toolbox-status" class="terrain-toolbox-status">Tools ready. Coordinates remain geographic.</div>
-            <div id="tb-3d-scope-note" class="tb-3d-scope-note" hidden>2D / Geo only — switch to 2D Map (Radar or MapLibre) for Terrain Toolbox analysis.</div>
-          </div>
-
-          <div id="terrain-toolbox-drawer" class="terrain-toolbox-drawer is-collapsed" aria-label="Terrain toolbox analysis drawer">
-            <div id="tb-drawer-content"></div>
-          </div>
           </div>
         </div>
         <div id="radar-cursor-hud" class="radar-cursor-hud is-idle" aria-label="Geographic cursor coordinates and terrain elevation" title="Move cursor over map to inspect coordinates">
@@ -1102,10 +1448,10 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <button type="button" class="btn-close-inspector" id="btn-close-node-details" title="Close inspector" aria-label="Close inspector">×</button>
             </div>
             <div id="map-node-detail-content" class="map-node-empty">No ground node selected. Select a marker or choose a terminal from Node Inventory.</div>
-            <div class="map-node-actions"><button type="button" data-map-action="edit">Edit / rename</button><button type="button" data-map-action="move">Move on map</button><button type="button" data-map-action="focus">Focus</button><button type="button" data-map-action="performance">Performance</button><button type="button" data-map-action="delete" class="btn-danger">Delete</button></div>
+            <div class="map-node-actions"><button type="button" data-map-action="edit">Edit / rename</button><button type="button" data-map-action="move">Move on map</button><button type="button" data-map-action="focus">Focus</button><button type="button" data-map-action="performance" title="Open link budget and SINR analysis in Terrain &amp; RF tab">Link Performance ↗</button><button type="button" data-map-action="delete" class="btn-danger">Delete</button></div>
             <div class="node-rf-quick-toggles" role="group" aria-label="RF analysis quick overlays">
-              <button type="button" id="btn-node-quick-los" data-rf-toggle="los" aria-pressed="false" title="Toggle Selected-Link LOS &amp; Margin map overlay">LOS</button>
-              <button type="button" id="btn-node-quick-fresnel" data-rf-toggle="fresnel" aria-pressed="false" title="Toggle First Fresnel Corridor (0.6 F₁) map overlay">Fresnel</button>
+              <button type="button" id="btn-node-quick-los" data-rf-toggle="los" aria-pressed="false" title="Toggle Selected-Link LOS &amp; Margin map overlay">◎ LOS Overlay</button>
+              <button type="button" id="btn-node-quick-fresnel" data-rf-toggle="fresnel" aria-pressed="false" title="Toggle First Fresnel Corridor (0.6 F₁) map overlay">〰 Fresnel Zone</button>
             </div>
             <div id="map-node-action-status" class="detail-sub" aria-live="polite"></div>
           </aside>
@@ -1127,6 +1473,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <li>Compare Tac-TAD with the static baseline under <b>Network outcome</b>.</li>
             </ol>
             <small>Shortcuts: 1–8 switch workspaces, Space pauses, . steps one frame.</small>
+            <div class="keyboard-shortcuts-strip" style="margin-top:8px;padding:6px 8px;background:rgba(0,0,0,0.3);border-radius:4px;font-family:var(--mono);font-size:11px;color:var(--accent);">
+              <b>Key Shortcuts:</b> Space: Pause/Resume · 1–8: Workspaces · T: Terrain Toolbox · M: Focus Map · Esc: Exit Tool · ?: Help
+            </div>
           </div>
           <button type="button" id="welcome-dismiss">Got it</button>
         </div>
@@ -1417,7 +1766,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <span class="sec-title">3-Way Scientific Ablation Matrix</span>
             <span class="badge-sub">Lockstep Multi-Scheduler Telemetry</span>
           </div>
-          <button id="btn-copy-latex-ablation" type="button" class="btn" aria-label="Export 3-Way Ablation Table as IEEE LaTeX" onclick="exportLatexAblationTable()" style="font-size:11px;padding:3px 10px;cursor:pointer">Export IEEE LaTeX</button>
+          <button id="btn-copy-latex-ablation" type="button" class="btn" aria-label="Export 3-Way Ablation Table as IEEE LaTeX" onclick="exportLatexAblationTable()" style="font-size:11px;padding:3px 10px;cursor:pointer">⬇ Export IEEE LaTeX</button>
         </div>
         <p class="lede" style="margin-bottom:12px;font-size:11.5px">Direct comparison of identical traffic load across Legacy Static TDMA (fixed-slot baseline), Reactive M-LWDF (&Phi;<sub>evac</sub> = 1.0, channel-aware reactive baseline), and Predictive Tac-TAD (&Phi;<sub>evac</sub> &ge; 1.0, 3s lookahead pre-occlusion flush).</p>
         
@@ -1531,10 +1880,11 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="legend">
           <span><i style="background:#8a95e6"></i>Control</span><span><i style="background:#e09f3e"></i>C2 signaling</span><span><i style="background:#52b788"></i>Voice (PTT)</span><span><i style="background:#e9c46a"></i>Video</span><span><i style="background:#d97736"></i>Photo/data</span><span><i style="background:#e05347"></i>Wasted / Conflict</span><span><i style="background:rgba(82, 183, 136,0.22);border:1px dashed #74c69d"></i>Reclaimed airtime</span><span><i style="background:#1e2229;outline:1px solid var(--line2)"></i>Headroom</span>
         </div>
-        <div class="waterfall-canvas-container" id="gantt-canvas-wrap">
+        <div class="waterfall-canvas-container" id="gantt-canvas-wrap" style="cursor:pointer">
           <canvas id="waterfall-canvas" aria-label="TDMA Superframe Gantt &amp; Slot Allocation Inspector"></canvas>
           <canvas id="gantt-canvas" style="display:none;" aria-hidden="true"></canvas>
         </div>
+        <p class="canvas-hint" style="margin:4px 0 0 0;">↑ Hover to measure microseconds · Click any time slot to pin and dissect its MAC PDU frame</p>
       </div>
       <div class="panel" id="allocation-inspector">
         <div class="panel-head"><span class="sec-title">Allocation for the selected terminal</span><span class="badge-sub">current frame</span></div>
@@ -1657,7 +2007,8 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             </select>
           </label>
           <label>Nodes to compare
-            <select id="network-node-select" multiple aria-label="Nodes to compare"></select>
+            <select id="network-node-select" multiple size="4" aria-label="Nodes to compare"></select>
+            <p class="canvas-hint" style="margin:4px 0 0 0;">Ctrl+click (Cmd on Mac) to compare multiple terminals</p>
           </label>
           <div class="network-metrics-toggles" aria-label="Toggle metrics">
             <label><input type="checkbox" id="network-show-snr" checked> Link quality (SNR)</label>
@@ -1767,7 +2118,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <div class="analysis-context"><div><span class="context-kicker">Live · Worker state</span></div><div class="context-meta"><span>Simulation <b id="registration-sim-time">--</b></span></div></div>
     <div class="pane"><div class="pane-head"><h2>Ground Node Registration</h2></div>
       <p class="lede">Association is an explicit simulation abstraction: the ACN accepts requests immediately when a node is created. RF link validity and data transmission remain separate.</p>
-      <div class="registration-summary" id="registration-summary"></div>
+      <div class="registration-summary" id="registration-summary"><p class="canvas-hint" style="padding:12px;margin:0;">No ground nodes registered yet — add or spawn nodes to begin 3GPP NTN registration.</p></div>
 
       <!-- 3GPP Rel-17 NTN 4-Step RACH & Beam Mobility Call-Flow Analyzer Panel -->
       <div class="panel" id="ntn-signaling-panel" style="margin-top: 14px; margin-bottom: 14px;">
@@ -1801,7 +2152,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         </div>
       </div>
       <div class="panel table-card"><div class="panel-head"><span class="sec-title">Node lifecycle</span></div><div class="table-scroll"><table class="data-table" id="registration-table"><thead><tr><th>Node</th><th>State</th><th>Requested</th><th>Completed</th><th>Elapsed</th><th>RF link</th><th>Communication eligible</th></tr></thead><tbody></tbody></table></div><div id="registration-empty" class="network-chart-status">No ground nodes. Add a node to begin registration.</div></div>
-      <div class="panel table-card" style="margin-top:12px"><div class="panel-head"><span class="sec-title">Recent lifecycle events · simulation time</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Time</th><th>Node</th><th>Event</th></tr></thead><tbody id="registration-events"></tbody></table></div></div>
+      <div class="panel table-card" style="margin-top:12px"><div class="panel-head"><span class="sec-title">Recent lifecycle events · simulation time</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Time</th><th>Node</th><th>Event</th></tr></thead><tbody id="registration-events"><tr><td colspan="3" class="network-chart-status">No lifecycle events recorded yet. Run a scenario to populate the lifecycle log.</td></tr></tbody></table></div></div>
     </div>
   </section>
 
@@ -1858,6 +2209,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <canvas id="terrain-canvas" data-alias="profile-canvas" aria-label="Terrain path profile and top view canvas"></canvas>
           <canvas id="profile-canvas" style="display:none" aria-hidden="true"></canvas>
         </div>
+        <p class="canvas-hint" style="margin:4px 0 0 0;">↑ Double-horizon Bullington diffraction ray-march · Drag sliders above to simulate refractivity gradients</p>
       </div>
 
       <!-- Orbit-Integrated Coverage & Optimal Relay Advisor Section -->
@@ -2025,10 +2377,10 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             </div>
           </div>
           <div id="terminal-search-status" class="muted" aria-live="polite" style="font-size:11px;margin:6px 0 14px">Search all available terminals</div>
-          <div class="q-track-wrap"><label>5QI 69 <span class="muted">C2</span></label><div class="track-bg"><div id="qbar-69" class="track-fill" style="background:#e09f3e;width:0%"></div></div><output id="qval-69">0.0 KB</output></div>
-          <div class="q-track-wrap"><label>5QI 65 <span class="muted">Voice</span></label><div class="track-bg"><div id="qbar-65" class="track-fill" style="background:var(--ok);width:0%"></div></div><output id="qval-65">0.0 KB</output></div>
-          <div class="q-track-wrap"><label>5QI 67 <span class="muted">Video</span></label><div class="track-bg"><div id="qbar-67" class="track-fill" style="background:var(--warn);width:0%"></div></div><output id="qval-67">0.0 KB</output></div>
-          <div class="q-track-wrap"><label>5QI 70 <span class="muted">Photo</span></label><div class="track-bg"><div id="qbar-70" class="track-fill" style="background:#c98a62;width:0%"></div></div><output id="qval-70">0 / 2000 KB</output></div>
+          <div class="q-track-wrap"><label>C2 Command · 5QI-69</label><div class="track-bg"><div id="qbar-69" class="track-fill" style="background:#e09f3e;width:0%"></div></div><output id="qval-69">0.0 KB</output></div>
+          <div class="q-track-wrap"><label>Voice PTT · 5QI-65</label><div class="track-bg"><div id="qbar-65" class="track-fill" style="background:var(--ok);width:0%"></div></div><output id="qval-65">0.0 KB</output></div>
+          <div class="q-track-wrap"><label>Video Stream · 5QI-67</label><div class="track-bg"><div id="qbar-67" class="track-fill" style="background:var(--warn);width:0%"></div></div><output id="qval-67">0.0 KB</output></div>
+          <div class="q-track-wrap"><label>Photo ISR · 5QI-70</label><div class="track-bg"><div id="qbar-70" class="track-fill" style="background:#c98a62;width:0%"></div></div><output id="qval-70">0 / 2000 KB</output></div>
           <div class="group-title" style="margin-top:16px">Inject traffic at the selected terminal</div>
           <div class="traffic-actions">
             <button class="btn-danger" onclick="injectTraffic('sos')">SOS alert (C2)</button>
@@ -2915,6 +3267,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               </span>
             </div>
             <canvas id="fp-vertical-profile-canvas" height="170" aria-label="ForeFlight Vertical Terrain Clearance Profile Canvas" style="width:100%;height:170px;display:block;background:#080b12;border-radius:4px;border:1px solid rgba(255,255,255,0.08)"></canvas>
+            <p class="canvas-hint" style="margin:4px 0 0 0;">↕ ForeFlight-grade terrain clearance profile · Hover to inspect waypoint altitude envelopes</p>
           </div>
 
           <!-- 3. Aerodynamic & Coverage Flight Envelope Telemetry Strip -->
@@ -2946,7 +3299,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           </div>
         </details>
 
-        <details class="trajectory-editor" open>
+        <details class="trajectory-editor">
           <summary><strong>Flight-path editor</strong> <small id="trajectory-commit-label" class="muted">Trajectory and altitude</small></summary>
           <div style="margin-top:9px">
             <label for="trajectory-mode">Trajectory mode</label>
@@ -3232,9 +3585,49 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   try{seen=localStorage.getItem(KEY)==='1'}catch(_){}
   if(welcome) welcome.hidden=true;
   $('welcome-dismiss')?.addEventListener('click',()=>{welcome.hidden=true;try{localStorage.setItem(KEY,'1')}catch(_){}});
-  $('btn-help')?.addEventListener('click',()=>{window.switchMainTab('tab-overview');window.switchOverviewSubview?.('ops');welcome.hidden=false;welcome.scrollIntoView({block:'nearest'})});
+  $('btn-help')?.addEventListener('click',()=>{
+    if(!welcome) return;
+    if(!welcome.hidden){
+      welcome.hidden = true;
+    } else {
+      window.switchMainTab('tab-overview');
+      window.switchOverviewSubview?.('ops');
+      welcome.hidden=false;
+      welcome.scrollIntoView({block:'nearest'});
+    }
+  });
   const ex=$('btn-expert');
-  ex?.addEventListener('click',()=>{const on=ex.classList.toggle('active');ex.setAttribute('aria-pressed',String(on));document.querySelectorAll('details[data-adv]').forEach(d=>d.open=on)});
+  ex?.addEventListener('click',()=>{
+    const on=!ex.classList.contains('active');
+    ex.classList.toggle('active', on);
+    ex.setAttribute('aria-pressed',String(on));
+    document.querySelectorAll('details[data-adv]').forEach(d=>d.open=on);
+  });
+  document.querySelectorAll('details[data-adv]').forEach(d => {
+    d.addEventListener('toggle', () => {
+      const all = document.querySelectorAll('details[data-adv]');
+      const open = document.querySelectorAll('details[data-adv][open]');
+      const allOpen = all.length > 0 && all.length === open.length;
+      ex?.classList.toggle('active', allOpen);
+      ex?.setAttribute('aria-pressed', String(allOpen));
+    });
+  });
+
+  document.querySelectorAll('.health-chip').forEach(chip => {
+    const jumpToTerminals = () => {
+      window.switchMainTab?.('tab-terminal');
+      const table = document.getElementById('terminal-inventory-table');
+      table?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    chip.addEventListener('click', jumpToTerminals);
+    chip.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        jumpToTerminals();
+      }
+    });
+  });
+
   const tabs=['overview','scheduler','network','terrain','terminal','authoring','doc','registration'];
   document.addEventListener('keydown',e=>{
     if(e.ctrlKey||e.metaKey||e.altKey) return;
@@ -3253,6 +3646,20 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     if(/^[1-8]$/.test(e.key)) window.switchMainTab('tab-'+tabs[e.key-1]);
     else if(e.key===' '){e.preventDefault();window.togglePause()}
     else if(e.key==='.') window.stepSim();
+    else if(e.key==='t' || e.key==='T'){
+      e.preventDefault();
+      if(typeof toggleTerrainToolbox==='function') toggleTerrainToolbox();
+      else window.setTerrainToolboxExpanded?.(!window.tbOpen);
+    }
+    else if(e.key==='m' || e.key==='M'){
+      e.preventDefault();
+      document.getElementById('radar-canvas')?.focus?.();
+      document.getElementById('radar-container')?.scrollIntoView({behavior:'smooth',block:'center'});
+    }
+    else if(e.key==='?'){
+      e.preventDefault();
+      if(welcome) welcome.hidden = !welcome.hidden;
+    }
   });
 })();
 </script>
@@ -4448,8 +4855,13 @@ if (timelineCanvas) {
       if (timeDisplay) timeDisplay.textContent = `${playheadTimeS.toFixed(2)}s`;
       const liveBtn = $('timeline-btn-live');
       if (liveBtn) {
-        if (isLive) liveBtn.classList.add('active');
-        else liveBtn.classList.remove('active');
+        if (isLive) {
+          liveBtn.classList.add('active');
+          liveBtn.textContent = '● LIVE';
+        } else {
+          liveBtn.classList.remove('active');
+          liveBtn.textContent = '↩ Return to Live';
+        }
       }
       const playBtn = $('timeline-btn-play');
       if (playBtn) {
@@ -4839,6 +5251,9 @@ let terrainMeasurement = null;
 let terrainRegionDraft = [];
 let terrainRegions = [];
 let nextTerrainRegionId = 1;
+let tbOpen = false;
+window.tbOpen = false;
+let tbShowRulerTicks = false;
 let tbActiveMode = 'dem';
 let tbBackdropMode = 'relief';
 let tbSlopeRidgeGrid = null;
@@ -6067,15 +6482,40 @@ function renderRegistration(frame) {
   const exceptional = states.filter(s => s === 'REJECTED' || s === 'LOST').length;
   const pct = nodes.length ? Math.round(registered / nodes.length * 100) : 0;
   const summary = document.getElementById('registration-summary');
-  if (summary) summary.innerHTML = `<div class="panel"><b>${nodes.length}</b><span>Total nodes</span></div><div class="panel"><b>${registered}</b><span>Registered</span></div><div class="panel"><b>${pending}</b><span>Pending</span></div><div class="panel"><b>${exceptional}</b><span>Rejected / lost</span></div><div class="panel"><b>${pct}%</b><span>Success</span></div>`;
+  if (summary) {
+    if (nodes.length === 0) {
+      summary.innerHTML = '<p class="canvas-hint" style="padding:12px;margin:0;">No ground nodes registered yet — add or spawn nodes to begin 3GPP NTN registration.</p>';
+    } else {
+      summary.innerHTML = `<div class="panel"><b>${nodes.length}</b><span>Total nodes</span></div><div class="panel"><b>${registered}</b><span>Registered</span></div><div class="panel"><b>${pending}</b><span>Pending</span></div><div class="panel"><b>${exceptional}</b><span>Rejected / lost</span></div><div class="panel"><b>${pct}%</b><span>Success</span></div>`;
+    }
+  }
   const body = document.querySelector('#registration-table tbody');
-  if (body) body.innerHTML = nodes.map(n => `<tr><td>${n.name || `Node ${n.node_id}`}</td><td>${n.registration_state || 'UNREGISTERED'}</td><td>${n.registration_start_time_s == null ? '—' : `${Number(n.registration_start_time_s).toFixed(2)} s`}</td><td>${n.registration_completion_time_s == null ? '—' : `${Number(n.registration_completion_time_s).toFixed(2)} s`}</td><td>${n.registration_elapsed_s == null ? '—' : `${Number(n.registration_elapsed_s).toFixed(2)} s`}</td><td>${n.link_outage ? 'RF outage' : 'RF available'}</td><td>${n.communication_eligible ? 'Association eligible' : 'No'}</td></tr>`).join('');
+  if (body) {
+    body.innerHTML = nodes.map(n => `<tr data-node-id="${n.node_id}" style="cursor:pointer"><td>${n.name || `Node ${n.node_id}`}</td><td>${n.registration_state || 'UNREGISTERED'}</td><td>${n.registration_start_time_s == null ? '—' : `${Number(n.registration_start_time_s).toFixed(2)} s`}</td><td>${n.registration_completion_time_s == null ? '—' : `${Number(n.registration_completion_time_s).toFixed(2)} s`}</td><td>${n.registration_elapsed_s == null ? '—' : `${Number(n.registration_elapsed_s).toFixed(2)} s`}</td><td>${n.link_outage ? 'RF outage' : 'RF available'}</td><td>${n.communication_eligible ? 'Association eligible' : 'No'}</td></tr>`).join('');
+    if (!body.dataset.listenerBound) {
+      body.dataset.listenerBound = 'true';
+      body.addEventListener('click', (e) => {
+        const tr = e.target.closest('tr[data-node-id]');
+        if (tr && tr.dataset.nodeId) {
+          const nid = parseInt(tr.dataset.nodeId, 10);
+          if (Number.isFinite(nid)) handleNodeSelection(nid);
+        }
+      });
+    }
+  }
   const empty = document.getElementById('registration-empty');
   if (empty) empty.style.display = nodes.length ? 'none' : 'block';
   const time = document.getElementById('registration-sim-time');
   if (time) time.textContent = `${Number(frame.sim_time_s || 0).toFixed(2)} s`;
   const eventBody = document.getElementById('registration-events');
-  if (eventBody) eventBody.innerHTML = (frame.registration_telemetry?.events || []).slice(-100).reverse().map(e => `<tr><td>${Number(e.sim_time_s).toFixed(2)} s</td><td>${e.node_id}</td><td>${e.state}</td></tr>`).join('');
+  if (eventBody) {
+    const evts = frame.registration_telemetry?.events || [];
+    if (evts.length === 0) {
+      eventBody.innerHTML = '<tr><td colspan="3" class="network-chart-status">No lifecycle events recorded yet. Run a scenario to populate the lifecycle log.</td></tr>';
+    } else {
+      eventBody.innerHTML = evts.slice(-100).reverse().map(e => `<tr><td>${Number(e.sim_time_s).toFixed(2)} s</td><td>${e.node_id}</td><td>${e.state}</td></tr>`).join('');
+    }
+  }
   renderNtnSignalingAnalyzer(frame);
 }
 
@@ -6719,7 +7159,7 @@ function updateSpatialLockControl(locked) {
   obstacleEditor.setSpatialLock(locked);
   const button = $('btn-spatial-lock');
   if (button) {
-    button.textContent = `Spatial lock: ${locked ? 'ON' : 'OFF'}`;
+    button.textContent = locked ? '🔒 Scenario Locked' : '🔓 Lock Scenario';
     button.setAttribute('aria-pressed', String(locked));
     button.classList.toggle('active', locked);
   }
@@ -6897,8 +7337,14 @@ function handleNodeSelection(nodeId) {
   }
   selectedNodeId = nodeId;
   const networkSelect = $('network-node-select');
-  const networkOption = networkSelect && Array.from(networkSelect.options).find(option => Number(option.value) === nodeId);
-  if (networkOption) { networkOption.selected = true; networkSelect.dispatchEvent(new Event('change', { bubbles: true })); }
+  if (networkSelect) {
+    const selectedCount = networkSelect.selectedOptions ? networkSelect.selectedOptions.length : 0;
+    if (selectedCount < 2) {
+      Array.from(networkSelect.options).forEach(opt => { opt.selected = Number(opt.value) === nodeId; });
+      networkSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+  setText('wf-target-node-badge', `Inspecting Target Node ${nodeId}`);
   renderSelectedNodeDetails();
   updateMapLibreOverlay();
   pendingAglUpdate = null;
@@ -6948,7 +7394,7 @@ $('map-node-details')?.addEventListener('click', event => {
   if (!action) return;
   if (action === 'edit') $('btn-node-edit')?.click();
   else if (action === 'delete') return;
-  else if (action === 'performance') window.switchMainTab?.('tab-network');
+  else if (action === 'performance') window.switchMainTab?.('tab-terrain');
   else if (action === 'focus' || action === 'move') {
     if (inspectingAcn && action === 'focus') {
       window.centerMapOnACN();
@@ -7193,6 +7639,14 @@ window.setStageViewMode = function(mode) {
   if (btn2D) btn2D.classList.toggle('active', mode === '2d');
   if (btn3D) btn3D.classList.toggle('active', mode === '3d');
 
+  ['zoom-30', 'zoom-60', 'zoom-100', 'zoom-200'].forEach(id => {
+    const b = $(id);
+    if (b) {
+      b.disabled = (mode !== '2d' || terrainMapMode === 'maplibre');
+      b.title = b.disabled ? 'Range zoom — 2D Radar mode only' : 'Range zoom';
+    }
+  });
+
   const radarCvs = $('radar-canvas');
   const mapLibreStage = $('maplibre-stage');
   const threeWrap = $('three-stage-container');
@@ -7204,8 +7658,23 @@ window.setStageViewMode = function(mode) {
 
   if (mode === '3d') {
     updateRadarCursorReadout(0, 0, false);
+    const wasToolActive = terrainToolMode !== 'idle' || Boolean(window.tbOpen);
     if (terrainToolMode !== 'idle') cancelTerrainTool();
     window.setTerrainToolboxExpanded?.(false);
+    if (typeof closeTerrainToolbox === 'function') closeTerrainToolbox();
+    if (wasToolActive) {
+      const banner = $('edit-mode-banner');
+      const badge = $('edit-mode-badge');
+      const text = $('edit-mode-text');
+      if (banner && text) {
+        if (badge) badge.textContent = 'NOTICE';
+        text.textContent = '2D Terrain Tool closed — switched to 3D Terrain view.';
+        banner.hidden = false;
+        $('edit-mode-done-btn')?.setAttribute('hidden', 'true');
+        $('edit-mode-cancel-btn')?.setAttribute('hidden', 'true');
+        setTimeout(() => { syncEditModeBanner(); }, 3500);
+      }
+    }
     if (scopeNote3d) scopeNote3d.hidden = false;
     if (resSep) resSep.style.display = 'inline-block';
     if (resLabel) resLabel.style.display = 'inline';
@@ -8909,6 +9378,13 @@ function setMapMode(mode) {
     backdropSel.disabled = isMl;
     backdropSel.title = isMl ? 'Radar only — MapLibre uses geographic basemap' : 'Radar terrain backdrop mode';
   }
+  ['zoom-30', 'zoom-60', 'zoom-100', 'zoom-200'].forEach(id => {
+    const b = $(id);
+    if (b) {
+      b.disabled = (stageViewMode !== '2d' || terrainMapMode === 'maplibre');
+      b.title = b.disabled ? 'Range zoom — 2D Radar mode only' : 'Range zoom';
+    }
+  });
   if (stageViewMode !== '2d') {
     window.setStageViewMode('2d');
     return;
@@ -9391,8 +9867,9 @@ function refreshObstacleEditor() {
   editor.classList.toggle('error', Boolean(validation) || obstacleEditor.message.toLowerCase().includes('reject'));
   const tool = $('obstacle-map-tool');
   const active = obstacleEditor.mode !== 'navigate';
-  tool.textContent = active ? `Obstacle tool: ${obstacleEditor.mode === 'place' ? 'PLACE' : 'SELECT'}` : 'Obstacle tool: OFF';
+  tool.textContent = '🧱 Edit Obstacles';
   tool.setAttribute('aria-pressed', String(active));
+  tool.classList.toggle('active', active);
   tool.classList.toggle('map-tool-active', active);
   $('obstacle-place').classList.toggle('active', obstacleEditor.mode === 'place');
   $('obstacle-select-mode').classList.toggle('active', obstacleEditor.mode === 'select');
@@ -9471,7 +9948,13 @@ $('obstacle-shape').addEventListener('change', event => obstacleEditor.setPlacem
 $('obstacle-add').addEventListener('click', () => createObstacleAt(panOffsetX_m, panOffsetY_m));
 $('obstacle-place').addEventListener('click', () => activateObstacleMode(obstacleEditor.mode === 'place' ? 'navigate' : 'place'));
 $('obstacle-select-mode').addEventListener('click', () => activateObstacleMode(obstacleEditor.mode === 'select' ? 'navigate' : 'select'));
-$('obstacle-map-tool').addEventListener('click', () => activateObstacleMode(obstacleEditor.mode === 'navigate' ? 'select' : 'navigate'));
+$('obstacle-map-tool').addEventListener('click', () => {
+  if (typeof openTerrainToolbox === 'function') {
+    openTerrainToolbox('obstacle');
+  } else {
+    activateObstacleMode(obstacleEditor.mode === 'navigate' ? 'select' : 'navigate');
+  }
+});
 armDestructiveConfirm($('obstacle-delete'), {
   armedLabel: 'Confirm Delete?',
   canArm: () =>
@@ -10456,6 +10939,7 @@ window.recomputeRelayAdvisor = function() {
   const btn = $('btn-recompute-relay-advisor');
   if (btn) {
     btn.textContent = 'Computing…';
+    btn.disabled = true;
   }
   sendCommand({
     type: 'SET_SCIENTIFIC_PARAMS',
@@ -10666,6 +11150,16 @@ window.loadPreset = function(id) {
 };
 
 window.runKargilScenario = function() {
+  const btn = document.querySelector('button[onclick="runKargilScenario()"]');
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = 'Starting…';
+    btn.disabled = true;
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.disabled = false;
+    }, 600);
+  }
   inspectingAcn = false;
   inspectorDismissed = true;
   selectedNodeId = 4;
@@ -11766,7 +12260,14 @@ function refreshTerrainToolbox() {
   const pickingFinishBtn = $('tb-picking-finish-btn');
   const isPicking = terrainToolMode !== 'idle';
   if (tbStack) tbStack.setAttribute('data-tb-picking', isPicking ? 'true' : 'false');
+  $('terrain-toolbox')?.setAttribute('data-tb-picking', isPicking ? 'true' : 'false');
+  $('radar-container')?.setAttribute('data-tb-picking', isPicking ? 'true' : 'false');
   if (pickingBar) pickingBar.hidden = !isPicking;
+  const mapActiveToolBar = $('map-active-tool-bar');
+  if (mapActiveToolBar) {
+    mapActiveToolBar.style.display = (!tbOpen || isPicking) ? 'none' : 'inline-flex';
+  }
+  window.updateStepGuideBanner?.();
   if (isPicking && pickingLabel) {
     if (terrainToolMode === 'transect-2pt' || terrainToolMode === 'measure') {
       pickingLabel.textContent = tbTransectWaypoints.length === 0
@@ -11819,8 +12320,78 @@ function refreshTerrainToolbox() {
 
 function setupTerrainToolbox() {
   const tbStack = $('terrain-toolbox-stack');
+
+  function updateStepGuideBanner() {
+    const banner = $('tb-step-guide-banner');
+    if (!banner) return;
+    if (tbActiveMode === 'transect') {
+      if (tbTransectWaypoints.length === 0) {
+        banner.textContent = 'STEP 1 OF 2: Click anywhere on the map (or click a Node) to set Start Point [A].';
+      } else if (tbTransectWaypoints.length === 1) {
+        banner.textContent = 'STEP 2 OF 2: Move mouse to preview distance & angle — click to lock End Point [B]. (Hold Shift for 15° snap · Esc to exit)';
+      } else {
+        banner.textContent = 'LOCKED A ↔ B: Hover along the line to inspect terrain, drag [A] or [B] to adjust, or click a new point. (Esc to exit)';
+      }
+    } else if (tbActiveMode === 'probe') {
+      banner.textContent = 'Move mouse over map to preview live 8 GHz UAV signal · Click to pin [P1] for comparison or click "+ Spawn Unit" below. (Esc to exit)';
+    } else if (tbActiveMode === 'region') {
+      banner.textContent = 'Click and drag a box across any valley on the map to scan 64-cell LoS coverage and find the highest peak. (Esc to exit)';
+    } else if (tbActiveMode === 'obstacle') {
+      banner.textContent = 'Click and drag across any link line on the map to raise a 3D wall and test link blockage. (Esc to exit)';
+    } else {
+      banner.textContent = 'Select a tool above to analyze terrain, line-of-sight sightlines, signal coverage, or 3D barriers.';
+    }
+  }
+  window.updateStepGuideBanner = updateStepGuideBanner;
+
+  function closeTerrainToolbox() {
+    setTerrainToolboxExpanded(false);
+    terrainToolMode = 'idle';
+    tbRubberBandPoint = null;
+    draggedToolboxVertex = null;
+    mapLibreToolboxVertexDrag = null;
+    tbLineHover = null;
+    tbHoveredSampleIdx = null;
+    tbAoSwathAnchor = null;
+    tbDraggedAoCorner = null;
+    tbObsDrawingAnchor = null;
+    tbObsRubberBandPoint = null;
+    tbObsDraggedHandle = null;
+    tbActiveSnap = null;
+    const rc = $('radar-container');
+    if (rc) {
+      rc.style.cursor = 'grab';
+      rc.removeAttribute('data-tb-picking');
+    }
+    const radarCanvas = $('radar-canvas');
+    if (radarCanvas) radarCanvas.style.cursor = 'grab';
+    $('tb-picking-bar')?.setAttribute('hidden', '');
+    $('tb-picking-finish-btn')?.setAttribute('hidden', '');
+    refreshTerrainToolbox();
+    if (terrainMapMode !== 'maplibre') drawRadar();
+    else {
+      updateMapLibreToolSources();
+      updateMapLibreOverlay();
+    }
+  }
+  window.closeTerrainToolbox = closeTerrainToolbox;
+
   const setTbMode = (mode) => {
     tbActiveMode = mode;
+    const toolTitles = {
+      transect: 'Measure Line & LoS',
+      probe: 'Signal Probe & Spawn',
+      region: 'Area Coverage Scan',
+      obstacle: 'Build 3D Barrier',
+      dem: 'DEM & Terrain Navigation',
+    };
+    const titleEl = $('tb-active-tool-title');
+    if (titleEl) titleEl.textContent = toolTitles[mode] || 'Terrain Toolbox';
+
+    document.querySelectorAll('.map-tool-pill-btn[data-map-tool]').forEach(b => {
+      b.classList.toggle('active', b.dataset.mapTool === mode);
+    });
+    updateStepGuideBanner();
     document.querySelectorAll('.tb-mode-tab[data-tb-mode]').forEach(btn => {
       const active = btn.dataset.tbMode === mode;
       btn.classList.toggle('active', active);
@@ -12403,8 +12974,13 @@ function setupTerrainToolbox() {
   const toolboxCloseBtn = $('terrain-toolbox-close-btn');
 
   function setTerrainToolboxExpanded(expanded) {
+    tbOpen = Boolean(expanded);
+    window.tbOpen = tbOpen;
     tbStack?.setAttribute('data-tb-expanded', expanded ? 'true' : 'false');
     $('radar-container')?.setAttribute('data-tb-expanded', expanded ? 'true' : 'false');
+    const terrainToolbox = $('terrain-toolbox');
+    const mapActiveToolBar = $('map-active-tool-bar');
+
     if (expanded) {
       const rc = $('radar-container');
       const cw = rc?.getBoundingClientRect().width || rc?.clientWidth || 0;
@@ -12420,12 +12996,33 @@ function setupTerrainToolbox() {
         lbtn?.classList.remove('active');
         lbtn?.setAttribute('aria-pressed', 'false');
       }
+
+      const detailViewport = document.querySelector('.detail-viewport');
+      if (detailViewport) detailViewport.setAttribute('data-tb-open', 'true');
+      document.querySelectorAll('.detail-viewport > .tab-content').forEach(el => {
+        el.style.display = 'none';
+      });
+
+      if (terrainToolbox) terrainToolbox.style.display = 'flex';
+      const isPicking = terrainToolMode !== 'idle';
+      if (mapActiveToolBar) mapActiveToolBar.style.display = isPicking ? 'none' : 'inline-flex';
+
       toolboxPanel?.classList.remove('is-collapsed');
       toolboxToggleBtn?.classList.add('active');
       toolboxToggleBtn?.setAttribute('aria-expanded', 'true');
+      updateStepGuideBanner();
       renderMode1Provenance();
       renderToolboxDrawer();
     } else {
+      const detailViewport = document.querySelector('.detail-viewport');
+      if (detailViewport) detailViewport.removeAttribute('data-tb-open');
+      if (terrainToolbox) terrainToolbox.style.display = 'none';
+      if (mapActiveToolBar) mapActiveToolBar.style.display = 'none';
+
+      document.querySelectorAll('.detail-viewport > .tab-content').forEach(el => {
+        el.style.display = '';
+      });
+
       toolboxPanel?.classList.add('is-collapsed');
       $('terrain-toolbox-drawer')?.classList.add('is-collapsed');
       toolboxToggleBtn?.classList.remove('active');
@@ -12438,14 +13035,78 @@ function setupTerrainToolbox() {
   toolboxToggleBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const isExpanded = !toolboxPanel?.classList.contains('is-collapsed');
+    const isExpanded = tbOpen;
     setTerrainToolboxExpanded(!isExpanded);
   });
 
   toolboxCloseBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setTerrainToolboxExpanded(false);
+    closeTerrainToolbox();
+  });
+
+  $('terrain-toolbox-close')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeTerrainToolbox();
+  });
+
+  $('tb-bar-exit')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeTerrainToolbox();
+  });
+
+  $('tb-bar-transect')?.addEventListener('click', () => {
+    setTbMode('transect');
+    $('terrain-measure-btn')?.click();
+  });
+  $('tb-bar-probe')?.addEventListener('click', () => {
+    setTbMode('probe');
+    $('tb-probe-pick-btn')?.click();
+  });
+  $('tb-bar-region')?.addEventListener('click', () => {
+    setTbMode('region');
+    $('terrain-region-btn')?.click();
+  });
+  $('tb-bar-obstacle')?.addEventListener('click', () => {
+    setTbMode('obstacle');
+    $('tb-obs-place-btn')?.click();
+  });
+
+  const btnToggleRulerTicks = $('btn-toggle-ruler-ticks');
+  btnToggleRulerTicks?.addEventListener('click', () => {
+    tbShowRulerTicks = !tbShowRulerTicks;
+    btnToggleRulerTicks.setAttribute('aria-pressed', String(tbShowRulerTicks));
+    btnToggleRulerTicks.textContent = tbShowRulerTicks ? '📏 Show Scale Divisions: ON' : '📏 Show Scale Divisions: OFF';
+    if (terrainMapMode !== 'maplibre') drawRadar();
+    else updateMapLibreOverlay();
+  });
+
+  const rCanvas = $('radar-canvas');
+  rCanvas?.addEventListener('contextmenu', (e) => {
+    if (tbOpen || terrainToolMode !== 'idle' || tbTransectWaypoints.length > 0) {
+      e.preventDefault();
+      if (tbActiveMode === 'transect') {
+        $('terrain-measure-clear-btn')?.click();
+      } else if (tbActiveMode === 'probe') {
+        $('tb-probe-clear-btn')?.click();
+      } else if (tbActiveMode === 'region') {
+        $('terrain-region-cancel-btn')?.click();
+      }
+      updateStepGuideBanner();
+      if (terrainMapMode !== 'maplibre') drawRadar();
+      else {
+        updateMapLibreToolSources();
+        updateMapLibreOverlay();
+      }
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && tbOpen) {
+      closeTerrainToolbox();
+    }
   });
 
   tbAoSwathBox = { x1: -4000, y1: -3000, x2: 4000, y2: 3000 };
@@ -13055,10 +13716,14 @@ window.onTargetNodeChange = function(val) {
 };
 
 function syncNodeDropdowns(nid) {
-  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select'].forEach(id => {
+  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'ntn-node-select'].forEach(id => {
     const sel = $(id);
     if (sel) sel.value = String(nid);
   });
+  selectedNtnNodeId = Number(nid);
+  if (typeof latestTelemetry !== 'undefined' && latestTelemetry && typeof renderNtnSignalingAnalyzer === 'function') {
+    renderNtnSignalingAnalyzer(latestTelemetry);
+  }
   if (threeController) {
     threeController.setSelectedNode(nid);
   }
@@ -13084,6 +13749,16 @@ window.filterTerminalOptions = function(query) {
 
 window.injectTraffic = function(type) {
   sendCommand({ type: 'INJECT_TRAFFIC', node_id: selectedNodeId, traffic_type: type });
+  const eventTarget = window.event?.target;
+  if (eventTarget && eventTarget.tagName === 'BUTTON') {
+    const origText = eventTarget.textContent;
+    eventTarget.textContent = '✓ Injected!';
+    eventTarget.disabled = true;
+    setTimeout(() => {
+      eventTarget.textContent = origText;
+      eventTarget.disabled = false;
+    }, 450);
+  }
 };
 
 window.clearTransfer = function() {
@@ -13530,6 +14205,12 @@ window.switchMainTab = function(targetTabId) {
     targetTabId = 'tab-doc';
     window.switchDocSubview?.('diag');
   }
+  if (tbOpen) {
+    closeTerrainToolbox();
+  }
+  document.querySelectorAll('.detail-viewport > .tab-content').forEach(el => {
+    el.style.display = '';
+  });
   TABS.forEach(tid => {
     const pane = $(tid);
     const btn = $(`tab-btn-${tid.replace('tab-', '')}`);
@@ -14879,7 +15560,21 @@ function initializeExperimentCapture() {
   experimentElement('experiment-stop')?.addEventListener('click', experimentStop);
   experimentElement('experiment-export-csv')?.addEventListener('click', experimentExportCsv);
   experimentElement('experiment-export-json')?.addEventListener('click', experimentExportJson);
-  experimentElement('experiment-clear')?.addEventListener('click', () => {
+  let experimentClearTimer = null;
+  const clearBtn = experimentElement('experiment-clear');
+  clearBtn?.addEventListener('click', () => {
+    if (!clearBtn.dataset.armed) {
+      clearBtn.dataset.armed = 'true';
+      clearBtn.textContent = 'Confirm Clear ↩';
+      experimentClearTimer = setTimeout(() => {
+        delete clearBtn.dataset.armed;
+        clearBtn.textContent = 'Clear capture';
+      }, 3000);
+      return;
+    }
+    clearTimeout(experimentClearTimer);
+    delete clearBtn.dataset.armed;
+    clearBtn.textContent = 'Clear capture';
     experimentCapture.active = false; experimentCapture.observations = [];
     experimentCapture.startedAt = null; experimentCapture.stoppedAt = null; experimentCapture.runId = null;
     experimentUpdateControls();
@@ -15290,6 +15985,7 @@ function updateDashboardDOM(frame, force = false) {
     const recomputeBtn = $('btn-recompute-relay-advisor');
     if (recomputeBtn && recomputeBtn.textContent === 'Computing…') {
       recomputeBtn.textContent = 'Recompute Optimal Ridge Relay';
+      recomputeBtn.disabled = false;
     }
   }
 
@@ -16123,7 +16819,7 @@ function renderGeodeticRulerOverlay(ctx, w, h) {
 
     // 3. Graduated Kilometer Ticks along shaft
     const dHorizM = metrics.horizontalDistanceM;
-    if (dHorizM > 500) {
+    if (tbShowRulerTicks && dHorizM > 500) {
       ctx.save();
       const stepM = dHorizM > 10000 ? 2000 : 1000;
       const screenLen = Math.hypot(pB.x - pA.x, pB.y - pA.y);
@@ -16233,9 +16929,7 @@ function renderGeodeticRulerOverlay(ctx, w, h) {
     const snrText = rfPreview ? `${rfPreview.snrDb.toFixed(1)} dB (${rfPreview.modcodName.split(' ')[0]})` : '-- dB';
 
     drawGlassBox(midX, midY, [
-      { text: `Horiz: ${metrics.dHorizKm.toFixed(2)} km | 3D Slant: ${metrics.d3dKm.toFixed(2)} km`, color: '#00e5ff' },
-      { text: `Azimuth: ${metrics.azimuthDeg.toFixed(1)}° ${metrics.cardinalOctant} (Back: ${metrics.backAzimuthDeg.toFixed(1)}°)`, color: '#ffab00' },
-      { text: `Vert ΔZ: ${metrics.deltaZM >= 0 ? '+' : ''}${Math.round(metrics.deltaZM)} m | Elev Angle: ${metrics.verticalAngleDeg >= 0 ? '+' : ''}${metrics.verticalAngleDeg.toFixed(1)}° (${metrics.gradePct >= 0 ? '+' : ''}${metrics.gradePct.toFixed(1)}%)`, color: '#00e676' },
+      { text: `${metrics.dHorizKm.toFixed(2)} km · ${metrics.azimuthDeg.toFixed(1)}° ${metrics.cardinalOctant} · Elev Δ ${metrics.deltaZM >= 0 ? '+' : ''}${Math.round(metrics.deltaZM)}m (${metrics.verticalAngleDeg >= 0 ? '+' : ''}${metrics.verticalAngleDeg.toFixed(1)}°)`, color: '#00e5ff' },
       { text: `8 GHz Link: ${evalRes.isLineOfSightClear ? 'CLEAR LoS' : 'BLOCKED'} · SNR ${snrText}`, color: evalRes.isLineOfSightClear ? '#00e676' : '#ff2a54' },
     ], evalRes.isLineOfSightClear ? '#00e5ff' : '#ff2a54');
   }
@@ -16302,7 +16996,7 @@ function renderGeodeticRulerOverlay(ctx, w, h) {
 
     // 2. Graduated Kilometer Ticks along shaft
     const dHorizM = metrics.horizontalDistanceM;
-    if (dHorizM > 500) {
+    if (tbShowRulerTicks && dHorizM > 500) {
       ctx.save();
       const stepM = dHorizM > 10000 ? 2000 : 1000;
       const screenLen = Math.hypot(pB.x - pA.x, pB.y - pA.y);
@@ -16460,9 +17154,7 @@ function renderGeodeticRulerOverlay(ctx, w, h) {
     const snrText = rfLink ? `${rfLink.snrDb.toFixed(1)} dB (${rfLink.modcodName.split(' ')[0]})` : '-- dB';
 
     drawGlassBox(midX, midY, [
-      { text: `Horiz: ${metrics.dHorizKm.toFixed(2)} km | 3D Slant: ${metrics.d3dKm.toFixed(2)} km`, color: '#00e5ff' },
-      { text: `Azimuth: ${metrics.azimuthDeg.toFixed(1)}° ${metrics.cardinalOctant} (Back: ${metrics.backAzimuthDeg.toFixed(1)}°)`, color: '#ffab00' },
-      { text: `Vert ΔZ: ${metrics.deltaZM >= 0 ? '+' : ''}${Math.round(metrics.deltaZM)} m | Elev Angle: ${metrics.verticalAngleDeg >= 0 ? '+' : ''}${metrics.verticalAngleDeg.toFixed(1)}° (${metrics.gradePct >= 0 ? '+' : ''}${metrics.gradePct.toFixed(1)}%)`, color: '#00e676' },
+      { text: `${metrics.dHorizKm.toFixed(2)} km · ${metrics.azimuthDeg.toFixed(1)}° ${metrics.cardinalOctant} · Elev Δ ${metrics.deltaZM >= 0 ? '+' : ''}${Math.round(metrics.deltaZM)}m (${metrics.verticalAngleDeg >= 0 ? '+' : ''}${metrics.verticalAngleDeg.toFixed(1)}°)`, color: '#00e5ff' },
       { text: `8 GHz Link: ${evalRes.isLineOfSightClear ? 'CLEAR LoS' : 'BLOCKED'} · SNR ${snrText}`, color: evalRes.isLineOfSightClear ? '#00e676' : '#ff2a54' },
     ], evalRes.isLineOfSightClear ? '#00e5ff' : '#ff2a54');
   }
@@ -18466,6 +19158,10 @@ radarCanvas.addEventListener('mousedown', (e) => {
         radarCanvas.style.cursor = 'grabbing';
         return;
       }
+    }
+    // Mutual exclusion: when terrain tool active, do not fall through to node/obstacle/waypoint picking
+    if ((window.tbOpen && tbActiveMode !== 'dem') || terrainToolMode !== 'idle') {
+      return;
     }
     // In armed placement mode the click itself is the command to add a route point,
     // not a hit-test selection. Node-first priority applies to select/drag below.

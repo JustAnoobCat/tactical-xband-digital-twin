@@ -42,6 +42,8 @@
     "verify:cursor-probe": "vite-node src/tests/verifyPrecisionCursorProbeTool2.ts",
     "verify:ao-swath": "vite-node src/tests/verifyPrecisionAoSwathTool3.ts",
     "verify:cad-obstacle": "vite-node src/tests/verifyPrecisionCadObstacleTool4.ts",
+    "verify:intuitive-toolbox": "vite-node src/tests/verifyIntuitiveToolboxUx.ts",
+    "verify:ux-51-polish": "vite-node src/tests/verifyComprehensive51PointUxPolish.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",
