@@ -256,7 +256,11 @@ export class SimulationWorkerManager {
 
   public getLiveAcnPosition(): [number, number, number] {
     const p = this.trajectoryEngine.getAcnPosition(this.simTimeS);
-    return [p[0], p[1], this.liveAltitudeM];
+    return [
+      p[0] + this.skyShepherdCurrentOffset[0],
+      p[1] + this.skyShepherdCurrentOffset[1],
+      this.liveAltitudeM + this.skyShepherdCurrentOffset[2],
+    ];
   }
 
   public get viewshedSinrGrid(): Float32Array | undefined {
@@ -352,9 +356,11 @@ export class SimulationWorkerManager {
 
   // Edge-AI NLoS Recovery Pathfinder & Auto-Healing Engine
   public aiAutoHealEnabled: boolean = false;
-  public aiBuddyMeshEnabled: boolean = true;
-  public aiLpiStealthEnabled: boolean = true;
+  public aiBuddyMeshEnabled: boolean = false;
+  public aiLpiStealthEnabled: boolean = false;
   public aiSkyShepherdActive: boolean = false;
+  public skyShepherdCurrentOffset: [number, number, number] = [0, 0, 0];
+  public skyShepherdTargetOffset: [number, number, number] = [0, 0, 0];
   public aiSkyShepherdNodeId: number | null = null;
   public aiSkyShepherdDirective: string = '';
   public readonly aiPinnedNodes: Set<number> = new Set();
@@ -499,9 +505,14 @@ export class SimulationWorkerManager {
     this.aiLpiStealthResults.clear();
     this.aiBlackoutForecasts.clear();
     this.aiPinnedNodes.clear();
+    this.aiAutoHealEnabled = false;
+    this.aiBuddyMeshEnabled = false;
+    this.aiLpiStealthEnabled = false;
     this.aiSkyShepherdActive = false;
     this.aiSkyShepherdNodeId = null;
     this.aiSkyShepherdDirective = '';
+    this.skyShepherdCurrentOffset = [0, 0, 0];
+    this.skyShepherdTargetOffset = [0, 0, 0];
   }
 
   public getActiveRepositionDistRemaining(nodeId: number): number | null {
@@ -701,7 +712,33 @@ export class SimulationWorkerManager {
       this.isTerrainClamped = false;
     }
 
-    const acnPos: [number, number, number] = [targetPos[0], targetPos[1], this.liveAltitudeM];
+    // Closed-Loop Pillar 3: Sky-Shepherd UAV Loiter Orbit Slew Dynamics (80 m/s horiz, 25 m/s vert)
+    const targetShepherdOffset = (this.aiSkyShepherdActive && this.aiSkyShepherdNodeId !== null)
+      ? this.skyShepherdTargetOffset
+      : [0, 0, 0];
+    const dxShep = targetShepherdOffset[0] - this.skyShepherdCurrentOffset[0];
+    const dyShep = targetShepherdOffset[1] - this.skyShepherdCurrentOffset[1];
+    const dzShep = targetShepherdOffset[2] - this.skyShepherdCurrentOffset[2];
+    const horizDistShep = Math.hypot(dxShep, dyShep);
+    const maxHorizStep = 80.0 * FRAME_DT; // 1.6 m per 20 ms
+    const maxVertStep = 25.0 * FRAME_DT;  // 0.5 m per 20 ms
+
+    if (horizDistShep <= maxHorizStep) {
+      this.skyShepherdCurrentOffset[0] = targetShepherdOffset[0];
+      this.skyShepherdCurrentOffset[1] = targetShepherdOffset[1];
+    } else {
+      const uX = dxShep / horizDistShep;
+      const uY = dyShep / horizDistShep;
+      this.skyShepherdCurrentOffset[0] += uX * maxHorizStep;
+      this.skyShepherdCurrentOffset[1] += uY * maxHorizStep;
+    }
+    this.skyShepherdCurrentOffset[2] += Math.max(-maxVertStep, Math.min(maxVertStep, dzShep));
+
+    const acnPos: [number, number, number] = [
+      targetPos[0] + this.skyShepherdCurrentOffset[0],
+      targetPos[1] + this.skyShepherdCurrentOffset[1],
+      this.liveAltitudeM + this.skyShepherdCurrentOffset[2],
+    ];
 
     // Advance active Edge-AI node repositioning movements
     if (this.aiActiveMovements.size > 0) {
@@ -1470,6 +1507,32 @@ export class SimulationWorkerManager {
         ricianFadingGainDb = fading.fadingGainDb;
       }
 
+      // Closed-Loop Pillar 4: AI LPI/LPD Stealth RF Power Throttling
+      let customTxPowerDbm = node.txPowerDbm;
+      if (this.aiLpiStealthEnabled) {
+        const nominalTxPowerDbm = node.nodeType === 'mcp'
+          ? (this.rfConfig.mcpTxPowerDbm ?? 40.0)
+          : (this.rfConfig.soldierTxPowerDbm ?? 36.0);
+        const roughSinr = this.linkStatuses.get(nid)?.snrDb ?? 20.0;
+        const lpiResult = computeAiLpiStealthPower(
+          nominalTxPowerDbm,
+          roughSinr,
+          !obstruction.isLos || (obstruction.obstacleBlocked ?? false),
+          18.5
+        );
+        this.aiLpiStealthResults.set(nid, lpiResult);
+        customTxPowerDbm = lpiResult.lpiTxPowerDbm;
+        node.txPowerDbm = customTxPowerDbm;
+      } else if (node.txPowerDbm !== undefined && !this.aiLpiStealthEnabled) {
+        const nominalTxPowerDbm = node.nodeType === 'mcp'
+          ? (this.rfConfig.mcpTxPowerDbm ?? 40.0)
+          : (this.rfConfig.soldierTxPowerDbm ?? 36.0);
+        if (node.txPowerDbm < nominalTxPowerDbm) {
+          node.txPowerDbm = nominalTxPowerDbm;
+          customTxPowerDbm = nominalTxPowerDbm;
+        }
+      }
+
       const ls = this.linkEngine.evaluateLink(
         node.nodeType,
         slantM,
@@ -1477,7 +1540,7 @@ export class SimulationWorkerManager {
         this.rfConfig,
         this.envConfig,
         obstruction.obstacleBlocked,
-        node.txPowerDbm,
+        customTxPowerDbm,
         sectorEval,
         node.position[2],
         acnPos[2],
@@ -1613,6 +1676,61 @@ export class SimulationWorkerManager {
     this.relayedNodeCount = relayedNodeCount;
     this.relayBackhaulSectorId = relayBackhaulSectorId;
     this.relayBackhaulSnrDb = relayBackhaulSnrDb;
+
+    // 1a-2. Closed-Loop Pillar 1: AI Buddy-Relay Squad Mesh Delivery
+    if (this.aiBuddyMeshEnabled) {
+      const squadForBuddy: SquadNodeForBuddyEval[] = [];
+      for (let j = 0; j < numNodes; j++) {
+        const oNode = this.nodesTac[j];
+        const oLs = nextLinks.get(oNode.nodeId);
+        squadForBuddy.push({
+          nodeId: oNode.nodeId,
+          position: oNode.position,
+          nodeType: oNode.nodeType,
+          isOutage: oLs?.isOutage ?? true,
+          directBitrateMbps: oLs?.bitrateMbps ?? 0.0,
+          directSinrDb: oLs?.snrDb ?? -99.0,
+        });
+      }
+
+      for (let i = 0; i < numNodes; i++) {
+        const node = this.nodesTac[i];
+        const nid = node.nodeId;
+        const curLs = nextLinks.get(nid);
+        if (curLs && (curLs.isOutage || curLs.bitrateMbps < 1.0)) {
+          const buddyRes = evaluateAiBuddyRelayRescue(
+            {
+              nodeId: nid,
+              position: node.position,
+              isOutage: true,
+              directBitrateMbps: curLs.bitrateMbps ?? 0.0,
+              directSinrDb: curLs.snrDb ?? -99.0,
+            },
+            squadForBuddy,
+            (x, y) => this.terrainEngine.getElevation(x, y),
+            this.rfConfig.carrierFrequencyHz
+          );
+          this.aiBuddyRelayResults.set(nid, buddyRes);
+
+          if (buddyRes.buddyNodeId !== null && buddyRes.buddyBitrateMbps > 0 && buddyRes.harmonicRateMbps > 0) {
+            const buddyNodeLink = nextLinks.get(buddyRes.buddyNodeId);
+            const harmonicRate = buddyRes.harmonicRateMbps;
+            const buddyRelayedLink: LinkStatus = {
+              ...curLs,
+              isOutage: false,
+              isRelayed: true,
+              bitrateMbps: harmonicRate,
+              bitrateBps: harmonicRate * 1e6,
+              snrDb: buddyRes.buddySinrDb,
+              modcodName: `BUDDY:S${buddyRes.buddyNodeId}`,
+              activeSectorId: buddyNodeLink?.activeSectorId ?? curLs.activeSectorId,
+            };
+            nextLinks.set(nid, buddyRelayedLink);
+            nextShadow.set(nid, false);
+          }
+        }
+      }
+    }
 
     // 1b. Real-Time Polar X-Band SINR Viewshed Slice Sweep (Amortized 6 Azimuths per 20 ms tick)
     if (this.viewshedEnabled) {
@@ -2058,6 +2176,22 @@ export class SimulationWorkerManager {
         );
         if (relayedLink.isRelayed) {
           linkStatus = relayedLink;
+        }
+      }
+
+      if (this.aiBuddyMeshEnabled && (linkStatus.isOutage || linkStatus.bitrateMbps < 1.0)) {
+        const buddyRes = this.aiBuddyRelayResults.get(node.nodeId);
+        if (buddyRes && buddyRes.buddyNodeId !== null && buddyRes.buddyBitrateMbps > 0) {
+          const harmonicRate = buddyRes.harmonicRateMbps > 0 ? buddyRes.harmonicRateMbps : buddyRes.buddyBitrateMbps;
+          linkStatus = {
+            ...linkStatus,
+            isOutage: false,
+            isRelayed: true,
+            bitrateMbps: harmonicRate,
+            bitrateBps: harmonicRate * 1e6,
+            snrDb: buddyRes.buddySinrDb,
+            modcodName: `BUDDY:S${buddyRes.buddyNodeId}`,
+          };
         }
       }
 
@@ -3203,6 +3337,11 @@ export class SimulationWorkerManager {
               this.rfConfig.carrierFrequencyHz
             );
             this.aiSkyShepherdDirective = shepherdRes.shepherdDirectiveText;
+            if (shepherdRes.isShepherdFeasible) {
+              this.skyShepherdTargetOffset = [shepherdRes.deltaXM, shepherdRes.deltaYM, shepherdRes.deltaAltM];
+            } else {
+              this.skyShepherdTargetOffset = [0, 0, 0];
+            }
           }
         } else {
           this.aiPinnedNodes.delete(nid);
@@ -3210,6 +3349,7 @@ export class SimulationWorkerManager {
             this.aiSkyShepherdActive = false;
             this.aiSkyShepherdNodeId = null;
             this.aiSkyShepherdDirective = '';
+            this.skyShepherdTargetOffset = [0, 0, 0];
           }
         }
         return result(true);

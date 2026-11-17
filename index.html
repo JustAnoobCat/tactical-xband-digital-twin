@@ -14913,9 +14913,29 @@ function renderSoldierPhoneWorkspace(frame) {
   const blackoutSec = selNode.ai_blackout_in_s;
   const isPinned = window.pinnedSoldierIds.has(selNode.node_id) || Boolean(selNode.ai_is_pinned);
   const isBuddy = selNode.ai_buddy_node_id !== null && selNode.ai_buddy_node_id !== undefined;
+  const isMoving = Boolean(selNode.ai_is_moving);
   const needsMove = Boolean(selNode.ai_needs_reposition);
 
-  if (blackoutSec !== null && blackoutSec !== undefined && blackoutSec <= 15.0) {
+  if (isMoving) {
+    if (bannerEl) {
+      bannerEl.style.background = 'rgba(56,189,248,0.25)';
+      bannerEl.style.borderColor = 'rgba(56,189,248,0.7)';
+    }
+    if (bannerTitle) {
+      const eta = selNode.ai_eta_s !== undefined ? Math.round(selNode.ai_eta_s) : '--';
+      const dist = selNode.ai_move_dist_m !== undefined ? Math.round(selNode.ai_move_dist_m) : '--';
+      bannerTitle.textContent = `🚶 MOVING TO VANTAGE POINT (ETA ${eta}s · ${dist}m)`;
+      bannerTitle.style.color = '#38bdf8';
+    }
+    if (bannerBadge) {
+      bannerBadge.textContent = 'IN TRANSIT';
+      bannerBadge.style.color = '#38bdf8';
+      bannerBadge.style.background = 'rgba(56,189,248,0.2)';
+    }
+    if (bannerText) {
+      bannerText.textContent = selNode.ai_directive_text || 'Walking towards AI-selected ridge vantage point.';
+    }
+  } else if (blackoutSec !== null && blackoutSec !== undefined && blackoutSec <= 15.0) {
     if (bannerEl) {
       bannerEl.style.background = 'rgba(239,68,68,0.2)';
       bannerEl.style.borderColor = 'rgba(239,68,68,0.6)';
@@ -14938,7 +14958,8 @@ function renderSoldierPhoneWorkspace(frame) {
       bannerEl.style.borderColor = 'rgba(56,189,248,0.6)';
     }
     if (bannerTitle) {
-      bannerTitle.textContent = '✈️ SKY-SHEPHERD OVERHEAD';
+      const s = selNode.sinr_db !== undefined ? selNode.sinr_db : 0;
+      bannerTitle.textContent = `✈️ SKY-SHEPHERD UAV REPOSITIONING (+${s.toFixed(1)} dB)`;
       bannerTitle.style.color = '#38bdf8';
     }
     if (bannerBadge) {
@@ -14949,13 +14970,14 @@ function renderSoldierPhoneWorkspace(frame) {
     if (bannerText) {
       bannerText.textContent = frame.ai_sky_shepherd_directive || 'UAV shifted loiter center to look directly into pinned canyon.';
     }
-  } else if (isBuddy) {
+  } else if (isBuddy && (!selNode.is_outage || (selNode.modcod_name && selNode.modcod_name.startsWith('BUDDY:')))) {
     if (bannerEl) {
       bannerEl.style.background = 'rgba(192,132,252,0.2)';
       bannerEl.style.borderColor = 'rgba(192,132,252,0.6)';
     }
     if (bannerTitle) {
-      bannerTitle.textContent = '🔗 BUDDY-MESH RESCUE ACTIVE';
+      const rate = selNode.bitrate_mbps !== undefined ? selNode.bitrate_mbps.toFixed(1) : (selNode.ai_buddy_rate_mbps?.toFixed(1) || '--');
+      bannerTitle.textContent = `🔗 BUDDY-MESH DELIVERING (${rate} Mbps)`;
       bannerTitle.style.color = '#c084fc';
     }
     if (bannerBadge) {
@@ -14964,7 +14986,7 @@ function renderSoldierPhoneWorkspace(frame) {
       bannerBadge.style.background = 'rgba(192,132,252,0.2)';
     }
     if (bannerText) {
-      bannerText.textContent = `Direct UAV link shadowed. Traffic decoded & forwarded via S${selNode.ai_buddy_node_id} (${selNode.ai_buddy_rate_mbps?.toFixed(1) || '--'} Mbps).`;
+      bannerText.textContent = `Direct UAV link shadowed. Traffic decoded & forwarded via S${selNode.ai_buddy_node_id} at ${selNode.bitrate_mbps?.toFixed(1) || '--'} Mbps.`;
     }
   } else if (needsMove) {
     if (bannerEl) {
@@ -14982,6 +15004,23 @@ function renderSoldierPhoneWorkspace(frame) {
     }
     if (bannerText) {
       bannerText.textContent = selNode.ai_directive_text || 'Relocate to clear LoS vantage point with gentle slope.';
+    }
+  } else if (!selNode.is_outage && (selNode.sinr_db !== undefined && selNode.sinr_db >= 8.0)) {
+    if (bannerEl) {
+      bannerEl.style.background = 'rgba(16,36,28,0.75)';
+      bannerEl.style.borderColor = 'rgba(52,211,153,0.4)';
+    }
+    if (bannerTitle) {
+      bannerTitle.textContent = `🟢 AI LINK RESTORED: Clear LoS at +${(selNode.sinr_db || 0).toFixed(1)} dB`;
+      bannerTitle.style.color = '#34d399';
+    }
+    if (bannerBadge) {
+      bannerBadge.textContent = 'CLEAR LOS';
+      bannerBadge.style.color = '#34d399';
+      bannerBadge.style.background = 'rgba(52,211,153,0.2)';
+    }
+    if (bannerText) {
+      bannerText.textContent = 'Clear LoS to ACN loiter orbit. DVB-S2X link closure healthy.';
     }
   } else {
     if (bannerEl) {

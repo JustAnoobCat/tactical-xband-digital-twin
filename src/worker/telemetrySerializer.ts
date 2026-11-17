@@ -380,7 +380,7 @@ export class TelemetrySerializer {
         allocated_capacity_bits: alloc?.capacityBits ?? 0,
         transfer_state: transState,
         color_hex: regEntity?.identity.colorHex ?? node.identity?.colorHex ?? (node.nodeType === 'mcp' ? '#f59e0b' : '#38bdf8'),
-        tx_power_dbm: node.txPowerDbm ?? (node.nodeType === 'mcp' ? 43.0 : 36.0),
+        tx_power_dbm: ls?.pTxDbm ?? node.txPowerDbm ?? (node.nodeType === 'mcp' ? 43.0 : 36.0),
         battery_capacity_mah: node.batteryCapacityMah ?? (node.nodeType === 'mcp' ? 20000 : 5000),
         battery_level_pct: Number((node.batteryLevelPct ?? 100.0).toFixed(1)),
         tactical_priority: node.tacticalPriority ?? 1.0,

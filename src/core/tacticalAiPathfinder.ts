@@ -30,9 +30,10 @@
  * - docs/specs/SPEC-WALKABLE-TERRAIN-PATHFINDER-AND-OBSTACLE-AVOIDANCE.md
  */
 
-import { MODCOD_TABLE } from './linkBudget';
+import { LinkBudgetEngine, MODCOD_TABLE } from './linkBudget';
+import { EnvironmentConfig, NodeType, RFConfig } from './config';
 import type { Position3D } from '../shared/types';
-import { normalizeObstacle, footprintInterval, obstacleContainsPoint, type Obstacle } from './obstacles';
+import { normalizeObstacle, footprintInterval, obstacleContainsPoint, ObstacleField, type Obstacle } from './obstacles';
 
 // ----------------------------------------------------------------------------
 // Constants & Physical Parameters
@@ -43,12 +44,14 @@ export const DEFAULT_AI_WAVELENGTH_M = SPEED_OF_LIGHT_M_S / DEFAULT_AI_RF_FREQ_H
 export const DEFAULT_AI_R_EFF_M = (4.0 / 3.0) * 6371000.0; // ~8494666.67 m (4/3 atmospheric refraction)
 
 export const AI_LINK_BUDGET_CONSTANTS = {
-  txPowerDbm: 43.0,       // 20 W ACN PA
-  txGainDbi: 18.0,        // ACN peak horn array gain
-  rxGainDbi: 3.0,         // Ground terminal monopole / patch gain
-  noisePowerDbm: -104.0,  // Receiver thermal noise floor + NF
-  gasLossBaselineDb: 1.2, // Atmospheric absorption baseline
+  txPowerDbm: 36.0,       // 4.0 W Soldier Manpack PA (RFConfig default)
+  txGainDbi: 3.0,         // Soldier omni whip antenna gain
+  rxGainDbi: 16.0,        // ACN peak horn array gain
+  noisePowerDbm: -108.98, // Receiver thermal noise floor + 5.0 dB NF over 1.0 MHz
+  gasLossBaselineDb: 0.0, // Atmospheric absorption baseline
   specificGasLossDbPerKm: 0.012, // ITU-R P.676 absorption at 8.0 GHz
+  cableLossDb: 1.5,       // RF feedline & connector loss
+  implMarginDb: 2.5,      // Implementation & polarization margin
 };
 
 export const COMPASS_16_SECTORS = [
@@ -340,6 +343,7 @@ export interface AiRecoveryAdvisoryParams {
   readonly nodePos: readonly [number, number, number]; // [x, y, z] ENU in metres
   readonly nodeType?: string;
   readonly acnPos: readonly [number, number, number];  // [x, y, z] ENU in metres
+  readonly acnVelocityEnu?: Position3D;
   readonly currentSinrDb: number;
   readonly currentIsOutage: boolean;
   readonly getElevationAt: (x: number, y: number) => number;
@@ -348,6 +352,8 @@ export interface AiRecoveryAdvisoryParams {
   readonly obstacles?: readonly any[];
   readonly jammerPosEnu?: Position3D;
   readonly jammerEnabled?: boolean;
+  readonly rfConfig?: RFConfig;
+  readonly envConfig?: EnvironmentConfig;
 }
 
 export interface AiNodeRecoveryRecommendation {
@@ -405,6 +411,7 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
     nodePos,
     nodeType = 'SOLDIER',
     acnPos,
+    acnVelocityEnu,
     currentSinrDb,
     currentIsOutage,
     getElevationAt,
@@ -413,7 +420,23 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
     obstacles,
     jammerPosEnu,
     jammerEnabled = false,
+    rfConfig,
+    envConfig,
   } = params;
+
+  const rf = rfConfig ?? new RFConfig({ carrierFrequencyHz: rfFreqHz });
+  const env = envConfig ?? new EnvironmentConfig();
+  const linkEngine = new LinkBudgetEngine();
+
+  let obstacleField: ObstacleField | null = null;
+  if (obstacles && obstacles.length > 0) {
+    obstacleField = new ObstacleField();
+    try {
+      obstacleField.replace(obstacles as unknown as any[]);
+    } catch {
+      obstacleField = null;
+    }
+  }
 
   // 1. Early-exit if current link is already optimal
   if (!currentIsOutage && currentSinrDb >= 8.0) {
@@ -645,17 +668,74 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
         diffLossDb = Math.min(50.0, Math.max(0.0, 6.9 + 20.0 * Math.log10(Math.sqrt(nuTerm * nuTerm + 1.0) + nuTerm)));
       }
 
-      // Fast Link Budget: FSPL + Gas + Antenna Gains
-      const slantRangeKm = Math.max(0.01, slantDistAcnM / 1000.0);
-      const fsplDb = 20.0 * Math.log10(Math.max(1.0, slantDistAcnM)) + 20.0 * Math.log10(rfFreqHz) - 147.552;
-      const gasLossDb = AI_LINK_BUDGET_CONSTANTS.gasLossBaselineDb + AI_LINK_BUDGET_CONSTANTS.specificGasLossDbPerKm * slantRangeKm;
+      // Check 3D obstacles along candidate-to-ACN sky ray
+      let candObstacleBlocked = false;
+      if (obstacleField) {
+        const hits = obstacleField.intersectRay(
+          [candX, candY, zAntM],
+          [acnX, acnY, acnZ],
+          (x, y) => getElevationAt(x, y)
+        );
+        if (hits.length > 0) {
+          candObstacleBlocked = true;
+          isRayLoS = false;
+          diffLossDb = Math.max(diffLossDb, 40.0);
+        }
+      }
 
-      const pRxDbm = AI_LINK_BUDGET_CONSTANTS.txPowerDbm +
-                     AI_LINK_BUDGET_CONSTANTS.txGainDbi +
-                     AI_LINK_BUDGET_CONSTANTS.rxGainDbi -
-                     fsplDb - diffLossDb - gasLossDb;
+      // Future-Orbit Arrival & Multi-Phase Persistence Scoring
+      let futurePenalty = 0.0;
+      if (acnVelocityEnu && isRayLoS) {
+        const walkEtaS = chosenPathEval.totalEtaSeconds;
+        const lookaheadS = Math.min(Math.max(walkEtaS, 2.0), 8.0);
+        const futAcnX = acnX + acnVelocityEnu[0] * lookaheadS;
+        const futAcnY = acnY + acnVelocityEnu[1] * lookaheadS;
+        const futAcnZ = acnZ + acnVelocityEnu[2] * lookaheadS;
+        const futDx = futAcnX - candX;
+        const futDy = futAcnY - candY;
+        const futDz = futAcnZ - zAntM;
+        const futHorizM = Math.hypot(futDx, futDy);
+        let futIsLoS = true;
 
-      const candSinrDb = Math.max(-25.0, Math.min(35.0, pRxDbm - AI_LINK_BUDGET_CONSTANTS.noisePowerDbm));
+        for (let fs = 1; fs <= 6; fs++) {
+          const fu = fs / 6.0;
+          const fsM = fu * futHorizM;
+          const fsx = candX + fu * futDx;
+          const fsy = candY + fu * futDy;
+          const fzDem = getElevationAt(fsx, fsy);
+          const fBulgeM = (fsM * (futHorizM - fsM)) / (2.0 * DEFAULT_AI_R_EFF_M);
+          if (fzDem + fBulgeM >= zAntM + fu * futDz) {
+            futIsLoS = false;
+            break;
+          }
+        }
+        if (futIsLoS && obstacleField) {
+          const futHits = obstacleField.intersectRay(
+            [candX, candY, zAntM],
+            [futAcnX, futAcnY, futAcnZ],
+            (x, y) => getElevationAt(x, y)
+          );
+          if (futHits.length > 0) futIsLoS = false;
+        }
+        if (!futIsLoS) {
+          futurePenalty = -25.0;
+        }
+      }
+
+      // Authoritative Link Budget Evaluation matching LinkBudgetEngine
+      const candLink = linkEngine.evaluateLink(
+        nodeType,
+        slantDistAcnM,
+        diffLossDb,
+        rf,
+        env,
+        candObstacleBlocked,
+        undefined,
+        undefined,
+        zAntM,
+        acnZ
+      );
+      const candSinrDb = candLink.snrDb;
 
       // Query online Q-table for historical spatial sector reward
       const sectorIdx = qTable.getSectorIndex(bearingDeg);
@@ -676,14 +756,14 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
       }
 
       // Multi-Objective Recovery Utility:
-      // U(r_c) = 2.5 * candSinrDb + (candIsLoS ? 35.0 : 0.0) + 0.5 * Q[nodeId, s] - 0.08 * chosenPathEval.totalEtaSeconds
-      // Defilade Bonus: +1.8 * jammerShieldingDb when candidate has clear LoS to ACN!
+      // U(r_c) = 2.5 * candSinrDb + (candIsLoS ? 35.0 : 0.0) + 0.5 * Q[nodeId, s] - 0.08 * chosenPathEval.totalEtaSeconds + defiladeBonus + futurePenalty
       const defiladeBonus = (jammerEnabled && isRayLoS) ? 1.8 * jammerShieldingDb : 0.0;
       const utility = 2.5 * candSinrDb +
                       (isRayLoS ? 35.0 : 0.0) +
                       0.5 * qVal -
                       0.08 * chosenPathEval.totalEtaSeconds +
-                      defiladeBonus;
+                      defiladeBonus +
+                      futurePenalty;
 
       if (utility > bestUtility) {
         bestUtility = utility;
@@ -832,9 +912,11 @@ export function evaluateFastLinkSinr(
 
   const slantRangeKm = Math.max(0.01, slantDistM / 1000.0);
   const fsplDb = 20.0 * Math.log10(Math.max(1.0, slantDistM)) + 20.0 * Math.log10(rfFreqHz) - 147.552;
-  const gasLossDb = AI_LINK_BUDGET_CONSTANTS.gasLossBaselineDb + AI_LINK_BUDGET_CONSTANTS.specificGasLossDbPerKm * slantRangeKm;
+  const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantDistM, posA[2], posB[2], rfFreqHz);
+  const cableLossDb = AI_LINK_BUDGET_CONSTANTS.cableLossDb ?? 1.5;
+  const implMarginDb = AI_LINK_BUDGET_CONSTANTS.implMarginDb ?? 2.5;
 
-  const pRxDbm = txPowerDbm + txGainDbi + rxGainDbi - fsplDb - diffLossDb - gasLossDb;
+  const pRxDbm = txPowerDbm + txGainDbi + rxGainDbi - fsplDb - diffLossDb - gasLossDb - cableLossDb - implMarginDb;
   const sinrDb = Math.max(-25.0, Math.min(35.0, pRxDbm - AI_LINK_BUDGET_CONSTANTS.noisePowerDbm));
 
   return {
@@ -905,7 +987,7 @@ export function evaluateAiBuddyRelayRescue(
   for (let i = 0; i < allSquadNodes.length; i++) {
     const squadmate = allSquadNodes[i];
     if (squadmate.nodeId === targetNode.nodeId) continue;
-    if (squadmate.isOutage || squadmate.directBitrateMbps < 8.0) continue;
+    if (squadmate.isOutage || squadmate.directBitrateMbps < 1.0) continue;
 
     const sx = squadmate.position[0];
     const sy = squadmate.position[1];

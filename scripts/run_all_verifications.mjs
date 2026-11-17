@@ -119,7 +119,8 @@ const REGISTERED_SUITES = [
   { id: 'verify:ux-51-polish', name: 'Comprehensive 51-Point Tactical Digital Twin UX Polish (UXP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyComprehensive51PointUxPolish.ts'], category: 'ui' },
   { id: 'verify:ai-pathfinder', name: 'Edge-AI NLoS Link-Recovery Pathfinder & Autonomous Repositioning (AIP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTacticalAiPathfinder.ts'], category: 'ai' },
   { id: 'verify:walkable-ai', name: 'Edge-AI Walkable Terrain Pathfinder & 3D Obstacle Avoidance (WPO-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWalkablePathfinderAndObstacleAvoidance.ts'], category: 'ai' },
-  { id: 'verify:ai-copilot-phone', name: 'Tactical Edge-AI Co-Pilot & Soldier Handheld Phone UI (ECP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyEdgeAiCopilotAndSoldierPhone.ts'], category: 'ai' }
+  { id: 'verify:ai-copilot-phone', name: 'Tactical Edge-AI Co-Pilot & Soldier Handheld Phone UI (ECP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyEdgeAiCopilotAndSoldierPhone.ts'], category: 'ai' },
+  { id: 'verify:ai-physics-truth', name: 'AI Physics Truth & Closed-Loop Execution (APT-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyAiPhysicsTruthAndClosedLoop.ts'], category: 'ai' }
 ];
 
 // -----------------------------------------------------------------------------
