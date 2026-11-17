@@ -1538,11 +1538,13 @@ export class TacticalEntityManager {
     this.acnSectorGroup.position.copy(acnPos);
     const headingDeg = Number.isFinite(frame.acn_heading_deg)
       ? frame.acn_heading_deg
-      : (acn && Number.isFinite(acn.heading_rad) ? (acn.heading_rad * 180.0) / Math.PI : (this.lastValidHeadingRad * 180.0) / Math.PI);
+      : (acn && Number.isFinite(acn.heading_rad)
+          ? ((Math.PI / 2 - acn.heading_rad) * 180.0) / Math.PI
+          : ((Math.PI / 2 - this.lastValidHeadingRad) * 180.0) / Math.PI);
     const bankDeg = Number.isFinite(frame.acn_bank_deg) ? frame.acn_bank_deg : 0.0;
-    const headingRad = (headingDeg * Math.PI) / 180.0;
     const bankRad = (bankDeg * Math.PI) / 180.0;
-    this.acnSectorGroup.rotation.set(0, bankRad, headingRad - Math.PI / 2, 'ZYX');
+    const yawRotZ = -(headingDeg * Math.PI) / 180.0;
+    this.acnSectorGroup.rotation.set(0, bankRad, yawRotZ, 'ZYX');
 
     // 5. Update 3D [MCP-OPT] Relay Mast & 2-Hop Mesh Links
     const advisor = frame.relay_advisor;

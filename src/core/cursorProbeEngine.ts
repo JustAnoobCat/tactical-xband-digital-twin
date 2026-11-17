@@ -224,14 +224,7 @@ export function evaluateCursorRfProbe(
     const sy = yP + u * dy;
     const zDem = getElevationAt(sx, sy);
 
-    // Tangent-plane curvature drop relative to probe antenna
-    const bulgeDropM = (sM * sM) / (2.0 * DEFAULT_R_EFF_M);
-    const horizonAngleDeg = (Math.atan2(zDem - bulgeDropM - zAnt, Math.max(sM, 1.0)) * 180.0) / Math.PI;
-    if (horizonAngleDeg > maxHorizonMaskDeg) {
-      maxHorizonMaskDeg = horizonAngleDeg;
-    }
-
-    // Chord-to-chord curvature bulge & ray clearance
+    // 4/3 Earth curvature bulge along chord & effective terrain elevation
     const chordBulgeM = (sM * (dHorizM - sM)) / (2.0 * DEFAULT_R_EFF_M);
     const effTerrainZ = zDem + chordBulgeM;
     const rayZ = zAnt + u * dz;
@@ -239,6 +232,12 @@ export function evaluateCursorRfProbe(
 
     if (clearanceM <= 0) {
       isRayBlocked = true;
+    }
+
+    // Chord-frame horizon elevation angle relative to probe antenna
+    const horizonAngleDeg = (Math.atan2(effTerrainZ - zAnt, Math.max(sM, 1.0)) * 180.0) / Math.PI;
+    if (horizonAngleDeg > maxHorizonMaskDeg) {
+      maxHorizonMaskDeg = horizonAngleDeg;
     }
 
     const intrusionM = effTerrainZ - rayZ;
@@ -317,7 +316,8 @@ export function evaluateCursorRfProbe(
   const NUM_SKYLINE_AZ = 16;
   const SKYLINE_RADIUS_M = 8000.0;
   const SKYLINE_RADIAL_STEPS = 8;
-  const skylineThresholdDeg = Math.max(elToAcnDeg, 8.0);
+  const elToAcnTrueDeg = (Math.atan2(dz - (dHorizM * dHorizM) / (2.0 * DEFAULT_R_EFF_M), Math.max(dHorizM, 1.0)) * 180.0) / Math.PI;
+  const skylineThresholdDeg = Math.max(elToAcnTrueDeg, 8.0);
   let clearSectorCount = 0;
 
   for (let k = 0; k < NUM_SKYLINE_AZ; k++) {

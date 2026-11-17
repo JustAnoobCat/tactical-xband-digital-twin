@@ -830,6 +830,12 @@ const candidateUrls = url
       return 0.0;
     }
     const rCrest = Math.max(0.5, Math.min(2000.0, crestRadiusM));
+    // Physical Fresnel diffraction parameter nu for obstacle height hObsM
+    const nu = hObsM * Math.sqrt((2.0 / wavelengthM) * (1.0 / d1M + 1.0 / d2M));
+    if (nu <= -0.78) {
+      return 0.0;
+    }
+
     const hObs = Math.max(0.0, hObsM);
     const m = Math.pow(rCrest, 2.0 / 3.0) * ((d1M + d2M) / (d1M * d2M)) * Math.pow(wavelengthM / Math.PI, 1.0 / 3.0);
     const n = hObs * Math.pow(rCrest, -1.0 / 3.0) * Math.pow(Math.PI / wavelengthM, 2.0 / 3.0);
@@ -840,7 +846,15 @@ const candidateUrls = url
     } else {
       tVal = -6.0 - 20.0 * Math.log10(Math.max(mn, 1e-9)) + 7.2 * Math.sqrt(m) - (2.0 - 17.0 * n) * m + 3.6 * Math.pow(m, 1.5) - 0.8 * m * m;
     }
-    return Math.max(0.0, Math.min(20.0, tVal));
+    const baseCurvatureLoss = Math.max(0.0, Math.min(20.0, tVal));
+
+    if (nu < 0.0) {
+      // Clear optical LoS grazing the 1st Fresnel zone: continuous C0 smooth transition to 0 dB at nu = -0.78
+      const grazingFactor = Math.pow((nu + 0.78) / 0.78, 2.0);
+      return Math.max(0.0, Math.min(20.0, baseCurvatureLoss * Math.max(0.0, Math.min(1.0, grazingFactor))));
+    }
+
+    return baseCurvatureLoss;
   }
 
   /**
@@ -1153,9 +1167,13 @@ const candidateUrls = url
     if (minClearanceRatio >= 0.6) {
       diffractionLossDb = 0.0;
       isLos = true;
+      crestRadiusM = 2000.0;
+      curvatureLossDb = 0.0;
     } else if (minClearanceRatio > 0.0) {
       diffractionLossDb = 6.0 * (1.0 - minClearanceRatio / 0.6);
       isLos = true;
+      crestRadiusM = 2000.0;
+      curvatureLossDb = 0.0;
     } else {
       isLos = false;
 
