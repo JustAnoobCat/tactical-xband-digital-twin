@@ -173,6 +173,28 @@ export interface NodeTelemetryItem {
   readonly rician_k_db?: number;
   readonly rician_fading_db?: number;
   readonly olla_margin_db?: number;
+  readonly ai_needs_reposition?: boolean;
+  readonly ai_target_pos_enu?: readonly [number, number, number];
+  readonly ai_move_dist_m?: number;
+  readonly ai_move_bearing_deg?: number;
+  readonly ai_move_cardinal?: string;
+  readonly ai_delta_elev_m?: number;
+  readonly ai_slope_deg?: number;
+  readonly ai_eta_s?: number;
+  readonly ai_predicted_sinr_db?: number;
+  readonly ai_predicted_modcod?: string;
+  readonly ai_predicted_bitrate_mbps?: number;
+  readonly ai_directive_text?: string;
+  readonly ai_is_moving?: boolean;
+  readonly ai_walk_path_enu?: readonly Position3D[];
+  readonly ai_max_step_slope_deg?: number;
+  readonly ai_buddy_node_id?: number | null;
+  readonly ai_buddy_rate_mbps?: number;
+  readonly ai_jammer_shield_db?: number;
+  readonly ai_lpi_tx_dbm?: number;
+  readonly ai_lpi_saved_pct?: number;
+  readonly ai_blackout_in_s?: number | null;
+  readonly ai_is_pinned?: boolean;
   readonly [key: string]: unknown;
 }
 
@@ -243,6 +265,28 @@ export interface SelectedLinkBudgetTelemetry {
   readonly rician_k_db?: number;
   readonly rician_fading_db?: number;
   readonly olla_margin_db?: number;
+  readonly ai_needs_reposition?: boolean;
+  readonly ai_target_pos_enu?: readonly [number, number, number];
+  readonly ai_move_dist_m?: number;
+  readonly ai_move_bearing_deg?: number;
+  readonly ai_move_cardinal?: string;
+  readonly ai_delta_elev_m?: number;
+  readonly ai_slope_deg?: number;
+  readonly ai_eta_s?: number;
+  readonly ai_predicted_sinr_db?: number;
+  readonly ai_predicted_modcod?: string;
+  readonly ai_predicted_bitrate_mbps?: number;
+  readonly ai_directive_text?: string;
+  readonly ai_is_moving?: boolean;
+  readonly ai_walk_path_enu?: readonly Position3D[];
+  readonly ai_max_step_slope_deg?: number;
+  readonly ai_buddy_node_id?: number | null;
+  readonly ai_buddy_rate_mbps?: number;
+  readonly ai_jammer_shield_db?: number;
+  readonly ai_lpi_tx_dbm?: number;
+  readonly ai_lpi_saved_pct?: number;
+  readonly ai_blackout_in_s?: number | null;
+  readonly ai_is_pinned?: boolean;
   readonly [key: string]: unknown;
 }
 
@@ -424,6 +468,13 @@ export interface TelemetryFrame {
   readonly tac_p99_ms?: number;
   readonly rician_fading_enabled?: boolean;
   readonly cqi_feedback_delay_ms?: number;
+  readonly ai_auto_heal_enabled?: boolean;
+  readonly ai_active_repositions_count?: number;
+  readonly ai_buddy_mesh_enabled?: boolean;
+  readonly ai_lpi_stealth_enabled?: boolean;
+  readonly ai_sky_shepherd_active?: boolean;
+  readonly ai_sky_shepherd_node_id?: number | null;
+  readonly ai_sky_shepherd_directive?: string;
 }
 
 // ----------------------------------------------------------------------------
@@ -845,6 +896,29 @@ export interface SetViewshedConfigCommand extends BaseWorkerInboundCommand {
   readonly activeRelayEnabled?: boolean;
 }
 
+export interface TriggerAiNodeRepositionCommand extends BaseWorkerInboundCommand {
+  readonly type: 'TRIGGER_AI_NODE_REPOSITION';
+  readonly nodeId: number;
+}
+
+export interface SetAiAutoHealCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_AI_AUTO_HEAL';
+  readonly enabled: boolean;
+}
+
+export interface TriggerAiSkyShepherdCommand extends BaseWorkerInboundCommand {
+  readonly type: 'TRIGGER_AI_SKY_SHEPHERD';
+  readonly pinnedNodeId: number;
+  readonly enabled: boolean;
+}
+
+export interface SetAiCopilotConfigCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_AI_COPILOT_CONFIG';
+  readonly buddyMeshEnabled?: boolean;
+  readonly lpiStealthEnabled?: boolean;
+  readonly autoHealEnabled?: boolean;
+}
+
 export type WorkerInboundCommand =
   | SimControlCommand
   | SetSpeedCommand
@@ -853,6 +927,10 @@ export type WorkerInboundCommand =
   | SetSpatialLockCommand
   | SetScientificParamsCommand
   | SetViewshedConfigCommand
+  | TriggerAiNodeRepositionCommand
+  | SetAiAutoHealCommand
+  | TriggerAiSkyShepherdCommand
+  | SetAiCopilotConfigCommand
   | NodeMoveCommand
   | NodeAddCommand
   | NodeDeleteCommand
@@ -924,6 +1002,13 @@ export interface TelemetryFrameMessage {
   readonly tac_p99_ms?: number;
   readonly rician_fading_enabled?: boolean;
   readonly cqi_feedback_delay_ms?: number;
+  readonly ai_auto_heal_enabled?: boolean;
+  readonly ai_active_repositions_count?: number;
+  readonly ai_buddy_mesh_enabled?: boolean;
+  readonly ai_lpi_stealth_enabled?: boolean;
+  readonly ai_sky_shepherd_active?: boolean;
+  readonly ai_sky_shepherd_node_id?: number | null;
+  readonly ai_sky_shepherd_directive?: string;
 }
 
 export interface ProfileFrameMessage {

@@ -952,6 +952,10 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-doc" tabindex="-1" aria-label="Diagnostics and Reference" id="tab-btn-doc" onclick="switchMainTab('tab-doc')" title="Diagnostics &amp; Reference (7)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7"/></svg><span>Diag &amp; Ref</span><span class="nav-index">7</span></button>
     <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-registration" tabindex="-1" aria-label="Registration" id="tab-btn-registration" onclick="switchMainTab('tab-registration')" title="Registration (8)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg><span>Registration</span><span class="nav-index">8</span></button>
   </div>
+  <div class="rail-group" role="presentation">
+    <span class="rail-label" aria-hidden="true">Edge AI</span>
+    <button class="nav-tab rail-btn" role="tab" aria-selected="false" aria-controls="tab-soldier" data-tab="tab-soldier" tabindex="-1" aria-label="Soldier AI" id="tab-btn-soldier" onclick="switchMainTab('tab-soldier')" type="button" title="Soldier Handheld Phone (ATAK AI View)"><span class="rail-icon" style="font-size:18px;line-height:1">📱</span><span class="rail-label">Soldier AI</span><span class="nav-index rail-num">9</span></button>
+  </div>
   <div class="rail-utilities">
     <button id="btn-expert" class="rail-utility" type="button" aria-pressed="false" title="Open every collapsed section">Expert</button>
     <button id="btn-help" class="rail-utility" type="button" title="Show the quick tour">Help</button>
@@ -1448,7 +1452,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <button type="button" class="btn-close-inspector" id="btn-close-node-details" title="Close inspector" aria-label="Close inspector">×</button>
             </div>
             <div id="map-node-detail-content" class="map-node-empty">No ground node selected. Select a marker or choose a terminal from Node Inventory.</div>
-            <div class="map-node-actions"><button type="button" data-map-action="edit">Edit / rename</button><button type="button" data-map-action="move">Move on map</button><button type="button" data-map-action="focus">Focus</button><button type="button" data-map-action="performance" title="Open link budget and SINR analysis in Terrain &amp; RF tab">Link Performance ↗</button><button type="button" data-map-action="delete" class="btn-danger">Delete</button></div>
+            <div class="map-node-actions"><button type="button" data-map-action="edit">Edit / rename</button><button type="button" data-map-action="move">Move on map</button><button type="button" data-map-action="focus">Focus</button><button type="button" data-map-action="performance" title="Open link budget and SINR analysis in Terrain &amp; RF tab">Link Performance ↗</button><button type="button" data-map-action="soldier-phone" title="Open Soldier Handheld Device (ATAK Phone)">📱 Phone</button><button type="button" data-map-action="delete" class="btn-danger">Delete</button></div>
             <div class="node-rf-quick-toggles" role="group" aria-label="RF analysis quick overlays">
               <button type="button" id="btn-node-quick-los" data-rf-toggle="los" aria-pressed="false" title="Toggle Selected-Link LOS &amp; Margin map overlay">◎ LOS Overlay</button>
               <button type="button" id="btn-node-quick-fresnel" data-rf-toggle="fresnel" aria-pressed="false" title="Toggle First Fresnel Corridor (0.6 F₁) map overlay">〰 Fresnel Zone</button>
@@ -2387,6 +2391,30 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <button onclick="injectTraffic('voice')">Voice PTT (5QI 65)</button>
             <button onclick="injectTraffic('video')">Video burst (5QI 67)</button>
             <button onclick="injectTraffic('photo')">2 MB photo (5QI 70)</button>
+          </div>
+          <!-- Local Edge-AI NLoS Link-Recovery Co-Pilot -->
+          <div id="ai-pathfinder-card" class="ai-pathfinder-card" style="margin-top:16px;padding:10px 12px;background:rgba(16,36,28,0.55);border:1px solid rgba(52,211,153,0.35);border-radius:6px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px">
+              <span style="font-size:11.5px;font-weight:700;letter-spacing:0.04em;color:#34d399;text-transform:uppercase;display:flex;align-items:center;gap:5px">
+                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg>
+                Edge-AI Link-Recovery Co-Pilot
+              </span>
+              <span id="ai-q-badge" class="kpi-badge badge-neutral" style="font-size:9.5px;padding:1px 5px">1 KB Q-TABLE</span>
+            </div>
+            <div id="ai-directive-readout" class="ai-directive-readout" style="font-family:var(--mono);font-size:11px;line-height:1.45;color:#e2e8f0;padding:6px 8px;background:rgba(0,0,0,0.4);border-radius:4px;border:1px solid rgba(255,255,255,0.08);margin-bottom:8px">
+              🟢 POSITION OPTIMAL (Clear LoS)
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <button type="button" id="btn-ai-reposition-node" class="btn" aria-label="Execute Local AI Repositioning Move for Selected Node" style="width:100%;font-size:11px;font-weight:600;padding:6px 10px;background:#059669;color:#ffffff;border:none;border-radius:4px;cursor:pointer" onclick="executeAiNodeReposition()">
+                🤖 Execute AI Move to Safe LoS Spot
+              </button>
+              <button type="button" id="btn-open-soldier-phone" class="btn" aria-label="Open ATAK Tactical Soldier Phone UI for Selected Node" style="width:100%;font-size:11px;font-weight:600;padding:6px 10px;background:#2563eb;color:#ffffff;border:none;border-radius:4px;cursor:pointer" onclick="openSoldierPhone()">
+                📱 View Soldier Phone
+              </button>
+              <button type="button" id="btn-ai-auto-heal-toggle" class="btn" aria-label="Toggle Autonomous Local AI Squad Self-Healing Mode" aria-pressed="false" style="width:100%;font-size:10.5px;font-weight:600;padding:5px 10px;background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer" onclick="toggleAiAutoHeal()">
+                🤖 Auto AI Squad Self-Healing: OFF
+              </button>
+            </div>
           </div>
         </div>
         <div class="panel">
@@ -3547,6 +3575,189 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     </div>
   </section>
 
+  <!-- ===== SOLDIER HANDHELD DEVICE (ATAK AI EUD) ===== -->
+  <section class="tab-content" id="tab-soldier">
+    <div class="analysis-context" data-context-view="soldier">
+      <div><span class="context-kicker">Edge-AI Co-Pilot</span></div>
+      <div class="context-meta">
+        <span>Soldier <b data-context-node>Syncing…</b></span>
+        <span>Simulation <b data-context-time>--</b></span>
+        <span>Frame <b data-context-frame>--</b></span>
+        <span>Route <b id="context-eud-route">DIRECT</b></span>
+      </div>
+    </div>
+    <div class="pane" style="display:flex;flex-direction:column;gap:14px;padding:14px;height:100%;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <h2 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+            <span>📱</span> Tactical Soldier Handheld EUD (ATAK AI View)
+          </h2>
+          <p class="lede" style="margin:2px 0 0 0;font-size:12px;color:var(--muted)">
+            Ruggedized soldier end-user device displaying real-time turn-by-turn micro-terrain guidance, local buddy-mesh rescue, EW defilade shielding, LPI stealth RF power, and blackout prediction.
+          </p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="eud-node-select" style="font-size:11px;font-weight:600;color:var(--muted)">Select Soldier:</label>
+          <select id="eud-node-select" onchange="onTargetNodeChange(this.value)" aria-label="Select Soldier Device to Inspect" style="padding:4px 8px;font-size:11.5px;background:var(--surface);color:#fff;border:1px solid var(--line);border-radius:4px">
+          </select>
+        </div>
+      </div>
+
+      <!-- Main 2-Column Split: Phone Frame (Left) + 5-Pillar Matrix (Right) -->
+      <div style="display:grid;grid-template-columns:minmax(300px, 340px) 1fr;gap:18px;align-items:start">
+        
+        <!-- Left: Ruggedized ATAK Tactical Smartphone Frame -->
+        <div id="soldier-eud-phone-frame" style="background:#090d12;border:3px solid #334155;border-radius:24px;padding:12px;box-shadow:0 12px 36px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.06);display:flex;flex-direction:column;gap:10px;position:relative">
+          
+          <!-- Tactical Phone Bezel Top / Ear Speaker Notch -->
+          <div style="display:flex;justify-content:center;align-items:center;padding:2px 0 4px">
+            <div style="width:48px;height:4px;background:#334155;border-radius:2px"></div>
+          </div>
+
+          <!-- Top Status Bar -->
+          <div id="eud-status-bar" style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:9.5px;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:6px">
+            <span style="font-weight:700;color:#38bdf8">DRDO-XBAND-NTN</span>
+            <span id="eud-route-badge" class="kpi-badge badge-neutral" style="font-size:9px;padding:1px 5px">🛰 DIRECT UAV</span>
+            <span id="eud-sinr-readout" class="kpi-badge badge-neutral" style="font-size:9px;padding:1px 5px">+18.5 dB</span>
+          </div>
+
+          <!-- Secondary Telemetry Line: LPI & GPS -->
+          <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:9px;color:#cbd5e1;background:rgba(255,255,255,0.03);padding:4px 6px;border-radius:4px">
+            <span id="eud-lpi-readout">⚡ LPI TX: 30.0 dBm (-0% Sig)</span>
+            <span id="eud-gps-readout">GPS: 4210m MSL</span>
+          </div>
+
+          <!-- AI Push Notification Banner -->
+          <div id="eud-ai-notification-banner" class="eud-ai-notification-banner" style="background:rgba(16,36,28,0.75);border:1px solid rgba(52,211,153,0.4);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:3px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span id="eud-banner-title" style="font-size:10.5px;font-weight:700;color:#34d399;text-transform:uppercase;display:flex;align-items:center;gap:4px">
+                🟢 POSITION OPTIMAL
+              </span>
+              <span id="eud-banner-badge" style="font-size:8.5px;font-family:var(--mono);background:rgba(52,211,153,0.2);color:#34d399;padding:1px 4px;border-radius:3px">EDGE-AI</span>
+            </div>
+            <div id="eud-banner-text" style="font-family:var(--mono);font-size:10px;line-height:1.35;color:#e2e8f0">
+              Clear LoS to ACN loiter orbit. Link closure 100%.
+            </div>
+          </div>
+
+          <!-- First-Person Turn-by-Turn Compass & Squad Scope Canvas (260x260 CSS px) -->
+          <div style="position:relative;width:260px;height:260px;margin:0 auto;background:#05070a;border:1px solid rgba(255,255,255,0.12);border-radius:12px;overflow:hidden;box-shadow:inset 0 0 16px rgba(0,0,0,0.8)">
+            <canvas id="soldier-phone-canvas" width="260" height="260" style="width:260px;height:260px;display:block" aria-label="Soldier First-Person ATAK Turn-by-Turn Compass"></canvas>
+          </div>
+
+          <!-- Waypoint Guidance / TBT Directive Readout -->
+          <div id="eud-nav-guidance" style="font-family:var(--mono);font-size:10.5px;text-align:center;padding:5px 8px;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.06);border-radius:4px;color:#38bdf8">
+            ↑ 0m · ON TARGET [WP0]
+          </div>
+
+          <!-- Primary Tactical Actions: Walk AI Path & Pinned UAV Sky-Shepherd -->
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button type="button" id="btn-eud-walk-ai" class="btn" aria-label="Execute Walk Along AI Waypoints" style="width:100%;font-size:11px;font-weight:700;padding:7px;background:#059669;color:#ffffff;border:none;border-radius:5px;cursor:pointer" onclick="executeAiNodeReposition()">
+              🚶 Walk AI Path to Safe Spot
+            </button>
+            <button type="button" id="btn-eud-pin-shepherd" class="btn" aria-label="Toggle Pinned State and Call UAV Sky-Shepherd" aria-pressed="false" style="width:100%;font-size:10.5px;font-weight:600;padding:6px;background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.15);border-radius:5px;cursor:pointer" onclick="togglePinShepherd()">
+              🔒 Pinned — Call UAV Sky-Shepherd
+            </button>
+          </div>
+
+          <!-- Secondary Tactical Traffic Quick Injection Buttons -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:2px">
+            <button type="button" class="btn" style="font-size:10px;padding:5px;background:rgba(239,68,68,0.2);border:1px solid #ef4444;color:#fca5a5" onclick="injectTraffic('sos')">🚨 SOS Alert</button>
+            <button type="button" class="btn" style="font-size:10px;padding:5px;background:rgba(59,130,246,0.15);border:1px solid #3b82f6;color:#93c5fd" onclick="injectTraffic('voice')">🎙️ PTT Voice</button>
+            <button type="button" class="btn" style="font-size:10px;padding:5px;background:rgba(16,185,129,0.15);border:1px solid #10b981;color:#6ee7b7" onclick="injectTraffic('video')">📹 Video Stream</button>
+            <button type="button" class="btn" style="font-size:10px;padding:5px;background:rgba(245,158,11,0.15);border:1px solid #f59e0b;color:#fcd34d" onclick="injectTraffic('photo')">📸 SITREP Photo</button>
+          </div>
+
+        </div>
+
+        <!-- Right: 5-Pillar Co-Pilot Matrix & Fleet Status -->
+        <div id="ai-copilot-matrix-panel" style="display:flex;flex-direction:column;gap:12px">
+          
+          <!-- Global Master Controls -->
+          <div class="panel" style="padding:10px 14px">
+            <div class="panel-head" style="margin-bottom:8px">
+              <span class="sec-title">Local Edge-AI Operational Matrix (50 Hz / &lt; 0.4 ms)</span>
+              <span class="kpi-badge badge-neutral" style="font-size:9.5px;padding:1px 6px">0 EXT DEPENDENCIES</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              <button type="button" id="btn-ai-buddy-mesh-toggle" class="btn" aria-pressed="true" style="font-size:11px;font-weight:600;padding:6px 12px;background:rgba(192,132,252,0.15);border:1px solid #c084fc;color:#c084fc;border-radius:4px;cursor:pointer" onclick="toggleBuddyMesh()">
+                🔗 Buddy-Relay Squad Mesh: ON
+              </button>
+              <button type="button" id="btn-ai-lpi-stealth-toggle" class="btn" aria-pressed="true" style="font-size:11px;font-weight:600;padding:6px 12px;background:rgba(251,191,36,0.15);border:1px solid #fbbf24;color:#fbbf24;border-radius:4px;cursor:pointer" onclick="toggleLpiStealth()">
+                ⚡ AI LPI Stealth TX: ON
+              </button>
+              <button type="button" id="btn-ai-auto-heal-matrix-toggle" class="btn" aria-pressed="false" style="font-size:11px;font-weight:600;padding:6px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:var(--muted);border-radius:4px;cursor:pointer" onclick="toggleAiAutoHeal()">
+                🤖 Auto Squad Self-Healing: OFF
+              </button>
+            </div>
+          </div>
+
+          <!-- 5 Pillar Detail Cards Grid -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:10px">
+            
+            <!-- Pillar 0/Walkable -->
+            <div id="card-pillar-walkable" class="panel" style="padding:10px">
+              <div class="panel-head" style="margin-bottom:6px">
+                <span class="sec-title" style="font-size:12px;color:#34d399">🚶 Micro-Terrain Walkable Pathfinder</span>
+                <span id="badge-pillar-walkable" class="kpi-badge badge-neutral">OPTIMAL</span>
+              </div>
+              <div id="body-pillar-walkable" style="font-family:var(--mono);font-size:10.5px;color:#cbd5e1;line-height:1.45">
+                Current position has clear LoS. Zero relocation required.
+              </div>
+            </div>
+
+            <!-- Pillar 1: Buddy Mesh -->
+            <div id="card-pillar-buddymesh" class="panel" style="padding:10px">
+              <div class="panel-head" style="margin-bottom:6px">
+                <span class="sec-title" style="font-size:12px;color:#c084fc">🔗 Pillar 1: AI Buddy-Relay Squad Mesh</span>
+                <span id="badge-pillar-buddymesh" class="kpi-badge badge-neutral">STANDBY</span>
+              </div>
+              <div id="body-pillar-buddymesh" style="font-family:var(--mono);font-size:10.5px;color:#cbd5e1;line-height:1.45">
+                Direct UAV LoS healthy. Squad peer mesh ready for automatic decode-and-forward fallback.
+              </div>
+            </div>
+
+            <!-- Pillar 2: EW Defilade -->
+            <div id="card-pillar-defilade" class="panel" style="padding:10px">
+              <div class="panel-head" style="margin-bottom:6px">
+                <span class="sec-title" style="font-size:12px;color:#f87171">🛡️ Pillar 2: AI EW Defilade Shield</span>
+                <span id="badge-pillar-defilade" class="kpi-badge badge-neutral">NO JAMMER</span>
+              </div>
+              <div id="body-pillar-defilade" style="font-family:var(--mono);font-size:10.5px;color:#cbd5e1;line-height:1.45">
+                Jammer inactive. Terrain diffraction shielding optimizer in standby.
+              </div>
+            </div>
+
+            <!-- Pillar 3: Sky-Shepherd -->
+            <div id="card-pillar-skyshepherd" class="panel" style="padding:10px">
+              <div class="panel-head" style="margin-bottom:6px">
+                <span class="sec-title" style="font-size:12px;color:#38bdf8">✈️ Pillar 3: AI Sky-Shepherd UAV Orbit Shift</span>
+                <span id="badge-pillar-skyshepherd" class="kpi-badge badge-neutral">STANDARD ORBIT</span>
+              </div>
+              <div id="body-pillar-skyshepherd" style="font-family:var(--mono);font-size:10.5px;color:#cbd5e1;line-height:1.45">
+                Soldier mobile. Orbit offset inactive (UAV loiter nominal).
+              </div>
+            </div>
+
+            <!-- Pillar 4 & 5: LPI Stealth & Blackout Forecaster -->
+            <div id="card-pillar-lpi-blackout" class="panel" style="padding:10px">
+              <div class="panel-head" style="margin-bottom:6px">
+                <span class="sec-title" style="font-size:12px;color:#fbbf24">⚡ Pillars 4 &amp; 5: LPI Stealth &amp; 15s Blackout</span>
+                <span id="badge-pillar-lpi-blackout" class="kpi-badge badge-neutral">LPI ACTIVE</span>
+              </div>
+              <div id="body-pillar-lpi-blackout" style="font-family:var(--mono);font-size:10.5px;color:#cbd5e1;line-height:1.45">
+                TX Power: 30.0 dBm | Margin: +2.5 dB | Blackout: None in next 15s.
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </section>
+
   </section>
 </main>
 </div>
@@ -3628,7 +3839,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     });
   });
 
-  const tabs=['overview','scheduler','network','terrain','terminal','authoring','doc','registration'];
+  const tabs=['overview','scheduler','network','terrain','terminal','authoring','doc','registration','soldier'];
   document.addEventListener('keydown',e=>{
     if(e.ctrlKey||e.metaKey||e.altKey) return;
     if(e.key==='Escape'){
@@ -3643,7 +3854,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       return;
     }
     if(e.target.closest&&e.target.closest('input,select,textarea,button,[contenteditable]')) return;
-    if(/^[1-8]$/.test(e.key)) window.switchMainTab('tab-'+tabs[e.key-1]);
+    if(/^[1-9]$/.test(e.key)) window.switchMainTab('tab-'+tabs[e.key-1]);
     else if(e.key===' '){e.preventDefault();window.togglePause()}
     else if(e.key==='.') window.stepSim();
     else if(e.key==='t' || e.key==='T'){
@@ -5786,7 +5997,7 @@ function syncHistoricalUIState() {
     }
   }
 
-  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select'].forEach(id => {
+  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select'].forEach(id => {
     const el = $(id);
     if (el) {
       el.disabled = true;
@@ -5854,7 +6065,7 @@ function syncLiveUIState() {
   const spatWarn = $('history-spatial-revision-warning');
   if (spatWarn) spatWarn.style.display = 'none';
 
-  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select'].forEach(id => {
+  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select'].forEach(id => {
     const el = $(id);
     if (el) {
       el.disabled = false;
@@ -7395,6 +7606,7 @@ $('map-node-details')?.addEventListener('click', event => {
   if (action === 'edit') $('btn-node-edit')?.click();
   else if (action === 'delete') return;
   else if (action === 'performance') window.switchMainTab?.('tab-terrain');
+  else if (action === 'soldier-phone') window.openSoldierPhone?.();
   else if (action === 'focus' || action === 'move') {
     if (inspectingAcn && action === 'focus') {
       window.centerMapOnACN();
@@ -13716,7 +13928,7 @@ window.onTargetNodeChange = function(val) {
 };
 
 function syncNodeDropdowns(nid) {
-  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'ntn-node-select'].forEach(id => {
+  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'ntn-node-select', 'eud-node-select'].forEach(id => {
     const sel = $(id);
     if (sel) sel.value = String(nid);
   });
@@ -14199,7 +14411,7 @@ window.onFolderSelected = async function(fileList) {
 };
 
 /* ---------- Tab Navigation ---------- */
-const TABS = ['tab-overview', 'tab-scheduler', 'tab-network', 'tab-terrain', 'tab-terminal', 'tab-authoring', 'tab-doc', 'tab-registration'];
+const TABS = ['tab-overview', 'tab-scheduler', 'tab-network', 'tab-terrain', 'tab-terminal', 'tab-authoring', 'tab-doc', 'tab-registration', 'tab-soldier'];
 window.switchMainTab = function(targetTabId) {
   if (targetTabId === 'tab-diagnostics') {
     targetTabId = 'tab-doc';
@@ -14238,6 +14450,8 @@ window.switchMainTab = function(targetTabId) {
       renderQosSlaAnalyzer(latestTelemetry);
     } else if (targetTabId === 'tab-registration') {
       renderRegistration(latestTelemetry);
+    } else if (targetTabId === 'tab-soldier') {
+      renderSoldierPhoneWorkspace(latestTelemetry);
     }
   }
   if (targetTabId === 'tab-doc' && currentDocSubview === 'diag' && latestTelemetry) {
@@ -14327,13 +14541,540 @@ function syncTabWithLocationHash() {
 window.addEventListener('hashchange', syncTabWithLocationHash);
 syncTabWithLocationHash();
 
+/* ---------- Tactical Edge-AI Co-Pilot & ATAK Soldier Handheld UI ---------- */
+window.copilotBuddyEnabled = true;
+window.copilotLpiEnabled = true;
+window.aiAutoHealEnabled = false;
+window.pinnedSoldierIds = new Set();
+
+window.openSoldierPhone = function(nodeId) {
+  if (typeof nodeId === 'number' || (typeof nodeId === 'string' && nodeId !== '')) {
+    const numId = Number(nodeId);
+    if (Number.isFinite(numId)) {
+      selectedNodeId = numId;
+      syncNodeDropdowns(numId);
+    }
+  }
+  window.switchMainTab('tab-soldier');
+};
+
+window.executeAiNodeReposition = function() {
+  if (selectedNodeId === null || selectedNodeId === undefined || selectedNodeId < 0) return;
+  sendCommand({ type: 'TRIGGER_AI_NODE_REPOSITION', nodeId: selectedNodeId });
+};
+
+window.toggleAiAutoHeal = function() {
+  const isAuto = !window.aiAutoHealEnabled;
+  window.aiAutoHealEnabled = isAuto;
+  sendCommand({ type: 'SET_AI_AUTO_HEAL', enabled: isAuto });
+  sendCommand({ type: 'SET_AI_COPILOT_CONFIG', autoHealEnabled: isAuto });
+  const btn1 = $('btn-ai-auto-heal-toggle');
+  const btn2 = $('btn-ai-auto-heal-matrix-toggle');
+  const text = `🤖 Auto AI Squad Self-Healing: ${isAuto ? 'ON' : 'OFF'}`;
+  if (btn1) {
+    btn1.setAttribute('aria-pressed', String(isAuto));
+    btn1.textContent = text;
+    btn1.style.color = isAuto ? '#34d399' : 'var(--muted)';
+    btn1.style.borderColor = isAuto ? '#34d399' : 'rgba(255,255,255,0.15)';
+  }
+  if (btn2) {
+    btn2.setAttribute('aria-pressed', String(isAuto));
+    btn2.textContent = text;
+    btn2.style.color = isAuto ? '#34d399' : 'var(--muted)';
+    btn2.style.borderColor = isAuto ? '#34d399' : 'rgba(255,255,255,0.15)';
+  }
+};
+
+window.togglePinShepherd = function() {
+  if (selectedNodeId === null || selectedNodeId === undefined || selectedNodeId < 0) return;
+  const isPinned = !window.pinnedSoldierIds.has(selectedNodeId);
+  if (isPinned) window.pinnedSoldierIds.add(selectedNodeId);
+  else window.pinnedSoldierIds.delete(selectedNodeId);
+  sendCommand({ type: 'TRIGGER_AI_SKY_SHEPHERD', pinnedNodeId: selectedNodeId, enabled: isPinned });
+  if (latestTelemetry) renderSoldierPhoneWorkspace(latestTelemetry);
+};
+
+window.toggleBuddyMesh = function() {
+  window.copilotBuddyEnabled = !window.copilotBuddyEnabled;
+  sendCommand({ type: 'SET_AI_COPILOT_CONFIG', buddyMeshEnabled: window.copilotBuddyEnabled });
+  const btn = $('btn-ai-buddy-mesh-toggle');
+  if (btn) {
+    btn.setAttribute('aria-pressed', String(window.copilotBuddyEnabled));
+    btn.textContent = `🔗 Buddy-Relay Squad Mesh: ${window.copilotBuddyEnabled ? 'ON' : 'OFF'}`;
+    btn.style.color = window.copilotBuddyEnabled ? '#c084fc' : 'var(--muted)';
+    btn.style.borderColor = window.copilotBuddyEnabled ? '#c084fc' : 'rgba(255,255,255,0.15)';
+  }
+};
+
+window.toggleLpiStealth = function() {
+  window.copilotLpiEnabled = !window.copilotLpiEnabled;
+  sendCommand({ type: 'SET_AI_COPILOT_CONFIG', lpiStealthEnabled: window.copilotLpiEnabled });
+  const btn = $('btn-ai-lpi-stealth-toggle');
+  if (btn) {
+    btn.setAttribute('aria-pressed', String(window.copilotLpiEnabled));
+    btn.textContent = `⚡ AI LPI Stealth TX: ${window.copilotLpiEnabled ? 'ON' : 'OFF'}`;
+    btn.style.color = window.copilotLpiEnabled ? '#fbbf24' : 'var(--muted)';
+    btn.style.borderColor = window.copilotLpiEnabled ? '#fbbf24' : 'rgba(255,255,255,0.15)';
+  }
+};
+
+function drawSoldierCompassCanvas(node, frame, rec) {
+  const canvas = $('soldier-phone-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const sync = syncCanvasDpr(canvas, ctx);
+  if (!sync.isVisible) return;
+  const w = sync.cssWidth || 260;
+  const h = sync.cssHeight || 260;
+  if (w <= 0 || h <= 0) return;
+
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2;
+  const cy = h / 2;
+  const radius = Math.min(cx, cy) - 14;
+
+  // Background Dial
+  ctx.save();
+  const bgGrad = ctx.createRadialGradient(cx, cy, 5, cx, cy, radius);
+  bgGrad.addColorStop(0, '#0a1017');
+  bgGrad.addColorStop(1, '#04070a');
+  ctx.fillStyle = bgGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Range rings (e.g. 33%, 66%, 100%)
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.lineWidth = 1;
+  [0.33, 0.66, 1.0].forEach(frac => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * frac, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // Crosshairs
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.beginPath();
+  ctx.moveTo(cx - radius, cy);
+  ctx.lineTo(cx + radius, cy);
+  ctx.moveTo(cx, cy - radius);
+  ctx.lineTo(cx, cy + radius);
+  ctx.stroke();
+
+  // Compass Ticks and Cardinal Letters (N, E, S, W)
+  ctx.font = '700 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let deg = 0; deg < 360; deg += 30) {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    const isCardinal = deg % 90 === 0;
+    const tickLen = isCardinal ? 7 : 4;
+    const r1 = radius - tickLen;
+    const r2 = radius;
+    ctx.strokeStyle = isCardinal ? '#38bdf8' : 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = isCardinal ? 1.5 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(rad) * r1, cy + Math.sin(rad) * r1);
+    ctx.lineTo(cx + Math.cos(rad) * r2, cy + Math.sin(rad) * r2);
+    ctx.stroke();
+
+    if (isCardinal) {
+      const label = deg === 0 ? 'N' : deg === 90 ? 'E' : deg === 180 ? 'S' : 'W';
+      const lr = radius - 14;
+      ctx.fillStyle = deg === 0 ? '#ef4444' : '#94a3b8';
+      ctx.fillText(label, cx + Math.cos(rad) * lr, cy + Math.sin(rad) * lr);
+    }
+  }
+
+  if (!node) {
+    ctx.restore();
+    return;
+  }
+
+  const nX = node.x_m !== undefined ? node.x_m : (node.position ? node.position[0] : 0);
+  const nY = node.y_m !== undefined ? node.y_m : (node.position ? node.position[1] : 0);
+
+  // Draw UAV (ACN) direction indicator
+  if (frame && frame.acn_telemetry) {
+    const acn = frame.acn_telemetry;
+    const uavX = acn.pos_x ?? 0;
+    const uavY = acn.pos_y ?? 0;
+    const uavDx = uavX - nX;
+    const uavDy = uavY - nY;
+    const uavBearingRad = Math.atan2(uavDx, uavDy); // 0 = N, pi/2 = E
+    const uavAngleMath = uavBearingRad - Math.PI / 2; // canvas angle
+    const uavIconR = radius * 0.88;
+    const ux = cx + Math.cos(uavAngleMath) * uavIconR;
+    const uy = cy + Math.sin(uavAngleMath) * uavIconR;
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath();
+    ctx.arc(ux, uy, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = '600 8.5px monospace';
+    ctx.fillText('🛰 UAV', ux, uy - 7);
+  }
+
+  // Draw Enemy Jammer indicator if active
+  if (frame && frame.jammer_enabled && frame.jammer_pos_enu) {
+    const jDx = frame.jammer_pos_enu[0] - nX;
+    const jDy = frame.jammer_pos_enu[1] - nY;
+    const jBearingRad = Math.atan2(jDx, jDy);
+    const jAngleMath = jBearingRad - Math.PI / 2;
+    const jIconR = radius * 0.88;
+    const jx = cx + Math.cos(jAngleMath) * jIconR;
+    const jy = cy + Math.sin(jAngleMath) * jIconR;
+
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(jx, jy, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = '700 8px monospace';
+    ctx.fillText('⚠️ EW-JAM', jx, jy + 10);
+  }
+
+  // Draw Squadmates / Buddies within local scope
+  if (frame && Array.isArray(frame.nodes_telemetry)) {
+    frame.nodes_telemetry.forEach(other => {
+      if (other.node_id === node.node_id) return;
+      const oX = other.x_m !== undefined ? other.x_m : (other.position ? other.position[0] : 0);
+      const oY = other.y_m !== undefined ? other.y_m : (other.position ? other.position[1] : 0);
+      const dx = oX - nX;
+      const dy = oY - nY;
+      const dist = Math.hypot(dx, dy);
+      const isBuddy = node.ai_buddy_node_id === other.node_id;
+
+      const maxRangeM = 4000;
+      const rRatio = Math.min(dist / maxRangeM, 0.82);
+      const bRad = Math.atan2(dx, dy) - Math.PI / 2;
+      const px = cx + Math.cos(bRad) * (radius * rRatio);
+      const py = cy + Math.sin(bRad) * (radius * rRatio);
+
+      if (isBuddy) {
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#c084fc';
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = '700 8.5px monospace';
+        ctx.fillText(`🔗 S${other.node_id}`, px, py - 8);
+      } else {
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = '600 7.5px monospace';
+        ctx.fillText(`S${other.node_id}`, px, py - 5);
+      }
+    });
+  }
+
+  // Draw Center Reticle (Soldier position)
+  ctx.fillStyle = node.is_outage ? '#ef4444' : '#10b981';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // Turn-by-Turn Navigation Arrow to AI Waypoint (if recommended)
+  if (rec && rec.needsReposition && rec.targetPosEnu) {
+    const tDx = rec.targetPosEnu[0] - nX;
+    const tDy = rec.targetPosEnu[1] - nY;
+    const distM = Math.hypot(tDx, tDy);
+    const bearingRad = Math.atan2(tDx, tDy);
+    const angleMath = bearingRad - Math.PI / 2;
+
+    const arrowLen = Math.min(radius * 0.7, Math.max(35, (distM / 300) * radius * 0.7));
+    const tipX = cx + Math.cos(angleMath) * arrowLen;
+    const tipY = cy + Math.sin(angleMath) * arrowLen;
+
+    ctx.save();
+    ctx.strokeStyle = '#34d399';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+
+    const headLen = 10;
+    const headAngle = Math.PI / 6;
+    ctx.fillStyle = '#34d399';
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - headLen * Math.cos(angleMath - headAngle), tipY - headLen * Math.sin(angleMath - headAngle));
+    ctx.lineTo(tipX - headLen * Math.cos(angleMath + headAngle), tipY - headLen * Math.sin(angleMath + headAngle));
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = '700 8.5px monospace';
+    ctx.fillText('★ AI SAFE', tipX, tipY - 8);
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function renderSoldierPhoneWorkspace(frame) {
+  if (!frame) return;
+  const nodes = frame.nodes_telemetry || [];
+  if (nodes.length === 0) return;
+
+  const selNode = nodes.find(n => n.node_id === selectedNodeId) || nodes[0];
+  if (!selNode) return;
+
+  // Sync Soldier Phone dropdown
+  const eudSel = $('eud-node-select');
+  if (eudSel && String(eudSel.value) !== String(selNode.node_id)) {
+    eudSel.value = String(selNode.node_id);
+  }
+
+  // Update context meta
+  const routeEl = $('context-eud-route');
+  let routeStr = 'DIRECT';
+  if (selNode.ai_buddy_node_id !== null && selNode.ai_buddy_node_id !== undefined) {
+    routeStr = `BUDDY S${selNode.ai_buddy_node_id}`;
+  } else if (selNode.two_hop_active) {
+    routeStr = '2-HOP RELAY';
+  } else if (selNode.is_outage) {
+    routeStr = 'SHADOW OUTAGE';
+  }
+  if (routeEl) routeEl.textContent = routeStr;
+
+  // 1. Phone Top Status Bar
+  const routeBadge = $('eud-route-badge');
+  if (routeBadge) {
+    if (selNode.ai_buddy_node_id !== null && selNode.ai_buddy_node_id !== undefined) {
+      const rate = selNode.ai_buddy_rate_mbps ? `${selNode.ai_buddy_rate_mbps.toFixed(1)}M` : '--';
+      routeBadge.textContent = `🔗 BUDDY S${selNode.ai_buddy_node_id} (${rate})`;
+      routeBadge.className = 'kpi-badge badge-active';
+      routeBadge.style.background = 'rgba(192,132,252,0.2)';
+      routeBadge.style.color = '#c084fc';
+    } else if (selNode.two_hop_active) {
+      routeBadge.textContent = '📡 2-HOP RELAY';
+      routeBadge.className = 'kpi-badge badge-active';
+      routeBadge.style.background = 'rgba(16,185,129,0.2)';
+      routeBadge.style.color = '#34d399';
+    } else if (selNode.is_outage) {
+      routeBadge.textContent = '❌ OUTAGE (SHADOW)';
+      routeBadge.className = 'kpi-badge badge-danger';
+      routeBadge.style.background = 'rgba(239,68,68,0.2)';
+      routeBadge.style.color = '#ef4444';
+    } else {
+      routeBadge.textContent = '🛰 DIRECT UAV';
+      routeBadge.className = 'kpi-badge badge-neutral';
+      routeBadge.style.background = 'rgba(56,189,248,0.15)';
+      routeBadge.style.color = '#38bdf8';
+    }
+  }
+
+  const sinrBadge = $('eud-sinr-readout');
+  if (sinrBadge) {
+    const s = selNode.sinr_db !== undefined ? selNode.sinr_db : 0;
+    sinrBadge.textContent = `${s >= 0 ? '+' : ''}${s.toFixed(1)} dB`;
+    sinrBadge.style.color = s >= 10 ? '#34d399' : (s >= 0 ? '#fbbf24' : '#ef4444');
+  }
+
+  // 2. Secondary Telemetry Line: LPI & GPS
+  const lpiEl = $('eud-lpi-readout');
+  if (lpiEl) {
+    const tx = selNode.ai_lpi_tx_dbm !== undefined ? selNode.ai_lpi_tx_dbm : 30.0;
+    const saved = selNode.ai_lpi_saved_pct !== undefined ? selNode.ai_lpi_saved_pct : 0.0;
+    lpiEl.textContent = `⚡ LPI TX: ${tx.toFixed(1)} dBm (-${saved.toFixed(0)}% Sig)`;
+  }
+
+  const gpsEl = $('eud-gps-readout');
+  if (gpsEl) {
+    const msl = (selNode.terrain_elevation_msl_m || 0) + (selNode.agl_m || 2);
+    gpsEl.textContent = `GPS: ${Math.round(msl)}m MSL`;
+  }
+
+  // 3. AI Push Notification Banner
+  const bannerEl = $('eud-ai-notification-banner');
+  const bannerTitle = $('eud-banner-title');
+  const bannerText = $('eud-banner-text');
+  const bannerBadge = $('eud-banner-badge');
+
+  const blackoutSec = selNode.ai_blackout_in_s;
+  const isPinned = window.pinnedSoldierIds.has(selNode.node_id) || Boolean(selNode.ai_is_pinned);
+  const isBuddy = selNode.ai_buddy_node_id !== null && selNode.ai_buddy_node_id !== undefined;
+  const needsMove = Boolean(selNode.ai_needs_reposition);
+
+  if (blackoutSec !== null && blackoutSec !== undefined && blackoutSec <= 15.0) {
+    if (bannerEl) {
+      bannerEl.style.background = 'rgba(239,68,68,0.2)';
+      bannerEl.style.borderColor = 'rgba(239,68,68,0.6)';
+    }
+    if (bannerTitle) {
+      bannerTitle.textContent = `⏳ BLACKOUT IN ${blackoutSec.toFixed(1)}s`;
+      bannerTitle.style.color = '#ef4444';
+    }
+    if (bannerBadge) {
+      bannerBadge.textContent = 'PREDICTIVE';
+      bannerBadge.style.color = '#ef4444';
+      bannerBadge.style.background = 'rgba(239,68,68,0.2)';
+    }
+    if (bannerText) {
+      bannerText.textContent = 'UAV orbit will enter mountain shadow in <15s. Shift to Buddy-Mesh or move to safe spot.';
+    }
+  } else if (isPinned && frame.ai_sky_shepherd_active) {
+    if (bannerEl) {
+      bannerEl.style.background = 'rgba(56,189,248,0.2)';
+      bannerEl.style.borderColor = 'rgba(56,189,248,0.6)';
+    }
+    if (bannerTitle) {
+      bannerTitle.textContent = '✈️ SKY-SHEPHERD OVERHEAD';
+      bannerTitle.style.color = '#38bdf8';
+    }
+    if (bannerBadge) {
+      bannerBadge.textContent = 'PINNED RESCUE';
+      bannerBadge.style.color = '#38bdf8';
+      bannerBadge.style.background = 'rgba(56,189,248,0.2)';
+    }
+    if (bannerText) {
+      bannerText.textContent = frame.ai_sky_shepherd_directive || 'UAV shifted loiter center to look directly into pinned canyon.';
+    }
+  } else if (isBuddy) {
+    if (bannerEl) {
+      bannerEl.style.background = 'rgba(192,132,252,0.2)';
+      bannerEl.style.borderColor = 'rgba(192,132,252,0.6)';
+    }
+    if (bannerTitle) {
+      bannerTitle.textContent = '🔗 BUDDY-MESH RESCUE ACTIVE';
+      bannerTitle.style.color = '#c084fc';
+    }
+    if (bannerBadge) {
+      bannerBadge.textContent = 'PEER MESH';
+      bannerBadge.style.color = '#c084fc';
+      bannerBadge.style.background = 'rgba(192,132,252,0.2)';
+    }
+    if (bannerText) {
+      bannerText.textContent = `Direct UAV link shadowed. Traffic decoded & forwarded via S${selNode.ai_buddy_node_id} (${selNode.ai_buddy_rate_mbps?.toFixed(1) || '--'} Mbps).`;
+    }
+  } else if (needsMove) {
+    if (bannerEl) {
+      bannerEl.style.background = 'rgba(245,158,11,0.2)';
+      bannerEl.style.borderColor = 'rgba(245,158,11,0.6)';
+    }
+    if (bannerTitle) {
+      bannerTitle.textContent = '🚶 AI WALK DIRECTIVE';
+      bannerTitle.style.color = '#fbbf24';
+    }
+    if (bannerBadge) {
+      bannerBadge.textContent = 'PATHFINDER';
+      bannerBadge.style.color = '#fbbf24';
+      bannerBadge.style.background = 'rgba(245,158,11,0.2)';
+    }
+    if (bannerText) {
+      bannerText.textContent = selNode.ai_directive_text || 'Relocate to clear LoS vantage point with gentle slope.';
+    }
+  } else {
+    if (bannerEl) {
+      bannerEl.style.background = 'rgba(16,36,28,0.75)';
+      bannerEl.style.borderColor = 'rgba(52,211,153,0.4)';
+    }
+    if (bannerTitle) {
+      bannerTitle.textContent = '🟢 POSITION OPTIMAL';
+      bannerTitle.style.color = '#34d399';
+    }
+    if (bannerBadge) {
+      bannerBadge.textContent = 'CLEAR LOS';
+      bannerBadge.style.color = '#34d399';
+      bannerBadge.style.background = 'rgba(52,211,153,0.2)';
+    }
+    if (bannerText) {
+      bannerText.textContent = 'Clear LoS to ACN loiter orbit. DVB-S2X link closure healthy.';
+    }
+  }
+
+  // 4. Waypoint Guidance / TBT Directive Readout
+  const navGuidance = $('eud-nav-guidance');
+  if (navGuidance) {
+    if (needsMove && selNode.ai_move_dist_m) {
+      const d = Math.round(selNode.ai_move_dist_m);
+      const b = Math.round(selNode.ai_move_bearing_deg || 0);
+      const card = selNode.ai_move_cardinal || '';
+      const wps = selNode.ai_walk_path_enu ? selNode.ai_walk_path_enu.length : 1;
+      navGuidance.textContent = `↑ ${d}m · ${b}° ${card} [WP${wps} → AI-SAFE]`;
+      navGuidance.style.color = '#34d399';
+    } else {
+      navGuidance.textContent = '↑ 0m · ON TARGET [WP0]';
+      navGuidance.style.color = '#38bdf8';
+    }
+  }
+
+  // 5. Update Pinned Button UI
+  const pinBtn = $('btn-eud-pin-shepherd');
+  if (pinBtn) {
+    pinBtn.setAttribute('aria-pressed', String(isPinned));
+    pinBtn.textContent = isPinned ? '🔓 Unpin — Resume Standard Orbit' : '🔒 Pinned — Call UAV Sky-Shepherd';
+    pinBtn.style.background = isPinned ? '#dc2626' : 'rgba(255,255,255,0.06)';
+    pinBtn.style.borderColor = isPinned ? '#ef4444' : 'rgba(255,255,255,0.15)';
+    pinBtn.style.color = isPinned ? '#ffffff' : 'var(--muted)';
+  }
+
+  // 6. Update 5-Pillar Cards
+  setText('badge-pillar-walkable', needsMove ? 'RELOCATE' : 'OPTIMAL');
+  setText('body-pillar-walkable', needsMove
+    ? `Move ${Math.round(selNode.ai_move_dist_m || 0)}m ${selNode.ai_move_cardinal || ''} (slope ${selNode.ai_slope_deg?.toFixed(1) || 0}°, ETA ${selNode.ai_eta_s?.toFixed(0) || 0}s). Predicted SINR: +${selNode.ai_predicted_sinr_db?.toFixed(1) || '--'} dB (${selNode.ai_predicted_modcod || '--'}).`
+    : 'Current position provides clear LoS and stable link margin. Zero relocation required.');
+
+  setText('badge-pillar-buddymesh', isBuddy ? `S${selNode.ai_buddy_node_id} ACTIVE` : 'STANDBY');
+  setText('body-pillar-buddymesh', isBuddy
+    ? `Decodes and forwards through S${selNode.ai_buddy_node_id}. Harmonic DF throughput: ${selNode.ai_buddy_rate_mbps?.toFixed(1) || '--'} Mbps.`
+    : (window.copilotBuddyEnabled ? 'Direct UAV link active. Buddy mesh daemon continuously monitors squad peer links.' : 'Buddy mesh daemon disabled by operator.'));
+
+  const defiladeShieldDb = selNode.ai_jammer_shield_db || 0.0;
+  const jammerActive = Boolean(frame.jammer_enabled);
+  setText('badge-pillar-defilade', jammerActive ? `${defiladeShieldDb > 3 ? 'SHIELDED' : 'EXPOSED'}` : 'NO JAMMER');
+  setText('body-pillar-defilade', jammerActive
+    ? `Enemy jammer active. Micro-terrain ridge provides ${defiladeShieldDb.toFixed(1)} dB mountain diffraction isolation against jammer.`
+    : 'Jammer inactive. Terrain knife-edge diffraction shielding estimator in standby.');
+
+  setText('badge-pillar-skyshepherd', frame.ai_sky_shepherd_active ? 'ACTIVE' : 'STANDARD ORBIT');
+  setText('body-pillar-skyshepherd', frame.ai_sky_shepherd_active
+    ? `Sky-Shepherd loiter active for Node ${frame.ai_sky_shepherd_node_id ?? selNode.node_id}. ${frame.ai_sky_shepherd_directive || ''}`
+    : 'Soldier mobile. ACN maintaining standard trajectory.');
+
+  const lpiTx = selNode.ai_lpi_tx_dbm !== undefined ? selNode.ai_lpi_tx_dbm : 30.0;
+  const lpiSaved = selNode.ai_lpi_saved_pct !== undefined ? selNode.ai_lpi_saved_pct : 0.0;
+  setText('badge-pillar-lpi-blackout', blackoutSec !== null ? 'BLACKOUT IMMINENT' : 'LPI ACTIVE');
+  setText('body-pillar-lpi-blackout', `LPI TX: ${lpiTx.toFixed(1)} dBm (-${lpiSaved.toFixed(0)}% RF signature) holding target MODCOD with +2.5 dB margin.${blackoutSec !== null ? ` ⚠️ BLACKOUT IN ${blackoutSec.toFixed(1)}s along current UAV heading!` : ' Next 15s clear.'}`);
+
+  // 7. Draw Turn-by-Turn Compass
+  const fakeRec = {
+    needsReposition: needsMove,
+    targetPosEnu: selNode.ai_target_pos_enu,
+    pathDistanceM: selNode.ai_move_dist_m,
+    walkPathWaypoints: selNode.ai_walk_path_enu,
+    directiveText: selNode.ai_directive_text,
+  };
+  drawSoldierCompassCanvas(selNode, frame, fakeRec);
+}
+
 /* ---------- Canvas Resize Engine ---------- */
 function resizeCanvases() {
   const chart1 = $('sched-chart-utilization');
   const chart2 = $('sched-chart-backlog');
   const fpCanvas = $('fp-vertical-profile-canvas');
   const workerJitterCvs = $('worker-jitter-canvas');
-  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2, polarAntennaCanvas, linkWaterfallCanvas, fpCanvas, workerJitterCvs].forEach(cvs => {
+  const soldierPhoneCanvas = $('soldier-phone-canvas');
+  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2, polarAntennaCanvas, linkWaterfallCanvas, fpCanvas, workerJitterCvs, soldierPhoneCanvas].forEach(cvs => {
     if (!cvs) return;
     syncCanvasDpr(cvs);
   });
@@ -14497,7 +15238,7 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
 }
 
 function populateDropdownsOnce(nodes) {
-  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select'].forEach(id => {
+  ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select'].forEach(id => {
     const sel = $(id);
     if (!sel || !Array.isArray(nodes)) return;
     if (nodes.length === 0) {
@@ -15911,6 +16652,12 @@ function updateDashboardDOM(frame, force = false) {
     if (pEl) pEl.style.width = `${Math.min(100, (ph / 2000000) * 100)}%`;
     setText('qval-70', `${(ph / 1024).toFixed(0)} / 2000 KB`);
     renderVsaScope(selNode, frame);
+    if (selNode.ai_directive_text) {
+      const slopeTag = typeof selNode.ai_max_step_slope_deg === 'number' ? ` · Max Slope: ${selNode.ai_max_step_slope_deg.toFixed(1)}°` : '';
+      setText('ai-directive-readout', `${selNode.ai_directive_text}${slopeTag}`);
+    } else {
+      setText('ai-directive-readout', '🟢 POSITION OPTIMAL (Clear LoS)');
+    }
   } else {
     const unknownBadge = getStatusBadgeInfo('UNKNOWN');
     const b1 = $('overview-state-badge'), b2 = $('term-state-pill');
@@ -16028,6 +16775,7 @@ function updateDashboardDOM(frame, force = false) {
   }
 
   updateScientificAblationMatrix(frame);
+  renderSoldierPhoneWorkspace(frame);
 }
 
 /* ====================================================================
@@ -18545,6 +19293,28 @@ function drawRadar() {
           ctx.lineWidth = item.isSel ? 3.0 : 1.8;
           ctx.setLineDash([4, 4]);
           ctx.stroke();
+        }
+      });
+      ctx.restore();
+    }
+
+    // Pass 2.1b: Active Edge-AI Buddy-Relay Peer Vectors (Soldier -> LoS Squadmate)
+    if (visLinks && latestTelemetry) {
+      ctx.save();
+      nodeItems.forEach(item => {
+        const buddyId = item.node.ai_buddy_node_id;
+        if (typeof buddyId === 'number' && buddyId !== null && Number.isFinite(buddyId)) {
+          const buddyItem = nodeItems.find(it => it.node.node_id === buddyId);
+          if (buddyItem) {
+            ctx.beginPath();
+            ctx.moveTo(item.nPos.x, item.nPos.y);
+            ctx.lineTo(buddyItem.nPos.x, buddyItem.nPos.y);
+            ctx.strokeStyle = item.isSel ? '#c084fc' : '#818cf8';
+            ctx.lineWidth = item.isSel ? 2.8 : 1.8;
+            ctx.setLineDash([5, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
         }
       });
       ctx.restore();
@@ -21811,6 +22581,8 @@ function animationLoop(timestampMs) {
           drawFresnel();
           if (latestTelemetry) drawLinkWaterfallCanvas(latestTelemetry);
           terrainNeedsRender = false;
+        } else if (activeTab.id === 'tab-soldier' && latestTelemetry) {
+          renderSoldierPhoneWorkspace(latestTelemetry);
         }
       }
     }

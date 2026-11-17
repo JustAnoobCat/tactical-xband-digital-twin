@@ -59,6 +59,12 @@ import {
 import { PROFILE_FRESNEL_FRACTION } from '../core/profileEngine';
 import type { QuadSectorAntennaEngine } from '../core/antennaArray';
 import type { RelayAdvisorReport } from '../core/viewshedEngine';
+import type {
+  AiNodeRecoveryRecommendation,
+  AiBuddyRelayResult,
+  AiLpiStealthResult,
+  AiBlackoutForecastResult,
+} from '../core/tacticalAiPathfinder';
 
 export { PROFILE_FRESNEL_FRACTION };
 export type { NodeTransferState };
@@ -160,6 +166,19 @@ export interface TelemetrySimulationState {
   readonly staticDelayEcdfMs?: readonly number[];
   readonly reactiveDelayEcdfMs?: readonly number[];
   readonly tacDelayEcdfMs?: readonly number[];
+  readonly aiRecommendations?: ReadonlyMap<number, AiNodeRecoveryRecommendation>;
+  readonly aiActiveMovingNodes?: ReadonlySet<number>;
+  readonly aiAutoHealEnabled?: boolean;
+  readonly aiActiveRepositionCount?: number;
+  readonly aiBuddyRelayResults?: ReadonlyMap<number, AiBuddyRelayResult>;
+  readonly aiLpiStealthResults?: ReadonlyMap<number, AiLpiStealthResult>;
+  readonly aiBlackoutForecasts?: ReadonlyMap<number, AiBlackoutForecastResult>;
+  readonly aiPinnedNodes?: ReadonlySet<number>;
+  readonly aiBuddyMeshEnabled?: boolean;
+  readonly aiLpiStealthEnabled?: boolean;
+  readonly aiSkyShepherdActive?: boolean;
+  readonly aiSkyShepherdNodeId?: number | null;
+  readonly aiSkyShepherdDirective?: string;
 }
 
 /**
@@ -395,6 +414,32 @@ export class TelemetrySerializer {
         rician_k_db: ls?.ricianKFactorDb,
         rician_fading_db: ls?.ricianFadingGainDb,
         olla_margin_db: ls?.ollaMarginDb,
+        ai_needs_reposition: state.aiRecommendations?.get(node.nodeId)?.needsReposition ?? false,
+        ai_target_pos_enu: state.aiRecommendations?.get(node.nodeId)?.targetPos,
+        ai_move_dist_m: state.aiRecommendations?.get(node.nodeId)?.moveDistanceM,
+        ai_move_bearing_deg: state.aiRecommendations?.get(node.nodeId)?.moveBearingDeg,
+        ai_move_cardinal: state.aiRecommendations?.get(node.nodeId)?.moveCardinal,
+        ai_delta_elev_m: state.aiRecommendations?.get(node.nodeId)?.deltaElevM,
+        ai_slope_deg: state.aiRecommendations?.get(node.nodeId)?.slopeDeg,
+        ai_eta_s: state.aiRecommendations?.get(node.nodeId)?.etaSeconds,
+        ai_predicted_sinr_db: state.aiRecommendations?.get(node.nodeId)?.predictedSinrDb,
+        ai_predicted_modcod: state.aiRecommendations?.get(node.nodeId)?.predictedModcod,
+        ai_predicted_bitrate_mbps: state.aiRecommendations?.get(node.nodeId)?.predictedBitrateMbps,
+        ai_directive_text: state.aiRecommendations?.get(node.nodeId)?.directiveText,
+        ai_is_moving: state.aiActiveMovingNodes?.has(node.nodeId) ?? false,
+        ai_walk_path_enu: state.aiRecommendations?.get(node.nodeId)?.walkPathEnu,
+        ai_max_step_slope_deg: state.aiRecommendations?.get(node.nodeId)?.maxStepSlopeDeg,
+        ai_buddy_node_id: state.aiBuddyRelayResults?.get(node.nodeId)?.isBuddyRescueActive
+          ? state.aiBuddyRelayResults.get(node.nodeId)?.buddyNodeId
+          : null,
+        ai_buddy_rate_mbps: state.aiBuddyRelayResults?.get(node.nodeId)?.harmonicRateMbps,
+        ai_jammer_shield_db: state.aiRecommendations?.get(node.nodeId)?.jammerShieldingDb ?? 0.0,
+        ai_lpi_tx_dbm: state.aiLpiStealthResults?.get(node.nodeId)?.lpiTxPowerDbm,
+        ai_lpi_saved_pct: state.aiLpiStealthResults?.get(node.nodeId)?.powerSavedPct,
+        ai_blackout_in_s: state.aiBlackoutForecasts?.get(node.nodeId)?.blackoutImminent
+          ? state.aiBlackoutForecasts.get(node.nodeId)?.blackoutInSeconds
+          : null,
+        ai_is_pinned: state.aiPinnedNodes?.has(node.nodeId) ?? false,
       };
     });
   }
@@ -782,6 +827,13 @@ export class TelemetrySerializer {
       tac_p50_ms: state.tacDelayEcdfMs?.[2] ?? 0.0,
       tac_p95_ms: state.tacDelayEcdfMs?.[5] ?? 0.0,
       tac_p99_ms: state.tacDelayEcdfMs?.[6] ?? 0.0,
+      ai_auto_heal_enabled: state.aiAutoHealEnabled ?? false,
+      ai_active_repositions_count: state.aiActiveRepositionCount ?? 0,
+      ai_buddy_mesh_enabled: state.aiBuddyMeshEnabled ?? false,
+      ai_lpi_stealth_enabled: state.aiLpiStealthEnabled ?? false,
+      ai_sky_shepherd_active: state.aiSkyShepherdActive ?? false,
+      ai_sky_shepherd_node_id: state.aiSkyShepherdNodeId ?? null,
+      ai_sky_shepherd_directive: state.aiSkyShepherdDirective ?? '',
     };
   }
 

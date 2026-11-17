@@ -116,7 +116,10 @@ const REGISTERED_SUITES = [
   { id: 'verify:ao-swath', name: 'CAD/QGIS Precision AO Swath & Dead-Zone Scanner (PAS-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionAoSwathTool3.ts'], category: 'ui' },
   { id: 'verify:cad-obstacle', name: 'Precision CAD Obstacle Link-Slicer Engine (PCO-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPrecisionCadObstacleTool4.ts'], category: 'ui' },
   { id: 'verify:intuitive-toolbox', name: 'Intuitive Toolbox Right-Panel Docking & Ergonomic UX (ITU-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyIntuitiveToolboxUx.ts'], category: 'ui' },
-  { id: 'verify:ux-51-polish', name: 'Comprehensive 51-Point Tactical Digital Twin UX Polish (UXP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyComprehensive51PointUxPolish.ts'], category: 'ui' }
+  { id: 'verify:ux-51-polish', name: 'Comprehensive 51-Point Tactical Digital Twin UX Polish (UXP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyComprehensive51PointUxPolish.ts'], category: 'ui' },
+  { id: 'verify:ai-pathfinder', name: 'Edge-AI NLoS Link-Recovery Pathfinder & Autonomous Repositioning (AIP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTacticalAiPathfinder.ts'], category: 'ai' },
+  { id: 'verify:walkable-ai', name: 'Edge-AI Walkable Terrain Pathfinder & 3D Obstacle Avoidance (WPO-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWalkablePathfinderAndObstacleAvoidance.ts'], category: 'ai' },
+  { id: 'verify:ai-copilot-phone', name: 'Tactical Edge-AI Co-Pilot & Soldier Handheld Phone UI (ECP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyEdgeAiCopilotAndSoldierPhone.ts'], category: 'ai' }
 ];
 
 // -----------------------------------------------------------------------------
