@@ -11,13 +11,27 @@
  * 4. Automatic perpendicular link slicer barrier generator.
  */
 
-export const DEFAULT_K_FACTOR = 4.0 / 3.0;
-export const DEFAULT_EARTH_RADIUS_M = 6371000.0;
-export const DEFAULT_R_EFF_M = DEFAULT_K_FACTOR * DEFAULT_EARTH_RADIUS_M; // ~8494666.67 m
+import {
+  DEFAULT_K_FACTOR,
+  DEFAULT_TRUE_EARTH_RADIUS_M,
+  DEFAULT_R_EFF_M,
+  DEFAULT_X_BAND_FREQ_HZ,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  SPEED_OF_LIGHT_M_S,
+  computeEarthBulgeM,
+  computeFirstFresnelRadiusM,
+  computeKnifeEdgeDiffractionLossDb,
+  computeBearingDeg,
+} from './rfPropagationMath';
 
-export const X_BAND_FREQ_HZ = 8.0e9;
-export const SPEED_OF_LIGHT_MPS = 299792458.0;
-export const X_BAND_WAVELENGTH_M = SPEED_OF_LIGHT_MPS / X_BAND_FREQ_HZ; // ~0.037474 m
+export const DEFAULT_EARTH_RADIUS_M = DEFAULT_TRUE_EARTH_RADIUS_M;
+export const X_BAND_FREQ_HZ = DEFAULT_X_BAND_FREQ_HZ;
+export const SPEED_OF_LIGHT_MPS = SPEED_OF_LIGHT_M_S;
+export const X_BAND_WAVELENGTH_M = DEFAULT_X_BAND_WAVELENGTH_M;
+export {
+  DEFAULT_K_FACTOR,
+  DEFAULT_R_EFF_M,
+};
 
 export interface Point2D {
   readonly x: number;
@@ -157,18 +171,7 @@ export function snapBarrierAngle(v1: Point2D, v2: Point2D, incrementDeg = 15.0):
  * Calculates ITU-R P.526 knife-edge diffraction loss with material absorption caps.
  */
 export function computeP526DiffractionDb(nu: number, material: string = 'granite'): number {
-  let rawLossDb = 0.0;
-  if (nu <= -0.78) {
-    rawLossDb = 0.0;
-  } else {
-    const inner = Math.sqrt((nu - 0.1) * (nu - 0.1) + 1.0) + (nu - 0.1);
-    if (inner > 0.0) {
-      rawLossDb = 6.9 + 20.0 * Math.log10(inner);
-    } else {
-      rawLossDb = 0.0;
-    }
-  }
-  rawLossDb = Math.max(0.0, rawLossDb);
+  const rawLossDb = computeKnifeEdgeDiffractionLossDb(nu);
 
   const mat = material.toLowerCase();
   if (mat.includes('concrete')) {
@@ -207,7 +210,7 @@ export function evaluateBarrierLinkIntersections(
 
   // Strike azimuth (degrees clockwise from North +y)
   const strikeAzimuthDeg = lengthM > 1e-4
-    ? (Math.atan2(dx, dy) * 180.0 / Math.PI + 360.0) % 360.0
+    ? computeBearingDeg(dx, dy)
     : 0.0;
   const normalAzimuthDeg = (strikeAzimuthDeg + 90.0) % 360.0;
 
@@ -275,7 +278,7 @@ export function evaluateBarrierLinkIntersections(
     const d2M = Math.hypot(acnPosEnu.x - px, acnPosEnu.y - py);
     const totalDistM = d1M + d2M;
 
-    const earthBulgeM = (d1M * d2M) / (2.0 * DEFAULT_R_EFF_M);
+    const earthBulgeM = computeEarthBulgeM(d1M, d2M, DEFAULT_K_FACTOR, DEFAULT_EARTH_RADIUS_M);
     const zGroundMslM = getElevationAt(px, py);
     const zEffGroundMslM = zGroundMslM + earthBulgeM;
 
@@ -285,7 +288,7 @@ export function evaluateBarrierLinkIntersections(
     const requiredBlockingHeightM = Math.max(10.0, Math.ceil(zRayMslM - zEffGroundMslM));
     const intrusionM = zWallTopMslM - zRayMslM;
 
-    const fresnelRadiusM = Math.sqrt((X_BAND_WAVELENGTH_M * d1M * d2M) / Math.max(1.0, totalDistM));
+    const fresnelRadiusM = computeFirstFresnelRadiusM(d1M, d2M, X_BAND_WAVELENGTH_M);
     const nu = fresnelRadiusM > 0.0
       ? intrusionM * (Math.SQRT2 / fresnelRadiusM)
       : (intrusionM > 0.0 ? 10.0 : -10.0);
@@ -397,12 +400,12 @@ export function generatePerpendicularLinkSlicerObstacle(
 
   const d1 = fractionAlongLink * linkLen;
   const d2 = (1.0 - fractionAlongLink) * linkLen;
-  const bulge = (d1 * d2) / (2.0 * DEFAULT_R_EFF_M);
+  const bulge = computeEarthBulgeM(d1, d2, DEFAULT_K_FACTOR, DEFAULT_EARTH_RADIUS_M);
   const zGround = getElevationAt(cx, cy);
   const zEffGround = zGround + bulge;
 
   const optimalHeightM = Math.max(80.0, Math.ceil(zRay - zEffGround + 60.0));
-  const strikeAzimuthDeg = (Math.atan2(v2.x - v1.x, v2.y - v1.y) * 180.0 / Math.PI + 360.0) % 360.0;
+  const strikeAzimuthDeg = computeBearingDeg(v2.x - v1.x, v2.y - v1.y);
 
   return {
     v1,

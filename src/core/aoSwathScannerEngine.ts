@@ -20,13 +20,28 @@ import type { Position3D } from '../shared/types';
 import { SPEED_OF_LIGHT } from './config';
 import { MODCOD_TABLE } from './linkBudget';
 import { ACN_SECTOR_LABELS } from './antennaArray';
+import {
+  SPEED_OF_LIGHT_M_S,
+  DEFAULT_X_BAND_FREQ_HZ,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  DEFAULT_K_FACTOR,
+  DEFAULT_TRUE_EARTH_RADIUS_M,
+  DEFAULT_R_EFF_M,
+  computeEarthBulgeM,
+  computeKnifeEdgeDiffractionLossDb,
+  computeFsplDb,
+  computeBearingDeg,
+  computeSlantAndHorizDistance,
+} from './rfPropagationMath';
 
-export const SPEED_OF_LIGHT_M_S = SPEED_OF_LIGHT ?? 299792458.0;
-export const DEFAULT_X_BAND_FREQ_HZ = 8.0e9; // 8.0 GHz
-export const DEFAULT_X_BAND_WAVELENGTH_M = SPEED_OF_LIGHT_M_S / DEFAULT_X_BAND_FREQ_HZ; // ~0.037474 m
-export const DEFAULT_K_FACTOR = 4.0 / 3.0; // Standard atmospheric refraction
-export const DEFAULT_EARTH_RADIUS_M = 6371000.0; // WGS-84 volumetric mean
-export const DEFAULT_R_EFF_M = DEFAULT_K_FACTOR * DEFAULT_EARTH_RADIUS_M; // ~8494666.67 m
+export const DEFAULT_EARTH_RADIUS_M = DEFAULT_TRUE_EARTH_RADIUS_M;
+export {
+  SPEED_OF_LIGHT_M_S,
+  DEFAULT_X_BAND_FREQ_HZ,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  DEFAULT_K_FACTOR,
+  DEFAULT_R_EFF_M,
+};
 
 // Standard Tactical Link Budget Constants (8 GHz ACN-Ground)
 export const AO_LINK_BUDGET = {
@@ -105,9 +120,7 @@ export interface AoSwathAnalysisReport {
  * Computes knife-edge diffraction loss in dB per ITU-R P.526 from Fresnel-Kirchhoff parameter nu.
  */
 export function computeP526DiffractionDb(nu: number): number {
-  if (nu <= -0.78) return 0.0;
-  const term = Math.sqrt((nu - 0.1) * (nu - 0.1) + 1.0) + nu - 0.1;
-  return 6.9 + 20.0 * Math.log10(Math.max(1e-6, term));
+  return computeKnifeEdgeDiffractionLossDb(nu);
 }
 
 /**
@@ -156,7 +169,7 @@ export function evaluateAoSwathAnalysis(
   const heightKm = (maxY - minY) / 1000.0;
   const areaKm2 = widthKm * heightKm;
   const diagonalKm = Math.hypot(widthKm, heightKm);
-  const diagonalAzimuthDeg = ((Math.atan2(x2 - x1, y2 - y1) * 180.0) / Math.PI + 360.0) % 360.0;
+  const diagonalAzimuthDeg = computeBearingDeg(x2 - x1, y2 - y1);
 
   // 2. Resolve ACN Position
   let xAcn = 0.0;
@@ -235,8 +248,7 @@ export function evaluateAoSwathAnalysis(
       const dx = xAcn - xc;
       const dy = yAcn - yc;
       const dz = zAcn - zAnt;
-      const dHorizM = Math.hypot(dx, dy);
-      const d3dM = Math.hypot(dHorizM, dz);
+      const { horizDistM: dHorizM, slantDistM: d3dM } = computeSlantAndHorizDistance(dx, dy, dz);
       const d3dKm = d3dM / 1000.0;
 
       // 16-Step Curved Earth Ray-Marching
@@ -251,7 +263,7 @@ export function evaluateAoSwathAnalysis(
         const zDem = getElevationAt(sx, sy);
 
         // Curvature bulge along chord
-        const chordBulgeM = (sM * (dHorizM - sM)) / (2.0 * DEFAULT_R_EFF_M);
+        const chordBulgeM = computeEarthBulgeM(sM, dHorizM - sM, DEFAULT_K_FACTOR, DEFAULT_EARTH_RADIUS_M);
         const effTerrainZ = zDem + chordBulgeM;
         const rayZ = zAnt + u * dz;
 
@@ -274,7 +286,7 @@ export function evaluateAoSwathAnalysis(
       const isLineOfSight = !isRayBlocked;
 
       // Quad-Sector ACN Identification & Roll-Off Loss
-      const azFromAcnDeg = ((Math.atan2(-dx, -dy) * 180.0) / Math.PI + 360.0) % 360.0;
+      const azFromAcnDeg = computeBearingDeg(-dx, -dy);
       const bodyAzDeg = ((azFromAcnDeg - acnHeadingDeg) % 360.0 + 360.0) % 360.0;
       const sectorIdx = Math.round(bodyAzDeg / 90.0) % 4;
       const activeSectorId = (sectorIdx < 0 ? sectorIdx + 4 : sectorIdx) as 0 | 1 | 2 | 3;
@@ -287,7 +299,7 @@ export function evaluateAoSwathAnalysis(
       const rollOffLossDb = Math.min(12.0 * azRatio * azRatio, AO_LINK_BUDGET.maxRollOffDb);
 
       // 8 GHz Link Budget Calculation
-      const fsplDb = 20.0 * Math.log10(Math.max(1.0, d3dM)) + 20.0 * Math.log10(DEFAULT_X_BAND_FREQ_HZ) - 147.55;
+      const fsplDb = computeFsplDb(d3dM, DEFAULT_X_BAND_FREQ_HZ, SPEED_OF_LIGHT_M_S);
       const gasLossDb = AO_LINK_BUDGET.gasLossBaselineDb + AO_LINK_BUDGET.specificGasLossDbPerKm * d3dKm;
 
       const sinrDb =

@@ -49,6 +49,7 @@
     "verify:ai-copilot-phone": "vite-node src/tests/verifyEdgeAiCopilotAndSoldierPhone.ts",
     "verify:ai-physics-truth": "vite-node src/tests/verifyAiPhysicsTruthAndClosedLoop.ts",
     "verify:master-math": "vite-node src/tests/verifyMasterMathematicalRigor.ts",
+    "verify:se-architecture": "vite-node src/tests/verifySoftwareEngineeringArchitecture.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",

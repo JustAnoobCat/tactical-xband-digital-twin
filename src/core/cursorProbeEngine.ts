@@ -13,13 +13,28 @@
 import { SPEED_OF_LIGHT } from './config';
 import { MODCOD_TABLE } from './linkBudget';
 import { ACN_SECTOR_LABELS } from './antennaArray';
+import {
+  SPEED_OF_LIGHT_M_S,
+  DEFAULT_X_BAND_FREQ_HZ,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  DEFAULT_K_FACTOR,
+  DEFAULT_TRUE_EARTH_RADIUS_M,
+  DEFAULT_R_EFF_M,
+  computeEarthBulgeM,
+  computeKnifeEdgeDiffractionLossDb,
+  computeFsplDb,
+  computeBearingDeg,
+  computeSlantAndHorizDistance,
+} from './rfPropagationMath';
 
-export const SPEED_OF_LIGHT_M_S = SPEED_OF_LIGHT ?? 299792458.0;
-export const DEFAULT_X_BAND_FREQ_HZ = 8.0e9; // 8.0 GHz
-export const DEFAULT_X_BAND_WAVELENGTH_M = SPEED_OF_LIGHT_M_S / DEFAULT_X_BAND_FREQ_HZ; // ~0.037474 m
-export const DEFAULT_K_FACTOR = 4.0 / 3.0; // Standard atmospheric refraction
-export const DEFAULT_EARTH_RADIUS_M = 6371000.0; // WGS-84 volumetric mean
-export const DEFAULT_R_EFF_M = DEFAULT_K_FACTOR * DEFAULT_EARTH_RADIUS_M; // ~8494666.67 m
+export const DEFAULT_EARTH_RADIUS_M = DEFAULT_TRUE_EARTH_RADIUS_M;
+export {
+  SPEED_OF_LIGHT_M_S,
+  DEFAULT_X_BAND_FREQ_HZ,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  DEFAULT_K_FACTOR,
+  DEFAULT_R_EFF_M,
+};
 
 // Standard Tactical Link Budget Constants (8 GHz ACN-Ground)
 export const PROBE_LINK_BUDGET = {
@@ -154,9 +169,7 @@ export interface OptimalSignalPeakResult {
  * Computes ITU-R P.526 single knife-edge diffraction loss J(nu).
  */
 export function computeP526DiffractionDb(nu: number): number {
-  if (nu <= -0.78) return 0.0;
-  const term = Math.sqrt((nu - 0.1) * (nu - 0.1) + 1.0) + nu - 0.1;
-  return 6.9 + 20.0 * Math.log10(Math.max(1e-6, term));
+  return computeKnifeEdgeDiffractionLossDb(nu);
 }
 
 /**
@@ -198,13 +211,12 @@ export function evaluateCursorRfProbe(
   const dx = xAcn - xP;
   const dy = yAcn - yP;
   const dz = zAcn - zAnt;
-  const dHorizM = Math.hypot(dx, dy);
-  const d3dM = Math.hypot(dHorizM, dz);
+  const { horizDistM: dHorizM, slantDistM: d3dM } = computeSlantAndHorizDistance(dx, dy, dz);
   const dHorizKm = dHorizM / 1000.0;
   const d3dKm = d3dM / 1000.0;
 
   // Forward azimuth from probe to ACN: 0° = North, 90° = East
-  const azToAcnDeg = ((Math.atan2(dx, dy) * 180.0) / Math.PI + 360.0) % 360.0;
+  const azToAcnDeg = computeBearingDeg(dx, dy);
 
   // Elevation angle from probe antenna to ACN
   const elToAcnDeg = (Math.atan2(dz, Math.max(dHorizM, 1.0)) * 180.0) / Math.PI;
@@ -225,7 +237,7 @@ export function evaluateCursorRfProbe(
     const zDem = getElevationAt(sx, sy);
 
     // 4/3 Earth curvature bulge along chord & effective terrain elevation
-    const chordBulgeM = (sM * (dHorizM - sM)) / (2.0 * DEFAULT_R_EFF_M);
+    const chordBulgeM = computeEarthBulgeM(sM, dHorizM - sM, DEFAULT_K_FACTOR, DEFAULT_EARTH_RADIUS_M);
     const effTerrainZ = zDem + chordBulgeM;
     const rayZ = zAnt + u * dz;
     const clearanceM = rayZ - effTerrainZ;
@@ -265,7 +277,7 @@ export function evaluateCursorRfProbe(
 
   // 5. Serving ACN Quadrant Sector (S0..S3) & ITU-R F.1336 Roll-Off Loss
   // Azimuth from ACN towards probe
-  const azFromAcnDeg = ((Math.atan2(-dx, -dy) * 180.0) / Math.PI + 360.0) % 360.0;
+  const azFromAcnDeg = computeBearingDeg(-dx, -dy);
   const bodyAzDeg = ((azFromAcnDeg - acnHeadingDeg) % 360.0 + 360.0) % 360.0;
 
   // Quad sector assignment: S0=0° FWD, S1=90° STBD, S2=180° AFT, S3=270° PORT
@@ -284,7 +296,7 @@ export function evaluateCursorRfProbe(
   const rollOffLossDb = Math.min(12.0 * azRatio * azRatio, PROBE_LINK_BUDGET.maxRollOffDb);
 
   // 6. 8.0 GHz Link Budget Calculation
-  const fsplDb = 20.0 * Math.log10(Math.max(1.0, d3dM)) + 20.0 * Math.log10(DEFAULT_X_BAND_FREQ_HZ) - 147.55;
+  const fsplDb = computeFsplDb(d3dM, DEFAULT_X_BAND_FREQ_HZ, SPEED_OF_LIGHT_M_S);
   const gasLossDb = PROBE_LINK_BUDGET.gasLossBaselineDb + PROBE_LINK_BUDGET.specificGasLossDbPerKm * d3dKm;
   const diffLossDb = isLos ? 0.0 : computeP526DiffractionDb(maxNu);
 
@@ -367,7 +379,7 @@ export function evaluateCursorRfProbe(
     const deltaX = xP - p1X;
     const deltaY = yP - p1Y;
     const distFromPinKm = Math.hypot(deltaX, deltaY) / 1000.0;
-    const bearingFromPinDeg = ((Math.atan2(deltaX, deltaY) * 180.0) / Math.PI + 360.0) % 360.0;
+    const bearingFromPinDeg = computeBearingDeg(deltaX, deltaY);
 
     deltaVsPin = {
       distFromPinKm,

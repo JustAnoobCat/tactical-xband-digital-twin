@@ -121,7 +121,8 @@ const REGISTERED_SUITES = [
   { id: 'verify:walkable-ai', name: 'Edge-AI Walkable Terrain Pathfinder & 3D Obstacle Avoidance (WPO-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWalkablePathfinderAndObstacleAvoidance.ts'], category: 'ai' },
   { id: 'verify:ai-copilot-phone', name: 'Tactical Edge-AI Co-Pilot & Soldier Handheld Phone UI (ECP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyEdgeAiCopilotAndSoldierPhone.ts'], category: 'ai' },
   { id: 'verify:ai-physics-truth', name: 'AI Physics Truth & Closed-Loop Execution (APT-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyAiPhysicsTruthAndClosedLoop.ts'], category: 'ai' },
-  { id: 'verify:master-math', name: 'Master Mathematical & Physical Rigor Audit (MMR-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMasterMathematicalRigor.ts'], category: 'math' }
+  { id: 'verify:master-math', name: 'Master Mathematical & Physical Rigor Audit (MMR-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMasterMathematicalRigor.ts'], category: 'math' },
+  { id: 'verify:se-architecture', name: 'Software Engineering Architecture & DRY Refactor (SEA-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifySoftwareEngineeringArchitecture.ts'], category: 'architecture' }
 ];
 
 // -----------------------------------------------------------------------------

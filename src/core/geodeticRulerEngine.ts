@@ -8,29 +8,38 @@
  * Specification: docs/specs/SPEC-PRECISION-GEODETIC-LOS-RULER-TOOL1.md
  */
 
-export const SPEED_OF_LIGHT_M_S = 299792458.0;
-export const DEFAULT_X_BAND_FREQ_HZ = 8.0e9; // 8.0 GHz
-export const DEFAULT_X_BAND_WAVELENGTH_M = SPEED_OF_LIGHT_M_S / DEFAULT_X_BAND_FREQ_HZ; // ~0.037474 m
-export const DEFAULT_K_FACTOR = 4.0 / 3.0; // 1.3333333333 Standard atmospheric refraction
-export const DEFAULT_TRUE_EARTH_RADIUS_M = 6371000.0; // WGS-84 volumetric mean
+import {
+  SPEED_OF_LIGHT_M_S,
+  DEFAULT_X_BAND_FREQ_HZ,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  DEFAULT_K_FACTOR,
+  DEFAULT_TRUE_EARTH_RADIUS_M,
+  COMPASS_16_CARDINALS,
+  type Cardinal16,
+  azimuthToCardinal16,
+  computeEarthBulgeM,
+  computeFirstFresnelRadiusM,
+  computeBearingDeg,
+  computeSlantAndHorizDistance,
+} from './rfPropagationMath';
 
-export const COMPASS_16_WINDS = [
-  'N', 'NNE', 'NE', 'ENE',
-  'E', 'ESE', 'SE', 'SSE',
-  'S', 'SSW', 'SW', 'WSW',
-  'W', 'WNW', 'NW', 'NNW',
-] as const;
+export {
+  SPEED_OF_LIGHT_M_S,
+  DEFAULT_X_BAND_FREQ_HZ,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  DEFAULT_K_FACTOR,
+  DEFAULT_TRUE_EARTH_RADIUS_M,
+};
 
-export type CompassWindLabel = typeof COMPASS_16_WINDS[number];
+export const COMPASS_16_WINDS = COMPASS_16_CARDINALS;
+export type CompassWindLabel = Cardinal16;
 
 /**
  * Maps a compass azimuth angle [0, 360) to a 16-wind cardinal label.
  * 0° = North, 90° = East, 180° = South, 270° = West.
  */
 export function compassRoseLabel(azimuthDeg: number): CompassWindLabel {
-  const norm = ((azimuthDeg % 360.0) + 360.0) % 360.0;
-  const idx = Math.floor(((norm + 11.25) % 360.0) / 22.5);
-  return COMPASS_16_WINDS[idx];
+  return azimuthToCardinal16(azimuthDeg);
 }
 
 export interface GeodeticRulerPoint {
@@ -115,18 +124,15 @@ export function computeGeodeticRulerMetrics(
 
   const dx = xB_val - xA_val;
   const dy = yB_val - yA_val;
-  const dHoriz = Math.hypot(dx, dy);
-
   const zAntA = zG_A_val + hM_A_val;
   const zAntB = zG_B_val + hM_B_val;
   const deltaZAnt = zAntB - zAntA;
   const deltaZGround = zG_B_val - zG_A_val;
 
-  const d3d = Math.hypot(dHoriz, deltaZAnt);
+  const { horizDistM: dHoriz, slantDistM: d3d } = computeSlantAndHorizDistance(dx, dy, deltaZAnt);
 
   // Compass azimuth: 0° = North (+y), 90° = East (+x)
-  let azDeg = (Math.atan2(dx, dy) * 180.0) / Math.PI;
-  azDeg = ((azDeg % 360.0) + 360.0) % 360.0;
+  const azDeg = computeBearingDeg(dx, dy);
   const backAzDeg = (azDeg + 180.0) % 360.0;
   const cardinal = compassRoseLabel(azDeg);
 
@@ -178,8 +184,7 @@ export function snapPointToAngleIncrement(
   const r = Math.hypot(dx, dy);
   if (r < 1e-6) return [xA, yA];
 
-  let azDeg = (Math.atan2(dx, dy) * 180.0) / Math.PI;
-  azDeg = ((azDeg % 360.0) + 360.0) % 360.0;
+  const azDeg = computeBearingDeg(dx, dy);
 
   const snappedAzDeg = ((Math.round(azDeg / stepDeg) * stepDeg) % 360.0 + 360.0) % 360.0;
   const rad = (snappedAzDeg * Math.PI) / 180.0;
@@ -289,11 +294,11 @@ export function evaluateRulerProfileAndBlockingPeak(
     const yM = ptA.yM + fraction * dy;
 
     const zGroundM = sampleElevation(xM, yM);
-    const zBulgeM = (sM * (dHoriz - sM)) / (2.0 * effectiveEarthRadius);
+    const zBulgeM = computeEarthBulgeM(sM, dHoriz - sM, kFactor, trueEarthRadiusM);
     const zEffectiveTerrainM = zGroundM + zBulgeM;
     const zRayM = zAntA + fraction * deltaZAnt;
 
-    const f1RadiusM = Math.sqrt((wavelengthM * sM * (dHoriz - sM)) / Math.max(dHoriz, 0.001));
+    const f1RadiusM = computeFirstFresnelRadiusM(sM, dHoriz - sM, wavelengthM);
     const clearanceM = zRayM - zEffectiveTerrainM;
     const intrusionM = Math.max(0.0, -clearanceM);
 

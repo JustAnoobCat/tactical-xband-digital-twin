@@ -57,6 +57,10 @@ import {
   getDefaultPayloadBytes,
 } from '../core/transferManager';
 import {
+  EdgeAiCopilotCoordinator,
+  type ActiveAiMovement,
+} from './aiCopilotCoordinator';
+import {
   EdgeAiQTable,
   computeAiRecoveryAdvisory,
   computeToblerWalkingSpeedMs,
@@ -354,31 +358,35 @@ export class SimulationWorkerManager {
   public readonly hillshadeGenerator: HillshadeGenerator;
   public readonly telemetrySerializer: TelemetrySerializer = new TelemetrySerializer();
 
+  // Dedicated Edge-AI Co-Pilot Coordinator (SPEC-SOFTWARE-ENGINEERING-MODULARITY-AND-DRY-REFACTOR)
+  public readonly aiCoordinator: EdgeAiCopilotCoordinator = new EdgeAiCopilotCoordinator();
+
   // Edge-AI NLoS Recovery Pathfinder & Auto-Healing Engine
   public aiAutoHealEnabled: boolean = false;
-  public aiBuddyMeshEnabled: boolean = false;
-  public aiLpiStealthEnabled: boolean = false;
-  public aiSkyShepherdActive: boolean = false;
-  public skyShepherdCurrentOffset: [number, number, number] = [0, 0, 0];
-  public skyShepherdTargetOffset: [number, number, number] = [0, 0, 0];
-  public aiSkyShepherdNodeId: number | null = null;
-  public aiSkyShepherdDirective: string = '';
-  public readonly aiPinnedNodes: Set<number> = new Set();
-  public readonly aiBuddyRelayResults: Map<number, AiBuddyRelayResult> = new Map();
-  public readonly aiLpiStealthResults: Map<number, AiLpiStealthResult> = new Map();
-  public readonly aiBlackoutForecasts: Map<number, AiBlackoutForecastResult> = new Map();
+  get aiBuddyMeshEnabled(): boolean { return this.aiCoordinator.aiBuddyMeshEnabled; }
+  set aiBuddyMeshEnabled(v: boolean) { this.aiCoordinator.aiBuddyMeshEnabled = v; }
+  get aiLpiStealthEnabled(): boolean { return this.aiCoordinator.aiLpiStealthEnabled; }
+  set aiLpiStealthEnabled(v: boolean) { this.aiCoordinator.aiLpiStealthEnabled = v; }
+  get aiSkyShepherdActive(): boolean { return this.aiCoordinator.aiSkyShepherdActive; }
+  set aiSkyShepherdActive(v: boolean) { this.aiCoordinator.aiSkyShepherdActive = v; }
+  get skyShepherdCurrentOffset(): [number, number, number] { return this.aiCoordinator.skyShepherdCurrentOffset; }
+  set skyShepherdCurrentOffset(v: [number, number, number]) { this.aiCoordinator.skyShepherdCurrentOffset = v; }
+  get skyShepherdTargetOffset(): [number, number, number] { return this.aiCoordinator.skyShepherdTargetOffset; }
+  set skyShepherdTargetOffset(v: [number, number, number]) { this.aiCoordinator.skyShepherdTargetOffset = v; }
+  get aiSkyShepherdNodeId(): number | null { return this.aiCoordinator.aiSkyShepherdNodeId; }
+  set aiSkyShepherdNodeId(v: number | null) { this.aiCoordinator.aiSkyShepherdNodeId = v; }
+  get aiSkyShepherdDirective(): string { return this.aiCoordinator.aiSkyShepherdDirective; }
+  set aiSkyShepherdDirective(v: string) { this.aiCoordinator.aiSkyShepherdDirective = v; }
+  get aiPinnedNodes(): Set<number> { return this.aiCoordinator.aiPinnedNodes; }
+  get aiBuddyRelayResults(): Map<number, AiBuddyRelayResult> { return this.aiCoordinator.aiBuddyRelayResults; }
+  get aiLpiStealthResults(): Map<number, AiLpiStealthResult> { return this.aiCoordinator.aiLpiStealthResults; }
+  get aiBlackoutForecasts(): Map<number, AiBlackoutForecastResult> { return this.aiCoordinator.aiBlackoutForecasts; }
   public readonly aiQTable: EdgeAiQTable = new EdgeAiQTable();
-  public readonly aiRecommendations: Map<number, AiNodeRecoveryRecommendation> = new Map();
-  public readonly aiActiveMovingNodes: Set<number> = new Set();
+  get aiRecommendations(): Map<number, AiNodeRecoveryRecommendation> { return this.aiCoordinator.aiRecommendations; }
+  get aiActiveMovingNodes(): Set<number> { return this.aiCoordinator.aiActiveMovingNodes; }
   public aiActiveRepositionCount: number = 0;
-  private aiLastEvalTick: Map<number, number> = new Map();
-  private aiActiveMovements: Map<number, {
-    targetPos: [number, number, number];
-    speedMs: number;
-    moveBearingDeg: number;
-    waypoints?: readonly Position3D[];
-    waypointIndex?: number;
-  }> = new Map();
+  private get aiLastEvalTick(): Map<number, number> { return this.aiCoordinator.aiLastEvalTick; }
+  private get aiActiveMovements(): Map<number, ActiveAiMovement> { return this.aiCoordinator.aiActiveMovements; }
   private aiTickCount: number = 0;
 
   private timerId: number | null = null;
@@ -496,43 +504,15 @@ export class SimulationWorkerManager {
     this.nodesStatic = nodesStatic;
     this.nodesTac = nodesTac;
     this.nodesReactive = nodesReactive;
-    this.aiActiveMovements.clear();
-    this.aiActiveMovingNodes.clear();
-    this.aiRecommendations.clear();
-    this.aiLastEvalTick.clear();
+    this.aiCoordinator.reset();
     this.aiActiveRepositionCount = 0;
-    this.aiBuddyRelayResults.clear();
-    this.aiLpiStealthResults.clear();
-    this.aiBlackoutForecasts.clear();
-    this.aiPinnedNodes.clear();
     this.aiAutoHealEnabled = false;
-    this.aiBuddyMeshEnabled = false;
-    this.aiLpiStealthEnabled = false;
-    this.aiSkyShepherdActive = false;
-    this.aiSkyShepherdNodeId = null;
-    this.aiSkyShepherdDirective = '';
-    this.skyShepherdCurrentOffset = [0, 0, 0];
-    this.skyShepherdTargetOffset = [0, 0, 0];
   }
 
   public getActiveRepositionDistRemaining(nodeId: number): number | null {
-    const move = this.aiActiveMovements.get(nodeId);
-    if (!move) return null;
     const node = this.nodesStatic.find(n => n.nodeId === nodeId);
     if (!node) return null;
-    if (move.waypoints && move.waypoints.length > 1 && typeof move.waypointIndex === 'number') {
-      const curX = node.position[0];
-      const curY = node.position[1];
-      const nextWp = move.waypoints[move.waypointIndex] ?? move.targetPos;
-      let totalRem = Math.hypot(nextWp[0] - curX, nextWp[1] - curY);
-      for (let i = move.waypointIndex; i < move.waypoints.length - 1; i++) {
-        const pA = move.waypoints[i];
-        const pB = move.waypoints[i + 1];
-        totalRem += Math.hypot(pB[0] - pA[0], pB[1] - pA[1]);
-      }
-      return totalRem;
-    }
-    return Math.hypot(move.targetPos[0] - node.position[0], move.targetPos[1] - node.position[1]);
+    return this.aiCoordinator.getActiveRepositionDistRemaining(nodeId, node.position);
   }
 
   public stepSimulation(): void {
@@ -713,113 +693,31 @@ export class SimulationWorkerManager {
     }
 
     // Closed-Loop Pillar 3: Sky-Shepherd UAV Loiter Orbit Slew Dynamics (80 m/s horiz, 25 m/s vert)
-    const targetShepherdOffset = (this.aiSkyShepherdActive && this.aiSkyShepherdNodeId !== null)
-      ? this.skyShepherdTargetOffset
-      : [0, 0, 0];
-    const dxShep = targetShepherdOffset[0] - this.skyShepherdCurrentOffset[0];
-    const dyShep = targetShepherdOffset[1] - this.skyShepherdCurrentOffset[1];
-    const dzShep = targetShepherdOffset[2] - this.skyShepherdCurrentOffset[2];
-    const horizDistShep = Math.hypot(dxShep, dyShep);
-    const maxHorizStep = 80.0 * FRAME_DT; // 1.6 m per 20 ms
-    const maxVertStep = 25.0 * FRAME_DT;  // 0.5 m per 20 ms
-
-    if (horizDistShep <= maxHorizStep) {
-      this.skyShepherdCurrentOffset[0] = targetShepherdOffset[0];
-      this.skyShepherdCurrentOffset[1] = targetShepherdOffset[1];
-    } else {
-      const uX = dxShep / horizDistShep;
-      const uY = dyShep / horizDistShep;
-      this.skyShepherdCurrentOffset[0] += uX * maxHorizStep;
-      this.skyShepherdCurrentOffset[1] += uY * maxHorizStep;
-    }
-    this.skyShepherdCurrentOffset[2] += Math.max(-maxVertStep, Math.min(maxVertStep, dzShep));
+    const shepherdOffset = this.aiCoordinator.stepSkyShepherdSlew(FRAME_DT);
 
     const acnPos: [number, number, number] = [
-      targetPos[0] + this.skyShepherdCurrentOffset[0],
-      targetPos[1] + this.skyShepherdCurrentOffset[1],
-      this.liveAltitudeM + this.skyShepherdCurrentOffset[2],
+      targetPos[0] + shepherdOffset[0],
+      targetPos[1] + shepherdOffset[1],
+      this.liveAltitudeM + shepherdOffset[2],
     ];
 
     // Advance active Edge-AI node repositioning movements
-    if (this.aiActiveMovements.size > 0) {
-      let movedAny = false;
-      for (const [nid, move] of Array.from(this.aiActiveMovements.entries())) {
-        const staticNode = this.nodesStatic.find(n => n.nodeId === nid);
-        const tacNode = this.nodesTac.find(n => n.nodeId === nid);
-        const reactiveNode = this.nodesReactive.find(n => n.nodeId === nid);
-        if (!staticNode || !tacNode) {
-          this.aiActiveMovements.delete(nid);
-          this.aiActiveMovingNodes.delete(nid);
-          continue;
-        }
-
-        const curX = staticNode.position[0];
-        const curY = staticNode.position[1];
-
-        // Multi-waypoint traversal: identify current target waypoint in the polyline
-        const waypoints = move.waypoints;
-        const wpIdx = move.waypointIndex ?? 1;
-        const isMultiWp = Boolean(waypoints && waypoints.length > 1 && wpIdx < waypoints.length);
-        const nextWp = isMultiWp && waypoints ? waypoints[wpIdx] : move.targetPos;
-
-        const tx = nextWp[0];
-        const ty = nextWp[1];
-        const distRem = Math.hypot(tx - curX, ty - curY);
-        const stepDist = move.speedMs * FRAME_DT;
-
-        if (distRem <= stepDist || distRem <= 2.0) {
-          // Reached waypoint!
-          const newElev = this.terrainEngine.getElevation(tx, ty);
-          staticNode.position = [tx, ty, newElev + staticNode.aglM];
-          tacNode.position = [tx, ty, newElev + tacNode.aglM];
-          if (reactiveNode) reactiveNode.position = [tx, ty, newElev + reactiveNode.aglM];
-          this.nodeRegistry.updateSpatial(nid, tx, ty);
-
-          if (isMultiWp && waypoints && wpIdx < waypoints.length - 1) {
-            // Advance to next leg in polyline path
-            move.waypointIndex = wpIdx + 1;
-            const nextTarget = waypoints[move.waypointIndex];
-            const legDist = Math.hypot(nextTarget[0] - tx, nextTarget[1] - ty);
-            const legDeltaZ = nextTarget[2] - newElev;
-            const tobler = computeToblerWalkingSpeedMs(legDist, legDeltaZ, staticNode.nodeType);
-            move.speedMs = Math.max(0.5, tobler.speedMs);
-            move.moveBearingDeg = ((Math.atan2(nextTarget[0] - tx, nextTarget[1] - ty) * 180.0) / Math.PI + 360.0) % 360.0;
-            movedAny = true;
-          } else {
-            // Reached final destination recovery waypoint!
-            this.aiActiveMovements.delete(nid);
-            this.aiActiveMovingNodes.delete(nid);
-
-            // Update Q-table with the restored link SINR
-            const restoredLs = this.linkStatuses.get(nid);
-            const restoredSinr = restoredLs?.sinrDb ?? restoredLs?.snrDb ?? 15.0;
-            const sectorIdx = this.aiQTable.getSectorIndex(move.moveBearingDeg);
-            this.aiQTable.updateQValue(nid, sectorIdx, restoredSinr);
-
-            this.aiRecommendations.delete(nid);
-            this.aiLastEvalTick.delete(nid);
-            movedAny = true;
-          }
-        } else {
-          const ux = (tx - curX) / distRem;
-          const uy = (ty - curY) / distRem;
-          const newX = curX + ux * stepDist;
-          const newY = curY + uy * stepDist;
-          const newElev = this.terrainEngine.getElevation(newX, newY);
-          staticNode.position = [newX, newY, newElev + staticNode.aglM];
-          tacNode.position = [newX, newY, newElev + tacNode.aglM];
-          if (reactiveNode) reactiveNode.position = [newX, newY, newElev + reactiveNode.aglM];
-          this.nodeRegistry.updateSpatial(nid, newX, newY);
-          movedAny = true;
-        }
-      }
-      if (movedAny) {
-        this.spatialRevision++;
-        this.lookaheadEngine.invalidateAll();
-        this.deferredEmergencyQueue.clear();
-      }
-      this.aiActiveRepositionCount = this.aiActiveMovements.size;
+    const movedAny = this.aiCoordinator.stepActiveAiNodeMoves(
+      FRAME_DT,
+      (x, y) => this.terrainEngine.getElevation(x, y),
+      this.nodesStatic,
+      this.nodesTac,
+      this.nodesReactive,
+      this.nodeRegistry,
+      this.linkStatuses,
+      this.aiQTable
+    );
+    if (movedAny) {
+      this.spatialRevision++;
+      this.lookaheadEngine.invalidateAll();
+      this.deferredEmergencyQueue.clear();
     }
+    this.aiActiveRepositionCount = this.aiCoordinator.aiActiveMovements.size;
 
     // Refresh all spatially derived decisions before traffic generation reads isShadowed.
     this.refreshObstructionState(acnPos, t);
@@ -919,7 +817,7 @@ export class SimulationWorkerManager {
 
         // Pillar 1: AI Buddy-Relay Peer-to-Peer Squad Mesh
         if (this.aiBuddyMeshEnabled) {
-          const buddyResult = evaluateAiBuddyRelayRescue(
+          const buddyResult = this.aiCoordinator.evaluateBuddyRelay(
             {
               nodeId: nid,
               position: node.position,
@@ -941,7 +839,7 @@ export class SimulationWorkerManager {
           ? (this.rfConfig.mcpTxPowerDbm ?? 40.0)
           : (this.rfConfig.soldierTxPowerDbm ?? 30.0);
         if (this.aiLpiStealthEnabled) {
-          const lpiResult = computeAiLpiStealthPower(
+          const lpiResult = this.aiCoordinator.evaluateLpiStealth(
             nominalTxPowerDbm,
             sinrDb,
             isOutage,
@@ -958,7 +856,7 @@ export class SimulationWorkerManager {
         }
 
         // Pillar 5: AI 15-Second Blackout Countdown Forecaster
-        const blackoutForecast = predictNodeBlackoutCountdown(
+        const blackoutForecast = this.aiCoordinator.evaluateBlackoutCountdown(
           node.position,
           sinrDb,
           isOutage,
@@ -979,7 +877,7 @@ export class SimulationWorkerManager {
             this.flightConfig.centerYm,
             this.liveAltitudeM ?? this.flightConfig.altitudeMslM,
           ];
-          const shepherdRes = computeAiSkyShepherdUavOffset(
+          const shepherdRes = this.aiCoordinator.evaluateSkyShepherd(
             pinnedNode.position,
             centerPos,
             (x, y) => this.terrainEngine.getElevation(x, y),
@@ -1698,7 +1596,7 @@ export class SimulationWorkerManager {
         const nid = node.nodeId;
         const curLs = nextLinks.get(nid);
         if (curLs && (curLs.isOutage || curLs.bitrateMbps < 1.0)) {
-          const buddyRes = evaluateAiBuddyRelayRescue(
+          const buddyRes = this.aiCoordinator.evaluateBuddyRelay(
             {
               nodeId: nid,
               position: node.position,
@@ -3330,7 +3228,7 @@ export class SimulationWorkerManager {
               this.flightConfig.centerYm,
               this.liveAltitudeM ?? this.flightConfig.altitudeMslM,
             ];
-            const shepherdRes = computeAiSkyShepherdUavOffset(
+            const shepherdRes = this.aiCoordinator.evaluateSkyShepherd(
               pinnedNode.position,
               centerPos,
               (x, y) => this.terrainEngine.getElevation(x, y),

@@ -38,10 +38,29 @@ import { normalizeObstacle, footprintInterval, obstacleContainsPoint, ObstacleFi
 // ----------------------------------------------------------------------------
 // Constants & Physical Parameters
 // ----------------------------------------------------------------------------
-export const SPEED_OF_LIGHT_M_S = 299792458.0;
-export const DEFAULT_AI_RF_FREQ_HZ = 8.0e9; // 8.0 GHz tactical X-band
-export const DEFAULT_AI_WAVELENGTH_M = SPEED_OF_LIGHT_M_S / DEFAULT_AI_RF_FREQ_HZ; // ~0.037474 m
-export const DEFAULT_AI_R_EFF_M = (4.0 / 3.0) * 6371000.0; // ~8494666.67 m (4/3 atmospheric refraction)
+import {
+  SPEED_OF_LIGHT_M_S,
+  DEFAULT_X_BAND_FREQ_HZ,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  DEFAULT_K_FACTOR,
+  DEFAULT_TRUE_EARTH_RADIUS_M,
+  DEFAULT_R_EFF_M,
+  COMPASS_16_CARDINALS,
+  type Cardinal16,
+  azimuthToCardinal16,
+  computeEarthBulgeM,
+  computeKnifeEdgeDiffractionLossDb,
+  computeFsplDb,
+  computeBearingDeg,
+} from './rfPropagationMath';
+
+export const SPEED_OF_LIGHT = SPEED_OF_LIGHT_M_S;
+export { SPEED_OF_LIGHT_M_S };
+export const DEFAULT_AI_RF_FREQ_HZ = DEFAULT_X_BAND_FREQ_HZ;
+export const DEFAULT_AI_WAVELENGTH_M = DEFAULT_X_BAND_WAVELENGTH_M;
+export const DEFAULT_AI_K_FACTOR = DEFAULT_K_FACTOR;
+export const DEFAULT_AI_EARTH_RADIUS_M = DEFAULT_TRUE_EARTH_RADIUS_M;
+export const DEFAULT_AI_R_EFF_M = DEFAULT_R_EFF_M;
 
 export const AI_LINK_BUDGET_CONSTANTS = {
   txPowerDbm: 36.0,       // 4.0 W Soldier Manpack PA (RFConfig default)
@@ -54,20 +73,15 @@ export const AI_LINK_BUDGET_CONSTANTS = {
   implMarginDb: 2.5,      // Implementation & polarization margin
 };
 
-export const COMPASS_16_SECTORS = [
-  'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-  'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'
-] as const;
+export const COMPASS_16_SECTORS = COMPASS_16_CARDINALS;
 
-export type Cardinal16 = typeof COMPASS_16_SECTORS[number];
+export type { Cardinal16 };
 
 /**
  * Returns 16-point compass cardinal direction for bearing in degrees [0, 360).
  */
 export function getCardinal16(bearingDeg: number): Cardinal16 {
-  const norm = ((bearingDeg % 360) + 360) % 360;
-  const idx = Math.floor(((norm + 11.25) % 360) / 22.5) % 16;
-  return COMPASS_16_SECTORS[idx];
+  return azimuthToCardinal16(bearingDeg);
 }
 
 // ----------------------------------------------------------------------------
@@ -481,12 +495,12 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
   const dzDy = (zNorth - zSouth) / (2.0 * GRADIENT_DELTA_M);
 
   // Uphill gradient bearing (0° North, 90° East)
-  const uphillBearingDeg = ((Math.atan2(dzDx, dzDy) * 180.0) / Math.PI + 360.0) % 360.0;
+  const uphillBearingDeg = computeBearingDeg(dzDx, dzDy);
 
   // Bearing from stranded unit to airborne ACN
   const dxAcn = acnX - nodeX;
   const dyAcn = acnY - nodeY;
-  const acnBearingDeg = ((Math.atan2(dxAcn, dyAcn) * 180.0) / Math.PI + 360.0) % 360.0;
+  const acnBearingDeg = computeBearingDeg(dxAcn, dyAcn);
 
   // 3. Generate 8 Priority Bearings
   // Centered around: theta_acn, theta_acn ± 45°, theta_acn ± 90°, theta_uphill, theta_uphill ± 45°
@@ -644,7 +658,7 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
         const zDem = getElevationAt(sx, sy);
 
         // Effective Earth curvature bulge (4/3 R_eff)
-        const chordBulgeM = (sM * (horizDistAcnM - sM)) / (2.0 * DEFAULT_AI_R_EFF_M);
+        const chordBulgeM = computeEarthBulgeM(sM, horizDistAcnM - sM, DEFAULT_AI_K_FACTOR, DEFAULT_AI_EARTH_RADIUS_M);
         const effTerrainZ = zDem + chordBulgeM;
         const rayZ = zAntM + u * rayDz;
 
@@ -662,11 +676,9 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
       }
 
       // ITU-R P.526 Knife-edge diffraction loss
-      let diffLossDb = 0.0;
-      if (!isRayLoS && maxNu > -0.7) {
-        const nuTerm = maxNu - 0.1;
-        diffLossDb = Math.min(50.0, Math.max(0.0, 6.9 + 20.0 * Math.log10(Math.sqrt(nuTerm * nuTerm + 1.0) + nuTerm)));
-      }
+      let diffLossDb = isRayLoS
+        ? 0.0
+        : Math.min(50.0, computeKnifeEdgeDiffractionLossDb(maxNu));
 
       // Check 3D obstacles along candidate-to-ACN sky ray
       let candObstacleBlocked = false;
@@ -703,7 +715,7 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
           const fsx = candX + fu * futDx;
           const fsy = candY + fu * futDy;
           const fzDem = getElevationAt(fsx, fsy);
-          const fBulgeM = (fsM * (futHorizM - fsM)) / (2.0 * DEFAULT_AI_R_EFF_M);
+          const fBulgeM = computeEarthBulgeM(fsM, futHorizM - fsM, DEFAULT_AI_K_FACTOR, DEFAULT_AI_EARTH_RADIUS_M);
           if (fzDem + fBulgeM >= zAntM + fu * futDz) {
             futIsLoS = false;
             break;
@@ -887,7 +899,7 @@ export function evaluateFastLinkSinr(
     const sy = posA[1] + u * dy;
     const zDem = getElevationAt(sx, sy);
 
-    const chordBulgeM = (sM * (horizDistM - sM)) / (2.0 * DEFAULT_AI_R_EFF_M);
+    const chordBulgeM = computeEarthBulgeM(sM, horizDistM - sM, DEFAULT_AI_K_FACTOR, DEFAULT_AI_EARTH_RADIUS_M);
     const effTerrainZ = zDem + chordBulgeM;
     const rayZ = posA[2] + u * dz;
 
@@ -904,14 +916,12 @@ export function evaluateFastLinkSinr(
     }
   }
 
-  let diffLossDb = 0.0;
-  if (!isLoS && maxNu > -0.7) {
-    const nuTerm = maxNu - 0.1;
-    diffLossDb = Math.min(50.0, Math.max(0.0, 6.9 + 20.0 * Math.log10(Math.sqrt(nuTerm * nuTerm + 1.0) + nuTerm)));
-  }
+  const diffLossDb = isLoS
+    ? 0.0
+    : Math.min(50.0, computeKnifeEdgeDiffractionLossDb(maxNu));
 
   const slantRangeKm = Math.max(0.01, slantDistM / 1000.0);
-  const fsplDb = 20.0 * Math.log10(Math.max(1.0, slantDistM)) + 20.0 * Math.log10(rfFreqHz) - 147.552;
+  const fsplDb = computeFsplDb(slantDistM, rfFreqHz, SPEED_OF_LIGHT_M_S);
   const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantDistM, posA[2], posB[2], rfFreqHz);
   const cableLossDb = AI_LINK_BUDGET_CONSTANTS.cableLossDb ?? 1.5;
   const implMarginDb = AI_LINK_BUDGET_CONSTANTS.implMarginDb ?? 2.5;
@@ -1021,7 +1031,7 @@ export function evaluateAiBuddyRelayRescue(
 
     if (harmonicRate > bestHarmonicRate) {
       bestHarmonicRate = harmonicRate;
-      const bearingDeg = ((Math.atan2(dx, dy) * 180.0) / Math.PI + 360.0) % 360.0;
+      const bearingDeg = computeBearingDeg(dx, dy);
       bestBuddy = {
         nodeId: squadmate.nodeId,
         distM: distHorizM,
@@ -1103,7 +1113,7 @@ export function computeEwDefiladeShieldDb(
     const sy = sitePos[1] + u * dy;
     const zDem = getElevationAt(sx, sy);
 
-    const chordBulgeM = (sM * (horizDistM - sM)) / (2.0 * DEFAULT_AI_R_EFF_M);
+    const chordBulgeM = computeEarthBulgeM(sM, horizDistM - sM, DEFAULT_AI_K_FACTOR, DEFAULT_AI_EARTH_RADIUS_M);
     const effTerrainZ = zDem + chordBulgeM;
     const rayZ = siteZ + u * dz;
 
@@ -1216,7 +1226,7 @@ export function computeAiSkyShepherdUavOffset(
 
   if (foundFeasible && bestSinrDb > -2.85) {
     const distShift = Math.hypot(bestDeltaX, bestDeltaY);
-    const bearingShift = ((Math.atan2(bestDeltaX, bestDeltaY) * 180.0) / Math.PI + 360.0) % 360.0;
+    const bearingShift = computeBearingDeg(bestDeltaX, bestDeltaY);
     return {
       deltaXM: bestDeltaX,
       deltaYM: bestDeltaY,
