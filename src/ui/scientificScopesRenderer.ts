@@ -19,6 +19,7 @@ import {
   evaluateParametricSensitivity,
 } from '../core/parametricSensitivity';
 import { safeHtml } from './domSafety';
+import { getLatticeCanvasPalette } from './canvasTheme';
 
 export interface ScientificScopeNodeTelemetry {
   readonly node_id: number;
@@ -91,13 +92,14 @@ export function drawPolarAntennaScope(
     if (w <= 0 || h <= 0) return;
     const g = ctx;
     g.clearRect(0, 0, w, h);
+    const palette = getLatticeCanvasPalette();
 
     const cx = w / 2;
     const cy = h / 2;
     const R = Math.min(cx, cy) - 22; // 22px margin for 10px text labels
 
     // Dark canvas background
-    g.fillStyle = '#0b0e14';
+    g.fillStyle = palette.panelBg;
     g.fillRect(0, 0, w, h);
 
     // Attenuation ring radii: mapped from 0 dB at outer rim (R) to 25 dB at center (0)
@@ -107,14 +109,14 @@ export function drawPolarAntennaScope(
     const r20 = R * (1 - 20 / 25.0);
 
     // 0 dB outer rim
-    g.strokeStyle = 'rgba(115, 166, 212, 0.45)';
+    g.strokeStyle = palette.gridMajor;
     g.lineWidth = 1.5;
     g.beginPath();
     g.arc(cx, cy, r0, 0, Math.PI * 2);
     g.stroke();
 
     // -10 dB and -20 dB inner rings
-    g.strokeStyle = 'rgba(115, 166, 212, 0.2)';
+    g.strokeStyle = palette.gridMinor;
     g.lineWidth = 1;
     g.setLineDash([2, 4]);
     g.beginPath();
@@ -124,8 +126,8 @@ export function drawPolarAntennaScope(
     g.arc(cx, cy, r20, 0, Math.PI * 2);
     g.stroke();
 
-    // -3 dB crossover circle (dashed amber circle)
-    g.strokeStyle = '#e09f3e';
+    // -3 dB crossover circle (dashed degraded/amber circle)
+    g.strokeStyle = palette.degraded;
     g.lineWidth = 1.5;
     g.setLineDash([4, 4]);
     g.beginPath();
@@ -134,7 +136,7 @@ export function drawPolarAntennaScope(
     g.setLineDash([]);
 
     // Dashed crossover diagonals (45°, 135°, 225°, 315°)
-    g.strokeStyle = 'rgba(224, 159, 62, 0.35)';
+    g.strokeStyle = palette.gridMinor;
     g.lineWidth = 1;
     g.setLineDash([3, 4]);
     const diags = [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4];
@@ -147,7 +149,7 @@ export function drawPolarAntennaScope(
     g.setLineDash([]);
 
     // Radial axes at 0° (FWD, top), 90° (STBD, right), 180° (AFT, bottom), 270° (PORT, left)
-    g.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+    g.strokeStyle = palette.axisStroke;
     g.lineWidth = 1;
     g.beginPath();
     g.moveTo(cx, cy - R - 6);
@@ -159,7 +161,7 @@ export function drawPolarAntennaScope(
     g.stroke();
 
     // Axis labels (10px monospace)
-    g.fillStyle = '#94a3b8';
+    g.fillStyle = palette.textSecondary;
     g.font = '600 10px monospace';
     g.textAlign = 'center';
     g.textBaseline = 'bottom';
@@ -173,7 +175,7 @@ export function drawPolarAntennaScope(
     g.fillText('270° PORT', cx - R - 7, cy);
 
     // Ring dB labels
-    g.fillStyle = 'rgba(148, 163, 184, 0.6)';
+    g.fillStyle = palette.textMuted;
     g.font = '10px monospace';
     g.textAlign = 'right';
     g.textBaseline = 'bottom';
@@ -182,7 +184,7 @@ export function drawPolarAntennaScope(
     g.fillText('-10dB', cx + r10 - 2, cy - 2);
 
     // 4 continuous parabolic sector gain curves G_k(Δφ) = -12 * (Δφ / 90°)^2 dB
-    const sectorColors = ['#38bdf8', '#4ade80', '#f59e0b', '#c084fc'];
+    const sectorColors = [palette.accent, palette.optimal, palette.degraded, palette.relay];
     const boresightsDeg = [0, 90, 180, 270];
 
     for (let k = 0; k < 4; k++) {
@@ -225,7 +227,7 @@ export function drawPolarAntennaScope(
 
       const isSel = n.node_id === selectedNodeId;
       if (isSel) {
-        g.strokeStyle = '#ffffff';
+        g.strokeStyle = palette.textPrimary;
         g.lineWidth = 1.5;
         g.beginPath();
         g.arc(nx, ny, 6, 0, Math.PI * 2);
@@ -238,7 +240,7 @@ export function drawPolarAntennaScope(
       g.fill();
 
       // Node callsign
-      g.fillStyle = isSel ? '#ffffff' : col;
+      g.fillStyle = isSel ? palette.textPrimary : col;
       g.font = '600 10px monospace';
       g.textAlign = 'center';
       g.textBaseline = 'bottom';
@@ -275,6 +277,7 @@ export function drawLinkWaterfallCanvas(
     if (w <= 0 || h <= 0) return;
     const g = ctx;
     g.clearRect(0, 0, w, h);
+    const palette = getLatticeCanvasPalette();
 
     // Identify inspected node
     const nodes = frame?.nodes_telemetry || [];
@@ -282,11 +285,11 @@ export function drawLinkWaterfallCanvas(
     if (!node) node = nodes.find(n => n.node_id === 1) || nodes[0];
 
     // Background
-    g.fillStyle = '#0b0e14';
+    g.fillStyle = palette.panelBg;
     g.fillRect(0, 0, w, h);
 
     if (!node) {
-      g.fillStyle = '#94a3b8';
+      g.fillStyle = palette.textMuted;
       g.font = '11px monospace';
       g.textAlign = 'center';
       g.fillText('Waiting for node RF link telemetry...', w / 2, h / 2);
@@ -336,14 +339,14 @@ export function drawLinkWaterfallCanvas(
 
     // Draw Waterfall Steps
     const stages = [
-      { label: 'P_tx', delta: ptx, cum: ptx, col: '#4ade80' },
-      { label: '+G_tx', delta: gtx, cum: eirp, col: '#34d399' },
-      { label: '-FSPL', delta: -fspl, cum: eirp - fspl, col: '#f87171' },
-      { label: '-A_gas', delta: -agas, cum: eirp - fspl - agas, col: '#fbbf24' },
-      { label: '-A_rain', delta: -arain, cum: eirp - fspl - agas - arain, col: '#60a5fa' },
-      { label: '-L_diff', delta: -ldiff, cum: eirp - fspl - agas - arain - ldiff, col: '#f87171' },
-      { label: '+G_acn', delta: gacnNet, cum: prx, col: '#38bdf8' },
-      { label: 'P_rx', delta: prx, cum: prx, col: prx >= pnoise ? '#4ade80' : '#ef4444' }
+      { label: 'P_tx', delta: ptx, cum: ptx, col: palette.optimal },
+      { label: '+G_tx', delta: gtx, cum: eirp, col: palette.optimal },
+      { label: '-FSPL', delta: -fspl, cum: eirp - fspl, col: palette.outage },
+      { label: '-A_gas', delta: -agas, cum: eirp - fspl - agas, col: palette.degraded },
+      { label: '-A_rain', delta: -arain, cum: eirp - fspl - agas - arain, col: palette.relay },
+      { label: '-L_diff', delta: -ldiff, cum: eirp - fspl - agas - arain - ldiff, col: palette.outage },
+      { label: '+G_acn', delta: gacnNet, cum: prx, col: palette.accent },
+      { label: 'P_rx', delta: prx, cum: prx, col: prx >= pnoise ? palette.optimal : palette.outage }
     ];
 
     const paddingX = 40;
@@ -359,7 +362,7 @@ export function drawLinkWaterfallCanvas(
     const yToPx = (val: number) => paddingY + plotH * (1 - (val - yMin) / (yMax - yMin));
 
     // Grid lines
-    g.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+    g.strokeStyle = palette.gridMinor;
     g.lineWidth = 1;
     g.setLineDash([3, 4]);
     const gridVals = [40, 20, 0, -20, -40, -60, -80, -100, -120];
@@ -370,7 +373,7 @@ export function drawLinkWaterfallCanvas(
       g.lineTo(w - paddingX, gy);
       g.stroke();
 
-      g.fillStyle = 'rgba(148, 163, 184, 0.5)';
+      g.fillStyle = palette.textMuted;
       g.font = '10px monospace';
       g.textAlign = 'right';
       g.textBaseline = 'middle';
@@ -380,7 +383,7 @@ export function drawLinkWaterfallCanvas(
 
     // Dashed noise floor line across canvas
     const pNoiseY = yToPx(pnoise);
-    g.strokeStyle = '#ef4444';
+    g.strokeStyle = palette.outage;
     g.lineWidth = 1.2;
     g.setLineDash([4, 4]);
     g.beginPath();
@@ -388,7 +391,7 @@ export function drawLinkWaterfallCanvas(
     g.lineTo(w - paddingX, pNoiseY);
     g.stroke();
     g.setLineDash([]);
-    g.fillStyle = '#ef4444';
+    g.fillStyle = palette.outage;
     g.font = '600 10px monospace';
     g.textAlign = 'left';
     g.fillText(`P_noise (${pnoise.toFixed(0)} dBm)`, paddingX + 6, pNoiseY - 4);
@@ -403,7 +406,7 @@ export function drawLinkWaterfallCanvas(
 
       // Connecting dash from previous bar
       if (i > 0) {
-        g.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+        g.strokeStyle = palette.gridMajor;
         g.lineWidth = 1;
         g.setLineDash([2, 2]);
         g.beginPath();
@@ -425,14 +428,14 @@ export function drawLinkWaterfallCanvas(
       g.strokeRect(bx, topY, bw, barH);
 
       // Label below bar
-      g.fillStyle = '#94a3b8';
+      g.fillStyle = palette.textSecondary;
       g.font = '600 10px monospace';
       g.textAlign = 'center';
       g.textBaseline = 'top';
       g.fillText(st.label, bx + bw / 2, h - paddingY + 6);
 
       // Value above or below bar
-      g.fillStyle = '#ffffff';
+      g.fillStyle = palette.textPrimary;
       g.font = '10px monospace';
       g.textBaseline = currY < startY ? 'bottom' : 'top';
       const valText = i === 0 || i === numSteps - 1 ? `${st.cum.toFixed(0)}` : `${st.delta >= 0 ? '+' : ''}${st.delta.toFixed(0)}`;
@@ -461,9 +464,10 @@ export function drawEcdfDelayScope(
     if (w <= 0 || h <= 0) return;
     const g = ctx;
     g.clearRect(0, 0, w, h);
+    const palette = getLatticeCanvasPalette();
 
     // Dark canvas background
-    g.fillStyle = '#0b0e14';
+    g.fillStyle = palette.panelBg;
     g.fillRect(0, 0, w, h);
 
     const padL = 46;
@@ -479,9 +483,9 @@ export function drawEcdfDelayScope(
     const toY = (prob: number) => padT + (1.0 - Math.min(1.0, Math.max(0.0, prob))) * plotH;
 
     // Horizontal probability grid lines (0.00, 0.25, 0.50, 0.75, 1.00)
-    g.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    g.strokeStyle = palette.gridMinor;
     g.lineWidth = 1;
-    g.fillStyle = 'rgba(240, 236, 228, 0.55)';
+    g.fillStyle = palette.textMuted;
     g.font = '10px var(--hi-mono, monospace)';
     g.textAlign = 'right';
     g.textBaseline = 'middle';
@@ -498,10 +502,10 @@ export function drawEcdfDelayScope(
 
     // 3GPP TS 23.501 5QI Packet Delay Budget (PDB) Vertical Markers
     const pdbs = [
-      { dMs: 60, label: '60ms [C2]', color: '#38bdf8' },
-      { dMs: 100, label: '100ms [Voice]', color: '#4ade80' },
-      { dMs: 150, label: '150ms [Video]', color: '#fbbf24' },
-      { dMs: 300, label: '300ms [Photo]', color: '#c084fc' },
+      { dMs: 60, label: '60ms [C2]', color: palette.accent },
+      { dMs: 100, label: '100ms [Voice]', color: palette.optimal },
+      { dMs: 150, label: '150ms [Video]', color: palette.degraded },
+      { dMs: 300, label: '300ms [Photo]', color: palette.relay },
     ];
 
     g.textAlign = 'center';
@@ -524,14 +528,14 @@ export function drawEcdfDelayScope(
     }
 
     // X-Axis Baseline & Ticks
-    g.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    g.strokeStyle = palette.axisStroke;
     g.lineWidth = 1;
     g.beginPath();
     g.moveTo(padL, padT + plotH);
     g.lineTo(padL + plotW, padT + plotH);
     g.stroke();
 
-    g.fillStyle = 'rgba(240, 236, 228, 0.6)';
+    g.fillStyle = palette.textMuted;
     g.textBaseline = 'top';
     g.textAlign = 'center';
     const xTicks = [0, 50, 100, 150, 200, 250, 300];
@@ -540,7 +544,7 @@ export function drawEcdfDelayScope(
       g.fillText(`${xt}`, x, padT + plotH + 4);
     }
     // Axis Label
-    g.fillStyle = 'rgba(240, 236, 228, 0.8)';
+    g.fillStyle = palette.textSecondary;
     g.fillText('Delay τ (ms)', padL + plotW / 2, padT + plotH + 15);
 
     // Y-Axis Baseline
@@ -555,7 +559,7 @@ export function drawEcdfDelayScope(
       {
         id: 'static',
         name: 'Legacy Static TDMA',
-        color: '#ef4444',
+        color: palette.outage,
         dash: [4, 4],
         width: 1.8,
         data: frame?.static_delay_ecdf_ms,
@@ -563,7 +567,7 @@ export function drawEcdfDelayScope(
       {
         id: 'reactive',
         name: 'Reactive M-LWDF',
-        color: '#f59e0b',
+        color: palette.degraded,
         dash: [] as number[],
         width: 1.8,
         data: frame?.reactive_delay_ecdf_ms,
@@ -571,7 +575,7 @@ export function drawEcdfDelayScope(
       {
         id: 'tac',
         name: 'Predictive Tac-TAD',
-        color: '#10b981',
+        color: palette.optimal,
         dash: [] as number[],
         width: 2.4,
         data: frame?.tac_delay_ecdf_ms,
@@ -632,9 +636,10 @@ export function drawSensitivitySweepScope(
     if (w <= 0 || h <= 0) return;
     const g = ctx;
     g.clearRect(0, 0, w, h);
+    const palette = getLatticeCanvasPalette();
 
     // Dark canvas background
-    g.fillStyle = '#0b0e14';
+    g.fillStyle = palette.panelBg;
     g.fillRect(0, 0, w, h);
 
     const padL = 50;
@@ -654,9 +659,9 @@ export function drawSensitivitySweepScope(
     const toY = (gpMbps: number) => padT + (1.0 - Math.min(1.0, Math.max(0.0, gpMbps / maxGoodput))) * plotH;
 
     // Horizontal grid lines (0, 25, 50, 75, 100 Mbps)
-    g.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    g.strokeStyle = palette.gridMinor;
     g.lineWidth = 1;
-    g.fillStyle = 'rgba(240, 236, 228, 0.55)';
+    g.fillStyle = palette.textMuted;
     g.font = '10px var(--hi-mono, monospace)';
     g.textAlign = 'right';
     g.textBaseline = 'middle';
@@ -674,7 +679,7 @@ export function drawSensitivitySweepScope(
     // Y-Axis Label
     g.textAlign = 'left';
     g.textBaseline = 'bottom';
-    g.fillStyle = 'rgba(240, 236, 228, 0.75)';
+    g.fillStyle = palette.textSecondary;
     g.font = '10px var(--hi-mono, monospace)';
     g.fillText('Goodput (Mbps)', padL, padT - 8);
 
@@ -684,45 +689,45 @@ export function drawSensitivitySweepScope(
     for (const pt of axisCfg.points) {
       const x = toX(pt.x);
       g.beginPath();
-      g.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      g.strokeStyle = palette.gridMinor;
       g.moveTo(x, padT);
       g.lineTo(x, padT + plotH);
       g.stroke();
 
-      g.fillStyle = 'rgba(240, 236, 228, 0.65)';
+      g.fillStyle = palette.textMuted;
       g.fillText(`${pt.x}${axisCfg.unit}`, x, padT + plotH + 5);
     }
 
     // X-Axis Baseline
-    g.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    g.strokeStyle = palette.axisStroke;
     g.beginPath();
     g.moveTo(padL, padT + plotH);
     g.lineTo(padL + plotW, padT + plotH);
     g.stroke();
 
     // X-Axis Title
-    g.fillStyle = 'rgba(240, 236, 228, 0.85)';
+    g.fillStyle = palette.textSecondary;
     g.fillText(axisCfg.xLabel, padL + plotW / 2, padT + plotH + 18);
 
     // Plot 3 Curves across the 5 domain points
     const curves = [
       {
         name: 'Legacy Static TDMA',
-        color: '#ef4444',
+        color: palette.outage,
         dash: [4, 4],
         width: 1.8,
         getVal: (p: any) => p.staticGoodputMbps,
       },
       {
         name: 'Reactive M-LWDF',
-        color: '#f59e0b',
+        color: palette.degraded,
         dash: [] as number[],
         width: 1.8,
         getVal: (p: any) => p.reactiveGoodputMbps,
       },
       {
         name: 'Predictive Tac-TAD',
-        color: '#10b981',
+        color: palette.optimal,
         dash: [] as number[],
         width: 2.5,
         getVal: (p: any) => p.tacGoodputMbps,
@@ -774,7 +779,7 @@ export function drawSensitivitySweepScope(
 
     // Vertical cursor line at active operating point
     g.save();
-    g.strokeStyle = '#38bdf8';
+    g.strokeStyle = palette.accent;
     g.lineWidth = 1.5;
     g.setLineDash([3, 3]);
     g.beginPath();
@@ -784,23 +789,23 @@ export function drawSensitivitySweepScope(
 
     // Intersection dots at active operating point
     const activeDots = [
-      { y: toY(evalActive.staticGoodputMbps), color: '#ef4444' },
-      { y: toY(evalActive.reactiveGoodputMbps), color: '#f59e0b' },
-      { y: toY(evalActive.tacGoodputMbps), color: '#10b981' },
+      { y: toY(evalActive.staticGoodputMbps), color: palette.outage },
+      { y: toY(evalActive.reactiveGoodputMbps), color: palette.degraded },
+      { y: toY(evalActive.tacGoodputMbps), color: palette.optimal },
     ];
     for (const d of activeDots) {
       g.beginPath();
       g.fillStyle = d.color;
       g.arc(cursorX, d.y, 4.5, 0, Math.PI * 2);
       g.fill();
-      g.strokeStyle = '#ffffff';
+      g.strokeStyle = palette.textPrimary;
       g.lineWidth = 1.2;
       g.setLineDash([]);
       g.stroke();
     }
 
     // Cursor tag
-    g.fillStyle = '#38bdf8';
+    g.fillStyle = palette.accent;
     g.font = '10px var(--hi-mono, monospace)';
     g.textAlign = 'center';
     g.textBaseline = 'bottom';
@@ -841,9 +846,10 @@ export function drawWorkerJitterHistogramScope(
 
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const palette = getLatticeCanvasPalette();
 
   // Dark Canvas Background
-  ctx.fillStyle = '#080c14';
+  ctx.fillStyle = palette.panelBg;
   ctx.fillRect(0, 0, width, height);
 
   const padL = 45;
@@ -857,9 +863,9 @@ export function drawWorkerJitterHistogramScope(
   const maxFrac = Math.max(0.25, ...report.histogramBins.map(b => b.fraction));
 
   // Horizontal Grid Lines
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.strokeStyle = palette.gridMinor;
   ctx.lineWidth = 1;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.fillStyle = palette.textMuted;
   ctx.font = '10px monospace';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
@@ -885,11 +891,11 @@ export function drawWorkerJitterHistogramScope(
     const barH = (bin.fraction / maxFrac) * plotH;
     const y = padT + plotH - barH;
 
-    // Color coding: Emerald (< 10ms), Cyan (10–14ms), Amber (14–18ms), Crimson (>= 18ms)
-    let barColor = '#10b981'; // Emerald
-    if (bin.minMs >= 18) barColor = '#ef4444'; // Crimson
-    else if (bin.minMs >= 14) barColor = '#f59e0b'; // Amber
-    else if (bin.minMs >= 10) barColor = '#06b6d4'; // Cyan
+    // Color coding: optimal (< 10ms), accent (10–14ms), degraded (14–18ms), outage (>= 18ms)
+    let barColor = palette.optimal;
+    if (bin.minMs >= 18) barColor = palette.outage;
+    else if (bin.minMs >= 14) barColor = palette.degraded;
+    else if (bin.minMs >= 10) barColor = palette.accent;
 
     // Bar rectangle
     ctx.fillStyle = barColor;
@@ -901,7 +907,7 @@ export function drawWorkerJitterHistogramScope(
 
     // Percentage text above bar
     if (bin.count > 0) {
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = palette.textPrimary;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
       ctx.font = '10px monospace';
@@ -909,7 +915,7 @@ export function drawWorkerJitterHistogramScope(
     }
 
     // Label under bar
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.fillStyle = palette.textSecondary;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = '10px monospace';
@@ -919,7 +925,7 @@ export function drawWorkerJitterHistogramScope(
   // Vertical dashed crimson 20.0 ms HARD RT CEILING marker
   const ceilingX = padL + plotW - 6;
   ctx.save();
-  ctx.strokeStyle = '#ef4444';
+  ctx.strokeStyle = palette.outage;
   ctx.setLineDash([4, 4]);
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -928,7 +934,7 @@ export function drawWorkerJitterHistogramScope(
   ctx.stroke();
   ctx.restore();
 
-  ctx.fillStyle = '#ef4444';
+  ctx.fillStyle = palette.outage;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
   ctx.font = '10px monospace';

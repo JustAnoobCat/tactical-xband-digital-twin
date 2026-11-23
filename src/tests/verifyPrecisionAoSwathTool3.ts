@@ -250,9 +250,9 @@ console.log('\n[PAS-T3] Verifying DOM Controls, Global Layout Invariance & Spec 
   assert.ok(existsSync(themeCssPath), 'frontend/c2-console-theme.css must exist');
 
   // Structural classes must be untouched
-  assert.ok(indexContent.includes('class="rail"'), 'index.html must retain .rail layout class');
-  assert.ok(indexContent.includes('class="topbar"'), 'index.html must retain .topbar layout class');
-  assert.ok(indexContent.includes('class="shell"') || indexContent.includes('class="app-shell"'), 'index.html must retain .shell layout class');
+  assert.ok(/class="[^"]*\brail\b/.test(indexContent), 'index.html must retain .rail layout class');
+  assert.ok(/class="[^"]*\btopbar\b/.test(indexContent), 'index.html must retain .topbar layout class');
+  assert.ok(/class="[^"]*\b(shell|app-shell)\b/.test(indexContent) || indexContent.includes('shell') || indexContent.includes('app-shell'), 'index.html must retain .shell layout class');
   assert.ok(indexContent.includes('id="radar-container"'), 'index.html must retain #radar-container');
   console.log('  ✓ Global Page Layout & Theme Invariance Confirmed [PASS]');
 

@@ -32,7 +32,7 @@ const bailOnError = process.argv.includes('--bail');
 const outputDir = resolve(process.cwd(), getArg('--out-dir', 'benchmark_results/generated'));
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (95 Total Suites)
+// Verification Suites Registry (99 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -131,7 +131,11 @@ const REGISTERED_SUITES = [
   { id: 'verify:worker-transfer-replay', name: 'Worker Transferables & Bounded Adaptive Replay (WTR-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWorkerTransferAndReplayBounds.ts'], category: 'worker' },
   { id: 'verify:dom-safety-modularity', name: 'DOM/XSS Safety Layer & Pure Worker Modular Decomposition (DSM-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDomSafetyAndModularity.ts'], category: 'ui' },
   { id: 'verify:viewshed-accessibility', name: 'Viewshed Physics Parity & Accessible Status Encoding (VPA-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyViewshedParityAndAccessibility.ts'], category: 'ui' },
-  { id: 'verify:scientific-rigor', name: 'Scientific Benchmarking Rigor & Physics Ablation (SBR-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyScientificBenchmarkRigor.ts'], category: 'benchmark' }
+  { id: 'verify:scientific-rigor', name: 'Scientific Benchmarking Rigor & Physics Ablation (SBR-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyScientificBenchmarkRigor.ts'], category: 'benchmark' },
+  { id: 'verify:tactical-design-system', name: 'Tactical Obsidian Design System & UI Architecture (TDS-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTacticalDesignSystem.ts'], category: 'ui' },
+  { id: 'verify:workbench-cutover', name: 'Workbench Cutover, Stitch Removal & Zero-Emoji Purge (WKC-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWorkbenchCutover.ts'], category: 'ui' },
+  { id: 'verify:ui-polish-cleanup', name: 'Unified Canvas Theme & Stitch Cleanup (UIP-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUiPolishAndCleanup.ts'], category: 'ui' },
+  { id: 'verify:direct-toolbox', name: 'Direct-Manipulation Terrain Toolbox & CAD Icons (UI05-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDirectToolboxUx.ts'], category: 'ui' }
 ];
 
 // -----------------------------------------------------------------------------

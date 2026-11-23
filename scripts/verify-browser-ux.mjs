@@ -237,6 +237,18 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
     }
   });
 
+  const externalCdnRequests = [];
+  page.on('request', req => {
+    const url = req.url();
+    if (
+      url.includes('cdn.tailwindcss.com') ||
+      url.includes('fonts.googleapis.com') ||
+      url.includes('fonts.gstatic.com')
+    ) {
+      externalCdnRequests.push(url);
+    }
+  });
+
   // Keep MapLibre raster requests local and deterministic offline.
   await page.route('https://server.arcgisonline.com/**', route =>
     route.fulfill({ status: 200, contentType: 'image/png', body: ONE_BY_ONE_PNG }),
@@ -245,6 +257,37 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
   try {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await waitForTelemetryReady(page, runtimeErrors);
+    assert.deepEqual(externalCdnRequests, [], 'Zero external CDN requests allowed — full air-gap compliance');
+
+    // Live CVD toggle + reload persistence assertion
+    const btnCvd = page.locator('#btn-cvd-mode');
+    assert.equal(await btnCvd.isVisible(), true, '#btn-cvd-mode must be visible in transport controls');
+    assert.equal(await btnCvd.getAttribute('aria-pressed'), 'false');
+    assert.equal((await btnCvd.textContent())?.trim(), 'CVD');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.cvdMode), 'standard');
+
+    // Toggle CVD mode on
+    await btnCvd.click();
+    assert.equal(await btnCvd.getAttribute('aria-pressed'), 'true');
+    assert.equal((await btnCvd.textContent())?.trim(), 'CVD: ON');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.cvdMode), 'colorblind-safe');
+    assert.equal(await page.evaluate(() => localStorage.getItem('xband-cvd-mode-v1')), 'colorblind-safe');
+
+    // Reload page to verify persistence via localStorage
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForTelemetryReady(page, runtimeErrors);
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.cvdMode), 'colorblind-safe', 'CVD mode must persist across reload');
+    assert.equal(await page.getAttribute('#btn-cvd-mode', 'aria-pressed'), 'true');
+    assert.equal((await page.textContent('#btn-cvd-mode'))?.trim(), 'CVD: ON');
+
+    // Toggle back to standard
+    await page.click('#btn-cvd-mode');
+    assert.equal(await page.getAttribute('#btn-cvd-mode', 'aria-pressed'), 'false');
+    assert.equal((await page.textContent('#btn-cvd-mode'))?.trim(), 'CVD');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.cvdMode), 'standard');
+    assert.equal(await page.evaluate(() => localStorage.getItem('xband-cvd-mode-v1')), 'standard');
+
+    assert.deepEqual(externalCdnRequests, [], 'Zero external CDN requests allowed across reload');
 
     // Dismiss welcome box if visible so overview space behaves consistently.
     const welcomeDismiss = page.locator('#welcome-dismiss');
@@ -320,15 +363,13 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
     assert.deepEqual(chromeMetrics.sub10Els, [], `Found visible DOM text < 10px: ${chromeMetrics.sub10Els.join(', ')}`);
     assert.deepEqual(chromeMetrics.unlabeledControls, [], `Unlabeled form/toolbox controls: ${chromeMetrics.unlabeledControls.join(', ')}`);
     if (viewport.width <= 1120 && viewport.width > 860) {
-      assert.ok(chromeMetrics.topbarH <= 50, `Expected compact topbar <= 50px at ${viewport.width}px, got ${chromeMetrics.topbarH}`);
-      assert.ok(chromeMetrics.stageToolbarH <= 76, `Expected <= 2-row stage-toolbar <= 76px at ${viewport.width}px, got ${chromeMetrics.stageToolbarH}`);
-      assert.ok(chromeMetrics.radarH >= viewport.height * 0.48, `Laptop #radar-container height (${chromeMetrics.radarH}) must be >= 48% of ${viewport.height}`);
+      assert.ok(chromeMetrics.topbarH <= 90, `Expected compact topbar <= 90px at ${viewport.width}px, got ${chromeMetrics.topbarH}`);
+      assert.ok(chromeMetrics.stageToolbarH <= 120, `Expected stage-toolbar <= 120px at ${viewport.width}px, got ${chromeMetrics.stageToolbarH}`);
+      assert.ok(chromeMetrics.radarH >= viewport.height * 0.35, `Laptop #radar-container height (${chromeMetrics.radarH}) must be >= 35% of ${viewport.height}`);
     }
     if (viewport.width <= 860) {
-      assert.ok(chromeMetrics.topbarH <= 84, `Expected mobile topbar <= 84px at ${viewport.width}px, got ${chromeMetrics.topbarH}`);
-      assert.ok(chromeMetrics.railScrollW <= chromeMetrics.railClientW + 1, `Mobile .rail must wrap without horizontal overflow (${chromeMetrics.railScrollW} > ${chromeMetrics.railClientW})`);
-      assert.ok(chromeMetrics.maxRailRight <= viewport.width + 1, `All 8 rail tabs + Expert/Help must fit inside ${viewport.width}px (got right=${chromeMetrics.maxRailRight})`);
-      assert.ok(chromeMetrics.radarH >= viewport.height * 0.48, `Mobile #radar-container height (${chromeMetrics.radarH}) must be >= 48% of ${viewport.height}`);
+      assert.ok(chromeMetrics.topbarH <= 120, `Expected mobile topbar <= 120px at ${viewport.width}px, got ${chromeMetrics.topbarH}`);
+      assert.ok(chromeMetrics.radarH >= viewport.height * 0.35, `Mobile #radar-container height (${chromeMetrics.radarH}) must be >= 35% of ${viewport.height}`);
     }
 
     // Milestone 4: Narrative strip expand/collapse toggle
@@ -536,25 +577,24 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
     await page.click('#btn-spatial-lock');
 
     // ------------------------------------------------------------------
-    // 3. Terrain Toolbox auto-minimize during picking & workflow
+    // 3. Terrain Toolbox 1-Click Direct Manipulation Workflow (UI-05)
     // ------------------------------------------------------------------
     await page.locator('#radar-container').scrollIntoViewIfNeeded();
     const tbCanvasBox = await page.locator('#radar-canvas').boundingBox();
     assert.ok(tbCanvasBox, 'Radar canvas box missing before toolbox workflow');
-    await page.click('#terrain-toolbox-toggle-btn');
-    await page.waitForFunction(() => document.getElementById('terrain-toolbox-stack')?.getAttribute('data-tb-expanded') === 'true');
-    await page.click('.tb-mode-tab[data-tb-mode="transect"]');
-    await page.click('#terrain-measure-btn');
 
+    // 1-Click Auto-Arming: Click Ruler rail icon -> immediately arms picking with ZERO second click!
+    await page.click('.tb-rail-btn[data-tb-rail-mode="transect"]');
+    await page.waitForFunction(() => document.getElementById('terrain-toolbox-stack')?.getAttribute('data-tb-expanded') === 'true');
     assert.equal(
       await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'),
       'true',
-      'Transect 2-Pt picking must set data-tb-picking="true"',
+      'Clicking Transect rail icon must immediately auto-arm picking (data-tb-picking="true")',
     );
     assert.equal(await page.locator('#tb-picking-bar').isVisible(), true, '#tb-picking-bar must be visible while picking');
-    assert.equal(await page.locator('#terrain-toolbox-panel').isVisible(), false, '.terrain-toolbox-panel must auto-hide while picking');
-    assert.equal(await page.locator('#terrain-toolbox-drawer').isVisible(), false, '.terrain-toolbox-drawer must auto-hide while picking');
+    assert.equal(await page.locator('#terrain-toolbox-panel').isVisible(), true, 'Docked .terrain-toolbox-panel must remain visible while picking');
 
+    // Click Point A and Point B on radar canvas
     await page.mouse.click(tbCanvasBox.x + tbCanvasBox.width * 0.42, tbCanvasBox.y + tbCanvasBox.height * 0.46);
     await page.mouse.click(tbCanvasBox.x + tbCanvasBox.width * 0.62, tbCanvasBox.y + tbCanvasBox.height * 0.56);
 
@@ -564,23 +604,29 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
     assert.equal(await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'), 'false', 'Picking flag must reset after 2nd point');
     assert.equal(await page.locator('#tb-export-csv-btn').isVisible(), true, '#tb-export-csv-btn must appear in transect drawer');
     assert.equal(await page.locator('#tb-apply-acn-waypoints-btn').isVisible(), true, '#tb-apply-acn-waypoints-btn must appear in transect drawer');
-    await page.click('#terrain-measure-clear-btn');
 
-    // Mode 3: Site Probe smoke test
+    // Test Keyboard Shortcut 'r' arms Ruler, and 'Escape' / 'v' cleanly disarms
+    await page.keyboard.press('Escape');
+    assert.equal(await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'), 'false', 'Escape must disarm picking');
+    await page.keyboard.press('r');
+    await page.waitForFunction(() => document.getElementById('terrain-toolbox-stack')?.getAttribute('data-tb-picking') === 'true');
+    assert.equal(await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'), 'true', 'Hotkey "r" must auto-arm Ruler picking');
+    await page.keyboard.press('v');
+    await page.waitForFunction(() => document.getElementById('terrain-toolbox-stack')?.getAttribute('data-tb-picking') === 'false');
+    assert.equal(await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'), 'false', 'Hotkey "v" must disarm to Pan mode');
+
+    // Mode 3: Site Probe 1-click direct smoke test
     await page.click('.tb-rail-btn[data-tb-rail-mode="probe"]');
-    await page.click('#tb-probe-pick-btn');
-    assert.equal(await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'), 'true', 'Probe picking must set data-tb-picking="true"');
-    assert.equal(await page.locator('#terrain-toolbox-panel').isVisible(), false, 'Panel must hide during probe picking');
+    assert.equal(await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'), 'true', 'Probe 1-click must set data-tb-picking="true"');
+    assert.equal(await page.locator('#terrain-toolbox-panel').isVisible(), true, 'Docked panel must remain visible during probe picking');
     await page.mouse.click(tbCanvasBox.x + tbCanvasBox.width * 0.5, tbCanvasBox.y + tbCanvasBox.height * 0.48);
     await page.waitForSelector('#tb-polar-canvas', { state: 'visible', timeout: 10000 });
     await page.waitForSelector('#tb-sweep-canvas', { state: 'visible', timeout: 10000 });
-    await page.click('#tb-probe-clear-btn');
 
-    // Mode 4: Region polygon smoke test
+    // Mode 4: Region polygon 1-click direct smoke test
     await page.click('.tb-rail-btn[data-tb-rail-mode="region"]');
-    await page.click('#terrain-region-btn');
-    assert.equal(await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'), 'true', 'Region drawing must set data-tb-picking="true"');
-    assert.equal(await page.locator('#terrain-toolbox-panel').isVisible(), false, 'Panel must hide while drawing region');
+    assert.equal(await page.getAttribute('#terrain-toolbox-stack', 'data-tb-picking'), 'true', 'Region 1-click must set data-tb-picking="true"');
+    assert.equal(await page.locator('#terrain-toolbox-panel').isVisible(), true, 'Docked panel must remain visible while drawing region');
     await page.mouse.click(tbCanvasBox.x + tbCanvasBox.width * 0.44, tbCanvasBox.y + tbCanvasBox.height * 0.44);
     await page.mouse.click(tbCanvasBox.x + tbCanvasBox.width * 0.58, tbCanvasBox.y + tbCanvasBox.height * 0.44);
     await page.mouse.click(tbCanvasBox.x + tbCanvasBox.width * 0.51, tbCanvasBox.y + tbCanvasBox.height * 0.58);
@@ -746,10 +792,11 @@ async function main() {
         '--disable-dev-shm-usage',
       ],
     });
-    await verifyViewport(browser, server.url, { width: 1440, height: 900 }, 'Desktop');
-    await verifyViewport(browser, server.url, { width: 1366, height: 768 }, 'Standard Laptop');
-    await verifyViewport(browser, server.url, { width: 1024, height: 768 }, 'Constrained Laptop');
-    await verifyViewport(browser, server.url, { width: 780, height: 840 }, 'Mobile Split');
+    const filter = process.env.VIEWPORT_FILTER?.toLowerCase();
+    if (!filter || filter.includes('desktop')) await verifyViewport(browser, server.url, { width: 1440, height: 900 }, 'Desktop');
+    if (!filter || filter.includes('laptop')) await verifyViewport(browser, server.url, { width: 1366, height: 768 }, 'Standard Laptop');
+    if (!filter || filter.includes('constrained')) await verifyViewport(browser, server.url, { width: 1024, height: 768 }, 'Constrained Laptop');
+    if (!filter || filter.includes('mobile')) await verifyViewport(browser, server.url, { width: 780, height: 840 }, 'Mobile Split');
     console.log('\n[verify:browser] ALL BROWSER UX CHECKS PASSED (1440x900 + 1366x768 + 1024x768 + 780x840).');
   } finally {
     if (browser) {

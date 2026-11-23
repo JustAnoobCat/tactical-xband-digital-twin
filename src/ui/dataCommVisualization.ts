@@ -26,6 +26,7 @@ import { ActiveTransferTelemetry } from '../core/transferMetrics';
 import type { ITdmaFrameConfig } from '../core/tdmaConfig';
 import type { Point2D } from '../shared/types';
 import { HIGHLAND_THEME } from './workbench/chartTheme';
+import { getLatticeCanvasPalette } from './canvasTheme';
 
 export type { Point2D };
 
@@ -1648,7 +1649,7 @@ export class DataCommVisualizer {
       ctx.beginPath();
       ctx.moveTo(nPos.x, nPos.y);
       ctx.lineTo(acnPos.x, acnPos.y);
-      ctx.strokeStyle = HIGHLAND_THEME.line.strong;
+      ctx.strokeStyle = getLatticeCanvasPalette().gridMinor;
       ctx.lineWidth = 1.0;
       ctx.stroke();
     }
@@ -1740,7 +1741,7 @@ export class DataCommVisualizer {
     ctx.beginPath();
     ctx.moveTo(nodePos.x, nodePos.y);
     ctx.lineTo(acnPos.x, acnPos.y);
-    ctx.strokeStyle = 'rgba(179, 175, 167, 0.25)';
+    ctx.strokeStyle = getLatticeCanvasPalette().gridMinor;
     ctx.lineWidth = node.isSelected ? 1.8 : 1.2;
     ctx.setLineDash([3, 4]);
     ctx.stroke();
@@ -1770,7 +1771,7 @@ export class DataCommVisualizer {
     ctx.beginPath();
     ctx.moveTo(nodePos.x, nodePos.y);
     ctx.lineTo(barrierPoint.x, barrierPoint.y);
-    ctx.strokeStyle = 'rgba(224, 83, 71, 0.48)';
+    ctx.strokeStyle = getLatticeCanvasPalette().outage;
     ctx.lineWidth = 1.6;
     ctx.setLineDash([3, 3]);
     ctx.stroke();

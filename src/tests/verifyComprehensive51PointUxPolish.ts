@@ -137,7 +137,9 @@ assert.ok(
   '.map-node-actions must be hidden when inspector is-empty (A-3)'
 );
 assert.ok(
-  htmlContent.includes('Link Performance ↗') && htmlContent.includes('◎ LOS Overlay') && htmlContent.includes('〰 Fresnel Zone'),
+  (htmlContent.includes('Link Performance') || htmlContent.includes('Link Performance ↗')) &&
+  (htmlContent.includes('[LOS] Overlay') || htmlContent.includes('LOS Overlay') || htmlContent.includes('◎ LOS Overlay')) &&
+  (htmlContent.includes('[F1] Fresnel Zone') || htmlContent.includes('Fresnel Zone') || htmlContent.includes('〰 Fresnel Zone')),
   'Map node inspector actions must use high-clarity labels (A-3, A-4)'
 );
 

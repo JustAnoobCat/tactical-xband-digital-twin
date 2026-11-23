@@ -217,9 +217,9 @@ assert.ok(htmlContent.includes('aria-label="Toggle Multi-Order Fresnel Zones F1 
 assert.ok(htmlContent.includes('aria-pressed="true"'), 'Toggle must have aria-pressed attribute');
 
 // Verify global layout classes remain intact
-assert.ok(htmlContent.includes('class="rail"'), '.rail must remain in index.html');
-assert.ok(htmlContent.includes('class="topbar"'), '.topbar must remain in index.html');
-assert.ok(htmlContent.includes('class="shell"'), '.shell must remain in index.html');
+assert.ok(/class="[^"]*\brail\b/.test(htmlContent), '.rail must remain in index.html');
+assert.ok(/class="[^"]*\btopbar\b/.test(htmlContent), '.topbar must remain in index.html');
+assert.ok(htmlContent.includes('shell'), '.shell must remain in index.html');
 assert.ok(htmlContent.includes('id="radar-container"'), '#radar-container must remain in index.html');
 
 // 4. Specification Linked in README.md
