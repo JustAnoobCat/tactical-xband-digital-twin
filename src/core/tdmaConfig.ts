@@ -7,6 +7,11 @@
  * and standard tactical waveform presets according to specification DRDO-TAC-XBAND-ARCH-TDMA-02.
  */
 
+import {
+  computeDynamicTdmaOverhead,
+  type DynamicTdmaOverheadResult,
+} from './macPhyFeedback';
+
 export type TdmaUplinkPolicy = 'equal_active' | 'dynamic_demand' | 'fixed_slot_count';
 
 export interface ITdmaFrameConfig {
@@ -219,3 +224,65 @@ export const TDMA_PRESETS: Readonly<Record<string, Readonly<ITdmaFrameConfig>>> 
 });
 
 export const DEFAULT_TDMA_FRAME_CONFIG = new TdmaFrameConfig();
+
+export interface RangeAwareTdmaOptions {
+  readonly timingAdvanceActive?: boolean;
+  readonly activeTerminalsCount?: number;
+  readonly rachControlSlotsPerFrame?: number;
+  readonly taResidualErrorM?: number;
+  readonly preambleUs?: number;
+}
+
+/**
+ * Convenience wrapper evaluating dynamic range/TA/RACH-aware TDMA efficiency
+ * delegating to the pure MAC/PHY feedback engine (WP-06).
+ */
+export function evaluateRangeAwareTdmaEfficiency(
+  config: ITdmaFrameConfig | TdmaFrameConfig,
+  slantRangeM: number,
+  timingAdvanceActiveOrOptions?: boolean | RangeAwareTdmaOptions,
+  rachControlSlots?: number
+): DynamicTdmaOverheadResult {
+  let taActive = true;
+  let activeTerminals = config.fixedSlotCount ?? 16;
+  let rachSlots = 0;
+  let taResidualErrorM = 50.0;
+  let preambleUs = 0.0;
+
+  if (typeof timingAdvanceActiveOrOptions === 'boolean') {
+    taActive = timingAdvanceActiveOrOptions;
+    rachSlots = rachControlSlots ?? 0;
+  } else if (timingAdvanceActiveOrOptions && typeof timingAdvanceActiveOrOptions === 'object') {
+    if (timingAdvanceActiveOrOptions.timingAdvanceActive !== undefined) {
+      taActive = timingAdvanceActiveOrOptions.timingAdvanceActive;
+    }
+    if (timingAdvanceActiveOrOptions.activeTerminalsCount !== undefined) {
+      activeTerminals = timingAdvanceActiveOrOptions.activeTerminalsCount;
+    }
+    if (timingAdvanceActiveOrOptions.rachControlSlotsPerFrame !== undefined) {
+      rachSlots = timingAdvanceActiveOrOptions.rachControlSlotsPerFrame;
+    }
+    if (timingAdvanceActiveOrOptions.taResidualErrorM !== undefined) {
+      taResidualErrorM = timingAdvanceActiveOrOptions.taResidualErrorM;
+    }
+    if (timingAdvanceActiveOrOptions.preambleUs !== undefined) {
+      preambleUs = timingAdvanceActiveOrOptions.preambleUs;
+    }
+  }
+
+  const slotsPerFrame = Math.max(1, activeTerminals);
+  const ulAvailableMs = Math.max(0.001, config.frameDurationMs - config.ctrlDurationMs - config.dlMinDurationMs);
+  const nominalSlotDurationMs = ulAvailableMs / slotsPerFrame;
+
+  return computeDynamicTdmaOverhead({
+    slotDurationMs: nominalSlotDurationMs,
+    slotsPerFrame,
+    slantRangeM,
+    timingAdvanceActive: taActive,
+    taResidualErrorM,
+    rfSwitchGuardUs: config.guardIntervalUs,
+    preambleUs,
+    rachControlSlotsPerFrame: rachSlots,
+  });
+}
+

@@ -11,8 +11,29 @@
  */
 
 import { EnvironmentConfig, NodeType, RFConfig, SPEED_OF_LIGHT } from './config';
-import type { AcnSectorEvaluation, AcnSectorId } from './antennaArray';
+import {
+  type AcnSectorEvaluation,
+  type AcnSectorId,
+  worldLosToBodyFrame,
+  computeAirframeShadowLossDb,
+  type AttitudeEulerDeg,
+} from './antennaArray';
 import type { Position3D } from '../shared/types';
+import {
+  DEFAULT_K_FACTOR,
+  DEFAULT_TRUE_EARTH_RADIUS_M,
+  DEFAULT_X_BAND_WAVELENGTH_M,
+  computeBullingtonDiffraction,
+  computeDeygoutMultiEdgeDiffraction,
+  computeSingleEdgeProfileDiffraction,
+  computeCorrelatedRicianJakesFading,
+  type BullingtonDiffractionResult,
+  type DeygoutMultiEdgeResult,
+  type CorrelatedRicianJakesParams,
+  type CorrelatedRicianJakesResult,
+} from './rfPropagationMath';
+
+export type { BullingtonDiffractionResult, DeygoutMultiEdgeResult, CorrelatedRicianJakesParams, CorrelatedRicianJakesResult };
 
 export interface ModCodEntry {
   readonly name: string;
@@ -89,6 +110,20 @@ export interface LinkStatus {
   readonly ricianFadingGainDb?: number;
   readonly ollaMarginDb?: number;
   readonly cqiDecodeFailure?: boolean;
+  readonly diffractionModel?: 'deygout-multiedge' | 'bullington' | 'single-edge';
+  readonly secondaryDiffractionEdges?: number;
+  readonly airframeShadowLossDb?: number;
+  readonly bodyElevationDeg?: number;
+  readonly correlatedFadingDb?: number;
+  readonly coherenceTimeMs?: number;
+}
+
+export interface AirframeChannelOptions {
+  readonly uavAttitude?: AttitudeEulerDeg;
+  readonly antennaMount?: 'belly' | 'dorsal';
+  readonly enableAirframeShadowing?: boolean;
+  readonly losVectorEnu?: { losEast: number; losNorth: number; losUp: number } | readonly [number, number, number];
+  readonly correlatedFadingParams?: CorrelatedRicianJakesParams;
 }
 
 export class LinkBudgetEngine {
@@ -336,6 +371,69 @@ export class LinkBudgetEngine {
   }
 
   /**
+   * Computes multi-edge diffraction loss over a sampled path profile (distancesM, elevationsM).
+   *
+   * @param distancesM Array of horizontal distances along path in metres
+   * @param elevationsM Array of total elevations along path in metres MSL (terrain + CAD obstacles)
+   * @param wavelengthM Carrier wavelength in metres (default 8.0 GHz: ~0.037474 m)
+   * @param kFactor Effective Earth refraction factor (default 4/3)
+   * @param earthRadiusM Mean Earth radius in metres (default 6,371,000.0 m)
+   * @param model Diffraction algorithm: 'deygout-multiedge' (default), 'bullington', or 'single-edge'
+   */
+  public static computeProfileDiffraction(
+    distancesM: ArrayLike<number>,
+    elevationsM: ArrayLike<number>,
+    wavelengthM: number = DEFAULT_X_BAND_WAVELENGTH_M,
+    kFactor: number = DEFAULT_K_FACTOR,
+    earthRadiusM: number = DEFAULT_TRUE_EARTH_RADIUS_M,
+    model: 'deygout-multiedge' | 'bullington' | 'single-edge' = 'deygout-multiedge'
+  ): DeygoutMultiEdgeResult {
+    if (model === 'bullington') {
+      const bull = computeBullingtonDiffraction(distancesM, elevationsM, wavelengthM, kFactor, earthRadiusM);
+      return {
+        totalLossDb: bull.lossDb,
+        primaryNu: bull.nuApex,
+        primaryLossDb: bull.lossDb,
+        primaryEdgeIndex: -1,
+        primaryEdgeDistM: bull.apexDistM,
+        secondaryLeftNu: -999.0,
+        secondaryLeftLossDb: 0.0,
+        secondaryLeftIndex: -1,
+        secondaryRightNu: -999.0,
+        secondaryRightLossDb: 0.0,
+        secondaryRightIndex: -1,
+        secondaryEdgeCount: 0,
+        bullingtonLossDb: bull.lossDb,
+        correctionDb: 0.0,
+        method: 'bullington',
+      };
+    }
+
+    if (model === 'single-edge') {
+      const se = computeSingleEdgeProfileDiffraction(distancesM, elevationsM, wavelengthM, kFactor, earthRadiusM);
+      return {
+        totalLossDb: se.lossDb,
+        primaryNu: se.maxNu,
+        primaryLossDb: se.lossDb,
+        primaryEdgeIndex: se.peakIndex,
+        primaryEdgeDistM: se.peakDistM,
+        secondaryLeftNu: -999.0,
+        secondaryLeftLossDb: 0.0,
+        secondaryLeftIndex: -1,
+        secondaryRightNu: -999.0,
+        secondaryRightLossDb: 0.0,
+        secondaryRightIndex: -1,
+        secondaryEdgeCount: 0,
+        bullingtonLossDb: 0.0,
+        correctionDb: 0.0,
+        method: 'single-edge',
+      };
+    }
+
+    return computeDeygoutMultiEdgeDiffraction(distancesM, elevationsM, wavelengthM, kFactor, earthRadiusM);
+  }
+
+  /**
    * Predicts physical RF link performance, received power, net SNR,
    * adaptive MODCOD scheme, and net achievable bitrate.
    */
@@ -360,22 +458,96 @@ export class LinkBudgetEngine {
     fadingGainDb?: number,
     ricianKFactorDb?: number,
     ollaMarginDb?: number,
-    cqiDecodeFailure?: boolean
+    cqiDecodeFailure?: boolean,
+    profile?: { distancesM: ArrayLike<number>; elevationsM: ArrayLike<number> },
+    diffractionModel?: 'deygout-multiedge' | 'bullington' | 'single-edge',
+    airframeOptions?: AirframeChannelOptions
   ): LinkStatus {
+    // Ergonomic normalization if caller omitted profile / diffractionModel
+    let effAirframeOptions = airframeOptions;
+    let effProfile = profile;
+    let effDiffractionModel = diffractionModel;
+
+    if (
+      effProfile &&
+      (
+        'enableAirframeShadowing' in (effProfile as any) ||
+        'correlatedFadingParams' in (effProfile as any) ||
+        'uavAttitude' in (effProfile as any) ||
+        'antennaMount' in (effProfile as any)
+      )
+    ) {
+      effAirframeOptions = effProfile as any;
+      effProfile = undefined;
+    } else if (
+      effDiffractionModel &&
+      typeof effDiffractionModel === 'object' &&
+      (
+        'enableAirframeShadowing' in (effDiffractionModel as any) ||
+        'correlatedFadingParams' in (effDiffractionModel as any) ||
+        'uavAttitude' in (effDiffractionModel as any) ||
+        'antennaMount' in (effDiffractionModel as any)
+      )
+    ) {
+      effAirframeOptions = effDiffractionModel as any;
+      effDiffractionModel = undefined;
+    }
+
+    let effDiffractionLossDb = diffractionLossDb;
+    let secondaryEdges: number | undefined = undefined;
+    let modelUsed: 'deygout-multiedge' | 'bullington' | 'single-edge' | undefined = effDiffractionModel;
+
+    if (effProfile && effProfile.distancesM.length >= 3) {
+      const model = effDiffractionModel ?? 'deygout-multiedge';
+      modelUsed = model;
+      const wavelengthM = (rf.speedOfLight || 299792458.0) / (rf.carrierFrequencyHz || 8.0e9);
+      const kFactor = env.effectiveEarthRadiusFactor ?? env.earthRadiusFactorK ?? DEFAULT_K_FACTOR;
+      const diffResult = LinkBudgetEngine.computeProfileDiffraction(
+        effProfile.distancesM,
+        effProfile.elevationsM,
+        wavelengthM,
+        kFactor,
+        DEFAULT_TRUE_EARTH_RADIUS_M,
+        model
+      );
+      effDiffractionLossDb = diffResult.totalLossDb;
+      secondaryEdges = diffResult.secondaryEdgeCount;
+    }
+
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
     const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, env, nodeAltM, acnAltM);
+
+    // 3D Airframe attitude & shadowing
+    let airframeShadowLossDb: number | undefined = undefined;
+    let computedBodyAz: number | undefined = sectorEval?.bodyAzimuthDeg;
+    let computedBodyEl: number | undefined = sectorEval?.elevationAngleDeg;
+
+    if (effAirframeOptions?.enableAirframeShadowing) {
+      if (effAirframeOptions.losVectorEnu && effAirframeOptions.uavAttitude) {
+        const los = Array.isArray(effAirframeOptions.losVectorEnu)
+          ? { losEast: effAirframeOptions.losVectorEnu[0], losNorth: effAirframeOptions.losVectorEnu[1], losUp: effAirframeOptions.losVectorEnu[2] }
+          : effAirframeOptions.losVectorEnu as { losEast: number; losNorth: number; losUp: number };
+        const bodyLos = worldLosToBodyFrame(los.losEast, los.losNorth, los.losUp, effAirframeOptions.uavAttitude);
+        computedBodyAz = bodyLos.bodyAzimuthDeg;
+        computedBodyEl = bodyLos.bodyElevationDeg;
+      }
+      const azForShadow = computedBodyAz ?? 0.0;
+      const elForShadow = computedBodyEl ?? 0.0;
+      airframeShadowLossDb = computeAirframeShadowLossDb(azForShadow, elForShadow, effAirframeOptions.antennaMount ?? 'belly');
+    }
 
     // Sum channel losses
     const cableLossDb = rf.cableLossDb;
     const implementationMarginDb = rf.implementationMarginDb;
     const totalLossDb =
       fsplDb +
-      diffractionLossDb +
+      effDiffractionLossDb +
       gasLossDb +
       rainLossDb +
       cableLossDb +
-      implementationMarginDb;
+      implementationMarginDb +
+      (airframeShadowLossDb ?? 0.0);
 
     // Transceiver parameters
     const { txPowerDbm: defaultTxPowerDbm, antennaGainDbi } = rf.getTransmitterParams(nodeType);
@@ -385,10 +557,19 @@ export class LinkBudgetEngine {
       ? customRxGainDbi
       : (rf.acnAntennaGainDbi - patternRollOffDb);
 
-    // 3GPP TR 38.811 Rician multipath fading gain
+    // 3GPP TR 38.811 Rician multipath fading gain / Time-Correlated Zheng-Xiao fading
     let effFadingGainDb = fadingGainDb;
     let effRicianKDb = ricianKFactorDb;
-    if (effFadingGainDb === undefined && env.ricianFadingEnabled) {
+    let correlatedFadingDb: number | undefined = undefined;
+    let coherenceTimeMs: number | undefined = undefined;
+
+    if (effAirframeOptions?.correlatedFadingParams) {
+      const corrResult = computeCorrelatedRicianJakesFading(effAirframeOptions.correlatedFadingParams);
+      effFadingGainDb = corrResult.fadingGainDb;
+      effRicianKDb = corrResult.ricianKFactorDb;
+      correlatedFadingDb = corrResult.fadingGainDb;
+      coherenceTimeMs = corrResult.coherenceTimeMs;
+    } else if (effFadingGainDb === undefined && env.ricianFadingEnabled) {
       const elev = sectorEval?.elevationAngleDeg ?? 0.0;
       const fDoppler = dopplerShiftHz ?? 0.0;
       const rician = LinkBudgetEngine.computeRicianMultipathFading(0, 0, elev, diffractionLossDb, fDoppler);
@@ -456,7 +637,7 @@ export class LinkBudgetEngine {
       nodeType,
       slantRangeM,
       fsplDb,
-      diffractionLossDb,
+      diffractionLossDb: effDiffractionLossDb,
       gasLossDb,
       rainLossDb,
       cableLossDb,
@@ -488,9 +669,9 @@ export class LinkBudgetEngine {
       activeSectorId: sectorEval?.activeSectorId,
       sectorBoresightDeg: sectorEval?.sectorBoresightDeg,
       acnHeadingDeg: sectorEval?.acnHeadingDeg,
-      bodyAzimuthDeg: sectorEval?.bodyAzimuthDeg,
+      bodyAzimuthDeg: computedBodyAz,
       offBoresightAzDeg: sectorEval?.offBoresightAzDeg,
-      elevationAngleDeg: sectorEval?.elevationAngleDeg,
+      elevationAngleDeg: computedBodyEl,
       patternRollOffDb: sectorEval ? sectorEval.patternRollOffDb : undefined,
       allSectorGainsDbi: sectorEval?.allSectorGainsDbi,
       isCrossoverZone: sectorEval?.isCrossoverZone,
@@ -500,7 +681,70 @@ export class LinkBudgetEngine {
       ricianFadingGainDb: effFadingGainDb,
       ollaMarginDb,
       cqiDecodeFailure,
+      diffractionModel: modelUsed,
+      secondaryDiffractionEdges: secondaryEdges,
+      airframeShadowLossDb,
+      bodyElevationDeg: computedBodyEl,
+      correlatedFadingDb,
+      coherenceTimeMs,
     };
+  }
+
+  /**
+   * Evaluates physical RF link performance with an explicit terrain + CAD obstacle elevation profile,
+   * computing multi-edge diffraction via ITU-R P.526 Cascaded Deygout or Bullington.
+   */
+  public evaluateLinkWithProfile(
+    nodeType: NodeType | string,
+    slantRangeM: number,
+    profile: { distancesM: ArrayLike<number>; elevationsM: ArrayLike<number> },
+    rf: RFConfig,
+    env: EnvironmentConfig,
+    diffractionModel: 'deygout-multiedge' | 'bullington' | 'single-edge' = 'deygout-multiedge',
+    obstacleBlocked: boolean = false,
+    customTxPowerDbm?: number,
+    sectorEval?: AcnSectorEvaluation & { jammerInterferenceDbm?: number },
+    nodeAltM?: number,
+    acnAltM?: number,
+    crestRadiusM?: number,
+    curvatureLossDb?: number,
+    jammerInterferenceDbm?: number,
+    radialVelocityMs?: number,
+    dopplerShiftHz?: number,
+    dopplerRateHzS?: number,
+    customRxGainDbi?: number,
+    fadingGainDb?: number,
+    ricianKFactorDb?: number,
+    ollaMarginDb?: number,
+    cqiDecodeFailure?: boolean,
+    airframeOptions?: AirframeChannelOptions
+  ): LinkStatus {
+    return this.evaluateLink(
+      nodeType,
+      slantRangeM,
+      0.0,
+      rf,
+      env,
+      obstacleBlocked,
+      customTxPowerDbm,
+      sectorEval,
+      nodeAltM,
+      acnAltM,
+      crestRadiusM,
+      curvatureLossDb,
+      jammerInterferenceDbm,
+      radialVelocityMs,
+      dopplerShiftHz,
+      dopplerRateHzS,
+      customRxGainDbi,
+      fadingGainDb,
+      ricianKFactorDb,
+      ollaMarginDb,
+      cqiDecodeFailure,
+      profile,
+      diffractionModel,
+      airframeOptions
+    );
   }
 
   /**

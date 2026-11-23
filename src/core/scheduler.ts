@@ -38,6 +38,33 @@ export interface SlotAllocation {
   readonly capacityBits: number;
   readonly isPreOcclusionFlush: boolean;
   readonly sectorId?: 0 | 1 | 2 | 3;
+  readonly dynamicGuardOverheadScale?: number;
+  readonly delayedCqiSnrDb?: number;
+  readonly effectiveSnrDb?: number;
+  readonly ollaOffsetDb?: number;
+}
+
+export interface SchedulerMacFeedbackOptions {
+  /** Optional per-node dynamic guard overhead scale in [0, 1] derived from range/TA analysis */
+  readonly nodeGuardScale?: ReadonlyMap<number, number> | Record<number, number>;
+  /** Optional per-node delayed CQI SNR in dB */
+  readonly nodeDelayedCqiSnrDb?: ReadonlyMap<number, number> | Record<number, number>;
+  /** Optional per-node OLLA offset in dB */
+  readonly nodeOllaOffsetDb?: ReadonlyMap<number, number> | Record<number, number>;
+}
+
+/**
+ * Computes effective capacity in bits factoring in range-dependent dynamic guard overhead scale.
+ */
+export function computeRangeConstrainedSlotCapacity(
+  rawCapacityBits: number,
+  dynamicOverheadScale?: number
+): number {
+  if (dynamicOverheadScale === undefined || !Number.isFinite(dynamicOverheadScale)) {
+    return rawCapacityBits;
+  }
+  const clampedScale = Math.max(0.0, Math.min(1.0, dynamicOverheadScale));
+  return Math.floor(rawCapacityBits * clampedScale);
 }
 
 export interface FrameScheduleReport {
@@ -212,7 +239,8 @@ export interface BaseScheduler {
     nodes: readonly GroundNodeTrafficSubsystem[],
     linkStatuses: ReadonlyMap<number, LinkStatus> | Record<number, LinkStatus>,
     predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
-    dlBacklogBytes?: number
+    dlBacklogBytes?: number,
+    macFeedbackOptions?: SchedulerMacFeedbackOptions
   ): FrameScheduleReport;
   registerNode?(node: GroundNodeTrafficSubsystem): void;
   capturePendingDropsBeforeEviction?(node: GroundNodeTrafficSubsystem): FinalDropCaptureResult;
@@ -385,7 +413,8 @@ abstract class DropTrackingScheduler implements BaseScheduler {
     nodes: readonly GroundNodeTrafficSubsystem[],
     linkStatuses: ReadonlyMap<number, LinkStatus> | Record<number, LinkStatus>,
     predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
-    dlBacklogBytes?: number
+    dlBacklogBytes?: number,
+    macFeedbackOptions?: SchedulerMacFeedbackOptions
   ): FrameScheduleReport;
 }
 
@@ -406,7 +435,8 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
     nodes: readonly GroundNodeTrafficSubsystem[],
     linkStatuses: ReadonlyMap<number, LinkStatus> | Record<number, LinkStatus>,
     predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
-    _dlBacklogBytes: number = 0
+    _dlBacklogBytes: number = 0,
+    macFeedbackOptions?: SchedulerMacFeedbackOptions
   ): FrameScheduleReport {
     const numNodes = nodes.length;
     const tUlAvailable = this.config.frameDurationS - this.config.ctrlDurationS - this.config.dlMinDurationS;
@@ -422,6 +452,30 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
       }
 
       return (predictiveStates as Record<number, PredictiveState>)[id];
+    };
+
+    const getGuardScale = (id: number): number => {
+      if (!macFeedbackOptions?.nodeGuardScale) return 1.0;
+      const s = macFeedbackOptions.nodeGuardScale instanceof Map
+        ? macFeedbackOptions.nodeGuardScale.get(id)
+        : (macFeedbackOptions.nodeGuardScale as Record<number, number>)[id];
+      return Number.isFinite(s) ? Math.max(0.0, Math.min(1.0, s!)) : 1.0;
+    };
+
+    const getDelayedSnr = (id: number): number | undefined => {
+      if (!macFeedbackOptions?.nodeDelayedCqiSnrDb) return undefined;
+      const val = macFeedbackOptions.nodeDelayedCqiSnrDb instanceof Map
+        ? macFeedbackOptions.nodeDelayedCqiSnrDb.get(id)
+        : (macFeedbackOptions.nodeDelayedCqiSnrDb as Record<number, number>)[id];
+      return Number.isFinite(val) ? val : undefined;
+    };
+
+    const getOllaOffset = (id: number): number | undefined => {
+      if (!macFeedbackOptions?.nodeOllaOffsetDb) return undefined;
+      const val = macFeedbackOptions.nodeOllaOffsetDb instanceof Map
+        ? macFeedbackOptions.nodeOllaOffsetDb.get(id)
+        : (macFeedbackOptions.nodeOllaOffsetDb as Record<number, number>)[id];
+      return Number.isFinite(val) ? val : undefined;
     };
 
     const isMultiSectorActive = this.enableMultiSector && nodes.some(n => getLink(n.nodeId)?.activeSectorId !== undefined);
@@ -468,7 +522,13 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
 
           const isDepleted = node.batteryLevelPct <= 0 || node.isDepleted;
           const rate = (!isDepleted && ls && ls.bitrateBps > 0) ? ls.bitrateBps : (isDepleted ? 0 : 4.95e6);
-          const capBits = isDepleted ? 0 : Math.floor(secTauSlot * rate);
+          const guardScale = getGuardScale(node.nodeId);
+          const delayedSnr = getDelayedSnr(node.nodeId);
+          const ollaOffset = getOllaOffset(node.nodeId);
+          const effSnr = (delayedSnr !== undefined && ollaOffset !== undefined)
+            ? (delayedSnr - ollaOffset)
+            : (delayedSnr ?? (ls ? (ls.snrDb - (ollaOffset ?? 0)) : undefined));
+          const capBits = isDepleted ? 0 : Math.floor(secTauSlot * rate * guardScale);
           const capBytes = Math.floor(capBits / 8);
 
           allocations.push({
@@ -481,6 +541,10 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
             capacityBits: capBits,
             isPreOcclusionFlush: false,
             sectorId: k as 0 | 1 | 2 | 3,
+            dynamicGuardOverheadScale: guardScale < 1.0 || macFeedbackOptions?.nodeGuardScale ? guardScale : undefined,
+            delayedCqiSnrDb: delayedSnr,
+            effectiveSnrDb: effSnr,
+            ollaOffsetDb: ollaOffset,
           });
 
           secUsedTimeS += secTauSlot + this.config.guardIntervalS;
@@ -618,7 +682,13 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
 
       const isDepleted = node.batteryLevelPct <= 0 || node.isDepleted;
       const rate = (!isDepleted && ls && ls.bitrateBps > 0) ? ls.bitrateBps : (isDepleted ? 0 : 4.95e6);
-      const capBits = isDepleted ? 0 : Math.floor(tauSlot * rate);
+      const guardScale = getGuardScale(node.nodeId);
+      const delayedSnr = getDelayedSnr(node.nodeId);
+      const ollaOffset = getOllaOffset(node.nodeId);
+      const effSnr = (delayedSnr !== undefined && ollaOffset !== undefined)
+        ? (delayedSnr - ollaOffset)
+        : (delayedSnr ?? (ls ? (ls.snrDb - (ollaOffset ?? 0)) : undefined));
+      const capBits = isDepleted ? 0 : Math.floor(tauSlot * rate * guardScale);
       const capBytes = Math.floor(capBits / 8);
 
       allocations.push({
@@ -630,6 +700,10 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         spectralEfficiency: isDepleted ? 0.0 : (ls?.spectralEfficiency ?? 0.0),
         capacityBits: capBits,
         isPreOcclusionFlush: false,
+        dynamicGuardOverheadScale: guardScale < 1.0 || macFeedbackOptions?.nodeGuardScale ? guardScale : undefined,
+        delayedCqiSnrDb: delayedSnr,
+        effectiveSnrDb: effSnr,
+        ollaOffsetDb: ollaOffset,
       });
 
       usedTimeS += tauSlot + this.config.guardIntervalS;
@@ -897,7 +971,8 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
     nodes: readonly GroundNodeTrafficSubsystem[],
     linkStatuses: ReadonlyMap<number, LinkStatus> | Record<number, LinkStatus>,
     predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
-    dlBacklogBytes: number = 0
+    dlBacklogBytes: number = 0,
+    macFeedbackOptions?: SchedulerMacFeedbackOptions
   ): FrameScheduleReport {
     // Dynamic DL breathing with strict physical upper-bound ceiling check (Resolving Audit Finding 2)
     const minUlReserveS = this.config.minSlotDurationS + this.config.guardIntervalS;
@@ -943,6 +1018,30 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       predictiveStates instanceof Map
         ? predictiveStates.get(id)
         : (predictiveStates as Record<number, PredictiveState>)[id];
+
+    const getGuardScale = (id: number): number => {
+      if (!macFeedbackOptions?.nodeGuardScale) return 1.0;
+      const s = macFeedbackOptions.nodeGuardScale instanceof Map
+        ? macFeedbackOptions.nodeGuardScale.get(id)
+        : (macFeedbackOptions.nodeGuardScale as Record<number, number>)[id];
+      return Number.isFinite(s) ? Math.max(0.0, Math.min(1.0, s!)) : 1.0;
+    };
+
+    const getDelayedSnr = (id: number): number | undefined => {
+      if (!macFeedbackOptions?.nodeDelayedCqiSnrDb) return undefined;
+      const val = macFeedbackOptions.nodeDelayedCqiSnrDb instanceof Map
+        ? macFeedbackOptions.nodeDelayedCqiSnrDb.get(id)
+        : (macFeedbackOptions.nodeDelayedCqiSnrDb as Record<number, number>)[id];
+      return Number.isFinite(val) ? val : undefined;
+    };
+
+    const getOllaOffset = (id: number): number | undefined => {
+      if (!macFeedbackOptions?.nodeOllaOffsetDb) return undefined;
+      const val = macFeedbackOptions.nodeOllaOffsetDb instanceof Map
+        ? macFeedbackOptions.nodeOllaOffsetDb.get(id)
+        : (macFeedbackOptions.nodeOllaOffsetDb as Record<number, number>)[id];
+      return Number.isFinite(val) ? val : undefined;
+    };
 
     const isMultiSectorActive = nodes.some(n => getLink(n.nodeId)?.activeSectorId !== undefined);
 
@@ -1113,7 +1212,13 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         for (let i = 0; i < candidatePlan.length; i++) {
           const plan = candidatePlan[i];
           const tauSlot = plan.tauSlot;
-          const capBits = Math.floor(tauSlot * plan.rInst);
+          const guardScale = getGuardScale(plan.nid);
+          const delayedSnr = getDelayedSnr(plan.nid);
+          const ollaOffset = getOllaOffset(plan.nid);
+          const effSnr = (delayedSnr !== undefined && ollaOffset !== undefined)
+            ? (delayedSnr - ollaOffset)
+            : (delayedSnr ?? (plan.ls ? (plan.ls.snrDb - (ollaOffset ?? 0)) : undefined));
+          const capBits = Math.floor(tauSlot * plan.rInst * guardScale);
           const capBytes = Math.floor(capBits / 8);
 
           allocations.push({
@@ -1126,6 +1231,10 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
             capacityBits: capBits,
             isPreOcclusionFlush: plan.isFlush,
             sectorId: k as 0 | 1 | 2 | 3,
+            dynamicGuardOverheadScale: guardScale < 1.0 || macFeedbackOptions?.nodeGuardScale ? guardScale : undefined,
+            delayedCqiSnrDb: delayedSnr,
+            effectiveSnrDb: effSnr,
+            ollaOffsetDb: ollaOffset,
           });
 
           scheduledIds.add(plan.nid);
@@ -1344,7 +1453,13 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
     for (let i = 0; i < candidatePlan.length; i++) {
       const plan = candidatePlan[i];
       const tauSlot = plan.tauSlot;
-      const capBits = Math.floor(tauSlot * plan.rInst);
+      const guardScale = getGuardScale(plan.nid);
+      const delayedSnr = getDelayedSnr(plan.nid);
+      const ollaOffset = getOllaOffset(plan.nid);
+      const effSnr = (delayedSnr !== undefined && ollaOffset !== undefined)
+        ? (delayedSnr - ollaOffset)
+        : (delayedSnr ?? (plan.ls ? (plan.ls.snrDb - (ollaOffset ?? 0)) : undefined));
+      const capBits = Math.floor(tauSlot * plan.rInst * guardScale);
       const capBytes = Math.floor(capBits / 8);
 
       allocations.push({
@@ -1356,6 +1471,10 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         spectralEfficiency: plan.ls?.spectralEfficiency ?? 0.0,
         capacityBits: capBits,
         isPreOcclusionFlush: plan.isFlush,
+        dynamicGuardOverheadScale: guardScale < 1.0 || macFeedbackOptions?.nodeGuardScale ? guardScale : undefined,
+        delayedCqiSnrDb: delayedSnr,
+        effectiveSnrDb: effSnr,
+        ollaOffsetDb: ollaOffset,
       });
 
       scheduledIds.add(plan.nid);

@@ -230,3 +230,214 @@ export class QuadSectorAntennaEngine {
     this.handoverCountByNode.delete(nodeId);
   }
 }
+
+export interface BodyFrameLosResult {
+  readonly bodyForward: number;
+  readonly bodyRight: number;
+  readonly bodyDown: number;
+  readonly bodyAzimuthDeg: number;
+  readonly bodyElevationDeg: number;
+}
+
+export interface AttitudeEulerDeg {
+  readonly yawDeg?: number;
+  readonly headingDeg?: number;
+  readonly pitchDeg?: number;
+  readonly rollDeg?: number;
+  readonly bankDeg?: number;
+}
+
+/**
+ * Transforms an ENU line-of-sight vector into the aircraft body frame using exact orthogonal
+ * Tait-Bryan Z-Y-X (yaw, pitch, roll) rotation.
+ *
+ * @param losEast Delta East in metres (+x in ENU)
+ * @param losNorth Delta North in metres (+y in ENU)
+ * @param losUp Delta Up in metres (+z in ENU)
+ * @param attitude Aircraft Euler attitude angles in degrees
+ * @returns 3D body-frame coordinates and spherical body angles (azimuth and elevation)
+ */
+export function worldLosToBodyFrame(
+  losEast: number,
+  losNorth: number,
+  losUp: number,
+  attitude: AttitudeEulerDeg
+): BodyFrameLosResult {
+  if (
+    !Number.isFinite(losEast) ||
+    !Number.isFinite(losNorth) ||
+    !Number.isFinite(losUp) ||
+    !attitude
+  ) {
+    return {
+      bodyForward: 0.0,
+      bodyRight: 0.0,
+      bodyDown: 0.0,
+      bodyAzimuthDeg: 0.0,
+      bodyElevationDeg: 0.0,
+    };
+  }
+
+  const yaw = Number.isFinite(attitude.yawDeg)
+    ? attitude.yawDeg!
+    : (Number.isFinite(attitude.headingDeg) ? attitude.headingDeg! : 0.0);
+  const pitch = Number.isFinite(attitude.pitchDeg) ? attitude.pitchDeg! : 0.0;
+  const roll = Number.isFinite(attitude.rollDeg)
+    ? attitude.rollDeg!
+    : (Number.isFinite(attitude.bankDeg) ? attitude.bankDeg! : 0.0);
+
+  const psiRad = (yaw * Math.PI) / 180.0;
+  const thetaRad = (pitch * Math.PI) / 180.0;
+  const phiRad = (roll * Math.PI) / 180.0;
+
+  const cPsi = Math.cos(psiRad);
+  const sPsi = Math.sin(psiRad);
+  const cTheta = Math.cos(thetaRad);
+  const sTheta = Math.sin(thetaRad);
+  const cPhi = Math.cos(phiRad);
+  const sPhi = Math.sin(phiRad);
+
+  // Local navigation NED vector:
+  const N = losNorth;
+  const E = losEast;
+  const D = -losUp;
+
+  // Tait-Bryan Z-Y-X direction-cosine rotation: R = R_x(phi) * R_y(theta) * R_z(psi)
+  const bodyForward = (cTheta * cPsi) * N + (cTheta * sPsi) * E - sTheta * D;
+  const bodyRight = (-cPhi * sPsi - sPhi * sTheta * cPsi) * N + (cPhi * cPsi - sPhi * sTheta * sPsi) * E - (sPhi * cTheta) * D;
+  const bodyDown = (-sPhi * sPsi + cPhi * sTheta * cPsi) * N + (sPhi * cPsi + cPhi * sTheta * sPsi) * E + (cPhi * cTheta) * D;
+
+  const horizMagnitude = Math.hypot(bodyForward, bodyRight);
+  let bodyAzimuthDeg = 0.0;
+  if (horizMagnitude > 1e-12) {
+    bodyAzimuthDeg = ((Math.atan2(bodyRight, bodyForward) * 180.0) / Math.PI + 360.0) % 360.0;
+  }
+
+  let bodyElevationDeg = 0.0;
+  const totalMag = Math.hypot(horizMagnitude, bodyDown);
+  if (totalMag > 1e-12) {
+    bodyElevationDeg = (Math.atan2(-bodyDown, horizMagnitude) * 180.0) / Math.PI;
+  }
+
+  return {
+    bodyForward,
+    bodyRight,
+    bodyDown,
+    bodyAzimuthDeg,
+    bodyElevationDeg,
+  };
+}
+
+/**
+ * Computes airframe fuselage blockage and wing-chord shadowing loss in dB.
+ *
+ * @param bodyAzimuthDeg Azimuth in aircraft body coordinates [0, 360) deg (0 = nose, 90 = right wing)
+ * @param bodyElevationDeg Elevation in aircraft body coordinates [-90, +90] deg (negative = below belly)
+ * @param mountPosition Antenna placement ('belly' or 'dorsal', default 'belly')
+ * @returns Non-negative airframe shadow loss in dB [0.0, 15.0]
+ */
+export function computeAirframeShadowLossDb(
+  bodyAzimuthDeg: number,
+  bodyElevationDeg: number,
+  mountPosition: 'belly' | 'dorsal' = 'belly'
+): number {
+  if (!Number.isFinite(bodyAzimuthDeg) || !Number.isFinite(bodyElevationDeg)) {
+    return 0.0;
+  }
+
+  const effectiveEl = mountPosition === 'dorsal' ? -bodyElevationDeg : bodyElevationDeg;
+
+  // 1. Fuselage blockage model
+  let fuselageLossDb = 0.0;
+  if (effectiveEl <= -5.0) {
+    fuselageLossDb = 0.0;
+  } else if (effectiveEl >= 15.0) {
+    fuselageLossDb = 15.0;
+  } else {
+    // Smooth C1 raised-cosine transition across [-5°, +15°]
+    const u = (effectiveEl - (-5.0)) / (15.0 - (-5.0)); // [0, 1]
+    fuselageLossDb = 15.0 * 0.5 * (1.0 - Math.cos(Math.PI * u));
+  }
+
+  // 2. Additive wing-chord shadowing bump: centered at |bodyAzimuthDeg| = 90° (±20° width) and bodyElevationDeg in [-5°, +5°]
+  let wingLossDb = 0.0;
+  const azNorm = ((bodyAzimuthDeg % 360.0) + 360.0) % 360.0;
+  const distToStarboard = Math.abs(azNorm - 90.0);
+  const distToPort = Math.abs(azNorm - 270.0);
+  const deltaAzWing = Math.min(distToStarboard, distToPort);
+
+  if (deltaAzWing <= 20.0 && effectiveEl >= -5.0 && effectiveEl <= 5.0) {
+    const uAz = deltaAzWing / 20.0;
+    const uEl = Math.abs(effectiveEl) / 5.0;
+    const factorAz = 0.5 * (1.0 + Math.cos(Math.PI * uAz));
+    const factorEl = 0.5 * (1.0 + Math.cos(Math.PI * uEl));
+    wingLossDb = 4.0 * factorAz * factorEl;
+  }
+
+  return Math.max(0.0, Math.min(15.0, fuselageLossDb + wingLossDb));
+}
+
+export interface QuadSectorSelectionResult {
+  readonly sectorIndex: AcnSectorId;
+  readonly switched: boolean;
+  readonly angularOffsetDeg: number;
+  readonly boresightDeg: number;
+}
+
+/**
+ * Pure, stateless quad-sector antenna selection with angular hysteresis margin.
+ *
+ * @param azimuthDeg Target body azimuth in degrees (arbitrary angle, wrapped internally)
+ * @param previousSectorIndex Currently active sector index (0..3) or null/undefined
+ * @param hysteresisMarginDeg Additional angular margin to retain previous sector (default 3.0°)
+ * @returns QuadSectorSelectionResult
+ */
+export function selectQuadSectorWithHysteresis(
+  azimuthDeg: number,
+  previousSectorIndex?: number | null,
+  hysteresisMarginDeg: number = 3.0
+): QuadSectorSelectionResult {
+  const azNorm = ((azimuthDeg % 360.0) + 360.0) % 360.0;
+  const nominalSector = (Math.floor(((azNorm + 45.0) % 360.0) / 90.0) % 4) as AcnSectorId;
+
+  const hasPrev =
+    previousSectorIndex !== null &&
+    previousSectorIndex !== undefined &&
+    Number.isInteger(previousSectorIndex) &&
+    previousSectorIndex >= 0 &&
+    previousSectorIndex <= 3;
+
+  if (!hasPrev) {
+    const boresightDeg = (nominalSector * 90) as 0 | 90 | 180 | 270;
+    const angularOffsetDeg = ((((azNorm - boresightDeg + 180.0) % 360.0) + 360.0) % 360.0) - 180.0;
+    return {
+      sectorIndex: nominalSector,
+      switched: false,
+      angularOffsetDeg,
+      boresightDeg,
+    };
+  }
+
+  const prevSector = previousSectorIndex as AcnSectorId;
+  const prevBoresightDeg = prevSector * 90;
+  const diffToPrev = ((((azNorm - prevBoresightDeg + 180.0) % 360.0) + 360.0) % 360.0) - 180.0;
+
+  if (Math.abs(diffToPrev) <= 45.0 + Math.max(0.0, hysteresisMarginDeg)) {
+    return {
+      sectorIndex: prevSector,
+      switched: false,
+      angularOffsetDeg: diffToPrev,
+      boresightDeg: prevBoresightDeg,
+    };
+  }
+
+  const boresightDeg = (nominalSector * 90) as 0 | 90 | 180 | 270;
+  const angularOffsetDeg = ((((azNorm - boresightDeg + 180.0) % 360.0) + 360.0) % 360.0) - 180.0;
+  return {
+    sectorIndex: nominalSector,
+    switched: nominalSector !== prevSector,
+    angularOffsetDeg,
+    boresightDeg,
+  };
+}
+

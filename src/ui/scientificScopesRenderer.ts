@@ -18,6 +18,7 @@ import {
   getSensitivityAxisConfig,
   evaluateParametricSensitivity,
 } from '../core/parametricSensitivity';
+import { safeHtml } from './domSafety';
 
 export interface ScientificScopeNodeTelemetry {
   readonly node_id: number;
@@ -810,11 +811,7 @@ export function drawSensitivitySweepScope(
     if (readoutElement) {
       const advX = (evalActive.tacGoodputMbps / Math.max(0.1, evalActive.staticGoodputMbps)).toFixed(1);
       const dropDelta = (evalActive.staticDropRatePct - evalActive.tacDropRatePct).toFixed(1);
-      readoutElement.innerHTML = `Axis: <b>${axisCfg.xLabel}</b><br>` +
-        `Active: <b style="color:#38bdf8">${activeVal.toFixed(1)} ${axisCfg.unit}</b><br>` +
-        `Tac: <span style="color:#10b981">${evalActive.tacGoodputMbps.toFixed(1)}M (${evalActive.tacDropRatePct.toFixed(1)}% drp)</span><br>` +
-        `Static: <span style="color:#ef4444">${evalActive.staticGoodputMbps.toFixed(1)}M (${evalActive.staticDropRatePct.toFixed(1)}% drp)</span><br>` +
-        `Advantage: <b style="color:var(--hi-amber)">+${advX}x Goodput (-${dropDelta}% drops)</b>`;
+      readoutElement.innerHTML = safeHtml`Axis: <b>${axisCfg.xLabel}</b><br>Active: <b style="color:#38bdf8">${activeVal.toFixed(1)} ${axisCfg.unit}</b><br>Tac: <span style="color:#10b981">${evalActive.tacGoodputMbps.toFixed(1)}M (${evalActive.tacDropRatePct.toFixed(1)}% drp)</span><br>Static: <span style="color:#ef4444">${evalActive.staticGoodputMbps.toFixed(1)}M (${evalActive.staticDropRatePct.toFixed(1)}% drp)</span><br>Advantage: <b style="color:var(--hi-amber)">+${advX}x Goodput (-${dropDelta}% drops)</b>`.toString();
     }
   } catch (err) {
     console.error('drawSensitivitySweepScope exception:', err);

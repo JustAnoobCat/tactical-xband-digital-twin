@@ -32,7 +32,7 @@ const bailOnError = process.argv.includes('--bail');
 const outputDir = resolve(process.cwd(), getArg('--out-dir', 'benchmark_results/generated'));
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (59 Total Suites)
+// Verification Suites Registry (95 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -122,7 +122,16 @@ const REGISTERED_SUITES = [
   { id: 'verify:ai-copilot-phone', name: 'Tactical Edge-AI Co-Pilot & Soldier Handheld Phone UI (ECP-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyEdgeAiCopilotAndSoldierPhone.ts'], category: 'ai' },
   { id: 'verify:ai-physics-truth', name: 'AI Physics Truth & Closed-Loop Execution (APT-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyAiPhysicsTruthAndClosedLoop.ts'], category: 'ai' },
   { id: 'verify:master-math', name: 'Master Mathematical & Physical Rigor Audit (MMR-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMasterMathematicalRigor.ts'], category: 'math' },
-  { id: 'verify:se-architecture', name: 'Software Engineering Architecture & DRY Refactor (SEA-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifySoftwareEngineeringArchitecture.ts'], category: 'architecture' }
+  { id: 'verify:se-architecture', name: 'Software Engineering Architecture & DRY Refactor (SEA-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifySoftwareEngineeringArchitecture.ts'], category: 'architecture' },
+  { id: 'verify:wgs84', name: 'Canonical WGS-84 ECEF / ENU / Vincenty Geodesy Engine (WGS-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWgs84Geodesy.ts'], category: 'geodesy' },
+  { id: 'verify:multiedge-diffraction', name: 'ITU-R P.526-15 Multi-Edge Diffraction Engine (MED-T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMultiEdgeDiffraction.ts'], category: 'physics' },
+  { id: 'verify:attitude-channel', name: 'Airframe Attitude & Channel Dynamics (AAD-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyAttitudeAndChannelDynamics.ts'], category: 'physics' },
+  { id: 'verify:mac-phy-feedback', name: 'MAC/PHY Feedback Dynamics & Dynamic TDMA Overhead (MPF-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMacPhyFeedback.ts'], category: 'mac' },
+  { id: 'verify:kinematic-pathfinder', name: 'Kinematic Dubins Path Smoothing & 3D Flight Feasibility (KPF-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyKinematicPathfinder.ts'], category: 'pathfinding' },
+  { id: 'verify:worker-transfer-replay', name: 'Worker Transferables & Bounded Adaptive Replay (WTR-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWorkerTransferAndReplayBounds.ts'], category: 'worker' },
+  { id: 'verify:dom-safety-modularity', name: 'DOM/XSS Safety Layer & Pure Worker Modular Decomposition (DSM-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDomSafetyAndModularity.ts'], category: 'ui' },
+  { id: 'verify:viewshed-accessibility', name: 'Viewshed Physics Parity & Accessible Status Encoding (VPA-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyViewshedParityAndAccessibility.ts'], category: 'ui' },
+  { id: 'verify:scientific-rigor', name: 'Scientific Benchmarking Rigor & Physics Ablation (SBR-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyScientificBenchmarkRigor.ts'], category: 'benchmark' }
 ];
 
 // -----------------------------------------------------------------------------

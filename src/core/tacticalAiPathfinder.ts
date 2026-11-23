@@ -33,7 +33,36 @@
 import { LinkBudgetEngine, MODCOD_TABLE } from './linkBudget';
 import { EnvironmentConfig, NodeType, RFConfig } from './config';
 import type { Position3D } from '../shared/types';
-import { normalizeObstacle, footprintInterval, obstacleContainsPoint, ObstacleField, type Obstacle } from './obstacles';
+import { normalizeObstacle, footprintInterval, obstacleContainsPoint, obstacleSurfaceHeight, ObstacleField, type Obstacle } from './obstacles';
+import {
+  smoothWaypointsKinematically,
+  auditPathKinematicFeasibility,
+  computeMinTurnRadiusM,
+  computeDubinsPath2D,
+  enforceClimbDescentConstraints,
+  type FixedWingKinematicConstraints,
+  type KinematicAuditResult,
+  type Waypoint3D,
+  type SmoothedPathResult,
+  type DubinsPose2D,
+  type DubinsPath2DResult,
+  type DubinsFamily,
+} from './kinematicPathSmoother';
+
+export {
+  smoothWaypointsKinematically,
+  auditPathKinematicFeasibility,
+  computeMinTurnRadiusM,
+  computeDubinsPath2D,
+  enforceClimbDescentConstraints,
+  type FixedWingKinematicConstraints,
+  type KinematicAuditResult,
+  type Waypoint3D,
+  type SmoothedPathResult,
+  type DubinsPose2D,
+  type DubinsPath2DResult,
+  type DubinsFamily,
+};
 
 // ----------------------------------------------------------------------------
 // Constants & Physical Parameters
@@ -368,6 +397,7 @@ export interface AiRecoveryAdvisoryParams {
   readonly jammerEnabled?: boolean;
   readonly rfConfig?: RFConfig;
   readonly envConfig?: EnvironmentConfig;
+  readonly kinematicConstraints?: FixedWingKinematicConstraints;
 }
 
 export interface AiNodeRecoveryRecommendation {
@@ -392,6 +422,8 @@ export interface AiNodeRecoveryRecommendation {
   readonly detouredAroundObstacle?: boolean;
   readonly jammerShieldingDb?: number;
   readonly isEwDefiladeSpot?: boolean;
+  readonly kinematicAudit?: KinematicAuditResult;
+  readonly smoothedPathEnu?: readonly Position3D[];
 }
 
 /**
@@ -436,6 +468,7 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
     jammerEnabled = false,
     rfConfig,
     envConfig,
+    kinematicConstraints,
   } = params;
 
   const rf = rfConfig ?? new RFConfig({ carrierFrequencyHz: rfFreqHz });
@@ -836,6 +869,36 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
 
   const directiveText = `MOVE ${Math.round(bestCandidate.moveDistM)}m ${bestCandidate.moveCardinal} (${bestCandidate.moveBearingDeg.toFixed(0)}°) · Elev ${bestCandidate.deltaElevM >= 0 ? '+' : ''}${Math.round(bestCandidate.deltaElevM)}m (${bestCandidate.slopeDeg.toFixed(1)}° slope · Walk ETA ${Math.round(bestCandidate.etaSeconds)}s) → Restores ${bestCandidate.candIsLoS ? 'CLEAR LoS' : 'LINK'} at +${bestCandidate.candSinrDb.toFixed(1)} dB (${modcodName}) ${walkabilityTag}${defiladeTag}`;
 
+  let kinematicAudit: KinematicAuditResult | undefined = undefined;
+  let finalWalkPathEnu = bestCandidate.walkPathEnu;
+
+  if (kinematicConstraints && bestCandidate.walkPathEnu && bestCandidate.walkPathEnu.length >= 2) {
+    const rawWaypoints: Waypoint3D[] = bestCandidate.walkPathEnu.map((pt) => ({
+      x: pt[0],
+      y: pt[1],
+      altM: pt[2],
+      minTerrainClearanceAltM: getElevationAt(pt[0], pt[1]) + 2.0,
+    }));
+
+    const isPointSafe = (x: number, y: number, altM: number): boolean => {
+      const terrainElev = getElevationAt(x, y);
+      if (altM < terrainElev) return false;
+      if (obstacleField) {
+        for (const obs of obstacleField.all) {
+          if (obstacleContainsPoint(obs, x, y)) {
+            const roof = obstacleSurfaceHeight(obs, x, y, getElevationAt);
+            if (altM <= roof) return false;
+          }
+        }
+      }
+      return true;
+    };
+
+    const smoothed = smoothWaypointsKinematically(rawWaypoints, kinematicConstraints, isPointSafe);
+    kinematicAudit = smoothed.audit;
+    finalWalkPathEnu = smoothed.waypoints.map((w) => [w.x, w.y, w.altM] as Position3D);
+  }
+
   return {
     nodeId,
     needsReposition: true,
@@ -852,12 +915,13 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
     predictedModcod: modcodName,
     predictedBitrateMbps: bitrateMbps,
     directiveText,
-    walkPathEnu: bestCandidate.walkPathEnu,
+    walkPathEnu: finalWalkPathEnu,
     maxStepSlopeDeg: bestCandidate.maxStepSlopeDeg,
     maxAllowedSlopeDeg: bestCandidate.maxAllowedSlopeDeg,
     detouredAroundObstacle: bestCandidate.detouredAroundObstacle,
     jammerShieldingDb: bestCandidate.jammerShieldingDb,
     isEwDefiladeSpot: bestCandidate.isEwDefiladeSpot,
+    ...(kinematicAudit ? { kinematicAudit, smoothedPathEnu: finalWalkPathEnu } : {}),
   };
 }
 

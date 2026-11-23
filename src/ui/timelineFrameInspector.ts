@@ -26,6 +26,7 @@ import type {
 } from '../shared/workerProtocol';
 import type { SpatialSnapshotBuffer } from './spatialSnapshotBuffer';
 import type { EvictionHistoryMetadata, SuperframeEpochStore } from './superframeEpochStore';
+import { safeHtml, escapeAttr, trustedHtml } from './domSafety';
 
 export interface TimelineInspectorVisibilityState {
   readonly isExpanded: boolean;
@@ -676,11 +677,11 @@ export function renderFrameInspectorDom(
   if (!container) return;
 
   if (!payload) {
-    container.innerHTML = `
+    container.innerHTML = safeHtml`
       <div class="timeline-inspector-empty muted">
         Select a frame on the timeline to inspect spatial kinematics and communication epoch metrics.
       </div>
-    `;
+    `.toString();
     return;
   }
 
@@ -721,13 +722,13 @@ export function renderFrameInspectorDom(
     statusBadgeText = 'PRE-SIMULATION';
   }
 
-  let html = `
+  let html = safeHtml`
     <div class="timeline-inspector-header">
       <div class="inspector-title">
         <span class="inspector-frame-pill">FRAME #${frameIndex}</span>
         <span class="inspector-time">[${frameInterval.startTimeS.toFixed(3)}s – ${frameInterval.endTimeS.toFixed(3)}s)</span>
-        <span class="inspector-status-badge ${statusBadgeClass}">${statusBadgeText}</span>
-        ${hasReconfigurationDiscontinuity ? '<span class="badge-gold">RECONFIG DISCONTINUITY</span>' : ''}
+        <span class="inspector-status-badge ${escapeAttr(statusBadgeClass)}">${statusBadgeText}</span>
+        ${hasReconfigurationDiscontinuity ? trustedHtml('<span class="badge-gold">RECONFIG DISCONTINUITY</span>') : ''}
       </div>
       <div class="inspector-actions">
         <button id="btn-toggle-expand-inspector" class="btn-tool-secondary" style="font-size: 10px; padding: 2px 8px;">
@@ -735,10 +736,10 @@ export function renderFrameInspectorDom(
         </button>
       </div>
     </div>
-  `;
+  `.toString();
 
   if (semanticWarning) {
-    html += `<div class="inspector-warning-banner">${semanticWarning}</div>`;
+    html += safeHtml`<div class="inspector-warning-banner">${semanticWarning}</div>`.toString();
   }
 
   if (evictedFinalizationHistoryMayBeTruncated) {
@@ -748,7 +749,7 @@ export function renderFrameInspectorDom(
     const maxT = evictionHistoryMetadata.maxDiscardedTimestampS != null
       ? `${evictionHistoryMetadata.maxDiscardedTimestampS.toFixed(3)}s`
       : '—';
-    html += `<div class="inspector-warning-banner inspector-eviction-truncation-notice">Node-eviction drop finalization history may be truncated near this frame (${evictionHistoryMetadata.discardedEvictionCount} pruned record(s) observed across [${minT}, ${maxT}]).</div>`;
+    html += safeHtml`<div class="inspector-warning-banner inspector-eviction-truncation-notice">Node-eviction drop finalization history may be truncated near this frame (${evictionHistoryMetadata.discardedEvictionCount} pruned record(s) observed across [${minT}, ${maxT}]).</div>`.toString();
   }
 
   // Spatial Kinematics Row
@@ -756,7 +757,7 @@ export function renderFrameInspectorDom(
   const spdKmh = Math.round(Math.hypot(acn.velX, acn.velY) * 3.6);
   const hdgDeg = Math.round((acn.headingRad * 180) / Math.PI);
 
-  html += `
+  html += safeHtml`
     <div class="inspector-grid-row">
       <div class="inspector-stat-group">
         <span class="stat-label">ACN Position</span>
@@ -772,7 +773,7 @@ export function renderFrameInspectorDom(
       </div>
       ${
         selectedLinkBudget
-          ? `
+          ? safeHtml`
       <div class="inspector-stat-group">
         <span class="stat-label">Selected Link</span>
         <span class="stat-val">${selectedLinkBudget.snrDb.toFixed(1)} dB · ${selectedLinkBudget.modcodName} · Gas: ${selectedLinkBudget.gasLossDb.toFixed(2)}dB · Rain: ${selectedLinkBudget.rainLossDb.toFixed(2)}dB</span>
@@ -781,7 +782,7 @@ export function renderFrameInspectorDom(
           : ''
       }
     </div>
-  `;
+  `.toString();
 
   // Scheduler Comparison Table (Option I2)
   if (comparison) {
@@ -798,7 +799,7 @@ export function renderFrameInspectorDom(
     const dGoodput = (d.deltaGoodputBps / 1e6).toFixed(2);
     const dGoodputRel = d.deltaGoodputRelPct !== null ? `(${d.deltaGoodputRelPct >= 0 ? '+' : ''}${d.deltaGoodputRelPct.toFixed(1)}%)` : '';
 
-    html += `
+    html += safeHtml`
       <table class="inspector-comparison-table">
         <thead>
           <tr>
@@ -847,21 +848,21 @@ export function renderFrameInspectorDom(
           </tr>
         </tbody>
       </table>
-    `;
+    `.toString();
   } else {
-    html += `
+    const noticeText =
+      communicationHistoryStatus === 'IN_FLIGHT_PENDING'
+        ? 'Current TDMA superframe is actively in-flight. Metrics will populate upon epoch completion.'
+        : communicationHistoryStatus === 'HISTORY_EVICTED'
+        ? 'Communication epoch history for this time has been evicted from the rolling 6,000-record buffer.'
+        : communicationHistoryStatus === 'PRE_SIMULATION'
+        ? 'Simulation origin: frame interval ends at or before t = 0.0 s.'
+        : 'No communication epoch recorded for this interval.';
+    html += safeHtml`
       <div class="inspector-status-notice muted">
-        ${
-          communicationHistoryStatus === 'IN_FLIGHT_PENDING'
-            ? 'Current TDMA superframe is actively in-flight. Metrics will populate upon epoch completion.'
-            : communicationHistoryStatus === 'HISTORY_EVICTED'
-            ? 'Communication epoch history for this time has been evicted from the rolling 6,000-record buffer.'
-            : communicationHistoryStatus === 'PRE_SIMULATION'
-            ? 'Simulation origin: frame interval ends at or before t = 0.0 s.'
-            : 'No communication epoch recorded for this interval.'
-        }
+        ${noticeText}
       </div>
-    `;
+    `.toString();
   }
 
   if (evictionFinalizations.length > 0) {
@@ -869,7 +870,7 @@ export function renderFrameInspectorDom(
     html += '<div class="stat-label" style="margin-top:6px;">Synchronous Node-Delete Drop Finalizations</div>';
     for (let i = 0; i < evictionFinalizations.length; i++) {
       const ev = evictionFinalizations[i];
-      html += `<div class="inspector-eviction-row muted">${ev.schedulerId} · Node ${ev.nodeId} · ${ev.totalDroppedPkts} pkts (${ev.totalDroppedBytes} B: delay ${ev.droppedDelayBytes} B / overflow ${ev.droppedOverflowBytes} B) @ t=${ev.timestampS.toFixed(4)}s</div>`;
+      html += safeHtml`<div class="inspector-eviction-row muted">${ev.schedulerId} · Node ${ev.nodeId} · ${ev.totalDroppedPkts} pkts (${ev.totalDroppedBytes} B: delay ${ev.droppedDelayBytes} B / overflow ${ev.droppedOverflowBytes} B) @ t=${ev.timestampS.toFixed(4)}s</div>`.toString();
     }
     html += '</div>';
   }

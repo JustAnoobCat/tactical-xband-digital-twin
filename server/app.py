@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import hmac
 import io
 import json
 import math
+import os
 import sys
 import time
 import traceback
@@ -19,7 +21,8 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, WebSocket
+from fastapi import FastAPI, File, Request, UploadFile, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -1277,8 +1280,9 @@ class SimulationManager:
 # Broadcast hub: ONE simulation clock shared by every connected client
 # ----------------------------------------------------------------------------------------
 class TelemetryHub:
-    def __init__(self, sim: SimulationManager) -> None:
+    def __init__(self, sim: SimulationManager, lock: Optional[asyncio.Lock] = None) -> None:
         self.sim = sim
+        self.lock = lock or asyncio.Lock()
         self.clients: set[WebSocket] = set()
         self._task: Optional[asyncio.Task] = None
 
@@ -1309,7 +1313,8 @@ class TelemetryHub:
         next_tick = time.perf_counter()
         while self.clients:
             try:
-                frame = await self.sim.tick_simulation()
+                async with self.lock:
+                    frame = await self.sim.tick_simulation()
                 try:
                     payload = json.dumps(frame, allow_nan=False, separators=(",", ":"))
                 except (ValueError, TypeError):
@@ -1335,8 +1340,79 @@ class TelemetryHub:
 # FastAPI application & REST endpoints
 # ----------------------------------------------------------------------------------------
 app = FastAPI(title="Tactical X-Band Air-to-Ground Network Digital Twin")
+sim_lock = asyncio.Lock()
 sim = SimulationManager()
-hub = TelemetryHub(sim)
+hub = TelemetryHub(sim, sim_lock)
+
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+
+class DynamicCORSMiddleware(CORSMiddleware):
+    def is_allowed_origin(self, origin: str) -> bool:
+        env_origins = os.environ.get("XBAND_CORS_ORIGINS", "").strip()
+        if env_origins:
+            allowed = {o.strip() for o in env_origins.split(",") if o.strip()}
+            if origin in allowed:
+                return True
+        return super().is_allowed_origin(origin)
+
+
+app.add_middleware(
+    DynamicCORSMiddleware,
+    allow_origins=DEFAULT_CORS_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def _get_api_token() -> str:
+    return os.environ.get("XBAND_API_TOKEN", "").strip()
+
+
+def _verify_token(provided: Optional[str]) -> bool:
+    expected = _get_api_token()
+    if not expected:
+        return True
+    if not provided:
+        return False
+    return hmac.compare_digest(provided.strip(), expected)
+
+
+def _extract_token_from_headers(headers: Any) -> Optional[str]:
+    for key, val in headers.items():
+        if key.lower() == "x-api-key":
+            return val
+    auth = ""
+    for key, val in headers.items():
+        if key.lower() == "authorization":
+            auth = val
+            break
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return None
+
+
+@app.middleware("http")
+async def api_token_auth_middleware(request: Request, call_next: Callable[[Request], Any]) -> Any:
+    expected = _get_api_token()
+    if expected and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        token = _extract_token_from_headers(request.headers)
+        if not _verify_token(token):
+            return JSONResponse(
+                {"ok": False, "error": "Unauthorized: invalid or missing API token"},
+                status_code=401,
+            )
+    return await call_next(request)
+
 
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR), check_dir=False), name="static")
 
@@ -1410,7 +1486,8 @@ async def post_terrain_upload(file: UploadFile = File(...)) -> JSONResponse:
                 status_code=400,
             )
 
-        min_alt, max_alt = sim.load_custom_terrain_array(grid, source="custom")
+        async with sim_lock:
+            min_alt, max_alt = sim.load_custom_terrain_array(grid, source="custom")
         await hub.broadcast({
             "type": "TERRAIN_UPDATED",
             "source": "custom",
@@ -1440,7 +1517,8 @@ async def post_fetch_satellite() -> JSONResponse:
         if not ok or dem_array is None:
             return JSONResponse({"status": "error", "message": msg}, status_code=502)
 
-        min_alt, max_alt = sim.load_custom_terrain_array(dem_array, source="satellite")
+        async with sim_lock:
+            min_alt, max_alt = sim.load_custom_terrain_array(dem_array, source="satellite")
         await hub.broadcast({
             "type": "TERRAIN_UPDATED",
             "source": "satellite",
@@ -1458,6 +1536,41 @@ async def post_fetch_satellite() -> JSONResponse:
         return JSONResponse({"status": "error", "message": str(exc)}, status_code=500)
 
 
+@app.get("/api/capabilities")
+async def get_capabilities() -> dict[str, Any]:
+    return {
+        "engine": "python-reference-backend",
+        "canonical_runtime": "typescript-web-worker",
+        "parity_status": "reference-subset",
+        "version": "1.2.0",
+        "frequency_hz": 50,
+        "timestep_s": FRAME_DT,
+        "python_core_models": {
+            "link_budget": ["fspl", "itur_p676_absorption", "itur_p838_rain", "dvbs2x_modcod"],
+            "queues": ["strict_priority_5qi", "codel_sojourn", "deadline_pruning"],
+            "scheduler": ["legacy_static_tdma", "tac_tad_dynamic_tdma", "pre_occlusion_flush"],
+            "terrain": ["bilinear_dem_interpolation", "fbm_synthetic_relief", "earth_bulge_4_3", "deygout_p526_diffraction"],
+            "trajectory": ["elliptical_orbit_kinematics", "predictive_lookahead_4state"],
+        },
+        "typescript_only_features": [
+            "web_worker_discrete_event_loop",
+            "srtm_hgt_mosaic_decompression",
+            "quad_sector_antenna_switching",
+            "doppler_carrier_frequency_offset",
+            "electronic_warfare_jamming_sinr",
+            "active_multi_hop_ridge_relay_mesh",
+            "3gpp_ntn_rician_fading_cqi_aging",
+            "dvbs2x_iq_constellation_vsa",
+            "3gpp_ntn_rach_handover_ladder",
+            "5qi_sla_compliance_jains_fairness",
+            "worker_jitter_dossier_telemetry",
+            "precision_geodetic_instruments",
+            "tactical_ai_pathfinder",
+            "edge_ai_copilot_soldier_eud",
+        ],
+    }
+
+
 @app.get("/api/config")
 async def get_config() -> dict[str, Any]:
     return sim.config_snapshot()
@@ -1466,7 +1579,29 @@ async def get_config() -> dict[str, Any]:
 @app.post("/api/config")
 async def post_config(params: dict[str, Any]) -> JSONResponse:
     try:
-        return JSONResponse({"ok": True, "applied": sim.update_config(params)})
+        if not isinstance(params, dict):
+            return _error(ValueError("Payload must be a JSON dictionary."), status=400)
+        for raw_k, raw_v in params.items():
+            if raw_k == "terrain_mode":
+                if str(raw_v).lower().strip() not in ("real", "synthetic"):
+                    return _error(ValueError(f"Invalid terrain_mode '{raw_v}'. Must be 'real' or 'synthetic'."), status=400)
+                continue
+            key = _PARAM_ALIASES.get(raw_k, raw_k)
+            if key in _CONFIG_BINDINGS:
+                try:
+                    val = float(raw_v)
+                except (TypeError, ValueError):
+                    return _error(ValueError(f"Parameter '{raw_k}' must be numeric."), status=400)
+                if not math.isfinite(val):
+                    return _error(ValueError(f"Parameter '{raw_k}' must be finite (got {raw_v})."), status=400)
+                if raw_k in _KM_PARAMS:
+                    val *= 1000.0
+                _, _, _, lo, hi = _CONFIG_BINDINGS[key]
+                if (lo > 0 and val < 0) or val < lo * 0.01 or val > hi * 100:
+                    return _error(ValueError(f"Parameter '{raw_k}' value {raw_v} is out of allowable bounds [{lo}, {hi}]."), status=400)
+        async with sim_lock:
+            applied = sim.update_config(params)
+        return JSONResponse({"ok": True, "applied": applied})
     except Exception as exc:
         traceback.print_exc()
         return _error(exc)
@@ -1475,7 +1610,10 @@ async def post_config(params: dict[str, Any]) -> JSONResponse:
 @app.post("/api/preset")
 async def post_preset(req: PresetRequest) -> JSONResponse:
     try:
-        res = sim.load_preset(req.preset_id)
+        if not req.preset_id or not isinstance(req.preset_id, str):
+            return _error(ValueError("preset_id must be a non-empty string."), status=400)
+        async with sim_lock:
+            res = sim.load_preset(req.preset_id)
         return JSONResponse(res)
     except Exception as exc:
         traceback.print_exc()
@@ -1485,7 +1623,16 @@ async def post_preset(req: PresetRequest) -> JSONResponse:
 @app.post("/api/node/move")
 async def post_move(req: NodeMoveRequest) -> JSONResponse:
     try:
-        sim.move_node(req.node_id, req.x_m, req.y_m)
+        if req.node_id != ACN_ID and not (0 <= req.node_id < NUM_NODES):
+            return _error(ValueError(f"Invalid node_id {req.node_id}. Must be {ACN_ID} (ACN) or 0..{NUM_NODES - 1}."), status=400)
+        if not (isinstance(req.x_m, (int, float, np.number)) and isinstance(req.y_m, (int, float, np.number))):
+            return _error(ValueError("Coordinates x_m and y_m must be numeric."), status=400)
+        if not (math.isfinite(float(req.x_m)) and math.isfinite(float(req.y_m))):
+            return _error(ValueError("Coordinates x_m and y_m must be finite numbers."), status=400)
+        if abs(float(req.x_m)) > THEATER_HALF_M * 2 or abs(float(req.y_m)) > THEATER_HALF_M * 2:
+            return _error(ValueError(f"Coordinates exceed theater bounds: x_m={req.x_m}, y_m={req.y_m}"), status=400)
+        async with sim_lock:
+            sim.move_node(req.node_id, float(req.x_m), float(req.y_m))
         return JSONResponse({"ok": True})
     except Exception as exc:
         traceback.print_exc()
@@ -1495,7 +1642,14 @@ async def post_move(req: NodeMoveRequest) -> JSONResponse:
 @app.post("/api/traffic/inject")
 async def post_inject(req: InjectRequest) -> JSONResponse:
     try:
-        return JSONResponse({"ok": True, "enqueued_pkts": sim.inject_traffic(req.node_id, req.traffic_type)})
+        if not (0 <= req.node_id < NUM_NODES):
+            return _error(ValueError(f"Invalid node_id {req.node_id}. Must be 0..{NUM_NODES - 1}."), status=400)
+        tt = str(req.traffic_type or "").upper().strip()
+        if not tt or (tt not in TRAFFIC_ALIASES and tt not in QOS_PROFILES):
+            return _error(ValueError(f"Unsupported traffic type '{req.traffic_type}'."), status=400)
+        async with sim_lock:
+            enqueued = sim.inject_traffic(req.node_id, req.traffic_type)
+        return JSONResponse({"ok": True, "enqueued_pkts": enqueued})
     except Exception as exc:
         traceback.print_exc()
         return _error(exc)
@@ -1504,8 +1658,20 @@ async def post_inject(req: InjectRequest) -> JSONResponse:
 @app.post("/api/control")
 async def post_control(req: ControlRequest) -> JSONResponse:
     try:
+        if not req.action:
+            return _error(ValueError("Action required"), status=400)
+        if req.speed is not None:
+            if not isinstance(req.speed, (int, float, np.number)) or not math.isfinite(float(req.speed)) or float(req.speed) < 0 or float(req.speed) > 100:
+                return _error(ValueError(f"Speed must be finite in range [0, 100], got {req.speed}."), status=400)
+        if req.value is not None:
+            if not isinstance(req.value, (int, float, np.number)) or not math.isfinite(float(req.value)):
+                return _error(ValueError(f"Value must be finite, got {req.value}."), status=400)
+        if req.node_id is not None and req.node_id != ACN_ID and not (0 <= req.node_id < NUM_NODES):
+            return _error(ValueError(f"Invalid node_id {req.node_id}."), status=400)
         data = req.model_dump() if hasattr(req, "model_dump") else req.dict()
-        sim.sim_control({k: v for k, v in data.items() if v is not None})
+        clean_data = {k: v for k, v in data.items() if v is not None}
+        async with sim_lock:
+            sim.sim_control(clean_data)
         return JSONResponse({"ok": True, "state": sim.config_snapshot()})
     except Exception as exc:
         traceback.print_exc()
@@ -1514,6 +1680,12 @@ async def post_control(req: ControlRequest) -> JSONResponse:
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
+    expected = _get_api_token()
+    if expected:
+        token = ws.query_params.get("token") or _extract_token_from_headers(ws.headers)
+        if not _verify_token(token):
+            await ws.close(code=1008, reason="Unauthorized: invalid or missing API token")
+            return
     await hub.connect(ws)
     try:
         while True:
@@ -1526,7 +1698,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             if not raw:
                 continue
             try:
-                sim.handle_message(json.loads(raw))
+                data = json.loads(raw)
+                async with sim_lock:
+                    sim.handle_message(data)
             except Exception:
                 traceback.print_exc()
     except Exception:

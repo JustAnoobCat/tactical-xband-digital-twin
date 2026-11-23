@@ -11,10 +11,10 @@
  */
 
 import { Position3D } from '../shared/types';
-import { RFConfig, EnvironmentConfig } from './config';
+import { RFConfig, EnvironmentConfig, NodeType } from './config';
 import { TerrainEngine, TerrainObstruction } from './terrain';
 import { QuadSectorAntennaEngine, AcnAttitudeState } from './antennaArray';
-import { LinkBudgetEngine } from './linkBudget';
+import { LinkBudgetEngine, LinkStatus } from './linkBudget';
 import type { ACNTrajectory } from './trajectory';
 
 export const NUM_AZIMUTHS = 36; // 10° angular steps: 0°, 10°, ..., 350°
@@ -34,14 +34,164 @@ export interface RelayAdvisorReport {
   readonly meanSinrToAcnDb: number;
 }
 
+export interface ViewshedParityOptions {
+  readonly nodeType?: NodeType | string;
+  readonly customTxPowerDbm?: number;
+  readonly customRxGainDbi?: number;
+  readonly attitudeOverride?: AcnAttitudeState;
+  readonly jammerInterferenceBySector?: readonly [number, number, number, number];
+  readonly stepIntervalM?: number;
+  readonly groundTerminalHeightM?: number;
+  readonly crestRadiusM?: number;
+  readonly curvatureLossDb?: number;
+}
+
+export interface ViewshedParityResult {
+  readonly position: Position3D;
+  readonly sinrDb: number;
+  readonly linkStatus: LinkStatus;
+  readonly obstruction: TerrainObstruction;
+  readonly isOutage: boolean;
+  readonly isLos: boolean;
+  readonly modcodName: string;
+  readonly bitrateMbps: number;
+}
+
+export interface ViewshedParityAuditReport {
+  readonly sampleCount: number;
+  readonly maxAbsErrorDb: number;
+  readonly meanAbsErrorDb: number;
+  readonly rmseDb: number;
+  readonly biasDb: number;
+  readonly classificationAgreementRate: number;
+  readonly disagreementIndices: readonly number[];
+}
+
+export type ViewshedSampleInput =
+  | number
+  | { readonly snrDb?: number; readonly sinrDb?: number; readonly isOutage?: boolean };
+
+/**
+ * Quantitative auditor measuring RF link-budget parity and classification agreement
+ * between viewshed grid samples and live link evaluations.
+ */
+export function auditViewshedLinkBudgetParity(
+  viewshedSamples: readonly ViewshedSampleInput[],
+  liveLinkSamples: readonly ViewshedSampleInput[],
+  linkMarginThresholdDb: number = -1.5
+): ViewshedParityAuditReport {
+  if (!viewshedSamples || !liveLinkSamples) {
+    return {
+      sampleCount: 0,
+      maxAbsErrorDb: 0.0,
+      meanAbsErrorDb: 0.0,
+      rmseDb: 0.0,
+      biasDb: 0.0,
+      classificationAgreementRate: 1.0,
+      disagreementIndices: [],
+    };
+  }
+
+  const count = Math.min(viewshedSamples.length, liveLinkSamples.length);
+  if (count === 0) {
+    return {
+      sampleCount: 0,
+      maxAbsErrorDb: 0.0,
+      meanAbsErrorDb: 0.0,
+      rmseDb: 0.0,
+      biasDb: 0.0,
+      classificationAgreementRate: 1.0,
+      disagreementIndices: [],
+    };
+  }
+
+  let validCount = 0;
+  let sumDiff = 0.0;
+  let sumAbsDiff = 0.0;
+  let sumSqDiff = 0.0;
+  let maxAbs = 0.0;
+  let agreementCount = 0;
+  const disagreementIndices: number[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const s1 = viewshedSamples[i];
+    const s2 = liveLinkSamples[i];
+
+    let v1: number | undefined;
+    let o1: boolean | undefined;
+    if (typeof s1 === 'number') {
+      if (Number.isFinite(s1)) v1 = s1;
+    } else if (s1 && typeof s1 === 'object') {
+      const num = s1.sinrDb !== undefined ? s1.sinrDb : s1.snrDb;
+      if (num !== undefined && Number.isFinite(num)) v1 = num;
+      o1 = s1.isOutage;
+    }
+
+    let v2: number | undefined;
+    let o2: boolean | undefined;
+    if (typeof s2 === 'number') {
+      if (Number.isFinite(s2)) v2 = s2;
+    } else if (s2 && typeof s2 === 'object') {
+      const num = s2.sinrDb !== undefined ? s2.sinrDb : s2.snrDb;
+      if (num !== undefined && Number.isFinite(num)) v2 = num;
+      o2 = s2.isOutage;
+    }
+
+    if (v1 === undefined || v2 === undefined) {
+      continue;
+    }
+
+    validCount++;
+    const diff = v1 - v2;
+    const absDiff = Math.abs(diff);
+    sumDiff += diff;
+    sumAbsDiff += absDiff;
+    sumSqDiff += diff * diff;
+    if (absDiff > maxAbs) maxAbs = absDiff;
+
+    const outage1 = o1 !== undefined ? o1 : v1 < linkMarginThresholdDb;
+    const outage2 = o2 !== undefined ? o2 : v2 < linkMarginThresholdDb;
+
+    if (outage1 === outage2) {
+      agreementCount++;
+    } else {
+      disagreementIndices.push(i);
+    }
+  }
+
+  if (validCount === 0) {
+    return {
+      sampleCount: 0,
+      maxAbsErrorDb: 0.0,
+      meanAbsErrorDb: 0.0,
+      rmseDb: 0.0,
+      biasDb: 0.0,
+      classificationAgreementRate: 1.0,
+      disagreementIndices: [],
+    };
+  }
+
+  return {
+    sampleCount: validCount,
+    maxAbsErrorDb: Number(maxAbs.toFixed(4)),
+    meanAbsErrorDb: Number((sumAbsDiff / validCount).toFixed(4)),
+    rmseDb: Number(Math.sqrt(sumSqDiff / validCount).toFixed(4)),
+    biasDb: Number((sumDiff / validCount).toFixed(4)),
+    classificationAgreementRate: Number((agreementCount / validCount).toFixed(4)),
+    disagreementIndices,
+  };
+}
+
 export class PolarViewshedEngine {
   // Pre-allocated Float32Array: 0 heap allocations in the 50 Hz discrete simulation loop
   private readonly sinrGridDb = new Float32Array(TOTAL_VIEWSHED_CELLS);
   private nextAzimuthSliceIndex: number = 0;
   private readonly antennaEngine: QuadSectorAntennaEngine;
+  private readonly linkBudgetEngine: LinkBudgetEngine;
 
-  constructor(antennaEngine?: QuadSectorAntennaEngine) {
+  constructor(antennaEngine?: QuadSectorAntennaEngine, linkBudgetEngine?: LinkBudgetEngine) {
     this.antennaEngine = antennaEngine ?? new QuadSectorAntennaEngine();
+    this.linkBudgetEngine = linkBudgetEngine ?? new LinkBudgetEngine();
     // Initialize with baseline noise floor / outage floor
     this.sinrGridDb.fill(-30.0);
   }
@@ -51,6 +201,101 @@ export class PolarViewshedEngine {
    */
   public getSinrGrid(): Float32Array {
     return this.sinrGridDb;
+  }
+
+  /**
+   * Evaluates physical RF link budget with exact parity against live UAV links.
+   * Leverages canonical terrain ray-marching, 4-sector antenna roll-off, and LinkBudgetEngine.evaluateLink.
+   */
+  public evaluateViewshedPointWithParity(
+    target: Position3D | { worldBearingDeg: number; rangeM: number },
+    acnPos: Position3D,
+    acnVel: Position3D,
+    terrain: TerrainEngine,
+    rf: RFConfig,
+    env: EnvironmentConfig,
+    options?: ViewshedParityOptions
+  ): ViewshedParityResult {
+    let cellPos: Position3D;
+    let slantDistM: number;
+    const terminalHeight = options?.groundTerminalHeightM ?? 2.0;
+
+    if ('worldBearingDeg' in target) {
+      const radBearing = (target.worldBearingDeg * Math.PI) / 180.0;
+      const sinB = Math.sin(radBearing);
+      const cosB = Math.cos(radBearing);
+      const cellX = acnPos[0] + target.rangeM * sinB;
+      const cellY = acnPos[1] + target.rangeM * cosB;
+      let zGround = terrain.getElevation(cellX, cellY);
+      if (!Number.isFinite(zGround)) {
+        zGround = 0.0;
+      }
+      const cellZ = zGround + terminalHeight;
+      cellPos = [cellX, cellY, cellZ];
+      const dx = cellX - acnPos[0];
+      const dy = cellY - acnPos[1];
+      const dz = cellZ - acnPos[2];
+      slantDistM = Math.max(Math.hypot(dx, dy, dz), 1.0);
+    } else {
+      cellPos = target;
+      const dx = cellPos[0] - acnPos[0];
+      const dy = cellPos[1] - acnPos[1];
+      const dz = cellPos[2] - acnPos[2];
+      slantDistM = Math.max(Math.hypot(dx, dy, dz), 1.0);
+    }
+
+    const stepIntervalM = options?.stepIntervalM ?? 100.0;
+    const obs = terrain.evaluateTerrainObstruction(cellPos, acnPos, rf, env, stepIntervalM);
+
+    const attitude = options?.attitudeOverride ?? this.antennaEngine.computeAcnAttitude(acnVel);
+    const sectorEval = this.antennaEngine.evaluateNodeSector(
+      0,
+      acnPos,
+      acnVel,
+      cellPos,
+      rf.acnAntennaGainDbi,
+      false,
+      attitude
+    );
+
+    const activeSectorId = sectorEval.activeSectorId;
+    const jammerDbm = options?.jammerInterferenceBySector?.[activeSectorId];
+    const nodeType = options?.nodeType ?? 'soldier';
+    const customTxPowerDbm = options?.customTxPowerDbm;
+
+    const crestRadiusM = options?.crestRadiusM ?? obs.crestRadiusM;
+    const curvatureLossDb = options?.curvatureLossDb ?? obs.curvatureLossDb;
+
+    const linkStatus = this.linkBudgetEngine.evaluateLink(
+      nodeType,
+      slantDistM,
+      obs.diffractionLossDb,
+      rf,
+      env,
+      obs.obstacleBlocked,
+      customTxPowerDbm,
+      sectorEval,
+      cellPos[2],
+      acnPos[2],
+      crestRadiusM,
+      curvatureLossDb,
+      jammerDbm,
+      0,
+      0,
+      0,
+      options?.customRxGainDbi
+    );
+
+    return {
+      position: cellPos,
+      sinrDb: linkStatus.snrDb,
+      linkStatus,
+      obstruction: obs,
+      isOutage: linkStatus.isOutage,
+      isLos: obs.isLos,
+      modcodName: linkStatus.modcodName,
+      bitrateMbps: linkStatus.bitrateMbps,
+    };
   }
 
   /**
@@ -72,8 +317,22 @@ export class PolarViewshedEngine {
     rf: RFConfig,
     env: EnvironmentConfig,
     attitudeOverride?: AcnAttitudeState,
-    jammerInterferenceBySector?: readonly [number, number, number, number]
+    jammerInterferenceBySector?: readonly [number, number, number, number],
+    fidelityMode: 'fast' | 'link-budget-parity' = 'fast'
   ): number {
+    if (fidelityMode === 'link-budget-parity') {
+      const parity = this.evaluateViewshedPointWithParity(
+        { worldBearingDeg, rangeM },
+        acnPos,
+        acnVel,
+        terrain,
+        rf,
+        env,
+        { attitudeOverride, jammerInterferenceBySector }
+      );
+      return parity.sinrDb;
+    }
+
     const radBearing = (worldBearingDeg * Math.PI) / 180.0;
     const sinB = Math.sin(radBearing);
     const cosB = Math.cos(radBearing);
@@ -186,7 +445,8 @@ export class PolarViewshedEngine {
     rf: RFConfig,
     env: EnvironmentConfig,
     attitudeOverride?: AcnAttitudeState,
-    jammerInterferenceBySector?: readonly [number, number, number, number]
+    jammerInterferenceBySector?: readonly [number, number, number, number],
+    fidelityMode: 'fast' | 'link-budget-parity' = 'fast'
   ): void {
     const bearingDeg = (azimuthIndex * 10) % 360;
     const baseOffset = azimuthIndex * NUM_RANGES;
@@ -202,7 +462,8 @@ export class PolarViewshedEngine {
         rf,
         env,
         attitudeOverride,
-        jammerInterferenceBySector
+        jammerInterferenceBySector,
+        fidelityMode
       );
       this.sinrGridDb[baseOffset + j] = sinrDb;
     }
@@ -220,7 +481,8 @@ export class PolarViewshedEngine {
     env: EnvironmentConfig,
     sliceCount: number = 6,
     attitudeOverride?: AcnAttitudeState,
-    jammerInterferenceBySector?: readonly [number, number, number, number]
+    jammerInterferenceBySector?: readonly [number, number, number, number],
+    fidelityMode: 'fast' | 'link-budget-parity' = 'fast'
   ): void {
     const startAz = this.nextAzimuthSliceIndex;
     for (let k = 0; k < sliceCount; k++) {
@@ -233,7 +495,8 @@ export class PolarViewshedEngine {
         rf,
         env,
         attitudeOverride,
-        jammerInterferenceBySector
+        jammerInterferenceBySector,
+        fidelityMode
       );
     }
     this.nextAzimuthSliceIndex = (startAz + sliceCount) % NUM_AZIMUTHS;
@@ -250,7 +513,8 @@ export class PolarViewshedEngine {
     rf: RFConfig,
     env: EnvironmentConfig,
     attitudeOverride?: AcnAttitudeState,
-    jammerInterferenceBySector?: readonly [number, number, number, number]
+    jammerInterferenceBySector?: readonly [number, number, number, number],
+    fidelityMode: 'fast' | 'link-budget-parity' = 'fast'
   ): Float32Array {
     for (let a = 0; a < NUM_AZIMUTHS; a++) {
       this.computeAzimuthRay(
@@ -261,7 +525,8 @@ export class PolarViewshedEngine {
         rf,
         env,
         attitudeOverride,
-        jammerInterferenceBySector
+        jammerInterferenceBySector,
+        fidelityMode
       );
     }
     return this.sinrGridDb;

@@ -15,6 +15,7 @@ import {
   type MapLayerPresetId,
   MapLayerRegistry,
 } from './mapLayerRegistry';
+import { trustedHtml, sanitizeCssColor } from '../domSafety';
 
 export interface MapLayersPanelOptions {
   container: HTMLElement;
@@ -70,7 +71,7 @@ export class MapLayersPanel {
     this.buttonEl.setAttribute('aria-expanded', 'false');
     this.buttonEl.setAttribute('aria-controls', 'map-layers-popover');
 
-    this.buttonEl.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>`;
+    this.buttonEl.innerHTML = trustedHtml(`<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>`).toString();
     this.buttonLabelEl = document.createElement('span');
     this.buttonLabelEl.textContent = `Layers · ${this.registry.getEnabledCount()}/${this.registry.getTotalCount()}`;
     this.buttonEl.appendChild(this.buttonLabelEl);
@@ -154,7 +155,7 @@ export class MapLayersPanel {
       expandBtn.className = 'mlp-cat-expand';
       expandBtn.setAttribute('aria-expanded', 'true');
       expandBtn.setAttribute('aria-label', `Toggle ${cat.label} group`);
-      expandBtn.innerHTML = `<svg viewBox="0 0 12 12" width="10" height="10" style="pointer-events:none;" aria-hidden="true"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      expandBtn.innerHTML = trustedHtml(`<svg viewBox="0 0 12 12" width="10" height="10" style="pointer-events:none;" aria-hidden="true"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`).toString();
 
       const catCheckbox = document.createElement('input');
       catCheckbox.type = 'checkbox';
@@ -193,7 +194,7 @@ export class MapLayersPanel {
 
         const swatch = document.createElement('span');
         swatch.className = 'mlp-swatch';
-        swatch.style.backgroundColor = def.swatchColor;
+        swatch.style.backgroundColor = sanitizeCssColor(def.swatchColor);
         swatch.setAttribute('aria-hidden', 'true');
 
         const nameSpan = document.createElement('span');

@@ -140,6 +140,37 @@ import {
   PROFILE_FRESNEL_FRACTION,
 } from '../core/profileEngine';
 import { PolarViewshedEngine, type RelayAdvisorReport } from '../core/viewshedEngine';
+import {
+  collectTransferables,
+  cloneToTransferableFloat32,
+  packFloat32Grid,
+  packTerrainProfileTyped,
+  packConstellationIQ,
+  type PackedGridFloat32,
+  type UnpackedGridFloat32,
+  type UnpackedTerrainProfile,
+  type UnpackedConstellationIQ,
+} from '../core/ipcTransferCodec';
+import {
+  BoundedReplayBuffer,
+  type ReplayBufferStats,
+  type ReplayFrameEntry,
+  type ReplayBufferMode,
+} from '../core/boundedReplayBuffer';
+import {
+  computeDelayQuantiles as computeDelayQuantilesHelper,
+  extractSchedulerEpochMetrics as extractSchedulerEpochMetricsHelper,
+  createSuperframeEpochRecord,
+  buildSpatialFrameSnapshot,
+} from './workerKpiHelpers';
+import {
+  validateConfigUpdateParams,
+  validateNodeMoveCommand,
+  validatePresetCommand,
+  validateTrafficInjectionCommand,
+  resolveScientificParams,
+  resolveViewshedConfig,
+} from './workerCommandValidators';
 
 export {
   FRAME_DT,
@@ -155,6 +186,22 @@ export {
   normalizeSlotAllocationToFrame,
   PROFILE_FRESNEL_FRACTION,
   PolarViewshedEngine,
+  collectTransferables,
+  cloneToTransferableFloat32,
+  packFloat32Grid,
+  packTerrainProfileTyped,
+  packConstellationIQ,
+  BoundedReplayBuffer,
+  computeDelayQuantilesHelper as computeDelayQuantiles,
+  extractSchedulerEpochMetricsHelper as extractSchedulerEpochMetrics,
+  createSuperframeEpochRecord,
+  buildSpatialFrameSnapshot,
+  validateConfigUpdateParams,
+  validateNodeMoveCommand,
+  validatePresetCommand,
+  validateTrafficInjectionCommand,
+  resolveScientificParams,
+  resolveViewshedConfig,
 };
 export type {
   RelayAdvisorReport,
@@ -171,6 +218,13 @@ export type {
   NodeTransferState,
   TelemetrySimulationState,
   TerrainMeshGenerationResult,
+  PackedGridFloat32,
+  UnpackedGridFloat32,
+  UnpackedTerrainProfile,
+  UnpackedConstellationIQ,
+  ReplayBufferStats,
+  ReplayFrameEntry,
+  ReplayBufferMode,
 };
 
 const ANTENNA_HEIGHT_M = 2.0;
@@ -257,6 +311,27 @@ export class SimulationWorkerManager {
   public simulationRunId: number = 1;
   private evictionFinalizationIndex: number = 0;
   public pendingTimelineRecords: TimelineCommunicationRecord[] = [];
+  public readonly replayBuffer: BoundedReplayBuffer<TelemetryFrame> = new BoundedReplayBuffer<TelemetryFrame>({
+    maxFrames: 500,
+    mode: 'ring',
+  });
+
+  public getRetainedBuffers(): Set<ArrayBuffer> {
+    const retained = new Set<ArrayBuffer>();
+    try {
+      const viewshedBuf = this.viewshedEngine.getSinrGrid().buffer;
+      if (viewshedBuf instanceof ArrayBuffer) retained.add(viewshedBuf);
+    } catch {
+      // Ignored if uninitialized
+    }
+    try {
+      const demBuf = this.terrainEngine.realDemGrid?.buffer;
+      if (demBuf instanceof ArrayBuffer) retained.add(demBuf);
+    } catch {
+      // Ignored if uninitialized
+    }
+    return retained;
+  }
 
   public getLiveAcnPosition(): [number, number, number] {
     const p = this.trajectoryEngine.getAcnPosition(this.simTimeS);
@@ -268,7 +343,9 @@ export class SimulationWorkerManager {
   }
 
   public get viewshedSinrGrid(): Float32Array | undefined {
-    return this.viewshedEnabled ? this.viewshedEngine.getSinrGrid() : undefined;
+    return this.viewshedEnabled
+      ? cloneToTransferableFloat32(this.viewshedEngine.getSinrGrid())
+      : undefined;
   }
 
   public get relayAdvisor(): RelayAdvisorReport | undefined {
@@ -276,37 +353,7 @@ export class SimulationWorkerManager {
   }
 
   public computeDelayQuantiles(nodes: readonly GroundNodeTrafficSubsystem[]): number[] {
-    const delaysMs: number[] = [];
-    const qosList = [69, 65, 67, 70];
-    for (let i = 0; i < nodes.length; i++) {
-      const q = nodes[i].queue;
-      for (let j = 0; j < 4; j++) {
-        const qos = qosList[j];
-        if (q.getClassPacketCount(qos) > 0) {
-          const dMs = q.getHolDelayS(qos, this.simTimeS) * 1000.0;
-          if (Number.isFinite(dMs) && dMs >= 0) {
-            delaysMs.push(dMs);
-          }
-        }
-      }
-    }
-    if (delaysMs.length === 0) {
-      return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-    }
-    delaysMs.sort((a, b) => a - b);
-    const getQuantile = (q: number) => {
-      const idx = Math.min(delaysMs.length - 1, Math.max(0, Math.floor(q * (delaysMs.length - 1))));
-      return Number(delaysMs[idx].toFixed(2));
-    };
-    return [
-      getQuantile(0.10),
-      getQuantile(0.25),
-      getQuantile(0.50),
-      getQuantile(0.75),
-      getQuantile(0.90),
-      getQuantile(0.95),
-      getQuantile(0.99),
-    ];
+    return computeDelayQuantilesHelper(nodes, this.simTimeS);
   }
 
   public get staticDelayEcdfMs(): readonly number[] {
@@ -615,8 +662,12 @@ export class SimulationWorkerManager {
   private emitHostMessage(message: WorkerOutboundMessage, transferList?: Transferable[]): void {
     // Keep the engine importable in Node-based headless benchmarks.
     if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
-      if (transferList && transferList.length > 0) {
-        self.postMessage(message, transferList as any);
+      const actualTransferList = (transferList && transferList.length > 0)
+        ? transferList
+        : collectTransferables(message, { excludeBuffers: this.getRetainedBuffers() });
+
+      if (actualTransferList && actualTransferList.length > 0) {
+        self.postMessage(message, actualTransferList as any);
       } else {
         self.postMessage(message);
       }
@@ -890,6 +941,9 @@ export class SimulationWorkerManager {
 
     // Capture spatial snapshot for batch preservation (TL-T16)
     this.batchSpatialSnapshots.push(this.captureSpatialFrameSnapshot(acnPos));
+    if (this.batchSpatialSnapshots.length > 5000) {
+      this.batchSpatialSnapshots.splice(0, this.batchSpatialSnapshots.length - 5000);
+    }
 
     // TDMA Superframe Scheduling via Temporal Accumulator (Resolving Audit Finding 1)
     this.tdmaAccumulatorS += FRAME_DT;
@@ -973,6 +1027,7 @@ export class SimulationWorkerManager {
     // 6. Dispatch frame to main UI thread
     if (emitTelemetry) {
       const frame = this.buildTelemetryFrame(acnPos);
+      this.replayBuffer.push(t, frame, false);
       (frame as any).batch_spatial_snapshots = this.batchSpatialSnapshots.splice(0);
       (frame as any).completed_superframes = this.pendingTimelineRecords.splice(0);
       this.emitHostMessage({
@@ -1139,75 +1194,30 @@ export class SimulationWorkerManager {
     const vx = vel[0];
     const vy = vel[1];
     const vz = this.liveVzMps;
-    const vHoriz = Math.hypot(vx, vy);
-    const headingRad = Math.atan2(vy, vx);
-    const pitchDeg = (Math.atan2(vz, vHoriz) * 180.0) / Math.PI;
-    const terrainZ = this.terrainEngine.getElevation(acnPos[0], acnPos[1]);
-    const altitudeAglM = this.liveAltitudeM - terrainZ;
     const acnVel: [number, number, number] = [vx, vy, vz];
     const attitude = this.antennaEngine.computeAcnAttitude(acnVel, this.simTimeS, false);
+    const terrainElevation = this.terrainEngine.getElevation(acnPos[0], acnPos[1]);
 
-    const nodesSnapshot: SpatialNodeSnapshot[] = this.nodesTac.map((n) => {
-      const obs = this.obstructionResults.get(n.nodeId);
-      const ls = this.linkStatuses.get(n.nodeId);
-      const ps = this.predStates.get(n.nodeId);
-      return {
-        nodeId: n.nodeId,
-        posX: n.position[0],
-        posY: n.position[1],
-        posZ: n.position[2],
-        altitudeMslM: n.position[2],
-        altitudeAglM: n.aglM,
-        isLos: obs?.isLos ?? true,
-        isOutage: ls?.isOutage ?? true,
-        isObstacleBlocked: ls?.obstacleBlocked ?? false,
-        snrDb: ls?.snrDb ?? 0.0,
-        currentState: ps?.currentState ?? NodeTerrainState.NORMAL_LOS,
-        active_sector_id: ls?.activeSectorId,
-        pattern_rolloff_db: ls?.patternRollOffDb,
-      };
-    });
-
-    const selLs = this.selectedNodeId >= 0 ? this.linkStatuses.get(this.selectedNodeId) : undefined;
-    const selectedLinkBudget: SpatialLinkBudgetSnapshot | null = selLs
-      ? {
-          slantRangeM: selLs.slantRangeM,
-          fsplDb: selLs.fsplDb,
-          diffractionLossDb: selLs.diffractionLossDb,
-          gasLossDb: selLs.gasLossDb,
-          rainLossDb: selLs.rainLossDb,
-          totalLossDb: selLs.totalLossDb,
-          snrDb: selLs.snrDb,
-          modcodName: selLs.modcodName,
-          bitrateMbps: selLs.bitrateMbps,
-          isOutage: selLs.isOutage,
-        }
-      : null;
-
-    return {
+    return buildSpatialFrameSnapshot({
       frameIndex: this.frameIndex,
-      simulationTimeS: this.simTimeS,
+      simTimeS: this.simTimeS,
       wallClockTimeMs: performance.now(),
       spatialRevision: this.spatialRevision,
-      acn: {
-        posX: acnPos[0],
-        posY: acnPos[1],
-        posZ: this.liveAltitudeM,
-        velX: vx,
-        velY: vy,
-        velZ: vz,
-        headingRad,
-        pitchDeg,
-        altitudeMslM: this.liveAltitudeM,
-        altitudeAglM,
-        coverageRadiusKm: this.flightConfig.coverageRadiusKm,
-        isTerrainClamped: this.isTerrainClamped,
-      },
-      nodes: nodesSnapshot,
-      selectedLinkBudget,
-      acn_heading_deg: attitude.headingDeg,
-      acn_bank_deg: attitude.bankDeg,
-    };
+      acnPos,
+      acnVel,
+      liveAltitudeM: this.liveAltitudeM,
+      liveVzMps: this.liveVzMps,
+      terrainElevation,
+      coverageRadiusKm: this.flightConfig.coverageRadiusKm,
+      isTerrainClamped: this.isTerrainClamped,
+      attitudeHeadingDeg: attitude.headingDeg,
+      attitudeBankDeg: attitude.bankDeg,
+      nodesTac: this.nodesTac,
+      obstructionResults: this.obstructionResults,
+      linkStatuses: this.linkStatuses,
+      predStates: this.predStates,
+      selectedNodeId: this.selectedNodeId,
+    });
   }
 
   private extractSchedulerEpochMetrics(
@@ -1215,81 +1225,29 @@ export class SimulationWorkerManager {
     nodes: readonly GroundNodeTrafficSubsystem[],
     simTimeS: number
   ): SchedulerEpochMetrics {
-    let endQueueDepthPkts = 0;
-    let endBacklogBytes = 0;
-    let totalHolDelayS = 0;
-    let holCount = 0;
-    const qosList = [69, 65, 67, 70];
-
-    for (let i = 0; i < nodes.length; i++) {
-      const q = nodes[i].queue;
-      endQueueDepthPkts += q.getTotalPackets();
-      endBacklogBytes += q.getTotalBacklogBytes();
-      for (let j = 0; j < 4; j++) {
-        const qos = qosList[j];
-        if (q.getClassPacketCount(qos) > 0) {
-          holCount++;
-          totalHolDelayS += q.getHolDelayS(qos, simTimeS);
-        }
-      }
-    }
-
-    const meanHeadOfLineSojournMs = holCount > 0 ? (totalHolDelayS / holCount) * 1000.0 : null;
-
-    if (!report) {
-      return {
-        transmittedNonOutageBits: 0,
-        outageWastedBits: 0,
-        totalPayloadBitsDequeued: 0,
-        droppedDelayPkts: 0,
-        droppedOverflowPkts: 0,
-        totalDroppedPkts: 0,
-        droppedDelayBytes: 0,
-        droppedOverflowBytes: 0,
-        totalDroppedBytes: 0,
-        ulUtilizationPct: 0,
-        endQueueDepthPkts,
-        endBacklogBytes,
-        meanHeadOfLineSojournMs,
-      };
-    }
-    return {
-      transmittedNonOutageBits: report.totalBitsTransmitted,
-      outageWastedBits: report.totalBitsWastedOnOutage,
-      totalPayloadBitsDequeued: report.totalPayloadBitsDequeued,
-      droppedDelayPkts: report.packetsDroppedDelayThisFrame,
-      droppedOverflowPkts: report.packetsDroppedOverflowThisFrame,
-      totalDroppedPkts: report.packetsDroppedDelayThisFrame + report.packetsDroppedOverflowThisFrame,
-      droppedDelayBytes: report.droppedDelayBytesThisFrame ?? report.droppedDelayBytes,
-      droppedOverflowBytes: report.droppedOverflowBytesThisFrame ?? report.droppedOverflowBytes,
-      totalDroppedBytes: report.totalDroppedBytesThisFrame ?? report.totalDroppedBytes,
-      ulUtilizationPct: report.totalUlUtilizationPct,
-      endQueueDepthPkts,
-      endBacklogBytes,
-      meanHeadOfLineSojournMs,
-    };
+    return extractSchedulerEpochMetricsHelper(report, nodes, simTimeS);
   }
 
   private recordSuperframeEpoch(durationS: number): void {
-    const startFrame = Math.floor(this.tdmaSimTimeS / FRAME_DT + 1e-6) + 1;
-    const endFrame = Math.max(startFrame, Math.ceil((this.tdmaSimTimeS + durationS) / FRAME_DT - 1e-6));
-
-    const epochRecord: SuperframeEpochRecord = {
-      recordType: 'EPOCH',
+    const epochRecord = createSuperframeEpochRecord({
+      tdmaSimTimeS: this.tdmaSimTimeS,
+      durationS,
       simulationRunId: this.simulationRunId,
       epochIndex: this.superframeEpochIndex++,
-      startTimeS: this.tdmaSimTimeS,
-      endTimeS: this.tdmaSimTimeS + durationS,
-      durationMs: durationS * 1000.0,
+      frameDt: FRAME_DT,
       configuredDurationMs: this.tdmaConfig.frameDurationMs,
       nominalSimTimeS: this.simTimeS,
       associatedSimulationFrameIndex: this.frameIndex,
-      coveredFrameRange: [startFrame, endFrame],
-      staticMetrics: this.extractSchedulerEpochMetrics(this.lastReportStatic, this.nodesStatic, this.simTimeS),
-      tacMetrics: this.extractSchedulerEpochMetrics(this.lastReportTac, this.nodesTac, this.simTimeS),
+      lastReportStatic: this.lastReportStatic,
+      lastReportTac: this.lastReportTac,
+      nodesStatic: this.nodesStatic,
+      nodesTac: this.nodesTac,
       activeSchedulerMode: this.schedulerMode === 'static' ? 'static' : 'tac_tad',
-    };
+    });
     this.pendingTimelineRecords.push(epochRecord);
+    if (this.pendingTimelineRecords.length > 5000) {
+      this.pendingTimelineRecords.splice(0, this.pendingTimelineRecords.length - 5000);
+    }
     this.tdmaSimTimeS += durationS;
   }
 
@@ -2343,14 +2301,18 @@ export class SimulationWorkerManager {
 
       case 'NODE_MOVE': {
         if (this.spatialLocked) return locked();
+        const moveValidation = validateNodeMoveCommand(
+          msg,
+          (id) => this.nodeRegistry.hasNodeId(id),
+          ACN_ID,
+          THEATER_HALF_M
+        );
+        if (!moveValidation.valid) {
+          return reject(moveValidation.reason!);
+        }
         const nid = msg.node_id;
         const xm = msg.x_m;
         const ym = msg.y_m;
-        if (!Number.isInteger(nid) || (nid !== ACN_ID && !this.nodeRegistry.hasNodeId(nid)) ||
-            !isFiniteNumber(xm) || !isFiniteNumber(ym) ||
-            Math.abs(xm) > THEATER_HALF_M || Math.abs(ym) > THEATER_HALF_M) {
-          return reject('NODE_MOVE requires valid node_id and finite x_m/y_m within the terrain bounds (±600000 m).');
-        }
         if (nid === ACN_ID) {
           const deltaX = xm - this.flightConfig.centerXm;
           const deltaY = ym - this.flightConfig.centerYm;
@@ -2386,15 +2348,15 @@ export class SimulationWorkerManager {
       }
 
       case 'LOAD_PRESET': {
-        if (typeof msg.preset_id !== 'string') return reject('preset_id must be a string.');
-        const pid = msg.preset_id.toUpperCase();
-        const isOcclusion = pid === 'PRESET_OCCLUSION';
-        const isAmbush = pid === 'PRESET_AMBUSH';
-        const isMonsoon = pid === 'PRESET_MONSOON';
-        const isReset = pid === 'PRESET_RESET';
-        const isAcnOnly = pid === 'PRESET_ACN_ONLY' || pid === 'PRESET_ZERO_NODES';
-        const is16Nodes = pid === 'PRESET_16_NODES' || pid === 'PRESET_CANONICAL_16' || pid === 'PRESET_DEFAULT';
-        if (!isOcclusion && !isAmbush && !isMonsoon && !isReset && !isAcnOnly && !is16Nodes) return reject('Unknown preset.');
+        const presetValidation = validatePresetCommand(msg.preset_id);
+        if (!presetValidation.valid) return reject(presetValidation.reason!);
+        const pidKey = presetValidation.presetKey!;
+        const isOcclusion = pidKey === 'OCCLUSION';
+        const isAmbush = pidKey === 'AMBUSH';
+        const isMonsoon = pidKey === 'MONSOON';
+        const isReset = pidKey === 'RESET';
+        const isAcnOnly = pidKey === 'ACN_ONLY';
+        const is16Nodes = pidKey === '16_NODES';
         if (this.spatialLocked && (isOcclusion || isReset || isAcnOnly || is16Nodes)) return locked();
 
         if (isAcnOnly) {
@@ -2493,8 +2455,13 @@ export class SimulationWorkerManager {
       }
 
       case 'INJECT_TRAFFIC': {
-        const nid = msg.node_id === undefined ? this.selectedNodeId : msg.node_id;
-        if (!Number.isInteger(nid) || !this.nodeRegistry.hasNodeId(nid)) return reject('node_id must identify a registered ground node.');
+        const trafficValidation = validateTrafficInjectionCommand(
+          msg,
+          (id) => this.nodeRegistry.hasNodeId(id),
+          this.selectedNodeId
+        );
+        if (!trafficValidation.valid) return reject(trafficValidation.reason!);
+        const nid = trafficValidation.resolvedNodeId!;
         const staticNode = this.nodesStatic.find(n => n.nodeId === nid);
         const tacNode = this.nodesTac.find(n => n.nodeId === nid);
         if (!staticNode || !tacNode) return reject('node_id must identify an active ground node.');
@@ -2509,76 +2476,47 @@ export class SimulationWorkerManager {
       }
 
       case 'SET_SCIENTIFIC_PARAMS': {
-        if (msg.viewshedEnabled !== undefined) {
-          this.viewshedEnabled = Boolean(msg.viewshedEnabled);
+        const sci = resolveScientificParams(msg, this.envConfig);
+        if (sci.viewshedEnabled !== undefined) {
+          this.viewshedEnabled = sci.viewshedEnabled;
         }
-        if (msg.recomputeRelayAdvisor) {
+        if (sci.recomputeRelayAdvisor) {
           this.computeRelayAdvisor();
         }
-        const demError = msg.demLookaheadErrorStdM !== undefined && Number.isFinite(msg.demLookaheadErrorStdM)
-          ? Math.max(0.0, Math.min(25.0, msg.demLookaheadErrorStdM))
-          : this.envConfig.demLookaheadErrorStdM;
-        const trafficScale = msg.trafficLoadMultiplier !== undefined && Number.isFinite(msg.trafficLoadMultiplier)
-          ? Math.max(0.25, Math.min(8.0, msg.trafficLoadMultiplier))
-          : (this.envConfig.trafficLoadMultiplier ?? 1.0);
-        const jammerEnabled = msg.jammerEnabled !== undefined ? Boolean(msg.jammerEnabled) : this.envConfig.jammerEnabled;
-        const jammerEirpDbm = msg.jammerEirpDbm !== undefined && Number.isFinite(msg.jammerEirpDbm)
-          ? msg.jammerEirpDbm
-          : this.envConfig.jammerEirpDbm;
-        const activeRelayEnabled = msg.activeRelayEnabled !== undefined ? Boolean(msg.activeRelayEnabled) : this.envConfig.activeRelayEnabled;
-        const ricianFadingEnabled = msg.ricianFadingEnabled !== undefined ? Boolean(msg.ricianFadingEnabled) : this.envConfig.ricianFadingEnabled;
-        const cqiFeedbackDelayMs = msg.cqiFeedbackDelayMs !== undefined && Number.isFinite(msg.cqiFeedbackDelayMs)
-          ? msg.cqiFeedbackDelayMs
-          : this.envConfig.cqiFeedbackDelayMs;
-        const kFactor = msg.earthRadiusFactorK !== undefined && Number.isFinite(msg.earthRadiusFactorK)
-          ? Math.max(0.5, Math.min(10.0, msg.earthRadiusFactorK))
-          : this.envConfig.earthRadiusFactorK;
-
-        this.envConfig = new EnvironmentConfig({
-          ...this.envConfig,
-          demLookaheadErrorStdM: demError,
-          trafficLoadMultiplier: trafficScale,
-          jammerEnabled,
-          jammerEirpDbm,
-          activeRelayEnabled,
-          ricianFadingEnabled,
-          cqiFeedbackDelayMs,
-          earthRadiusFactorK: kFactor,
-          effectiveEarthRadiusFactor: kFactor,
-        });
+        this.envConfig = sci.nextEnvConfig;
         this.lookaheadEngine.setEnvConfig(this.envConfig);
         for (let i = 0; i < this.nodesStatic.length; i++) {
-          this.nodesStatic[i].trafficLoadMultiplier = trafficScale;
+          this.nodesStatic[i].trafficLoadMultiplier = sci.trafficScale;
         }
         for (let i = 0; i < this.nodesTac.length; i++) {
-          this.nodesTac[i].trafficLoadMultiplier = trafficScale;
+          this.nodesTac[i].trafficLoadMultiplier = sci.trafficScale;
         }
         for (let i = 0; i < this.nodesReactive.length; i++) {
-          this.nodesReactive[i].trafficLoadMultiplier = trafficScale;
+          this.nodesReactive[i].trafficLoadMultiplier = sci.trafficScale;
         }
         this.lookaheadEngine.invalidateAll();
-        if (msg.ricianFadingEnabled !== undefined && !msg.ricianFadingEnabled) {
+        if (sci.clearSinrHistory) {
           this.nodeSinrHistory.clear();
         }
-        if (msg.activeRelayEnabled !== undefined || msg.ricianFadingEnabled !== undefined || msg.cqiFeedbackDelayMs !== undefined || msg.earthRadiusFactorK !== undefined) {
+        if (sci.needsObstructionRefresh) {
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         }
         return result(true);
       }
 
       case 'SET_VIEWSHED_CONFIG': {
-        if (msg.viewshedEnabled !== undefined) {
-          this.viewshedEnabled = Boolean(msg.viewshedEnabled);
+        const v = resolveViewshedConfig(msg, this.envConfig);
+        if (v.viewshedEnabled !== undefined) {
+          this.viewshedEnabled = v.viewshedEnabled;
         }
-        if (msg.recomputeRelayAdvisor) {
+        if (v.recomputeRelayAdvisor) {
           this.computeRelayAdvisor();
         }
-        if (msg.activeRelayEnabled !== undefined) {
-          this.envConfig = new EnvironmentConfig({
-            ...this.envConfig,
-            activeRelayEnabled: Boolean(msg.activeRelayEnabled),
-          });
+        if (v.nextEnvConfig) {
+          this.envConfig = v.nextEnvConfig;
           this.lookaheadEngine.setEnvConfig(this.envConfig);
+        }
+        if (v.needsObstructionRefresh) {
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         }
         return result(true);
@@ -2662,129 +2600,36 @@ export class SimulationWorkerManager {
       case 'CONFIG_UPDATE':
       case 'UPDATE_PARAMS': {
         const p: ConfigUpdateParams = (msg.params && typeof msg.params === 'object' && !Array.isArray(msg.params)) ? msg.params : msg;
-        if (!p || typeof p !== 'object' || Array.isArray(p)) return reject('params must be an object.');
-        const numericKeys = ['carrier_freq_ghz', 'channel_bandwidth_mhz', 'rain_rate_mmh', 'acn_altitude_m', 'orbit_a_m', 'orbit_b_m',
-          'orbit_rotation_deg', 'loiter_speed_mps', 'acceleration_limit_mps2', 'deceleration_limit_mps2', 'coverage_radius_km', 'center_x_m', 'center_y_m', 'node_id', 'agl_m',
-          'target_agl_m', 'max_climb_rate_mps', 'max_descent_rate_mps'] as const;
-        for (const key of numericKeys) {
-          if (Object.prototype.hasOwnProperty.call(p, key) && !isFiniteNumber(p[key])) return reject(`${key} must be a finite number.`);
+        const validation = validateConfigUpdateParams(
+          p,
+          this.flightConfig,
+          this.tdmaConfig,
+          (id) => this.nodeRegistry.hasNodeId(id)
+        );
+        if (!validation.valid) {
+          return reject(validation.reason!);
         }
-        if (p.terrain_mode !== undefined && p.terrain_mode !== 'real' && p.terrain_mode !== 'synthetic') return reject('terrain_mode must be real or synthetic.');
-        if (p.trajectory_mode !== undefined && p.trajectory_mode !== 'ellipse' && p.trajectory_mode !== 'waypoints') return reject('trajectory_mode must be ellipse or waypoints.');
-        if (p.altitude_mode !== undefined && p.altitude_mode !== 'fix' && p.altitude_mode !== 'amsl' && p.altitude_mode !== 'agl') {
-          return reject("altitude_mode must be 'fix', 'amsl', or 'agl'.");
+        if (this.spatialLocked && (validation.changesTrajectory || validation.changesTerrain || validation.hasAgl)) {
+          return locked();
         }
-        if (p.carrier_freq_ghz !== undefined && p.carrier_freq_ghz <= 0) return reject('carrier_freq_ghz must be greater than zero.');
-        if (p.channel_bandwidth_mhz !== undefined && (p.channel_bandwidth_mhz < 0.1 || p.channel_bandwidth_mhz > 50.0)) return reject('channel_bandwidth_mhz must be between 0.1 and 50.0 MHz.');
-        if (p.rain_rate_mmh !== undefined && p.rain_rate_mmh < 0) return reject('rain_rate_mmh cannot be negative.');
-        if (p.acn_altitude_m !== undefined && (p.acn_altitude_m <= 0 || p.acn_altitude_m > 100000)) return reject('acn_altitude_m must be in (0, 100000].');
-        if (p.target_agl_m !== undefined && (p.target_agl_m <= 0 || p.target_agl_m > 100000)) return reject('target_agl_m must be in (0, 100000].');
-        if (p.max_climb_rate_mps !== undefined && (p.max_climb_rate_mps <= 0 || p.max_climb_rate_mps > 1000)) return reject('max_climb_rate_mps must be in (0, 1000].');
-        if (p.max_descent_rate_mps !== undefined && (p.max_descent_rate_mps <= 0 || p.max_descent_rate_mps > 1000)) return reject('max_descent_rate_mps must be in (0, 1000].');
-        if ((p.orbit_a_m !== undefined && (p.orbit_a_m <= 0 || p.orbit_a_m > THEATER_HALF_M)) || (p.orbit_b_m !== undefined && (p.orbit_b_m <= 0 || p.orbit_b_m > THEATER_HALF_M))) return reject('Orbit axes must be in (0, 600000] metres.');
-        if (p.orbit_rotation_deg !== undefined && Math.abs(p.orbit_rotation_deg) > 360) return reject('orbit_rotation_deg must be within ±360 degrees.');
-        if (p.loiter_speed_mps !== undefined && (p.loiter_speed_mps < 0 || p.loiter_speed_mps > 1000)) return reject('loiter_speed_mps must be in [0, 1000].');
-        if (p.acceleration_limit_mps2 !== undefined && (p.acceleration_limit_mps2 <= 0 || p.acceleration_limit_mps2 > 50)) return reject('acceleration_limit_mps2 must be in (0, 50].');
-        if (p.deceleration_limit_mps2 !== undefined && (p.deceleration_limit_mps2 <= 0 || p.deceleration_limit_mps2 > 50)) return reject('deceleration_limit_mps2 must be in (0, 50].');
-        if ((p.center_x_m !== undefined && Math.abs(p.center_x_m) > THEATER_HALF_M) || (p.center_y_m !== undefined && Math.abs(p.center_y_m) > THEATER_HALF_M)) return reject('Orbit center coordinates must be within ±600000 metres.');
-        if (p.coverage_radius_km !== undefined && (p.coverage_radius_km <= 0 || p.coverage_radius_km > 600)) return reject('coverage_radius_km must be in (0, 600].');
-        const hasAgl = p.agl_m !== undefined || p.node_id !== undefined;
-        if (hasAgl && (p.agl_m === undefined || p.node_id === undefined || !Number.isInteger(p.node_id) || !this.nodeRegistry.hasNodeId(p.node_id))) return reject('AGL updates require a valid ground node_id and agl_m.');
-        if (p.agl_m !== undefined && (p.agl_m < MIN_GROUND_AGL_M || p.agl_m > MAX_GROUND_AGL_M)) return reject(`agl_m must be between ${MIN_GROUND_AGL_M} and ${MAX_GROUND_AGL_M} metres.`);
-
-        let nextTdmaConfig: TdmaFrameConfig | null = null;
-        if (p.tdma_frame_config !== undefined) {
-          if (typeof p.tdma_frame_config !== 'object' || p.tdma_frame_config === null || Array.isArray(p.tdma_frame_config)) {
-            return reject('tdma_frame_config must be an object.');
-          }
-          try {
-            nextTdmaConfig = new TdmaFrameConfig({
-              ...this.tdmaConfig.toObject(),
-              ...p.tdma_frame_config,
-            });
-          } catch (error) {
-            return reject(error instanceof Error ? error.message : 'Invalid TDMA frame configuration.');
-          }
-        }
-
-        const nextMode = p.trajectory_mode ?? this.flightConfig.trajectoryMode;
-        if (p.waypoints !== undefined && nextMode !== 'waypoints') return reject('waypoints can only be edited while trajectory_mode is explicitly waypoints.');
-        let nextWaypoints = this.flightConfig.waypoints;
-        if (p.waypoints !== undefined) {
-          if (!Array.isArray(p.waypoints)) return reject('waypoints must be an array of {x_m, y_m} points.');
-          const parsed: { xM: number; yM: number; zM?: number }[] = [];
-          for (let i = 0; i < p.waypoints.length; i++) {
-            const point = p.waypoints[i] as any;
-            const xCandidate = point?.x_m ?? point?.xM;
-            const yCandidate = point?.y_m ?? point?.yM;
-            if (!point || typeof point !== 'object' || !isFiniteNumber(xCandidate) || !isFiniteNumber(yCandidate) ||
-                Math.abs(xCandidate) > THEATER_HALF_M || Math.abs(yCandidate) > THEATER_HALF_M) {
-              return reject(`Waypoint ${i} must have finite x_m/y_m coordinates within ±600000 metres.`);
-            }
-            const zCandidate = point.z_m ?? point.zM;
-            const zM = isFiniteNumber(zCandidate) ? zCandidate : undefined;
-            if (zM !== undefined && (zM < 0 || zM > 100000)) {
-              return reject(`Waypoint ${i} altitude must be in [0, 100000] metres.`);
-            }
-            parsed.push({
-              xM: xCandidate,
-              yM: yCandidate,
-              ...(zM !== undefined ? { zM } : {}),
-            });
-          }
-          if (parsed.length > MAX_ACN_WAYPOINTS) return reject(`waypoints cannot exceed ${MAX_ACN_WAYPOINTS} points.`);
-          nextWaypoints = parsed;
-        }
-        if (nextMode === 'waypoints' && (p.trajectory_mode === 'waypoints' || p.waypoints !== undefined) && nextWaypoints.length < 3) {
-          return reject('Switching to waypoint mode requires at least three waypoints.');
-        }
-        if (nextMode === 'waypoints' && (p.center_x_m !== undefined || p.center_y_m !== undefined)) return reject('center_x_m/center_y_m apply only to ellipse mode.');
-
-        const trajectoryKeys = [
-          'acn_altitude_m', 'altitude_mode', 'target_agl_m', 'max_climb_rate_mps', 'max_descent_rate_mps',
-          'orbit_a_m', 'orbit_b_m', 'orbit_rotation_deg', 'loiter_speed_mps',
-          'acceleration_limit_mps2', 'deceleration_limit_mps2',
-          'center_x_m', 'center_y_m', 'trajectory_mode', 'waypoints'
-        ] as const;
-        const changesTrajectory = trajectoryKeys.some(k => (p as any)[k] !== undefined);
-        const changesTerrain = p.terrain_mode !== undefined;
-        if (this.spatialLocked && (changesTrajectory || changesTerrain || hasAgl)) return locked();
 
         // Construct the full replacement trajectory before mutating any live configuration.
-        let nextFlightConfig: ACNFlightConfig | null = null;
+        let nextFlightConfig: ACNFlightConfig | null = validation.nextFlightConfig ?? null;
         let nextTrajectory: ACNTrajectory | null = null;
-        if (changesTrajectory || p.coverage_radius_km !== undefined) {
+        if (validation.changesTrajectory || p.coverage_radius_km !== undefined) {
           try {
-            nextFlightConfig = new ACNFlightConfig({
-              ...this.flightConfig,
-              trajectoryMode: nextMode,
-              waypoints: nextWaypoints,
-              altitudeMslM: p.acn_altitude_m ?? this.flightConfig.altitudeMslM,
-              altitudeMode: p.altitude_mode ?? this.flightConfig.altitudeMode,
-              targetAglM: p.target_agl_m ?? this.flightConfig.targetAglM,
-              maxClimbRateMps: p.max_climb_rate_mps ?? this.flightConfig.maxClimbRateMps,
-              maxDescentRateMps: p.max_descent_rate_mps ?? this.flightConfig.maxDescentRateMps,
-              loiterRadiusAM: p.orbit_a_m ?? this.flightConfig.loiterRadiusAM,
-              loiterRadiusBM: p.orbit_b_m ?? this.flightConfig.loiterRadiusBM,
-              loiterRotationDeg: p.orbit_rotation_deg ?? this.flightConfig.loiterRotationDeg,
-              loiterSpeedMps: p.loiter_speed_mps ?? this.flightConfig.loiterSpeedMps,
-              accelerationLimitMps2: p.acceleration_limit_mps2 ?? this.flightConfig.accelerationLimitMps2,
-              decelerationLimitMps2: p.deceleration_limit_mps2 ?? this.flightConfig.decelerationLimitMps2,
-              centerXm: p.center_x_m ?? this.flightConfig.centerXm,
-              centerYm: p.center_y_m ?? this.flightConfig.centerYm,
-              coverageRadiusKm: p.coverage_radius_km ?? this.flightConfig.coverageRadiusKm,
-            });
+            nextFlightConfig = validation.nextFlightConfig!;
             const prevKinematics = this.trajectoryEngine.getKinematicsState();
             nextTrajectory = createACNTrajectory(
               nextFlightConfig,
               prevKinematics,
               (x, y) => this.terrainEngine.getElevation(x, y)
             );
-            if (p.loiter_speed_mps !== undefined) {
-              nextTrajectory.setTargetSpeed(p.loiter_speed_mps, this.simTimeS);
+            if (validation.targetSpeedMps !== undefined) {
+              nextTrajectory.setTargetSpeed(validation.targetSpeedMps, this.simTimeS);
             }
-            if (p.acceleration_limit_mps2 !== undefined || p.deceleration_limit_mps2 !== undefined) {
-              nextTrajectory.setLimits(p.acceleration_limit_mps2, p.deceleration_limit_mps2);
+            if (validation.accelLimitMps2 !== undefined || validation.decelLimitMps2 !== undefined) {
+              nextTrajectory.setLimits(validation.accelLimitMps2, validation.decelLimitMps2);
             }
           } catch (error) {
             return reject(error instanceof Error ? error.message : 'Invalid trajectory configuration.');
@@ -2792,8 +2637,8 @@ export class SimulationWorkerManager {
         }
 
         // All validation/construction is complete before any scenario state is changed.
-        if (changesTerrain) {
-          this.terrainEngine.setTerrainMode(p.terrain_mode);
+        if (validation.changesTerrain) {
+          this.terrainEngine.setTerrainMode(p.terrain_mode!);
           this.resampleGroundNodeAltitudes();
         }
         if (p.carrier_freq_ghz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, carrierFrequencyHz: p.carrier_freq_ghz * 1e9 });
@@ -2811,7 +2656,7 @@ export class SimulationWorkerManager {
             this.liveVzMps = 0.0;
           }
         }
-        if (changesTrajectory || p.coverage_radius_km !== undefined || p.carrier_freq_ghz !== undefined || p.channel_bandwidth_mhz !== undefined || p.rain_rate_mmh !== undefined || p.earthRadiusFactorK !== undefined) {
+        if (validation.changesTrajectory || p.coverage_radius_km !== undefined || p.carrier_freq_ghz !== undefined || p.channel_bandwidth_mhz !== undefined || p.rain_rate_mmh !== undefined || p.earthRadiusFactorK !== undefined) {
           this.lookaheadEngine = new PredictiveLookAheadEngine(
             this.terrainEngine, this.linkEngine, this.rfConfig, this.envConfig, this.flightConfig, this.trajectoryEngine
           );
@@ -2829,13 +2674,13 @@ export class SimulationWorkerManager {
             this.nodeRegistry.updateAgl(nid, p.agl_m);
           }
         }
-        if (changesTerrain) this.initHillshade(512);
-        if (nextTdmaConfig) {
+        if (validation.changesTerrain) this.initHillshade(512);
+        if (validation.nextTdmaConfig) {
           const oldDurationMs = this.tdmaConfig.frameDurationMs;
-          const newDurationMs = nextTdmaConfig.frameDurationMs;
+          const newDurationMs = validation.nextTdmaConfig.frameDurationMs;
           const residualS = this.tdmaAccumulatorS;
 
-          this.tdmaConfig = nextTdmaConfig;
+          this.tdmaConfig = validation.nextTdmaConfig;
           this.staticScheduler.setTdmaConfig(this.tdmaConfig);
           this.tacScheduler.setTdmaConfig(this.tdmaConfig);
           this.tdmaAccumulatorS = 0.0;
@@ -2876,7 +2721,7 @@ export class SimulationWorkerManager {
             this.deferredEmergencyQueue.clear();
           }
         }
-        if (changesTrajectory || changesTerrain || p.agl_m !== undefined || p.altitude_mode !== undefined || p.acn_altitude_m !== undefined) {
+        if (validation.changesTrajectory || validation.changesTerrain || p.agl_m !== undefined || p.altitude_mode !== undefined || p.acn_altitude_m !== undefined) {
           this.spatialRevision++;
           this.lookaheadEngine.invalidateAll();
           this.deferredEmergencyQueue.clear();

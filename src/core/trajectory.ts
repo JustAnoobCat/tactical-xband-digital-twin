@@ -1559,3 +1559,62 @@ export function evaluateFlightPlanProfile(
     samples: Object.freeze(samples),
   };
 }
+
+export interface AirframeAttitude {
+  readonly yawDeg: number;
+  readonly pitchDeg: number;
+  readonly rollDeg: number;
+}
+
+/**
+ * Computes pure 3D coordinated-turn aircraft attitude (yaw, pitch, roll) from instantaneous
+ * ENU velocity components and turn rate.
+ *
+ * @param velX Instantaneous East velocity in m/s
+ * @param velY Instantaneous North velocity in m/s
+ * @param velZ Instantaneous Up velocity in m/s
+ * @param turnRateRadPerSec Yaw / turn rate omega in rad/s (positive = clockwise / right turn)
+ * @param maxBankDeg Maximum aerodynamic bank limit in degrees (default 45.0°)
+ * @returns Pure attitude object { yawDeg, pitchDeg, rollDeg }
+ */
+export function computeAirframeAttitude(
+  velX: number,
+  velY: number,
+  velZ: number,
+  turnRateRadPerSec: number = 0.0,
+  maxBankDeg: number = 45.0
+): AirframeAttitude {
+  if (
+    !Number.isFinite(velX) ||
+    !Number.isFinite(velY) ||
+    !Number.isFinite(velZ) ||
+    !Number.isFinite(turnRateRadPerSec) ||
+    !Number.isFinite(maxBankDeg)
+  ) {
+    return { yawDeg: 0.0, pitchDeg: 0.0, rollDeg: 0.0 };
+  }
+
+  const vHoriz = Math.hypot(velX, velY);
+  const G_CONST = 9.80665;
+
+  let yawDeg = 0.0;
+  if (vHoriz > 1e-6) {
+    yawDeg = ((Math.atan2(velX, velY) * 180.0) / Math.PI + 360.0) % 360.0;
+  }
+
+  let pitchDeg = 0.0;
+  if (vHoriz > 1e-6 || Math.abs(velZ) > 1e-6) {
+    pitchDeg = (Math.atan2(velZ, vHoriz) * 180.0) / Math.PI;
+  }
+
+  let rollDeg = 0.0;
+  if (vHoriz > 1e-6 && Math.abs(turnRateRadPerSec) > 1e-9) {
+    const rawBankRad = Math.atan2(vHoriz * turnRateRadPerSec, G_CONST);
+    const rawBankDeg = (rawBankRad * 180.0) / Math.PI;
+    const limit = Math.abs(maxBankDeg);
+    rollDeg = Math.max(-limit, Math.min(limit, rawBankDeg));
+  }
+
+  return { yawDeg, pitchDeg, rollDeg };
+}
+
