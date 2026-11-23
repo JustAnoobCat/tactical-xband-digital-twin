@@ -446,12 +446,16 @@ export class GroundNodeTrafficSubsystem {
   public generateTraffic(
     currentSimTimeS: number,
     _frameDurationS: number = 0.02,
-    trafficScale?: number
+    trafficScale?: number,
+    videoBitrateScale?: number
   ): Packet[] {
     if (this.batteryLevelPct <= 0 || this.isDepleted) {
       return [];
     }
     const mult = Math.max(0.25, Math.min(8.0, trafficScale ?? this.trafficLoadMultiplier ?? 1.0));
+    const videoScale = Number.isFinite(videoBitrateScale) && (videoBitrateScale as number) >= 0
+      ? (videoBitrateScale as number)
+      : 1.0;
     const generated: Packet[] = [];
 
     // 1. 5QI 69: Periodic C2 Health & Status
@@ -473,7 +477,7 @@ export class GroundNodeTrafficSubsystem {
 
     // 3. 5QI 67: Tactical Mission-Critical Video (Paused if radio is in shadow)
     if (this.hasVideo && !this.isShadowed) {
-      const numVideo = this.poissonDraw(this.videoMeanPktsPerFrame * mult);
+      const numVideo = this.poissonDraw(this.videoMeanPktsPerFrame * mult * videoScale);
       for (let i = 0; i < numVideo; i++) {
         generated.push(this.enqueuePacket(67, currentSimTimeS));
       }

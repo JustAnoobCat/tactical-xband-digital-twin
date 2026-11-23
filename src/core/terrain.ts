@@ -10,6 +10,7 @@ import { EnvironmentConfig, RFConfig, SPEED_OF_LIGHT } from './config';
 import { ObstacleField, ObstacleIntersection } from './obstacles';
 import type { Position3D } from '../shared/types';
 import { THEATER_HALF_M } from '../shared/constants';
+import type { BiomeId } from './biomePhysics';
 
 export type { Position3D };
 
@@ -119,6 +120,98 @@ export const REAL_LADAKH_DEM_METADATA: DemGeographicMetadata = Object.freeze({
   minY: -110931.4506,
   maxY: 110931.4506,
   tileName: 'LADAKH',
+});
+
+export const BIOME_DEM_METADATA: Readonly<Record<BiomeId, DemGeographicMetadata>> = Object.freeze({
+  alpine_mountain: REAL_LADAKH_DEM_METADATA,
+  arid_desert: Object.freeze({
+    rasterWidth: 512,
+    rasterHeight: 512,
+    centerLatDeg: 27.0,
+    centerLonDeg: 71.5,
+    minLatDeg: 26.0,
+    maxLatDeg: 28.0,
+    minLonDeg: 70.5,
+    maxLonDeg: 72.5,
+    halfWidthM: 99000.0,
+    halfHeightM: 110900.0,
+    groundResolutionXM: (2.0 * 99000.0) / 511.0,
+    groundResolutionYM: (2.0 * 110900.0) / 511.0,
+    minX: -99000.0,
+    maxX: 99000.0,
+    minY: -110900.0,
+    maxY: 110900.0,
+    tileName: 'THAR_DESERT',
+    minElevationM: 180.0,
+    maxElevationM: 310.0,
+    voidCount: 0,
+  }),
+  open_plains: Object.freeze({
+    rasterWidth: 512,
+    rasterHeight: 512,
+    centerLatDeg: 28.5,
+    centerLonDeg: 77.2,
+    minLatDeg: 27.5,
+    maxLatDeg: 29.5,
+    minLonDeg: 76.2,
+    maxLonDeg: 78.2,
+    halfWidthM: 98000.0,
+    halfHeightM: 110900.0,
+    groundResolutionXM: (2.0 * 98000.0) / 511.0,
+    groundResolutionYM: (2.0 * 110900.0) / 511.0,
+    minX: -98000.0,
+    maxX: 98000.0,
+    minY: -110900.0,
+    maxY: 110900.0,
+    tileName: 'INDO_GANGETIC_PLAINS',
+    minElevationM: 200.0,
+    maxElevationM: 240.0,
+    voidCount: 0,
+  }),
+  tropical_jungle: Object.freeze({
+    rasterWidth: 512,
+    rasterHeight: 512,
+    centerLatDeg: 26.0,
+    centerLonDeg: 93.0,
+    minLatDeg: 25.0,
+    maxLatDeg: 27.0,
+    minLonDeg: 92.0,
+    maxLonDeg: 94.0,
+    halfWidthM: 100000.0,
+    halfHeightM: 110900.0,
+    groundResolutionXM: (2.0 * 100000.0) / 511.0,
+    groundResolutionYM: (2.0 * 110900.0) / 511.0,
+    minX: -100000.0,
+    maxX: 100000.0,
+    minY: -110900.0,
+    maxY: 110900.0,
+    tileName: 'NORTHEAST_JUNGLE',
+    minElevationM: 250.0,
+    maxElevationM: 1350.0,
+    voidCount: 0,
+  }),
+  maritime_littoral: Object.freeze({
+    rasterWidth: 512,
+    rasterHeight: 512,
+    centerLatDeg: 18.5,
+    centerLonDeg: 72.0,
+    minLatDeg: 17.5,
+    maxLatDeg: 19.5,
+    minLonDeg: 71.0,
+    maxLonDeg: 73.0,
+    halfWidthM: 106000.0,
+    halfHeightM: 110900.0,
+    groundResolutionXM: (2.0 * 106000.0) / 511.0,
+    groundResolutionYM: (2.0 * 110900.0) / 511.0,
+    minX: -106000.0,
+    maxX: 106000.0,
+    minY: -110900.0,
+    maxY: 110900.0,
+    tileName: 'ARABIAN_SEA_LITTORAL',
+    minElevationM: 0.0,
+    maxElevationM: 220.0,
+    voidCount: 0,
+  }),
 });
 
 export interface DemPixelCoord {
@@ -312,6 +405,234 @@ export function generateSpectralElevationGrid(
 }
 
 /**
+ * Generates procedural elevation matrix for Thar Arid Desert (180m to 310m MSL).
+ * Features transverse dune fields, barchan slip-faces, and low regional relief.
+ */
+export function generateAridDesertElevationGrid(
+  size: number = DEFAULT_GRID_SIZE,
+  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42
+): Float32Array {
+  const out = new Float32Array(size * size);
+  const step = (theaterExtentM * 2.0) / (size - 1);
+  const duneAngle = (22.0 * Math.PI) / 180.0;
+  const sinD = Math.sin(duneAngle);
+  const cosD = Math.cos(duneAngle);
+
+  let s = (seed ^ 0x12a45b7f) >>> 0;
+  const nextR = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296.0;
+  };
+  const phase1 = nextR() * Math.PI * 2.0;
+  const phase2 = nextR() * Math.PI * 2.0;
+
+  let minVal = Number.POSITIVE_INFINITY;
+  let maxVal = Number.NEGATIVE_INFINITY;
+
+  for (let r = 0; r < size; r++) {
+    const y = -theaterExtentM + r * step;
+    for (let c = 0; c < size; c++) {
+      const x = -theaterExtentM + c * step;
+      const idx = r * size + c;
+
+      const u = x * cosD + y * sinD;
+      const v = -x * sinD + y * cosD;
+
+      const swell = Math.sin(u / 65000.0 + phase1) * 0.35 + Math.cos(v / 85000.0 + phase2) * 0.25;
+      const duneWavelength = 18000.0;
+      const dunePhase = (u / duneWavelength) * 2.0 * Math.PI;
+      const duneWave = Math.sin(dunePhase) + 0.35 * Math.sin(2.0 * dunePhase + 0.4);
+      const ripple = Math.sin((v / 4500.0) * 2.0 * Math.PI) * 0.15;
+
+      const combined = swell + 0.65 * duneWave + ripple;
+      out[idx] = combined;
+      if (combined < minVal) minVal = combined;
+      if (combined > maxVal) maxVal = combined;
+    }
+  }
+
+  const range = Math.max(1e-9, maxVal - minVal);
+  for (let i = 0; i < size * size; i++) {
+    out[i] = 180.0 + ((out[i] - minVal) / range) * 130.0;
+  }
+  return out;
+}
+
+/**
+ * Generates procedural elevation matrix for Indo-Gangetic Open Plains (200m to 240m MSL).
+ * Features gentle alluvial slope, low relief, and a subtle meandering river depression corridor.
+ */
+export function generateOpenPlainsElevationGrid(
+  size: number = DEFAULT_GRID_SIZE,
+  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42
+): Float32Array {
+  const out = new Float32Array(size * size);
+  const step = (theaterExtentM * 2.0) / (size - 1);
+
+  let s = (seed ^ 0x3c5f189d) >>> 0;
+  const nextR = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296.0;
+  };
+  const p1 = nextR() * Math.PI * 2.0;
+
+  let minVal = Number.POSITIVE_INFINITY;
+  let maxVal = Number.NEGATIVE_INFINITY;
+
+  for (let r = 0; r < size; r++) {
+    const y = -theaterExtentM + r * step;
+    for (let c = 0; c < size; c++) {
+      const x = -theaterExtentM + c * step;
+      const idx = r * size + c;
+
+      const slope = ((-x + y) / (2.0 * theaterExtentM)) * 0.5;
+      const meanderCenter = 25000.0 * Math.sin(y / 70000.0 + p1);
+      const distToRiver = Math.abs(x - meanderCenter);
+      const riverTrough = -0.35 * Math.exp(-(distToRiver * distToRiver) / (2.0 * Math.pow(15000.0, 2)));
+      const micro = 0.08 * (Math.sin(x / 25000.0) + Math.cos(y / 28000.0));
+
+      const combined = slope + riverTrough + micro;
+      out[idx] = combined;
+      if (combined < minVal) minVal = combined;
+      if (combined > maxVal) maxVal = combined;
+    }
+  }
+
+  const range = Math.max(1e-9, maxVal - minVal);
+  for (let i = 0; i < size * size; i++) {
+    out[i] = 200.0 + ((out[i] - minVal) / range) * 40.0;
+  }
+  return out;
+}
+
+/**
+ * Generates procedural elevation matrix for Northeast Tropical Jungle (250m to 1350m MSL).
+ * Features steep dissected ridges, dendritic drainage gullies, and rolling rainforest foothills.
+ */
+export function generateTropicalJungleElevationGrid(
+  size: number = DEFAULT_GRID_SIZE,
+  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42
+): Float32Array {
+  const out = new Float32Array(size * size);
+  const step = (theaterExtentM * 2.0) / (size - 1);
+
+  let s = (seed ^ 0x7f4e2a1b) >>> 0;
+  const nextR = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296.0;
+  };
+  const ph1 = nextR() * Math.PI * 2.0;
+  const ph2 = nextR() * Math.PI * 2.0;
+  const ph3 = nextR() * Math.PI * 2.0;
+
+  let minVal = Number.POSITIVE_INFINITY;
+  let maxVal = Number.NEGATIVE_INFINITY;
+
+  for (let r = 0; r < size; r++) {
+    const y = -theaterExtentM + r * step;
+    for (let c = 0; c < size; c++) {
+      const x = -theaterExtentM + c * step;
+      const idx = r * size + c;
+
+      const r1 = Math.sin(x / 40000.0 + ph1) * Math.cos(y / 45000.0 + ph2);
+      const r2 = Math.cos((x * 0.7 - y * 0.7) / 22000.0 + ph3) * 0.5;
+      const r3 = Math.sin((x * 0.4 + y * 0.9) / 12000.0) * 0.25;
+      const r4 = Math.abs(Math.sin((x - y) / 8000.0)) * 0.2;
+
+      const combined = r1 + r2 + r3 - r4;
+      out[idx] = combined;
+      if (combined < minVal) minVal = combined;
+      if (combined > maxVal) maxVal = combined;
+    }
+  }
+
+  const range = Math.max(1e-9, maxVal - minVal);
+  for (let i = 0; i < size * size; i++) {
+    out[i] = 250.0 + ((out[i] - minVal) / range) * 1100.0;
+  }
+  return out;
+}
+
+/**
+ * Generates procedural elevation matrix for Arabian Sea Maritime Littoral (0m to 220m MSL).
+ * Features calm open sea surface at exactly 0.0m MSL and coastal littoral cliffs rising to 220m MSL.
+ */
+export function generateMaritimeLittoralElevationGrid(
+  size: number = DEFAULT_GRID_SIZE,
+  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42
+): Float32Array {
+  const out = new Float32Array(size * size);
+  const step = (theaterExtentM * 2.0) / (size - 1);
+
+  let s = (seed ^ 0x4a9b6c1d) >>> 0;
+  const nextR = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296.0;
+  };
+  const phCoast = nextR() * Math.PI * 2.0;
+
+  let maxLand = Number.NEGATIVE_INFINITY;
+
+  for (let r = 0; r < size; r++) {
+    const y = -theaterExtentM + r * step;
+    const coastX = -20000.0 + 35000.0 * Math.sin(y / 95000.0 + phCoast);
+
+    for (let c = 0; c < size; c++) {
+      const x = -theaterExtentM + c * step;
+      const idx = r * size + c;
+
+      if (x < coastX) {
+        out[idx] = 0.0;
+      } else {
+        const distFromCoastM = x - coastX;
+        const shelf = Math.min(1.0, distFromCoastM / 150000.0);
+        const hill = 0.3 * Math.sin(x / 30000.0) * Math.cos(y / 35000.0) + 0.15 * Math.sin((x + y) / 15000.0);
+        const rawLand = shelf + Math.max(0.0, hill);
+        out[idx] = rawLand;
+        if (rawLand > maxLand) maxLand = rawLand;
+      }
+    }
+  }
+
+  const landScale = maxLand > 0 ? 220.0 / maxLand : 220.0;
+  for (let i = 0; i < size * size; i++) {
+    if (out[i] > 0.0) {
+      out[i] = Math.min(220.0, out[i] * landScale);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Universal biome procedural elevation grid generator.
+ */
+export function generateBiomeElevationGrid(
+  biomeId: BiomeId,
+  size: number = DEFAULT_GRID_SIZE,
+  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42
+): Float32Array {
+  switch (biomeId) {
+    case 'arid_desert':
+      return generateAridDesertElevationGrid(size, theaterExtentM, seed);
+    case 'open_plains':
+      return generateOpenPlainsElevationGrid(size, theaterExtentM, seed);
+    case 'tropical_jungle':
+      return generateTropicalJungleElevationGrid(size, theaterExtentM, seed);
+    case 'maritime_littoral':
+      return generateMaritimeLittoralElevationGrid(size, theaterExtentM, seed);
+    case 'alpine_mountain':
+    default:
+      return generateSpectralElevationGrid(size, theaterExtentM, 2.3, seed);
+  }
+}
+
+/**
  * Computes authoritative min, max, and void count over an elevation raster.
  * Treats non-finite samples and SRTM sentinel -32768 as voids.
  */
@@ -355,6 +676,9 @@ export class TerrainEngine {
   public hasRealDem: boolean = false;
   public realDemGrid: Float32Array | null = null;
   public demMetadata: DemGeographicMetadata = REAL_LADAKH_DEM_METADATA;
+  public activeBiomeId: BiomeId = 'alpine_mountain';
+  private _ladakhDemGrid: Float32Array | null = null;
+  private readonly _biomeGridCache = new Map<BiomeId, Float32Array>();
   private readonly customElevationFn?: (xM: number, yM: number) => number;
   /** Canonical committed obstacle state shared by live links, prediction and profiles. */
   public readonly obstacleField = new ObstacleField();
@@ -363,10 +687,14 @@ export class TerrainEngine {
     theaterExtentM?: number;
     terrainMode?: 'real' | 'synthetic';
     customElevationFn?: (xM: number, yM: number) => number;
+    activeBiomeId?: BiomeId;
   }) {
     this.theaterExtentM = options?.theaterExtentM ?? THEATER_EXTENT_1200KM_M;
     this.terrainMode = options?.terrainMode ?? 'real';
     this.customElevationFn = options?.customElevationFn;
+    if (options?.activeBiomeId) {
+      this.setBiome(options.activeBiomeId);
+    }
   }
 
   public get terrain_mode(): 'real' | 'synthetic' {
@@ -384,6 +712,43 @@ export class TerrainEngine {
 
   public set_terrain_mode(mode: 'real' | 'synthetic'): string {
     return this.setTerrainMode(mode);
+  }
+
+  /**
+   * Sets the active theater biome, generating procedural terrain and updating geodetic DEM metadata.
+   */
+  public setBiome(biomeId: BiomeId): void {
+    this.activeBiomeId = biomeId;
+    if (biomeId === 'alpine_mountain') {
+      if (this._ladakhDemGrid) {
+        this.realDemGrid = this._ladakhDemGrid;
+        const stats = computeDemGridStats(this._ladakhDemGrid);
+        this.demMetadata = Object.freeze({ ...REAL_LADAKH_DEM_METADATA, ...stats });
+        this.hasRealDem = true;
+        this.terrainMode = 'real';
+      } else {
+        this.demMetadata = REAL_LADAKH_DEM_METADATA;
+      }
+      return;
+    }
+
+    let grid = this._biomeGridCache.get(biomeId);
+    if (!grid) {
+      grid = generateBiomeElevationGrid(biomeId, DEFAULT_GRID_SIZE, this.theaterExtentM, 42);
+      this._biomeGridCache.set(biomeId, grid);
+    }
+
+    const meta = BIOME_DEM_METADATA[biomeId] ?? REAL_LADAKH_DEM_METADATA;
+    const stats = computeDemGridStats(grid);
+    this.demMetadata = Object.freeze({
+      ...meta,
+      minElevationM: stats.minElevationM,
+      maxElevationM: stats.maxElevationM,
+      voidCount: stats.voidCount,
+    });
+    this.realDemGrid = grid;
+    this.hasRealDem = true;
+    this.terrainMode = 'real';
   }
 
   /**
@@ -421,6 +786,7 @@ const candidateUrls = url
           const buffer = await response.arrayBuffer();
           if (buffer.byteLength >= 512 * 512 * 4) {
             this.realDemGrid = new Float32Array(buffer, 0, 512 * 512);
+            this._ladakhDemGrid = this.realDemGrid;
             const stats = computeDemGridStats(this.realDemGrid);
             this.demMetadata = Object.freeze({ ...REAL_LADAKH_DEM_METADATA, ...stats });
             this.hasRealDem = true;
@@ -443,6 +809,9 @@ const candidateUrls = url
   public loadCustomDem(data: Float32Array | ArrayBuffer, metadata?: DemGeographicMetadata): boolean {
     const grid = data instanceof Float32Array ? data : new Float32Array(data);
     this.realDemGrid = grid;
+    if (this.activeBiomeId === 'alpine_mountain') {
+      this._ladakhDemGrid = grid;
+    }
     const baseMeta = metadata ? metadata : REAL_LADAKH_DEM_METADATA;
     const needsStats =
       !Number.isFinite(baseMeta.minElevationM) ||

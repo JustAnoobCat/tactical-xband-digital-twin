@@ -22,6 +22,15 @@ import { TdmaFrameConfig } from '../core/tdmaConfig';
 import type { ITdmaFrameConfig, TdmaUplinkPolicy } from '../core/tdmaConfig';
 export { TdmaFrameConfig };
 export type { ITdmaFrameConfig, TdmaUplinkPolicy };
+import type {
+  BiomeId,
+  PolarizationMode,
+  AdvectingWeatherCell,
+  BiomeEmParameters,
+} from '../core/biomePhysics';
+export type { BiomeId, PolarizationMode, AdvectingWeatherCell, BiomeEmParameters };
+import type { ConstellationMobilityTelemetry } from '../core/constellationAndMobilityEngine';
+export type { ConstellationMobilityTelemetry };
 
 // ----------------------------------------------------------------------------
 // Component Telemetry Contracts
@@ -476,6 +485,47 @@ export interface TelemetryFrame {
   readonly ai_sky_shepherd_node_id?: number | null;
   readonly ai_sky_shepherd_directive?: string;
   readonly hifi_telemetry?: HiFiPhysicsTelemetry;
+  readonly biome_id?: BiomeId;
+  readonly biome_em_enabled?: boolean;
+  readonly polarization_mode?: PolarizationMode;
+  readonly mean_two_ray_gain_db?: number;
+  readonly mean_foliage_loss_db?: number;
+  readonly mean_dust_loss_db?: number;
+  readonly mean_pol_loss_db?: number;
+  readonly weather_cell_count?: number;
+  readonly transport_abr_telemetry?: TransportAbrTelemetry;
+  readonly ew_eccm_telemetry?: EwEccmTelemetry;
+  readonly constellation_mobility_telemetry?: ConstellationMobilityTelemetry;
+}
+
+export type SpreadSpectrumEccmMode = 'NONE' | 'FHSS' | 'DSSS';
+
+export interface EwEccmTelemetry {
+  readonly eccm_mode: SpreadSpectrumEccmMode;
+  readonly mvdr_null_steering_enabled: boolean;
+  readonly adversary_esm_enabled: boolean;
+  readonly gnss_spoofing_rate_us_per_sec: number;
+  readonly anti_spoof_holdover_active: boolean;
+  readonly gnss_ta_drift_us: number;
+  readonly mean_processing_gain_db: number;
+  readonly mean_spatial_null_rejection_db: number;
+  readonly mean_effective_jammer_power_dbm: number;
+  readonly raw_jammer_power_dbm: number;
+  readonly jammer_suppressed: boolean;
+  readonly esm_detection_radius_km: number;
+  readonly lpi_safety_ratio: number;
+  readonly max_intercept_probability: number;
+  readonly gnss_spoof_slot_collision: boolean;
+}
+
+export interface TransportAbrTelemetry {
+  readonly enabled: boolean;
+  readonly mean_cwnd_packets: number;
+  readonly mean_video_bitrate_mbps: number;
+  readonly active_video_tier_label: string;
+  readonly abr_step_downs: number;
+  readonly abr_step_ups: number;
+  readonly mean_closed_loop_capacity_scale: number;
 }
 
 export interface HiFiPhysicsConfigFlags {
@@ -484,6 +534,24 @@ export interface HiFiPhysicsConfigFlags {
   readonly enableMacPhyFeedback?: boolean;
   readonly enableDubinsKinematics?: boolean;
   readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
+  readonly enableTransportAbr?: boolean;
+  readonly biomeId?: BiomeId;
+  readonly enableBiomeEmPhysics?: boolean;
+  readonly polarizationMode?: PolarizationMode;
+  readonly dustVisibilityKm?: number;
+  readonly foliageDepthM?: number;
+  readonly weatherCells?: readonly AdvectingWeatherCell[];
+  readonly eccmMode?: SpreadSpectrumEccmMode;
+  readonly enableMvdrNullSteering?: boolean;
+  readonly enableAdversaryEsmModel?: boolean;
+  readonly gnssSpoofingRateUsPerSec?: number;
+  readonly enableAntiSpoofHoldover?: boolean;
+  readonly acnConstellationCount?: number;
+  readonly enableMultiHopManet?: boolean;
+  readonly enableGroundConvoyMobility?: boolean;
+  readonly windSpeedMs?: number;
+  readonly windDirectionDeg?: number;
+  readonly enableAutoCfitPullUp?: boolean;
 }
 
 export interface HiFiPhysicsTelemetry {
@@ -834,6 +902,24 @@ export interface ConfigUpdateParams {
   readonly enableMacPhyFeedback?: boolean;
   readonly enableDubinsKinematics?: boolean;
   readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
+  readonly biomeId?: BiomeId;
+  readonly enableBiomeEmPhysics?: boolean;
+  readonly polarizationMode?: PolarizationMode;
+  readonly dustVisibilityKm?: number;
+  readonly foliageDepthM?: number;
+  readonly weatherCells?: readonly AdvectingWeatherCell[];
+  readonly enableTransportAbr?: boolean;
+  readonly eccmMode?: SpreadSpectrumEccmMode;
+  readonly enableMvdrNullSteering?: boolean;
+  readonly enableAdversaryEsmModel?: boolean;
+  readonly gnssSpoofingRateUsPerSec?: number;
+  readonly enableAntiSpoofHoldover?: boolean;
+  readonly acnConstellationCount?: number;
+  readonly enableMultiHopManet?: boolean;
+  readonly enableGroundConvoyMobility?: boolean;
+  readonly windSpeedMs?: number;
+  readonly windDirectionDeg?: number;
+  readonly enableAutoCfitPullUp?: boolean;
 }
 
 export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
@@ -871,6 +957,30 @@ export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
   readonly enableMacPhyFeedback?: boolean;
   readonly enableDubinsKinematics?: boolean;
   readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
+  readonly biomeId?: BiomeId;
+  readonly enableBiomeEmPhysics?: boolean;
+  readonly polarizationMode?: PolarizationMode;
+  readonly dustVisibilityKm?: number;
+  readonly foliageDepthM?: number;
+  readonly weatherCells?: readonly AdvectingWeatherCell[];
+  readonly enableTransportAbr?: boolean;
+  readonly eccmMode?: SpreadSpectrumEccmMode;
+  readonly enableMvdrNullSteering?: boolean;
+  readonly enableAdversaryEsmModel?: boolean;
+  readonly gnssSpoofingRateUsPerSec?: number;
+  readonly enableAntiSpoofHoldover?: boolean;
+  readonly acnConstellationCount?: number;
+  readonly acn_constellation_count?: number;
+  readonly enableMultiHopManet?: boolean;
+  readonly enable_multi_hop_manet?: boolean;
+  readonly enableGroundConvoyMobility?: boolean;
+  readonly enable_ground_convoy_mobility?: boolean;
+  readonly windSpeedMs?: number;
+  readonly wind_speed_ms?: number;
+  readonly windDirectionDeg?: number;
+  readonly wind_direction_deg?: number;
+  readonly enableAutoCfitPullUp?: boolean;
+  readonly enable_auto_cfit_pull_up?: boolean;
 }
 
 export interface LoadPresetCommand extends BaseWorkerInboundCommand {
@@ -933,6 +1043,24 @@ export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
   readonly enableMacPhyFeedback?: boolean;
   readonly enableDubinsKinematics?: boolean;
   readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
+  readonly biomeId?: BiomeId;
+  readonly enableBiomeEmPhysics?: boolean;
+  readonly polarizationMode?: PolarizationMode;
+  readonly dustVisibilityKm?: number;
+  readonly foliageDepthM?: number;
+  readonly weatherCells?: readonly AdvectingWeatherCell[];
+  readonly enableTransportAbr?: boolean;
+  readonly eccmMode?: SpreadSpectrumEccmMode;
+  readonly enableMvdrNullSteering?: boolean;
+  readonly enableAdversaryEsmModel?: boolean;
+  readonly gnssSpoofingRateUsPerSec?: number;
+  readonly enableAntiSpoofHoldover?: boolean;
+  readonly acnConstellationCount?: number;
+  readonly enableMultiHopManet?: boolean;
+  readonly enableGroundConvoyMobility?: boolean;
+  readonly windSpeedMs?: number;
+  readonly windDirectionDeg?: number;
+  readonly enableAutoCfitPullUp?: boolean;
 }
 
 export interface SetViewshedConfigCommand extends BaseWorkerInboundCommand {
@@ -965,6 +1093,27 @@ export interface SetAiCopilotConfigCommand extends BaseWorkerInboundCommand {
   readonly autoHealEnabled?: boolean;
 }
 
+export interface SetBiomeCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_BIOME';
+  readonly biomeId: BiomeId;
+  readonly enableBiomeEmPhysics?: boolean;
+  readonly polarizationMode?: PolarizationMode;
+  readonly dustVisibilityKm?: number;
+  readonly foliageDepthM?: number;
+  readonly weatherCells?: readonly AdvectingWeatherCell[];
+  readonly eccmMode?: SpreadSpectrumEccmMode;
+  readonly enableMvdrNullSteering?: boolean;
+  readonly enableAdversaryEsmModel?: boolean;
+  readonly gnssSpoofingRateUsPerSec?: number;
+  readonly enableAntiSpoofHoldover?: boolean;
+  readonly acnConstellationCount?: number;
+  readonly enableMultiHopManet?: boolean;
+  readonly enableGroundConvoyMobility?: boolean;
+  readonly windSpeedMs?: number;
+  readonly windDirectionDeg?: number;
+  readonly enableAutoCfitPullUp?: boolean;
+}
+
 export type WorkerInboundCommand =
   | SimControlCommand
   | SetSpeedCommand
@@ -988,6 +1137,7 @@ export type WorkerInboundCommand =
   | InjectTrafficCommand
   | ClearTransferCommand
   | SetTerrainModeCommand
+  | SetBiomeCommand
   | LoadCustomDemCommand
   | GetHillshadeCommand
   | GetTerrainBoundsCommand
@@ -1056,6 +1206,14 @@ export interface TelemetryFrameMessage {
   readonly ai_sky_shepherd_node_id?: number | null;
   readonly ai_sky_shepherd_directive?: string;
   readonly hifi_telemetry?: HiFiPhysicsTelemetry;
+  readonly biome_id?: BiomeId;
+  readonly biome_em_enabled?: boolean;
+  readonly polarization_mode?: PolarizationMode;
+  readonly mean_two_ray_gain_db?: number;
+  readonly mean_foliage_loss_db?: number;
+  readonly mean_dust_loss_db?: number;
+  readonly mean_pol_loss_db?: number;
+  readonly weather_cell_count?: number;
 }
 
 export interface ProfileFrameMessage {

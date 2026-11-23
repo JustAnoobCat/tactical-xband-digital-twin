@@ -10,181 +10,68 @@
  */
 
 import {
-  ACNFlightConfig,
-  EnvironmentConfig,
-  GROUND_NODE_IDS,
-  MAX_ACN_WAYPOINTS,
-  NodeType,
-  RFConfig,
-  SPEED_OF_LIGHT,
+  ACNFlightConfig, EnvironmentConfig, GROUND_NODE_IDS, MAX_ACN_WAYPOINTS, NodeType, RFConfig, SPEED_OF_LIGHT,
 } from '../core/config';
 import { LinkBudgetEngine, LinkStatus, type AirframeChannelOptions } from '../core/linkBudget';
 import {
-  computeCqiLagFrames,
-  stepOllaOffsetDb,
-  evaluateDelayedCqiAmc,
-  createHarqProcessSlot,
-  stepHarqProcess,
-  computeDynamicTdmaOverhead,
-  SPEED_OF_LIGHT_M_S,
-  type HarqProcessSlot,
+  computeCqiLagFrames, stepOllaOffsetDb, evaluateDelayedCqiAmc, createHarqProcessSlot, stepHarqProcess, computeDynamicTdmaOverhead, SPEED_OF_LIGHT_M_S, type HarqProcessSlot,
 } from '../core/macPhyFeedback';
 import { computeMinTurnRadiusM } from '../core/kinematicPathSmoother';
 import { QuadSectorAntennaEngine } from '../core/antennaArray';
 import { Obstacle } from '../core/obstacles';
+import { GroundNodeTrafficSubsystem, Packet, QOS_PROFILES } from '../core/queues';
 import {
-  GroundNodeTrafficSubsystem,
-  Packet,
-  QOS_PROFILES,
-} from '../core/queues';
-import {
-  BaseScheduler,
-  FrameScheduleReport,
-  LegacyStaticScheduler,
-  ReactiveMlwdfScheduler,
-  SlotAllocation,
-  TerrainAwareDynamicScheduler,
-  T_FRAME_S,
+  BaseScheduler, FrameScheduleReport, LegacyStaticScheduler, ReactiveMlwdfScheduler, SlotAllocation, TerrainAwareDynamicScheduler, T_FRAME_S, type SchedulerMacFeedbackOptions,
 } from '../core/scheduler';
 import {
-  REAL_LADAKH_DEM_METADATA,
-  TerrainBoundsTelemetry,
-  TerrainEngine,
-  TerrainObstruction,
-} from '../core/terrain';
+  ISR_VIDEO_ABR_TIERS, type VideoAbrTier, type AbrState, type AimdState, createInitialAbrState, createInitialAimdState, stepAdaptiveVideoBitrate, stepAimdCongestionControl, computeClosedLoopEffectiveCapacityScale, evaluateNodeTransportAbr, computeTransportAbrTelemetry,
+} from '../core/transportAbrEngine';
+import {
+  computeSpreadSpectrumProcessingGainDb, computeMvdrNullSteeringRejectionDb, evaluateEwJammerMitigation, evaluateAdversaryEsmLpi, computeGnssSpoofingTaDriftUs, buildEwEccmTelemetry, computeNodeEwJammerMitigation, evaluateLiveEwEccmTelemetry, type SpreadSpectrumEccmMode, type EwEccmTelemetry, type EwJammerMitigationResult,
+} from '../core/ewEccmEngine';
+import {
+  stepConstellationWorkerSystem, createDefaultGroundConvoyStates, type ConstellationMobilityTelemetry, type NodeHandoverState, type GroundConvoyState,
+} from '../core/constellationAndMobilityEngine';
+import { REAL_LADAKH_DEM_METADATA, TerrainBoundsTelemetry, TerrainEngine, TerrainObstruction } from '../core/terrain';
 import { RollingGoodputTracker } from '../core/rollingGoodput';
 import { RegistrationLifecycle } from '../core/registration';
 import { TdmaFrameConfig } from '../core/tdmaConfig';
 import {
-  NodeRegistry,
-  createDefault16NodeRegistry,
-  GroundNodeEntity,
-  formatDeterministicNodeUuid,
-  NodeTrafficOptions,
+  NodeRegistry, createDefault16NodeRegistry, GroundNodeEntity, formatDeterministicNodeUuid, NodeTrafficOptions,
 } from '../core/nodeRegistry';
+import { ActiveTransferManager, type NodeTransferState, getDefaultPayloadBytes } from '../core/transferManager';
+import { EdgeAiCopilotCoordinator, type ActiveAiMovement } from './aiCopilotCoordinator';
 import {
-  ActiveTransferManager,
-  type NodeTransferState,
-  getDefaultPayloadBytes,
-} from '../core/transferManager';
-import {
-  EdgeAiCopilotCoordinator,
-  type ActiveAiMovement,
-} from './aiCopilotCoordinator';
-import {
-  EdgeAiQTable,
-  computeAiRecoveryAdvisory,
-  computeToblerWalkingSpeedMs,
-  evaluateAiBuddyRelayRescue,
-  computeAiSkyShepherdUavOffset,
-  computeAiLpiStealthPower,
-  predictNodeBlackoutCountdown,
-  type AiNodeRecoveryRecommendation,
-  type AiBuddyRelayResult,
-  type AiSkyShepherdResult,
-  type AiLpiStealthResult,
-  type AiBlackoutForecastResult,
-  type SquadNodeForBuddyEval,
+  EdgeAiQTable, computeAiRecoveryAdvisory, computeToblerWalkingSpeedMs, evaluateAiBuddyRelayRescue, computeAiSkyShepherdUavOffset, computeAiLpiStealthPower, predictNodeBlackoutCountdown, type AiNodeRecoveryRecommendation, type AiBuddyRelayResult, type AiSkyShepherdResult, type AiLpiStealthResult, type AiBlackoutForecastResult, type SquadNodeForBuddyEval,
 } from '../core/tacticalAiPathfinder';
 import {
-  ACNTrajectory,
-  createACNTrajectory,
-  NodeTerrainState,
-  PredictiveLookAheadEngine,
-  PredictiveState,
-  computeAirframeAttitude,
+  ACNTrajectory, createACNTrajectory, NodeTerrainState, PredictiveLookAheadEngine, PredictiveState, computeAirframeAttitude,
 } from '../core/trajectory';
 import {
-  FRAME_DT,
-  THEATER_HALF_M,
-  MCP_ID,
-  ACN_ID,
-  FRESNEL_SAMPLES,
-  MIN_GROUND_AGL_M,
-  MAX_GROUND_AGL_M,
-  DEFAULT_ANTENNA_AGL_M,
-  MAX_ACTIVE_GROUND_NODES,
-  PLAYBACK_SPEED,
+  FRAME_DT, THEATER_HALF_M, MCP_ID, ACN_ID, FRESNEL_SAMPLES, MIN_GROUND_AGL_M, MAX_GROUND_AGL_M, DEFAULT_ANTENNA_AGL_M, MAX_ACTIVE_GROUND_NODES, PLAYBACK_SPEED,
 } from '../shared/constants';
 import { isFiniteNumber } from '../shared/utils';
 import type { Position3D } from '../shared/types';
 import type {
-  WorkerCommandResult,
-  SelectedLinkBudgetTelemetry,
-  TelemetryGanttAllocation,
-  WorkerInboundCommand,
-  WorkerOutboundMessage,
-  TelemetryFrame,
-  NodeTelemetryItem,
-  FresnelSliceTelemetry,
-  TerrainMeshDataReadyMessage,
-  ConfigUpdateParams,
-  SpatialFrameSnapshot,
-  SpatialNodeSnapshot,
-  SpatialLinkBudgetSnapshot,
-  TimelineCommunicationRecord,
-  SuperframeEpochRecord,
-  SuperframeDiscontinuityRecord,
-  SchedulerEpochMetrics,
-  EvictionDropFinalizationRecord,
-  EvictionSchedulerId,
-  HiFiPhysicsTelemetry,
+  WorkerCommandResult, SelectedLinkBudgetTelemetry, TelemetryGanttAllocation, WorkerInboundCommand, WorkerOutboundMessage, TelemetryFrame, NodeTelemetryItem, FresnelSliceTelemetry, TerrainMeshDataReadyMessage, ConfigUpdateParams, SpatialFrameSnapshot, SpatialNodeSnapshot, SpatialLinkBudgetSnapshot, TimelineCommunicationRecord, SuperframeEpochRecord, SuperframeDiscontinuityRecord, SchedulerEpochMetrics, EvictionDropFinalizationRecord, EvictionSchedulerId, HiFiPhysicsTelemetry, TransportAbrTelemetry,
 } from '../shared/workerProtocol';
-import {
-  HillshadeGenerator,
-  type HillshadeResult,
-} from './hillshadeGenerator';
-import {
-  TelemetrySerializer,
-  normalizeSlotAllocationToFrame,
-  type RunningMetrics,
-  type TelemetrySimulationState,
-} from './telemetrySerializer';
-import {
-  NodeLifecycleManager,
-} from './nodeLifecycleManager';
-import {
-  TerrainMeshGenerator,
-  type TerrainMeshGenerationResult,
-} from './terrainMeshGenerator';
-import {
-  buildFresnelSlice as computeFresnelSlice,
-  buildEmptyFresnelSlice,
-  PROFILE_FRESNEL_FRACTION,
-} from '../core/profileEngine';
+import { HillshadeGenerator, type HillshadeResult } from './hillshadeGenerator';
+import { TelemetrySerializer, normalizeSlotAllocationToFrame, type RunningMetrics, type TelemetrySimulationState } from './telemetrySerializer';
+import { NodeLifecycleManager } from './nodeLifecycleManager';
+import { TerrainMeshGenerator, type TerrainMeshGenerationResult } from './terrainMeshGenerator';
+import { buildFresnelSlice as computeFresnelSlice, buildEmptyFresnelSlice, PROFILE_FRESNEL_FRACTION } from '../core/profileEngine';
 import { PolarViewshedEngine, type RelayAdvisorReport } from '../core/viewshedEngine';
 import {
-  collectTransferables,
-  cloneToTransferableFloat32,
-  packFloat32Grid,
-  packTerrainProfileTyped,
-  packConstellationIQ,
-  type PackedGridFloat32,
-  type UnpackedGridFloat32,
-  type UnpackedTerrainProfile,
-  type UnpackedConstellationIQ,
+  collectTransferables, cloneToTransferableFloat32, packFloat32Grid, packTerrainProfileTyped, packConstellationIQ, type PackedGridFloat32, type UnpackedGridFloat32, type UnpackedTerrainProfile, type UnpackedConstellationIQ,
 } from '../core/ipcTransferCodec';
+import { BoundedReplayBuffer, type ReplayBufferStats, type ReplayFrameEntry, type ReplayBufferMode } from '../core/boundedReplayBuffer';
 import {
-  BoundedReplayBuffer,
-  type ReplayBufferStats,
-  type ReplayFrameEntry,
-  type ReplayBufferMode,
-} from '../core/boundedReplayBuffer';
-import {
-  computeDelayQuantiles as computeDelayQuantilesHelper,
-  extractSchedulerEpochMetrics as extractSchedulerEpochMetricsHelper,
-  createSuperframeEpochRecord,
-  buildSpatialFrameSnapshot,
-  buildHiFiPhysicsTelemetry,
+  computeDelayQuantiles as computeDelayQuantilesHelper, extractSchedulerEpochMetrics as extractSchedulerEpochMetricsHelper, createSuperframeEpochRecord, buildSpatialFrameSnapshot, buildHiFiPhysicsTelemetry, createDefaultSimulationMetrics, createTelemetryFrameOutboundMessage, buildObstructionStateSnapshot, evaluateAcmCqiAgingAndOlla, computeJammerInterference, captureEvictionFinalizationRecord,
 } from './workerKpiHelpers';
 import {
-  validateConfigUpdateParams,
-  validateNodeMoveCommand,
-  validatePresetCommand,
-  validateTrafficInjectionCommand,
-  resolveScientificParams,
-  resolveViewshedConfig,
+  validateConfigUpdateParams, validateNodeMoveCommand, validatePresetCommand, validateTrafficInjectionCommand, resolveScientificParams, resolveViewshedConfig, validateSetBiomeCommand,
 } from './workerCommandValidators';
+import type { BiomeId, PolarizationMode, AdvectingWeatherCell, BiomeEmParameters } from '../core/biomePhysics';
 
 export {
   FRAME_DT,
@@ -457,6 +344,26 @@ export class SimulationWorkerManager {
   public enableDubinsKinematics: boolean = false;
   public viewshedFidelityMode: 'fast' | 'link-budget-parity' = 'fast';
 
+  // Multi-Biome Theater Platform & Biome-Adaptive RF Physics (SPEC-V3-01)
+  public biomeId: BiomeId = 'alpine_mountain';
+  public enableBiomeEmPhysics: boolean = false;
+  public polarizationMode: PolarizationMode = 'RHCP';
+  public dustVisibilityKm: number = 15.0;
+  public foliageDepthM: number = 0.0;
+  public weatherCells: readonly AdvectingWeatherCell[] = [];
+  public liveMeanTwoRayGainDb: number = 0.0;
+  public liveMeanFoliageLossDb: number = 0.0;
+  public liveMeanDustLossDb: number = 0.0;
+  public liveMeanPolLossDb: number = 0.0;
+
+  // Transport AIMD Congestion Control & Adaptive Video Bitrate (SPEC-V3-02)
+  public enableTransportAbr: boolean = false;
+  public readonly aimdStateByNode: Map<number, AimdState> = new Map();
+  public readonly abrStateByNode: Map<number, AbrState> = new Map();
+  public readonly closedLoopCapacityScaleByNode: Map<number, number> = new Map();
+  public abrStepDownsTotal: number = 0;
+  public abrStepUpsTotal: number = 0;
+
   // Worker-owned deterministic state for MAC/PHY & Hi-Fi models
   public readonly ollaOffsetByNode: Map<number, number> = new Map();
   public readonly cqiHistoryByNode: Map<number, number[]> = new Map();
@@ -464,6 +371,24 @@ export class SimulationWorkerManager {
   public harqRetxTotal: number = 0;
   public readonly prevSectorByNode: Map<number, number> = new Map();
   public hifiTelemetry: HiFiPhysicsTelemetry | undefined = undefined;
+
+  // Electronic Warfare / ECCM & GNSS Spoofing (SPEC-V3-03)
+  public eccmMode: SpreadSpectrumEccmMode = 'NONE';
+  public enableMvdrNullSteering: boolean = false; public enableAdversaryEsmModel: boolean = false;
+  public gnssSpoofingRateUsPerSec: number = 0.0; public enableAntiSpoofHoldover: boolean = false;
+  public gnssSpoofElapsedSec: number = 0.0; public liveMeanProcessingGainDb: number = 0.0;
+  public liveMeanSpatialNullRejectionDb: number = 0.0; public liveMeanEffectiveJammerPowerDbm: number = -150.0;
+  public liveRawJammerPowerDbm: number = -150.0; public liveJammerSuppressed: boolean = false;
+  public liveMaxSlantRangeM: number = 10000.0; public ewEccmTelemetry: EwEccmTelemetry | undefined = undefined;
+
+  // Constellation, MANET & High-Alt Aerodynamics (SPEC-V3-04)
+  public acnConstellationCount: number = 1; public enableMultiHopManet: boolean = false;
+  public enableGroundConvoyMobility: boolean = false; public windSpeedMs: number = 0.0;
+  public windDirectionDeg: number = 270.0; public enableAutoCfitPullUp: boolean = false;
+  public readonly nodeHandoverStates: Map<number, NodeHandoverState> = new Map();
+  public readonly groundConvoyStates: Map<number, GroundConvoyState> = createDefaultGroundConvoyStates();
+  public uavEnduranceRemainingMin: number = 480.0; public handoverEventsTotal: number = 0;
+  public constellationMobilityTelemetry: ConstellationMobilityTelemetry | undefined = undefined;
 
   private timerId: number | null = null;
   private simDebtMs: number = 0.0;
@@ -528,46 +453,7 @@ export class SimulationWorkerManager {
     this.reactiveScheduler.setTdmaConfig(this.tdmaConfig);
     this.tdmaAccumulatorS = 0.0;
 
-    this.metrics = {
-      staticGoodputBits: 0,
-      tacGoodputBits: 0,
-      reactiveGoodputBits: 0,
-      staticWastedBits: 0,
-      tacWastedBits: 0,
-      reactiveWastedBits: 0,
-      staticDroppedPkts: 0,
-      tacDroppedPkts: 0,
-      reactiveDroppedPkts: 0,
-      staticEnqueuedPkts: 0,
-      tacEnqueuedPkts: 0,
-      reactiveEnqueuedPkts: 0,
-      node4PreShadowBacklogKb: 0,
-      staticNode4PreShadowBacklogKb: 0,
-      lastStaticUtilPct: 0,
-      lastTacUtilPct: 0,
-      lastReactiveUtilPct: 0,
-      staticScheduledUlTimeS: 0,
-      tacScheduledUlTimeS: 0,
-      reactiveScheduledUlTimeS: 0,
-      staticAvailableUlTimeS: 0,
-      tacAvailableUlTimeS: 0,
-      reactiveAvailableUlTimeS: 0,
-      staticUnusedUlTimeS: 0,
-      tacUnusedUlTimeS: 0,
-      reactiveUnusedUlTimeS: 0,
-      staticPayloadBitsDequeued: 0,
-      tacPayloadBitsDequeued: 0,
-      reactivePayloadBitsDequeued: 0,
-      staticDelayDropsThisRun: 0,
-      tacDelayDropsThisRun: 0,
-      reactiveDelayDropsThisRun: 0,
-      staticOverflowDropsThisRun: 0,
-      tacOverflowDropsThisRun: 0,
-      reactiveOverflowDropsThisRun: 0,
-      staticFinalBacklogBits: 0,
-      tacFinalBacklogBits: 0,
-      reactiveFinalBacklogBits: 0,
-    };
+    this.metrics = createDefaultSimulationMetrics();
 
     this.initNodes();
     this.registerActiveNodesWithSchedulers();
@@ -600,15 +486,16 @@ export class SimulationWorkerManager {
   }
 
   private registerActiveNodesWithSchedulers(): void {
-    for (let i = 0; i < this.nodesStatic.length; i++) {
-      this.staticScheduler.registerNode(this.nodesStatic[i]);
-    }
-    for (let i = 0; i < this.nodesTac.length; i++) {
-      this.tacScheduler.registerNode(this.nodesTac[i]);
-    }
-    for (let i = 0; i < this.nodesReactive.length; i++) {
-      this.reactiveScheduler.registerNode(this.nodesReactive[i]);
-    }
+    for (let i = 0; i < this.nodesStatic.length; i++) this.staticScheduler.registerNode(this.nodesStatic[i]);
+    for (let i = 0; i < this.nodesTac.length; i++) this.tacScheduler.registerNode(this.nodesTac[i]);
+    for (let i = 0; i < this.nodesReactive.length; i++) this.reactiveScheduler.registerNode(this.nodesReactive[i]);
+  }
+
+  private reinitSchedulers(): void {
+    this.staticScheduler = new LegacyStaticScheduler(); this.staticScheduler.setTdmaConfig(this.tdmaConfig); this.staticScheduler.enableMultiSector = true;
+    this.tacScheduler = new TerrainAwareDynamicScheduler(0.008); this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+    this.reactiveScheduler = new ReactiveMlwdfScheduler(0.008); this.reactiveScheduler.setTdmaConfig(this.tdmaConfig);
+    this.registerActiveNodesWithSchedulers();
   }
 
   private preparePresetRunReset(): void {
@@ -625,28 +512,16 @@ export class SimulationWorkerManager {
     node: GroundNodeTrafficSubsystem | undefined,
     associatedSimulationFrameIndex: number
   ): EvictionDropFinalizationRecord | null {
-    const capture = node ? scheduler.capturePendingDropsBeforeEviction(node) : null;
-    const evictResult = scheduler.evictNode(nodeId, node);
-    const finalCapture = capture && capture.captured ? capture : evictResult;
-    if (!finalCapture || (finalCapture.totalDroppedBytes <= 0 && finalCapture.totalDroppedPkts <= 0)) {
-      return null;
-    }
-    return {
-      recordType: 'NODE_EVICTION_FINALIZATION',
+    return captureEvictionFinalizationRecord({
+      schedulerId,
+      scheduler,
+      nodeId,
+      node,
+      associatedSimulationFrameIndex,
       simulationRunId: this.simulationRunId,
       finalizationIndex: this.evictionFinalizationIndex++,
-      schedulerId,
-      nodeId,
-      timestampS: this.simTimeS,
-      associatedSimulationFrameIndex,
-      droppedDelayPkts: finalCapture.droppedDelayPkts,
-      droppedOverflowPkts: finalCapture.droppedOverflowPkts,
-      totalDroppedPkts: finalCapture.totalDroppedPkts,
-      droppedDelayBytes: finalCapture.droppedDelayBytes,
-      droppedOverflowBytes: finalCapture.droppedOverflowBytes,
-      totalDroppedBytes: finalCapture.totalDroppedBytes,
-      reason: 'NODE_DELETE',
-    };
+      simTimeS: this.simTimeS,
+    });
   }
 
   /** Re-derive each ground node's MSL altitude from the currently active terrain and its AGL. */
@@ -882,20 +757,17 @@ export class SimulationWorkerManager {
     // Evaluate Edge-AI Copilot Pillars (cadenced to every 25 ticks / 0.5s)
     if (this.aiTickCount % 25 === 0) {
       // Prepare squad nodes for buddy mesh evaluation
-      const squadForBuddy: SquadNodeForBuddyEval[] = [];
-      for (let i = 0; i < this.nodesStatic.length; i++) {
-        const n = this.nodesStatic[i];
+      const squadForBuddy: SquadNodeForBuddyEval[] = this.nodesStatic.map(n => {
         const ls = this.linkStatuses.get(n.nodeId);
-        const rateMbps = ls?.bitrateMbps ?? 0.0;
-        squadForBuddy.push({
+        return {
           nodeId: n.nodeId,
           position: n.position,
           nodeType: n.nodeType,
           isOutage: ls?.isOutage ?? true,
-          directBitrateMbps: rateMbps,
+          directBitrateMbps: ls?.bitrateMbps ?? 0.0,
           directSinrDb: ls?.sinrDb ?? ls?.snrDb ?? -99.0,
-        });
-      }
+        };
+      });
 
       for (let i = 0; i < this.nodesStatic.length; i++) {
         const node = this.nodesStatic[i];
@@ -988,61 +860,24 @@ export class SimulationWorkerManager {
     this.tdmaAccumulatorS += FRAME_DT;
     const tFrame = this.tdmaConfig.frameDurationS;
 
-    if (Math.abs(tFrame - FRAME_DT) < 1e-6) {
-      // Baseline 20 ms mode: 100% bit-for-bit identical to original discrete physics
-      const trafficScale = this.envConfig.trafficLoadMultiplier ?? 1.0;
-      for (let i = 0; i < this.nodesStatic.length; i++) {
-        const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT, trafficScale);
-        const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT, trafficScale);
-        const rPkts = this.nodesReactive[i]?.generateTraffic(t, FRAME_DT, trafficScale) ?? [];
-        this.metrics.staticEnqueuedPkts += sPkts.length;
-        this.metrics.tacEnqueuedPkts += tPkts.length;
-        this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
+    if (this.enableTransportAbr) {
+      this.stepTransportAbrLoop();
+    }
 
-        this.nodesStatic[i].queue.pruneExpiredPackets(t);
-        this.nodesTac[i].queue.pruneExpiredPackets(t);
-        this.nodesReactive[i]?.queue.pruneExpiredPackets(t);
-      }
+    if (Math.abs(tFrame - FRAME_DT) < 1e-6) {
+      this.generateTickTraffic(t, FRAME_DT);
       this.executeTdmaSuperframe(t, FRAME_DT);
       this.recordSuperframeEpoch(FRAME_DT);
       this.tdmaAccumulatorS = 0.0;
     } else if (tFrame < FRAME_DT - 1e-6) {
-      // Fast waveforms (tFrame < 20 ms, e.g. 10 ms fast mode):
-      // Execute multiple TDMA sub-cycles within one 50 Hz physics tick
-      const trafficScale = this.envConfig.trafficLoadMultiplier ?? 1.0;
       while (this.tdmaAccumulatorS >= tFrame - 1e-6) {
-        for (let i = 0; i < this.nodesStatic.length; i++) {
-          const sPkts = this.nodesStatic[i].generateTraffic(t, tFrame, trafficScale);
-          const tPkts = this.nodesTac[i].generateTraffic(t, tFrame, trafficScale);
-          const rPkts = this.nodesReactive[i]?.generateTraffic(t, tFrame, trafficScale) ?? [];
-          this.metrics.staticEnqueuedPkts += sPkts.length;
-          this.metrics.tacEnqueuedPkts += tPkts.length;
-          this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
-
-          this.nodesStatic[i].queue.pruneExpiredPackets(t);
-          this.nodesTac[i].queue.pruneExpiredPackets(t);
-          this.nodesReactive[i]?.queue.pruneExpiredPackets(t);
-        }
+        this.generateTickTraffic(t, tFrame);
         this.executeTdmaSuperframe(t, tFrame);
         this.recordSuperframeEpoch(tFrame);
         this.tdmaAccumulatorS -= tFrame;
       }
     } else {
-      // Extended waveforms (tFrame > 20 ms, e.g. 40 ms extended mode):
-      // Generate traffic for FRAME_DT every tick so backlogs accumulate naturally
-      const trafficScale = this.envConfig.trafficLoadMultiplier ?? 1.0;
-      for (let i = 0; i < this.nodesStatic.length; i++) {
-        const sPkts = this.nodesStatic[i].generateTraffic(t, FRAME_DT, trafficScale);
-        const tPkts = this.nodesTac[i].generateTraffic(t, FRAME_DT, trafficScale);
-        const rPkts = this.nodesReactive[i]?.generateTraffic(t, FRAME_DT, trafficScale) ?? [];
-        this.metrics.staticEnqueuedPkts += sPkts.length;
-        this.metrics.tacEnqueuedPkts += tPkts.length;
-        this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
-
-        this.nodesStatic[i].queue.pruneExpiredPackets(t);
-        this.nodesTac[i].queue.pruneExpiredPackets(t);
-        this.nodesReactive[i]?.queue.pruneExpiredPackets(t);
-      }
+      this.generateTickTraffic(t, FRAME_DT);
       if (this.tdmaAccumulatorS >= tFrame - 1e-6) {
         this.executeTdmaSuperframe(t, tFrame);
         this.recordSuperframeEpoch(tFrame);
@@ -1069,71 +904,75 @@ export class SimulationWorkerManager {
       this.replayBuffer.push(t, frame, false);
       (frame as any).batch_spatial_snapshots = this.batchSpatialSnapshots.splice(0);
       (frame as any).completed_superframes = this.pendingTimelineRecords.splice(0);
-      this.emitHostMessage({
-        type: 'TELEMETRY_FRAME',
-        frame,
-        static_goodput_mbps: frame.static_goodput_mbps,
-        static_util_pct: frame.static_util_pct,
-        static_wasted_bits: frame.static_wasted_bits,
-        static_delay_drops: frame.static_delay_drops,
-        static_overflow_drops: frame.static_overflow_drops,
-        static_scheduled_ul_s: frame.static_scheduled_ul_s,
-        static_sector_util_pct: frame.static_sector_util_pct,
-        tac_goodput_mbps: frame.tac_goodput_mbps,
-        tac_util_pct: frame.tac_util_pct,
-        tac_wasted_bits: frame.tac_wasted_bits,
-        tac_delay_drops: frame.tac_delay_drops,
-        tac_overflow_drops: frame.tac_overflow_drops,
-        tac_scheduled_ul_s: frame.tac_scheduled_ul_s,
-        tac_sector_util_pct: frame.tac_sector_util_pct,
-        reactive_goodput_mbps: frame.reactive_goodput_mbps,
-        reactive_util_pct: frame.reactive_util_pct,
-        reactive_wasted_bits: frame.reactive_wasted_bits,
-        reactive_delay_drops: frame.reactive_delay_drops,
-        reactive_overflow_drops: frame.reactive_overflow_drops,
-        reactive_scheduled_ul_s: frame.reactive_scheduled_ul_s,
-        reactive_sector_util_pct: frame.reactive_sector_util_pct,
-        dem_lookahead_error_std_m: frame.dem_lookahead_error_std_m,
-        traffic_load_multiplier: frame.traffic_load_multiplier,
-        jammer_enabled: frame.jammer_enabled,
-        jammer_eirp_dbm: frame.jammer_eirp_dbm,
-        jammer_pos_enu: frame.jammer_pos_enu,
-        jammer_terrain_shield_db: frame.jammer_terrain_shield_db,
-        jammer_sector_interference_dbm: frame.jammer_sector_interference_dbm,
-        viewshed_sinr_grid: frame.viewshed_sinr_grid,
-        relay_advisor: frame.relay_advisor,
-        active_relay_enabled: frame.active_relay_enabled,
-        relayed_node_count: frame.relayed_node_count,
-        relay_backhaul_sector_id: frame.relay_backhaul_sector_id,
-        relay_backhaul_snr_db: frame.relay_backhaul_snr_db,
-        rician_fading_enabled: frame.rician_fading_enabled,
-        cqi_feedback_delay_ms: frame.cqi_feedback_delay_ms,
-      });
+      this.emitHostMessage(createTelemetryFrameOutboundMessage(frame, {
+        biomeId: this.biomeId,
+        enableBiomeEmPhysics: this.enableBiomeEmPhysics,
+        polarizationMode: this.polarizationMode,
+        liveMeanTwoRayGainDb: this.liveMeanTwoRayGainDb,
+        liveMeanFoliageLossDb: this.liveMeanFoliageLossDb,
+        liveMeanDustLossDb: this.liveMeanDustLossDb,
+        liveMeanPolLossDb: this.liveMeanPolLossDb,
+        weatherCellCount: this.weatherCells.length,
+      }));
+    }
+  }
+
+  private generateTickTraffic(t: number, stepDt: number): void {
+    const trafficScale = this.envConfig.trafficLoadMultiplier ?? 1.0;
+    for (let i = 0; i < this.nodesStatic.length; i++) {
+      const nid = this.nodesStatic[i].nodeId;
+      const abr = this.abrStateByNode.get(nid);
+      const tierIdx = abr?.currentTierIndex ?? 2;
+      const tierDef = ISR_VIDEO_ABR_TIERS[tierIdx] ?? ISR_VIDEO_ABR_TIERS[2];
+      const videoScale = this.enableTransportAbr ? tierDef.targetBitrateMbps / 2.5 : 1.0;
+
+      const sPkts = this.nodesStatic[i].generateTraffic(t, stepDt, trafficScale, videoScale);
+      const tPkts = this.nodesTac[i].generateTraffic(t, stepDt, trafficScale, videoScale);
+      const rPkts = this.nodesReactive[i]?.generateTraffic(t, stepDt, trafficScale, videoScale) ?? [];
+      this.metrics.staticEnqueuedPkts += sPkts.length;
+      this.metrics.tacEnqueuedPkts += tPkts.length;
+      this.metrics.reactiveEnqueuedPkts = (this.metrics.reactiveEnqueuedPkts ?? 0) + rPkts.length;
+
+      this.nodesStatic[i].queue.pruneExpiredPackets(t);
+      this.nodesTac[i].queue.pruneExpiredPackets(t);
+      this.nodesReactive[i]?.queue.pruneExpiredPackets(t);
     }
   }
 
   private executeTdmaSuperframe(t: number, tFrame: number): void {
+    const macFeedbackOptions: SchedulerMacFeedbackOptions | undefined = this.enableMacPhyFeedback
+      ? {
+          nodeClosedLoopCapacityScale: this.closedLoopCapacityScaleByNode,
+        }
+      : undefined;
+
     // 2. Schedulers
     const reportStatic = this.staticScheduler.scheduleFrame(
       this.frameIndex,
       t,
       this.nodesStatic,
       this.linkStatusesStatic.size > 0 ? this.linkStatusesStatic : this.linkStatuses,
-      this.predStates
+      this.predStates,
+      0,
+      macFeedbackOptions
     );
     const reportTac = this.tacScheduler.scheduleFrame(
       this.frameIndex,
       t,
       this.nodesTac,
       this.linkStatusesTac.size > 0 ? this.linkStatusesTac : this.linkStatuses,
-      this.predStates
+      this.predStates,
+      0,
+      macFeedbackOptions
     );
     const reportReactive = this.reactiveScheduler.scheduleFrame(
       this.frameIndex,
       t,
       this.nodesReactive,
       this.linkStatusesReactive.size > 0 ? this.linkStatusesReactive : this.linkStatuses,
-      this.predStates
+      this.predStates,
+      0,
+      macFeedbackOptions
     );
 
     this.lastReportStatic = reportStatic;
@@ -1259,14 +1098,6 @@ export class SimulationWorkerManager {
     });
   }
 
-  private extractSchedulerEpochMetrics(
-    report: FrameScheduleReport | null,
-    nodes: readonly GroundNodeTrafficSubsystem[],
-    simTimeS: number
-  ): SchedulerEpochMetrics {
-    return extractSchedulerEpochMetricsHelper(report, nodes, simTimeS);
-  }
-
   private recordSuperframeEpoch(durationS: number): void {
     const epochRecord = createSuperframeEpochRecord({
       tdmaSimTimeS: this.tdmaSimTimeS,
@@ -1324,52 +1155,52 @@ export class SimulationWorkerManager {
     let sumOllaOffsetDb = 0.0;
     let latestHarqGainDb = 0.0;
     let maxSlantRangeM = 1.0;
+    let sumTwoRayGainDb = 0.0;
+    let sumFoliageLossDb = 0.0;
+    let sumDustLossDb = 0.0;
+    let sumPolLossDb = 0.0;
+    let biomeEvaluatedCount = 0;
+
+    // GNSS Timing Spoofing Timing Advance (TA) Drift Evaluation
+    let taDriftUs = 0.0;
+    let effectiveTaResidualErrorM = 50.0;
+    if (this.gnssSpoofingRateUsPerSec > 0.0) {
+      this.gnssSpoofElapsedSec += FRAME_DT;
+      taDriftUs = computeGnssSpoofingTaDriftUs(
+        this.gnssSpoofElapsedSec,
+        this.gnssSpoofingRateUsPerSec,
+        2000.0,
+        this.enableAntiSpoofHoldover
+      );
+      const taDriftRangeErrorM = (SPEED_OF_LIGHT_M_S * (taDriftUs * 1e-6)) / 2.0;
+      effectiveTaResidualErrorM = 50.0 + taDriftRangeErrorM;
+    } else {
+      this.gnssSpoofElapsedSec = 0.0;
+    }
+
+    let sumProcessingGainDb = 0.0;
+    let sumSpatialNullRejectionDb = 0.0;
+    let sumEffectiveJammerDbm = 0.0;
+    let sumRawJammerDbm = 0.0;
+    let anyJammerSuppressed = false;
+    let ewEvaluatedCount = 0;
 
     // Evaluate Contested EW Jammer Ingress & Terrain Shielding
-    let jammerInterferenceBySector: readonly [number, number, number, number] | undefined = undefined;
-    if (this.envConfig.jammerEnabled) {
-      const jX = this.envConfig.jammerPosEnu[0];
-      const jY = this.envConfig.jammerPosEnu[1];
-      const surfaceZ = this.terrainEngine.getElevation(jX, jY);
-      const jZ = Number.isFinite(surfaceZ) ? surfaceZ + 3.0 : 3.0;
-      const jammerPos: Position3D = [jX, jY, jZ];
-      const dJammerM = Math.max(Math.hypot(acnPos[0] - jX, acnPos[1] - jY, acnPos[2] - jZ), 1.0);
-
-      const jammerObs = this.terrainEngine.evaluateTerrainObstruction(
-        jammerPos,
-        acnPos,
-        this.rfConfig,
-        this.envConfig
-      );
-      this.jammerShieldLossDb = jammerObs.diffractionLossDb ?? 0.0;
-
-      const fsplJ = LinkBudgetEngine.computeFsplDb(dJammerM, this.rfConfig.carrierFrequencyHz, this.rfConfig.speedOfLight);
-      const gasJ = LinkBudgetEngine.computeGaseousAttenuationDb(dJammerM, jZ, acnPos[2], this.rfConfig.carrierFrequencyHz);
-      const rainJ = LinkBudgetEngine.computeRainAttenuationDb(dJammerM, this.envConfig, jZ, acnPos[2]);
-      const lossJ = fsplJ + this.jammerShieldLossDb + gasJ + rainJ + this.rfConfig.cableLossDb;
-
-      const jammerSectorEval = this.antennaEngine.evaluateNodeSector(
-        -999,
-        acnPos,
-        acnVel,
-        jammerPos,
-        this.rfConfig.acnAntennaGainDbi,
-        false,
-        acnAttitude
-      );
-
-      const eirp = this.envConfig.jammerEirpDbm;
-      jammerInterferenceBySector = [
-        eirp + jammerSectorEval.allSectorGainsDbi[0] - lossJ,
-        eirp + jammerSectorEval.allSectorGainsDbi[1] - lossJ,
-        eirp + jammerSectorEval.allSectorGainsDbi[2] - lossJ,
-        eirp + jammerSectorEval.allSectorGainsDbi[3] - lossJ,
-      ] as const;
-      this.jammerSectorInterferenceDbm = jammerInterferenceBySector;
-    } else {
-      this.jammerShieldLossDb = 0.0;
-      this.jammerSectorInterferenceDbm = [-150.0, -150.0, -150.0, -150.0];
-    }
+    const jammerRes = computeJammerInterference({
+      jammerEnabled: this.envConfig.jammerEnabled,
+      jammerPosEnu: this.envConfig.jammerPosEnu,
+      jammerEirpDbm: this.envConfig.jammerEirpDbm,
+      acnPos,
+      acnVel,
+      acnAttitude,
+      terrainEngine: this.terrainEngine,
+      rfConfig: this.rfConfig,
+      envConfig: this.envConfig,
+      antennaEngine: this.antennaEngine,
+    });
+    this.jammerShieldLossDb = jammerRes.jammerShieldLossDb;
+    this.jammerSectorInterferenceDbm = jammerRes.jammerSectorInterferenceDbm;
+    const jammerInterferenceBySector = jammerRes.jammerInterferenceBySector;
 
     // 1. Authoritative 50 Hz Physical Obstruction Evaluation for ALL nodes
     for (let i = 0; i < numNodes; i++) {
@@ -1398,9 +1229,29 @@ export class SimulationWorkerManager {
       );
 
       const activeSectorId = sectorEval.activeSectorId;
-      const nodeJammerInterferenceDbm = jammerInterferenceBySector !== undefined
+      const rawNodeJammerInterferenceDbm = jammerInterferenceBySector !== undefined
         ? jammerInterferenceBySector[activeSectorId]
         : undefined;
+
+      const nodeEw = computeNodeEwJammerMitigation({
+        rawJammerDbm: rawNodeJammerInterferenceDbm,
+        eccmMode: this.eccmMode,
+        enableMvdrNullSteering: this.enableMvdrNullSteering,
+        acnPos,
+        jammerPosEnu: this.envConfig.jammerPosEnu,
+        targetBearingDeg: sectorEval.worldBearingDeg,
+        channelBandwidthHz: this.rfConfig.channelBandwidthHz || 1e6,
+      });
+
+      const nodeJammerInterferenceDbm = nodeEw.effectiveJammerDbm;
+      if (rawNodeJammerInterferenceDbm !== undefined) {
+        sumProcessingGainDb += nodeEw.eccmProcessingGainDb;
+        sumSpatialNullRejectionDb += nodeEw.spatialNullRejectionDb;
+        sumEffectiveJammerDbm += (nodeEw.effectiveJammerDbm ?? -150.0);
+        sumRawJammerDbm += rawNodeJammerInterferenceDbm;
+        if (nodeEw.jammerSuppressed) anyJammerSuppressed = true;
+        ewEvaluatedCount++;
+      }
 
       let ricianKFactorDb: number | undefined = undefined;
       let ricianFadingGainDb: number | undefined = undefined;
@@ -1490,6 +1341,24 @@ export class SimulationWorkerManager {
         };
       }
 
+      if (this.enableBiomeEmPhysics) {
+        airframeOptions = {
+          ...airframeOptions,
+          biomeEmParams: {
+            enableBiomeEmPhysics: true,
+            biomeId: this.biomeId,
+            txAltAglM: this.liveAltitudeM ?? 1000.0,
+            rxAltAglM: node.aglM ?? 10.0,
+            polarization: this.polarizationMode,
+            relativeBankDeg: uavAttitude.rollDeg ?? 0.0,
+            dustVisibilityKm: this.dustVisibilityKm,
+            foliageDepthM: this.foliageDepthM,
+            weatherCells: this.weatherCells,
+            simTimeSec: this.simTimeS,
+          },
+        };
+      }
+
       const ls = this.linkEngine.evaluateLink(
         node.nodeType,
         slantM,
@@ -1527,6 +1396,21 @@ export class SimulationWorkerManager {
       if (ls.coherenceTimeMs !== undefined && Number.isFinite(ls.coherenceTimeMs)) {
         latestCoherenceTimeMs = ls.coherenceTimeMs;
       }
+      if (ls.twoRayDeltaDb !== undefined) {
+        sumTwoRayGainDb += ls.twoRayDeltaDb;
+      }
+      if (ls.vegetationLossDb !== undefined) {
+        sumFoliageLossDb += ls.vegetationLossDb;
+      }
+      if (ls.dustStormLossDb !== undefined) {
+        sumDustLossDb += ls.dustStormLossDb;
+      }
+      if (ls.polarizationLossDb !== undefined) {
+        sumPolLossDb += ls.polarizationLossDb;
+      }
+      if (this.enableBiomeEmPhysics) {
+        biomeEvaluatedCount++;
+      }
 
       if (this.enableMacPhyFeedback) {
         const cqiLagFrames = computeCqiLagFrames(slantM, this.tdmaConfig.frameDurationMs, 4.0);
@@ -1545,6 +1429,7 @@ export class SimulationWorkerManager {
         currentOlla = stepOllaOffsetDb(currentOlla, isAck, 0.1, 0.25, 0.0, 10.0);
         this.ollaOffsetByNode.set(nid, currentOlla);
 
+        let harqActiveRetx = false;
         const harqSlot = this.harqSlotByNode.get(nid);
         if (harqSlot) {
           const harqRes = stepHarqProcess(harqSlot, {
@@ -1559,16 +1444,43 @@ export class SimulationWorkerManager {
           this.harqSlotByNode.set(nid, harqRes.nextSlot);
           if (harqRes.event === 'NACK_RETRY_SCHEDULED') {
             this.harqRetxTotal++;
+            harqActiveRetx = true;
+          } else if (harqRes.event === 'TX_PENDING_RTT') {
+            harqActiveRetx = true;
           }
           const harqGain = Math.max(0.0, harqRes.combinedSnrDb - ls.snrDb);
           latestHarqGainDb = Math.max(latestHarqGainDb, harqGain);
         }
+
+        const slotsPerFrame = this.tdmaConfig.fixedSlotCount ?? 16;
+        const uplinkMs = Math.max(1.0, this.tdmaConfig.frameDurationMs - this.tdmaConfig.ctrlDurationMs - this.tdmaConfig.dlMinDurationMs);
+        const slotDurationMs = uplinkMs / slotsPerFrame;
+        const guardRes = computeDynamicTdmaOverhead({
+          slotDurationMs,
+          slotsPerFrame,
+          slantRangeM: slantM,
+          timingAdvanceActive: true,
+          taResidualErrorM: effectiveTaResidualErrorM,
+        });
+
+        const closedLoopScale = computeClosedLoopEffectiveCapacityScale({
+          dynamicGuardEfficiency: guardRes.frameDataEfficiency,
+          slotCollisionOutage: guardRes.slotCollisionOutage,
+          delayedCqiBler: amcRes.bler,
+          harqActiveRetx,
+          harqCombinedSnrMarginDb: amcRes.snrMarginDb,
+        });
+        this.closedLoopCapacityScaleByNode.set(nid, closedLoopScale);
       }
 
       nextObstructions.set(nid, obstruction);
       nextLinks.set(nid, ls);
       // Traffic-generation shadow is current geometry or link outage
       nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked || ls.isOutage);
+    }
+
+    if (!this.enableMacPhyFeedback) {
+      this.closedLoopCapacityScaleByNode.clear();
     }
 
     let dynamicGuardEfficiency = 1.0;
@@ -1581,6 +1493,7 @@ export class SimulationWorkerManager {
         slotsPerFrame,
         slantRangeM: maxSlantRangeM,
         timingAdvanceActive: true,
+        taResidualErrorM: effectiveTaResidualErrorM,
       });
       dynamicGuardEfficiency = guardRes.frameDataEfficiency;
     }
@@ -1609,6 +1522,13 @@ export class SimulationWorkerManager {
       dubinsMinTurnRadiusM,
     });
 
+    this.liveMaxSlantRangeM = maxSlantRangeM;
+    this.liveMeanProcessingGainDb = ewEvaluatedCount > 0 ? sumProcessingGainDb / ewEvaluatedCount : 0.0;
+    this.liveMeanSpatialNullRejectionDb = ewEvaluatedCount > 0 ? sumSpatialNullRejectionDb / ewEvaluatedCount : 0.0;
+    this.liveMeanEffectiveJammerPowerDbm = ewEvaluatedCount > 0 ? sumEffectiveJammerDbm / ewEvaluatedCount : -150.0;
+    this.liveRawJammerPowerDbm = ewEvaluatedCount > 0 ? sumRawJammerDbm / ewEvaluatedCount : -150.0;
+    this.liveJammerSuppressed = anyJammerSuppressed;
+
     // 1a. Active Two-Hop Decode-and-Forward (DF) Tactical Mesh Relay Evaluation
     let relayedNodeCount = 0;
     let relayBackhaulSectorId: 0 | 1 | 2 | 3 | undefined = undefined;
@@ -1634,9 +1554,20 @@ export class SimulationWorkerManager {
         this.rfConfig.carrierFrequencyHz,
         acnAccel
       );
-      const hop2JammerInterferenceDbm = this.envConfig.jammerEnabled && jammerInterferenceBySector !== undefined
+      const rawHop2JammerInterferenceDbm = this.envConfig.jammerEnabled && jammerInterferenceBySector !== undefined
         ? jammerInterferenceBySector[hop2SectorEval.activeSectorId]
         : undefined;
+
+      const hop2Ew = computeNodeEwJammerMitigation({
+        rawJammerDbm: rawHop2JammerInterferenceDbm,
+        eccmMode: this.eccmMode,
+        enableMvdrNullSteering: this.enableMvdrNullSteering,
+        acnPos,
+        jammerPosEnu: this.envConfig.jammerPosEnu,
+        targetBearingDeg: hop2SectorEval.worldBearingDeg,
+        channelBandwidthHz: this.rfConfig.channelBandwidthHz || 1e6,
+      });
+      const hop2JammerInterferenceDbm = hop2Ew.effectiveJammerDbm;
 
       const hop2Link = this.linkEngine.evaluateLink(
         'mcp',
@@ -1725,21 +1656,24 @@ export class SimulationWorkerManager {
     this.relayBackhaulSectorId = relayBackhaulSectorId;
     this.relayBackhaulSnrDb = relayBackhaulSnrDb;
 
+    this.liveMeanTwoRayGainDb = biomeEvaluatedCount > 0 ? sumTwoRayGainDb / biomeEvaluatedCount : 0.0;
+    this.liveMeanFoliageLossDb = biomeEvaluatedCount > 0 ? sumFoliageLossDb / biomeEvaluatedCount : 0.0;
+    this.liveMeanDustLossDb = biomeEvaluatedCount > 0 ? sumDustLossDb / biomeEvaluatedCount : 0.0;
+    this.liveMeanPolLossDb = biomeEvaluatedCount > 0 ? sumPolLossDb / biomeEvaluatedCount : 0.0;
+
     // 1a-2. Closed-Loop Pillar 1: AI Buddy-Relay Squad Mesh Delivery
     if (this.aiBuddyMeshEnabled) {
-      const squadForBuddy: SquadNodeForBuddyEval[] = [];
-      for (let j = 0; j < numNodes; j++) {
-        const oNode = this.nodesTac[j];
+      const squadForBuddy: SquadNodeForBuddyEval[] = this.nodesTac.map(oNode => {
         const oLs = nextLinks.get(oNode.nodeId);
-        squadForBuddy.push({
+        return {
           nodeId: oNode.nodeId,
           position: oNode.position,
           nodeType: oNode.nodeType,
           isOutage: oLs?.isOutage ?? true,
           directBitrateMbps: oLs?.bitrateMbps ?? 0.0,
           directSinrDb: oLs?.snrDb ?? -99.0,
-        });
-      }
+        };
+      });
 
       for (let i = 0; i < numNodes; i++) {
         const node = this.nodesTac[i];
@@ -1974,60 +1908,16 @@ export class SimulationWorkerManager {
 
       const delayedSinr = hist[delaySteps];
 
-      // 1. Reactive & Static Baselines (delayed CQI selection)
-      const modcodDelayed = LinkBudgetEngine.selectModCod(delayedSinr);
-      const isDelayedOutage = ls.obstacleBlocked || modcodDelayed.name === 'LINK_OUTAGE';
-      const effDelayed = isDelayedOutage ? 0.0 : modcodDelayed.spectralEfficiencyBpsHz;
-      const bpsDelayed = isDelayedOutage ? 0.0 : effDelayed * this.rfConfig.channelBandwidthHz;
-
-      // ACM Block Decode Failure (CQI Aging Outage):
-      // If delayed CQI report SINR(t - tau_CQI) selected a MODCOD whose required SNR threshold
-      // exceeds current frame's true physical SINR(t) by more than 0.5 dB
-      const isDecodeFailureBaseline =
-        !isDelayedOutage &&
-        modcodDelayed.minSnrDb > currentSinr + 0.5;
-
-      const lsBaseline: LinkStatus = {
-        ...ls,
-        modcodName: isDelayedOutage ? 'LINK_OUTAGE' : modcodDelayed.name,
-        spectralEfficiency: effDelayed,
-        bitrateBps: bpsDelayed,
-        bitrateMbps: bpsDelayed / 1.0e6,
-        isOutage: isDelayedOutage,
-        cqiDecodeFailure: isDecodeFailureBaseline,
-      };
+      const { lsBaseline, lsTac, ollaMarginDb } = evaluateAcmCqiAgingAndOlla(
+        ls,
+        currentSinr,
+        delayedSinr,
+        delayMs,
+        this.rfConfig.channelBandwidthHz
+      );
       this.linkStatusesStatic.set(nid, lsBaseline);
       this.linkStatusesReactive.set(nid, lsBaseline);
-
-      // 2. Predictive Tac-TAD with OLLA Margin
-      const kDb = ls.ricianKFactorDb ?? 4.0;
-      const kLin = Math.pow(10.0, kDb / 10.0);
-      const delayFactor = Math.min(1.0, delayMs / 20.0);
-      const ollaMarginDb = (2.5 / Math.sqrt(kLin)) * delayFactor;
-      const sinrSafe = delayedSinr - ollaMarginDb;
-
-      const modcodSafe = LinkBudgetEngine.selectModCod(sinrSafe);
-      const isSafeOutage = ls.obstacleBlocked || modcodSafe.name === 'LINK_OUTAGE';
-      const effSafe = isSafeOutage ? 0.0 : modcodSafe.spectralEfficiencyBpsHz;
-      const bpsSafe = isSafeOutage ? 0.0 : effSafe * this.rfConfig.channelBandwidthHz;
-
-      const isDecodeFailureTac =
-        !isSafeOutage &&
-        modcodSafe.minSnrDb > currentSinr + 0.5;
-
-      const lsTac: LinkStatus = {
-        ...ls,
-        modcodName: isSafeOutage ? 'LINK_OUTAGE' : modcodSafe.name,
-        spectralEfficiency: effSafe,
-        bitrateBps: bpsSafe,
-        bitrateMbps: bpsSafe / 1.0e6,
-        isOutage: isSafeOutage,
-        cqiDecodeFailure: isDecodeFailureTac,
-        ollaMarginDb,
-      };
       this.linkStatusesTac.set(nid, lsTac);
-
-      // Attach ollaMarginDb to authoritative linkStatus for telemetry inspection
       (ls as any).ollaMarginDb = ollaMarginDb;
     }
     this.predStates.clear(); for (const [id, value] of nextPredictions) this.predStates.set(id, value);
@@ -2042,28 +1932,12 @@ export class SimulationWorkerManager {
   }
 
   private getObstructionStateSnapshot(): NonNullable<WorkerCommandResult['obstruction_state']> {
-    return this.nodesTac.map(node => {
-      const obstruction = this.obstructionResults.get(node.nodeId);
-      const link = this.linkStatuses.get(node.nodeId);
-      const prediction = this.predStates.get(node.nodeId);
-      return {
-        node_id: node.nodeId,
-        entity_id: node.entityId,
-        creation_sequence: node.creationSequence,
-        terrain_is_los: obstruction?.isLos ?? true,
-        obstacle_blocked: obstruction?.obstacleBlocked ?? false,
-        obstacle_intersections: obstruction?.obstacleIntersections.map(hit => ({ ...hit })) ?? [],
-        link_outage: link?.isOutage ?? true,
-        bitrate_bps: link?.bitrateBps ?? 0,
-        modcod_name: link?.modcodName ?? 'LINK_OUTAGE',
-        predicted_state: prediction?.currentState ?? NodeTerrainState.NORMAL_LOS,
-        time_to_occlusion_s: prediction?.timeToOcclusionS ?? Number.POSITIVE_INFINITY,
-        time_to_emergence_s: prediction?.timeToEmergenceS ?? Number.POSITIVE_INFINITY,
-        is_shadowed: node.isShadowed,
-        is_coverage_complete: obstruction?.isCoverageComplete ?? true,
-        coverage_note: obstruction?.coverageNote,
-      };
-    });
+    return buildObstructionStateSnapshot(
+      this.nodesTac,
+      this.obstructionResults,
+      this.linkStatuses,
+      this.predStates
+    );
   }
 
 
@@ -2094,12 +1968,131 @@ export class SimulationWorkerManager {
     return this.telemetrySerializer.buildNodesTelemetry(this, acnPos);
   }
 
+  private stepTransportAbrLoop(): void {
+    if (!this.enableTransportAbr) return;
+
+    for (let i = 0; i < this.nodesTac.length; i++) {
+      const node = this.nodesTac[i];
+      const nid = node.nodeId;
+      const ls = this.linkStatuses.get(nid);
+
+      const aimdState = this.aimdStateByNode.get(nid) ?? createInitialAimdState(4, 32);
+      const abrState = this.abrStateByNode.get(nid) ?? createInitialAbrState(2);
+
+      const isOutage = Boolean(ls?.isOutage || node.isShadowed || (ls && ls.bitrateBps <= 0));
+      const snrDb = isOutage ? -100.0 : (ls?.snrDb ?? 18.0);
+
+      let effectiveBler = 0.0;
+      if (isOutage) {
+        effectiveBler = 1.0;
+      } else if (this.enableMacPhyFeedback) {
+        const cqiLag = computeCqiLagFrames(ls?.slantRangeM ?? 0, this.tdmaConfig.frameDurationMs, 4.0);
+        const cqiHist = this.cqiHistoryByNode.get(nid);
+        const delayedIdx = Math.max(0, (cqiHist?.length ?? 1) - 1 - cqiLag);
+        const reportedCqi = cqiHist?.[delayedIdx] ?? (ls?.snrDb ?? 18.0);
+        const currentOlla = this.ollaOffsetByNode.get(nid) ?? 0.0;
+        const amc = evaluateDelayedCqiAmc({
+          reportedSnrDb: reportedCqi,
+          actualSnrDb: ls?.snrDb ?? 18.0,
+          ollaOffsetDb: currentOlla,
+        });
+        effectiveBler = amc.bler;
+      }
+
+      const videoBytes = node.queue.getClassBacklogBytes(67);
+      const maxVideoBytes = Math.max(1, node.queue.maxBufferPackets * 1200);
+      const queueFillRatio = Math.max(0.0, Math.min(1.0, videoBytes / maxVideoBytes));
+
+      const stepRes = evaluateNodeTransportAbr({
+        aimdState,
+        abrState,
+        isOutage,
+        snrDb,
+        effectiveBler,
+        queueFillRatio,
+        slantRangeM: ls?.slantRangeM ?? 0,
+        speedOfLight: SPEED_OF_LIGHT,
+      });
+
+      this.aimdStateByNode.set(nid, stepRes.nextAimd);
+      this.abrStateByNode.set(nid, stepRes.nextAbr);
+      if (stepRes.abrAction === 'down') {
+        this.abrStepDownsTotal++;
+      } else if (stepRes.abrAction === 'up') {
+        this.abrStepUpsTotal++;
+      }
+    }
+  }
+
+  private buildTransportAbrTelemetry(): TransportAbrTelemetry {
+    return computeTransportAbrTelemetry({
+      enabled: this.enableTransportAbr, nodeIds: this.nodesTac.map(n => n.nodeId),
+      aimdStateByNode: this.aimdStateByNode, abrStateByNode: this.abrStateByNode,
+      closedLoopCapacityScaleByNode: this.closedLoopCapacityScaleByNode, selectedNodeId: this.selectedNodeId,
+      abrStepDownsTotal: this.abrStepDownsTotal, abrStepUpsTotal: this.abrStepUpsTotal,
+    });
+  }
+
+  private buildEwEccmTelemetry(): EwEccmTelemetry {
+    const selNode = this.nodesTac.find((n) => n.nodeId === this.selectedNodeId) ?? this.nodesTac[0];
+    const ewTelem = evaluateLiveEwEccmTelemetry({
+      eccmMode: this.eccmMode, enableMvdrNullSteering: this.enableMvdrNullSteering,
+      enableAdversaryEsmModel: this.enableAdversaryEsmModel, gnssSpoofingRateUsPerSec: this.gnssSpoofingRateUsPerSec,
+      enableAntiSpoofHoldover: this.enableAntiSpoofHoldover, gnssSpoofElapsedSec: this.gnssSpoofElapsedSec,
+      tdmaConfig: this.tdmaConfig, carrierFrequencyHz: this.rfConfig.carrierFrequencyHz,
+      jammerShieldLossDb: this.jammerShieldLossDb, liveMeanProcessingGainDb: this.liveMeanProcessingGainDb,
+      liveMeanSpatialNullRejectionDb: this.liveMeanSpatialNullRejectionDb, liveMeanEffectiveJammerPowerDbm: this.liveMeanEffectiveJammerPowerDbm,
+      liveRawJammerPowerDbm: this.liveRawJammerPowerDbm, liveJammerSuppressed: this.liveJammerSuppressed,
+      liveMaxSlantRangeM: this.liveMaxSlantRangeM, selectedNodeTxPowerDbm: selNode?.txPowerDbm ?? 36.0,
+    });
+    this.ewEccmTelemetry = ewTelem;
+    return ewTelem;
+  }
+
+  private buildConstellationMobilityTelemetry(acnPos: [number, number, number]): ConstellationMobilityTelemetry {
+    const activeNodes = this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic;
+    const nodePositions = new Map<number, [number, number, number]>();
+    const nodeDirectSnrMap = new Map<number, number>();
+    for (let i = 0; i < activeNodes.length; i++) {
+      const n = activeNodes[i];
+      nodePositions.set(n.nodeId, [n.position[0], n.position[1], n.position[2]]);
+      const ls = this.linkStatuses.get(n.nodeId);
+      nodeDirectSnrMap.set(n.nodeId, ls?.snrDb ?? ls?.sinrDb ?? -99.0);
+    }
+    const vel = this.trajectoryEngine.getAcnVelocity(this.simTimeS);
+    const hdgDeg = ((Math.atan2(vel[1], vel[0]) * 180.0 / Math.PI % 360) + 360) % 360;
+    const stepOut = stepConstellationWorkerSystem({
+      acnConstellationCount: this.acnConstellationCount, enableMultiHopManet: this.enableMultiHopManet,
+      enableGroundConvoyMobility: this.enableGroundConvoyMobility, windSpeedMs: this.windSpeedMs,
+      windDirectionDeg: this.windDirectionDeg, enableAutoCfitPullUp: this.enableAutoCfitPullUp,
+      simTimeSec: this.simTimeS, primaryAcnPos: acnPos, primaryAcnHdgDeg: hdgDeg,
+      liveAltitudeM: this.liveAltitudeM, liveVzMps: this.liveVzMps,
+      maxTerrainAheadM: this.terrainEngine.getElevation(acnPos[0], acnPos[1]) ?? 3500.0,
+      nodePositions, nodeDirectSnrMap, nodeHandoverStates: this.nodeHandoverStates,
+      groundConvoyStates: this.groundConvoyStates, uavEnduranceRemainingMin: this.uavEnduranceRemainingMin,
+      handoverEventsTotal: this.handoverEventsTotal, dtSec: FRAME_DT,
+    });
+    this.uavEnduranceRemainingMin = stepOut.updatedEnduranceMin;
+    this.handoverEventsTotal = stepOut.handoverEventsTotal;
+    if (this.enableAutoCfitPullUp && stepOut.cfitPullUpActive) {
+      if (stepOut.commandedVzMps !== undefined) this.liveVzMps = stepOut.commandedVzMps;
+      if (stepOut.commandedAltitudeMslM !== undefined && this.liveAltitudeM < stepOut.commandedAltitudeMslM) {
+        this.liveAltitudeM = Math.min(stepOut.commandedAltitudeMslM, this.liveAltitudeM + this.liveVzMps * FRAME_DT);
+      }
+    }
+    this.constellationMobilityTelemetry = stepOut.telemetry;
+    return stepOut.telemetry;
+  }
+
   private buildTelemetryFrame(acnPos: [number, number, number]): TelemetryFrame {
     this.ensureActiveNodesDomainEvaluations(acnPos);
     const activeNodes = this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic;
     const selNode = activeNodes.find((n) => n.nodeId === this.selectedNodeId) ?? activeNodes[0];
     const fresnelSlice = this.buildFresnelSlice(selNode, acnPos);
     const frame = this.telemetrySerializer.buildTelemetryFrame(this, acnPos, fresnelSlice);
+    (frame as any).transport_abr_telemetry = this.buildTransportAbrTelemetry();
+    (frame as any).ew_eccm_telemetry = this.buildEwEccmTelemetry();
+    (frame as any).constellation_mobility_telemetry = this.buildConstellationMobilityTelemetry(acnPos);
     this.lastTelemetryFrame = frame;
     return frame;
   }
@@ -2166,14 +2159,7 @@ export class SimulationWorkerManager {
     this.initNodes();
     this.initTransfers();
     this.antennaEngine.reset();
-    this.staticScheduler = new LegacyStaticScheduler();
-    this.staticScheduler.setTdmaConfig(this.tdmaConfig);
-    this.staticScheduler.enableMultiSector = true;
-    this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
-    this.tacScheduler.setTdmaConfig(this.tdmaConfig);
-    this.reactiveScheduler = new ReactiveMlwdfScheduler(0.008);
-    this.reactiveScheduler.setTdmaConfig(this.tdmaConfig);
-    this.registerActiveNodesWithSchedulers();
+    this.reinitSchedulers();
     this.tdmaAccumulatorS = 0.0;
     this.tdmaSimTimeS = 0.0;
     this.superframeEpochIndex = 0;
@@ -2212,50 +2198,31 @@ export class SimulationWorkerManager {
     this.cqiHistoryByNode.clear();
     this.harqSlotByNode.clear();
     this.harqRetxTotal = 0;
+    this.aimdStateByNode.clear();
+    this.abrStateByNode.clear();
+    this.closedLoopCapacityScaleByNode.clear();
+    this.abrStepDownsTotal = 0;
+    this.abrStepUpsTotal = 0;
     this.prevSectorByNode.clear();
     this.hifiTelemetry = undefined;
+    this.biomeId = 'alpine_mountain'; this.enableBiomeEmPhysics = false; this.polarizationMode = 'RHCP';
+    this.dustVisibilityKm = 15.0; this.foliageDepthM = 0.0; this.weatherCells = [];
+    this.liveMeanTwoRayGainDb = 0.0; this.liveMeanFoliageLossDb = 0.0; this.liveMeanDustLossDb = 0.0; this.liveMeanPolLossDb = 0.0;
+    this.eccmMode = 'NONE'; this.enableMvdrNullSteering = false; this.enableAdversaryEsmModel = false;
+    this.gnssSpoofingRateUsPerSec = 0.0; this.enableAntiSpoofHoldover = false; this.gnssSpoofElapsedSec = 0.0;
+    this.liveMeanProcessingGainDb = 0.0; this.liveMeanSpatialNullRejectionDb = 0.0;
+    this.liveMeanEffectiveJammerPowerDbm = -150.0; this.liveRawJammerPowerDbm = -150.0;
+    this.liveJammerSuppressed = false; this.liveMaxSlantRangeM = 10000.0; this.ewEccmTelemetry = undefined;
+    this.acnConstellationCount = 1; this.enableMultiHopManet = false; this.enableGroundConvoyMobility = false;
+    this.windSpeedMs = 0.0; this.windDirectionDeg = 270.0; this.enableAutoCfitPullUp = false;
+    this.nodeHandoverStates.clear(); this.groundConvoyStates.clear();
+    const defConvoys = createDefaultGroundConvoyStates();
+    for (const [k, v] of defConvoys.entries()) this.groundConvoyStates.set(k, v);
+    this.uavEnduranceRemainingMin = 480.0; this.handoverEventsTotal = 0; this.constellationMobilityTelemetry = undefined;
+    this.terrainEngine.setBiome('alpine_mountain');
     this.lookaheadEngine?.invalidateAll();
     this.deferredEmergencyQueue.clear();
-    this.metrics = {
-      staticGoodputBits: 0,
-      tacGoodputBits: 0,
-      reactiveGoodputBits: 0,
-      staticWastedBits: 0,
-      tacWastedBits: 0,
-      reactiveWastedBits: 0,
-      staticDroppedPkts: 0,
-      tacDroppedPkts: 0,
-      reactiveDroppedPkts: 0,
-      staticEnqueuedPkts: 0,
-      tacEnqueuedPkts: 0,
-      reactiveEnqueuedPkts: 0,
-      node4PreShadowBacklogKb: 0,
-      staticNode4PreShadowBacklogKb: 0,
-      lastStaticUtilPct: 0,
-      lastTacUtilPct: 0,
-      lastReactiveUtilPct: 0,
-      staticScheduledUlTimeS: 0,
-      tacScheduledUlTimeS: 0,
-      reactiveScheduledUlTimeS: 0,
-      staticAvailableUlTimeS: 0,
-      tacAvailableUlTimeS: 0,
-      reactiveAvailableUlTimeS: 0,
-      staticUnusedUlTimeS: 0,
-      tacUnusedUlTimeS: 0,
-      reactiveUnusedUlTimeS: 0,
-      staticPayloadBitsDequeued: 0,
-      tacPayloadBitsDequeued: 0,
-      reactivePayloadBitsDequeued: 0,
-      staticDelayDropsThisRun: 0,
-      tacDelayDropsThisRun: 0,
-      reactiveDelayDropsThisRun: 0,
-      staticOverflowDropsThisRun: 0,
-      tacOverflowDropsThisRun: 0,
-      reactiveOverflowDropsThisRun: 0,
-      staticFinalBacklogBits: 0,
-      tacFinalBacklogBits: 0,
-      reactiveFinalBacklogBits: 0,
-    };
+    this.metrics = createDefaultSimulationMetrics();
   }
 
   public handleMessage(msg: WorkerInboundCommand): WorkerCommandResult {
@@ -2385,12 +2352,7 @@ export class SimulationWorkerManager {
           this.nodeRegistry = new NodeRegistry(this.seedOffset);
           this.initNodes();
           this.initTransfers();
-          this.staticScheduler = new LegacyStaticScheduler();
-          this.staticScheduler.setTdmaConfig(this.tdmaConfig);
-          this.staticScheduler.enableMultiSector = true;
-          this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
-          this.tacScheduler.setTdmaConfig(this.tdmaConfig);
-          this.registerActiveNodesWithSchedulers();
+          this.reinitSchedulers();
           this.selectedNodeId = -1;
           this.spatialRevision++;
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
@@ -2407,12 +2369,7 @@ export class SimulationWorkerManager {
           for (const id of GROUND_NODE_IDS) this.registrationLifecycle.add(id, this.simTimeS);
           this.initNodes();
           this.initTransfers();
-          this.staticScheduler = new LegacyStaticScheduler();
-          this.staticScheduler.setTdmaConfig(this.tdmaConfig);
-          this.staticScheduler.enableMultiSector = true;
-          this.tacScheduler = new TerrainAwareDynamicScheduler(0.008);
-          this.tacScheduler.setTdmaConfig(this.tdmaConfig);
-          this.registerActiveNodesWithSchedulers();
+          this.reinitSchedulers();
           this.selectedNodeId = 4;
           this.resampleGroundNodeAltitudes();
           this.spatialRevision++;
@@ -2498,22 +2455,35 @@ export class SimulationWorkerManager {
         const sci = resolveScientificParams(msg, this.envConfig);
         if (sci.viewshedEnabled !== undefined) this.viewshedEnabled = sci.viewshedEnabled;
         if (sci.recomputeRelayAdvisor) this.computeRelayAdvisor();
-        if (sci.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = sci.enableAirframeShadowing;
-        if (sci.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = sci.enableCorrelatedRicianFading;
-        if (sci.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = sci.enableMacPhyFeedback;
-        if (sci.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = sci.enableDubinsKinematics;
-        if (sci.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = sci.viewshedFidelityMode;
+        if (sci.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = sci.enableAirframeShadowing; if (sci.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = sci.enableCorrelatedRicianFading;
+        if (sci.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = sci.enableMacPhyFeedback; if (sci.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = sci.enableDubinsKinematics;
+        if (sci.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = sci.viewshedFidelityMode; if (sci.enableTransportAbr !== undefined) this.enableTransportAbr = sci.enableTransportAbr;
+        if (sci.eccmMode !== undefined) this.eccmMode = sci.eccmMode; if (sci.enableMvdrNullSteering !== undefined) this.enableMvdrNullSteering = sci.enableMvdrNullSteering;
+        if (sci.enableAdversaryEsmModel !== undefined) this.enableAdversaryEsmModel = sci.enableAdversaryEsmModel; if (sci.enableAntiSpoofHoldover !== undefined) this.enableAntiSpoofHoldover = sci.enableAntiSpoofHoldover;
+        if (sci.gnssSpoofingRateUsPerSec !== undefined) { this.gnssSpoofingRateUsPerSec = sci.gnssSpoofingRateUsPerSec; if (this.gnssSpoofingRateUsPerSec <= 0) this.gnssSpoofElapsedSec = 0.0; }
+        if (sci.acnConstellationCount !== undefined) this.acnConstellationCount = sci.acnConstellationCount; if (sci.enableMultiHopManet !== undefined) this.enableMultiHopManet = sci.enableMultiHopManet;
+        if (sci.enableGroundConvoyMobility !== undefined) this.enableGroundConvoyMobility = sci.enableGroundConvoyMobility; if (sci.windSpeedMs !== undefined) this.windSpeedMs = sci.windSpeedMs;
+        if (sci.windDirectionDeg !== undefined) this.windDirectionDeg = sci.windDirectionDeg; if (sci.enableAutoCfitPullUp !== undefined) this.enableAutoCfitPullUp = sci.enableAutoCfitPullUp;
+        if (sci.biomeId !== undefined && sci.biomeId !== this.biomeId) {
+          this.biomeId = sci.biomeId;
+          this.terrainEngine.setBiome(sci.biomeId);
+          this.hillshadeGenerator.invalidateRealCache();
+          this.resampleGroundNodeAltitudes();
+          this.spatialRevision++;
+          this.lookaheadEngine.invalidateAll();
+          this.deferredEmergencyQueue.clear();
+          this.initHillshade(512);
+        }
+        if (sci.enableBiomeEmPhysics !== undefined) this.enableBiomeEmPhysics = sci.enableBiomeEmPhysics;
+        if (sci.polarizationMode !== undefined) this.polarizationMode = sci.polarizationMode;
+        if (sci.dustVisibilityKm !== undefined) this.dustVisibilityKm = sci.dustVisibilityKm;
+        if (sci.foliageDepthM !== undefined) this.foliageDepthM = sci.foliageDepthM;
+        if (sci.weatherCells !== undefined) this.weatherCells = sci.weatherCells;
         this.envConfig = sci.nextEnvConfig;
         this.lookaheadEngine.setEnvConfig(this.envConfig);
-        for (let i = 0; i < this.nodesStatic.length; i++) {
-          this.nodesStatic[i].trafficLoadMultiplier = sci.trafficScale;
-        }
-        for (let i = 0; i < this.nodesTac.length; i++) {
-          this.nodesTac[i].trafficLoadMultiplier = sci.trafficScale;
-        }
-        for (let i = 0; i < this.nodesReactive.length; i++) {
-          this.nodesReactive[i].trafficLoadMultiplier = sci.trafficScale;
-        }
+        for (let i = 0; i < this.nodesStatic.length; i++) this.nodesStatic[i].trafficLoadMultiplier = sci.trafficScale;
+        for (let i = 0; i < this.nodesTac.length; i++) this.nodesTac[i].trafficLoadMultiplier = sci.trafficScale;
+        for (let i = 0; i < this.nodesReactive.length; i++) this.nodesReactive[i].trafficLoadMultiplier = sci.trafficScale;
         this.lookaheadEngine.invalidateAll();
         if (sci.clearSinrHistory) {
           this.nodeSinrHistory.clear();
@@ -2524,7 +2494,10 @@ export class SimulationWorkerManager {
           sci.enableCorrelatedRicianFading !== undefined ||
           sci.enableMacPhyFeedback !== undefined ||
           sci.enableDubinsKinematics !== undefined ||
-          sci.viewshedFidelityMode !== undefined
+          sci.viewshedFidelityMode !== undefined ||
+          sci.enableTransportAbr !== undefined ||
+          sci.eccmMode !== undefined ||
+          sci.enableMvdrNullSteering !== undefined
         ) {
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         }
@@ -2555,6 +2528,35 @@ export class SimulationWorkerManager {
         this.terrainEngine.setTerrainMode(msg.mode);
         this.resampleGroundNodeAltitudes();
         this.initHillshade(512);
+        return result(true);
+      }
+
+      case 'SET_BIOME': {
+        if (this.spatialLocked) return locked();
+        const v = validateSetBiomeCommand(msg);
+        if (!v.valid || !v.biomeId) return reject(v.reason ?? 'Invalid SET_BIOME payload.');
+        this.biomeId = v.biomeId;
+        if (v.enableBiomeEmPhysics !== undefined) this.enableBiomeEmPhysics = v.enableBiomeEmPhysics;
+        if (v.polarizationMode !== undefined) this.polarizationMode = v.polarizationMode;
+        if (v.dustVisibilityKm !== undefined) this.dustVisibilityKm = v.dustVisibilityKm;
+        if (v.foliageDepthM !== undefined) this.foliageDepthM = v.foliageDepthM;
+        if (v.weatherCells !== undefined) this.weatherCells = v.weatherCells;
+
+        this.terrainEngine.setBiome(v.biomeId);
+        this.hillshadeGenerator.invalidateRealCache();
+        this.resampleGroundNodeAltitudes();
+        this.spatialRevision++;
+        this.lookaheadEngine.invalidateAll();
+        this.deferredEmergencyQueue.clear();
+        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+        this.initHillshade(512);
+
+        const bounds = this.terrainEngine.getTerrainBoundsTelemetry();
+        this.emitHostMessage({
+          type: 'TERRAIN_BOUNDS_READY',
+          request_id: msg.request_id,
+          bounds,
+        });
         return result(true);
       }
 
@@ -2641,11 +2643,15 @@ export class SimulationWorkerManager {
           return locked();
         }
 
-        if (validation.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = validation.enableAirframeShadowing;
-        if (validation.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = validation.enableCorrelatedRicianFading;
-        if (validation.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = validation.enableMacPhyFeedback;
-        if (validation.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = validation.enableDubinsKinematics;
-        if (validation.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = validation.viewshedFidelityMode;
+        if (validation.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = validation.enableAirframeShadowing; if (validation.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = validation.enableCorrelatedRicianFading;
+        if (validation.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = validation.enableMacPhyFeedback; if (validation.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = validation.enableDubinsKinematics;
+        if (validation.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = validation.viewshedFidelityMode; if (validation.enableTransportAbr !== undefined) this.enableTransportAbr = validation.enableTransportAbr;
+        if (validation.eccmMode !== undefined) this.eccmMode = validation.eccmMode; if (validation.enableMvdrNullSteering !== undefined) this.enableMvdrNullSteering = validation.enableMvdrNullSteering;
+        if (validation.enableAdversaryEsmModel !== undefined) this.enableAdversaryEsmModel = validation.enableAdversaryEsmModel; if (validation.enableAntiSpoofHoldover !== undefined) this.enableAntiSpoofHoldover = validation.enableAntiSpoofHoldover;
+        if (validation.gnssSpoofingRateUsPerSec !== undefined) { this.gnssSpoofingRateUsPerSec = validation.gnssSpoofingRateUsPerSec; if (this.gnssSpoofingRateUsPerSec <= 0) this.gnssSpoofElapsedSec = 0.0; }
+        if (validation.acnConstellationCount !== undefined) this.acnConstellationCount = validation.acnConstellationCount; if (validation.enableMultiHopManet !== undefined) this.enableMultiHopManet = validation.enableMultiHopManet;
+        if (validation.enableGroundConvoyMobility !== undefined) this.enableGroundConvoyMobility = validation.enableGroundConvoyMobility; if (validation.windSpeedMs !== undefined) this.windSpeedMs = validation.windSpeedMs;
+        if (validation.windDirectionDeg !== undefined) this.windDirectionDeg = validation.windDirectionDeg; if (validation.enableAutoCfitPullUp !== undefined) this.enableAutoCfitPullUp = validation.enableAutoCfitPullUp;
 
         // Construct the full replacement trajectory before mutating any live configuration.
         let nextFlightConfig: ACNFlightConfig | null = validation.nextFlightConfig ?? null;

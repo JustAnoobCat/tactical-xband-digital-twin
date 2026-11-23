@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (101 Total Suites)
+// Verification Suites Registry (104 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -157,7 +157,11 @@ const REGISTERED_SUITES = [
   { id: 'verify:direct-toolbox', name: 'Direct-Manipulation Terrain Toolbox & CAD Icons (UI05-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDirectToolboxUx.ts'], category: 'ui' },
   { id: 'verify:live-hifi-wiring', name: 'Live 50 Hz High-Fidelity Physics Engine Wiring & UI Controls (SPEC-V2-01)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyLiveHighFidelityWiring.ts'], category: 'physics' },
   { id: 'verify:publication-dossier', name: 'Publication Scientific Dossier & IEEE LaTeX Export (SPEC-V2-02)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPublicationDossierSync.ts'], category: 'benchmark' },
-  { id: 'verify:canvas-declutter-security', name: '2D Canvas Label De-Cluttering Engine & DOM Safety Guard (SPEC-V2-03)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyCanvasDeclutterAndSecurity.ts'], category: 'ui' }
+  { id: 'verify:canvas-declutter-security', name: '2D Canvas Label De-Cluttering Engine & DOM Safety Guard (SPEC-V2-03)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyCanvasDeclutterAndSecurity.ts'], category: 'ui' },
+  { id: 'verify:multi-biome-physics', name: 'Multi-Biome Theater Platform & Biome-Adaptive RF Physics (SPEC-V3-01)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMultiBiomePhysics.ts'], category: 'physics' },
+  { id: 'verify:closed-loop-mac-transport', name: 'Closed-Loop MAC/PHY Scheduler Coupling, Transport AIMD & Video ABR (SPEC-V3-02)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyClosedLoopMacTransport.ts'], category: 'physics' },
+  { id: 'verify:ew-eccm-lpi', name: 'Defense EW / ECCM, MVDR Null-Steering, ESM/LPI & GNSS Spoofing (SPEC-V3-03)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyEwEccmAndLpi.ts'], category: 'physics' },
+  { id: 'verify:constellation-mobility', name: 'Multi-ACN Constellation & Handover, Multi-Hop MANET Routing & High-Altitude Aerodynamics (SPEC-V3-04)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyConstellationAndMobility.ts'], category: 'physics' }
 ];
 
 // -----------------------------------------------------------------------------

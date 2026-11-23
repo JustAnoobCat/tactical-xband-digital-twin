@@ -25,7 +25,12 @@ import {
   ACN_ID,
 } from '../shared/constants';
 import { isFiniteNumber } from '../shared/utils';
-import type { ConfigUpdateParams } from '../shared/workerProtocol';
+import type { ConfigUpdateParams, SpreadSpectrumEccmMode } from '../shared/workerProtocol';
+import type {
+  BiomeId,
+  PolarizationMode,
+  AdvectingWeatherCell,
+} from '../core/biomePhysics';
 
 export interface ValidatedConfigParamsResult {
   readonly valid: boolean;
@@ -44,6 +49,24 @@ export interface ValidatedConfigParamsResult {
   readonly enableMacPhyFeedback?: boolean;
   readonly enableDubinsKinematics?: boolean;
   readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
+  readonly biomeId?: BiomeId;
+  readonly enableBiomeEmPhysics?: boolean;
+  readonly polarizationMode?: PolarizationMode;
+  readonly dustVisibilityKm?: number;
+  readonly foliageDepthM?: number;
+  readonly weatherCells?: readonly AdvectingWeatherCell[];
+  readonly enableTransportAbr?: boolean;
+  readonly eccmMode?: SpreadSpectrumEccmMode;
+  readonly enableMvdrNullSteering?: boolean;
+  readonly enableAdversaryEsmModel?: boolean;
+  readonly gnssSpoofingRateUsPerSec?: number;
+  readonly enableAntiSpoofHoldover?: boolean;
+  readonly acnConstellationCount?: number;
+  readonly enableMultiHopManet?: boolean;
+  readonly enableGroundConvoyMobility?: boolean;
+  readonly windSpeedMs?: number;
+  readonly windDirectionDeg?: number;
+  readonly enableAutoCfitPullUp?: boolean;
 }
 
 /**
@@ -89,6 +112,42 @@ export function validateConfigUpdateParams(
   }
   if (p.enableDubinsKinematics !== undefined && typeof p.enableDubinsKinematics !== 'boolean') {
     return { valid: false, reason: 'enableDubinsKinematics must be a boolean.' };
+  }
+  if (p.enableTransportAbr !== undefined && typeof p.enableTransportAbr !== 'boolean') {
+    return { valid: false, reason: 'enableTransportAbr must be a boolean.' };
+  }
+  if (p.eccmMode !== undefined && p.eccmMode !== 'NONE' && p.eccmMode !== 'FHSS' && p.eccmMode !== 'DSSS') {
+    return { valid: false, reason: "eccmMode must be 'NONE', 'FHSS', or 'DSSS'." };
+  }
+  if (p.enableMvdrNullSteering !== undefined && typeof p.enableMvdrNullSteering !== 'boolean') {
+    return { valid: false, reason: 'enableMvdrNullSteering must be a boolean.' };
+  }
+  if (p.enableAdversaryEsmModel !== undefined && typeof p.enableAdversaryEsmModel !== 'boolean') {
+    return { valid: false, reason: 'enableAdversaryEsmModel must be a boolean.' };
+  }
+  if (p.gnssSpoofingRateUsPerSec !== undefined && (typeof p.gnssSpoofingRateUsPerSec !== 'number' || !Number.isFinite(p.gnssSpoofingRateUsPerSec) || p.gnssSpoofingRateUsPerSec < 0)) {
+    return { valid: false, reason: 'gnssSpoofingRateUsPerSec must be a non-negative finite number.' };
+  }
+  if (p.enableAntiSpoofHoldover !== undefined && typeof p.enableAntiSpoofHoldover !== 'boolean') {
+    return { valid: false, reason: 'enableAntiSpoofHoldover must be a boolean.' };
+  }
+  if (p.acnConstellationCount !== undefined && (!Number.isInteger(p.acnConstellationCount) || p.acnConstellationCount < 1 || p.acnConstellationCount > 4)) {
+    return { valid: false, reason: 'acnConstellationCount must be an integer between 1 and 4.' };
+  }
+  if (p.enableMultiHopManet !== undefined && typeof p.enableMultiHopManet !== 'boolean') {
+    return { valid: false, reason: 'enableMultiHopManet must be a boolean.' };
+  }
+  if (p.enableGroundConvoyMobility !== undefined && typeof p.enableGroundConvoyMobility !== 'boolean') {
+    return { valid: false, reason: 'enableGroundConvoyMobility must be a boolean.' };
+  }
+  if (p.windSpeedMs !== undefined && (typeof p.windSpeedMs !== 'number' || !Number.isFinite(p.windSpeedMs) || p.windSpeedMs < 0 || p.windSpeedMs > 50)) {
+    return { valid: false, reason: 'windSpeedMs must be a finite number between 0 and 50.' };
+  }
+  if (p.windDirectionDeg !== undefined && (typeof p.windDirectionDeg !== 'number' || !Number.isFinite(p.windDirectionDeg))) {
+    return { valid: false, reason: 'windDirectionDeg must be a finite number.' };
+  }
+  if (p.enableAutoCfitPullUp !== undefined && typeof p.enableAutoCfitPullUp !== 'boolean') {
+    return { valid: false, reason: 'enableAutoCfitPullUp must be a boolean.' };
   }
   if (p.viewshedFidelityMode !== undefined && p.viewshedFidelityMode !== 'fast' && p.viewshedFidelityMode !== 'link-budget-parity') {
     return { valid: false, reason: "viewshedFidelityMode must be 'fast' or 'link-budget-parity'." };
@@ -268,6 +327,18 @@ export function validateConfigUpdateParams(
     enableMacPhyFeedback: p.enableMacPhyFeedback,
     enableDubinsKinematics: p.enableDubinsKinematics,
     viewshedFidelityMode: p.viewshedFidelityMode,
+    enableTransportAbr: p.enableTransportAbr,
+    eccmMode: p.eccmMode,
+    enableMvdrNullSteering: p.enableMvdrNullSteering,
+    enableAdversaryEsmModel: p.enableAdversaryEsmModel,
+    gnssSpoofingRateUsPerSec: p.gnssSpoofingRateUsPerSec,
+    enableAntiSpoofHoldover: p.enableAntiSpoofHoldover,
+    acnConstellationCount: p.acnConstellationCount,
+    enableMultiHopManet: p.enableMultiHopManet,
+    enableGroundConvoyMobility: p.enableGroundConvoyMobility,
+    windSpeedMs: p.windSpeedMs,
+    windDirectionDeg: p.windDirectionDeg,
+    enableAutoCfitPullUp: p.enableAutoCfitPullUp,
   };
 }
 
@@ -355,6 +426,24 @@ export function resolveScientificParams(
   enableMacPhyFeedback?: boolean;
   enableDubinsKinematics?: boolean;
   viewshedFidelityMode?: 'fast' | 'link-budget-parity';
+  biomeId?: BiomeId;
+  enableBiomeEmPhysics?: boolean;
+  polarizationMode?: PolarizationMode;
+  dustVisibilityKm?: number;
+  foliageDepthM?: number;
+  weatherCells?: readonly AdvectingWeatherCell[];
+  enableTransportAbr?: boolean;
+  eccmMode?: SpreadSpectrumEccmMode;
+  enableMvdrNullSteering?: boolean;
+  enableAdversaryEsmModel?: boolean;
+  gnssSpoofingRateUsPerSec?: number;
+  enableAntiSpoofHoldover?: boolean;
+  acnConstellationCount?: number;
+  enableMultiHopManet?: boolean;
+  enableGroundConvoyMobility?: boolean;
+  windSpeedMs?: number;
+  windDirectionDeg?: number;
+  enableAutoCfitPullUp?: boolean;
 } {
   const viewshedEnabled = msg?.viewshedEnabled !== undefined ? Boolean(msg.viewshedEnabled) : undefined;
   const recomputeRelayAdvisor = Boolean(msg?.recomputeRelayAdvisor);
@@ -362,9 +451,51 @@ export function resolveScientificParams(
   const enableCorrelatedRicianFading = msg?.enableCorrelatedRicianFading !== undefined ? Boolean(msg.enableCorrelatedRicianFading) : undefined;
   const enableMacPhyFeedback = msg?.enableMacPhyFeedback !== undefined ? Boolean(msg.enableMacPhyFeedback) : undefined;
   const enableDubinsKinematics = msg?.enableDubinsKinematics !== undefined ? Boolean(msg.enableDubinsKinematics) : undefined;
+  const enableTransportAbr = msg?.enableTransportAbr !== undefined ? Boolean(msg.enableTransportAbr) : undefined;
+  const eccmMode = (msg?.eccmMode === 'NONE' || msg?.eccmMode === 'FHSS' || msg?.eccmMode === 'DSSS')
+    ? (msg.eccmMode as SpreadSpectrumEccmMode)
+    : undefined;
+  const enableMvdrNullSteering = msg?.enableMvdrNullSteering !== undefined ? Boolean(msg.enableMvdrNullSteering) : undefined;
+  const enableAdversaryEsmModel = msg?.enableAdversaryEsmModel !== undefined ? Boolean(msg.enableAdversaryEsmModel) : undefined;
+  const gnssSpoofingRateUsPerSec = msg?.gnssSpoofingRateUsPerSec !== undefined && Number.isFinite(msg.gnssSpoofingRateUsPerSec)
+    ? Math.max(0.0, msg.gnssSpoofingRateUsPerSec)
+    : undefined;
+  const enableAntiSpoofHoldover = msg?.enableAntiSpoofHoldover !== undefined ? Boolean(msg.enableAntiSpoofHoldover) : undefined;
+  const rawAcnConstCount = msg?.acnConstellationCount ?? msg?.acn_constellation_count;
+  const acnConstellationCount = rawAcnConstCount !== undefined && Number.isFinite(rawAcnConstCount)
+    ? Math.min(4, Math.max(1, Math.round(rawAcnConstCount)))
+    : undefined;
+  const rawManet = msg?.enableMultiHopManet ?? msg?.enable_multi_hop_manet;
+  const enableMultiHopManet = rawManet !== undefined ? Boolean(rawManet) : undefined;
+  const rawConvoy = msg?.enableGroundConvoyMobility ?? msg?.enable_ground_convoy_mobility;
+  const enableGroundConvoyMobility = rawConvoy !== undefined ? Boolean(rawConvoy) : undefined;
+  const rawWindSpeed = msg?.windSpeedMs ?? msg?.wind_speed_ms;
+  const windSpeedMs = rawWindSpeed !== undefined && Number.isFinite(rawWindSpeed)
+    ? Math.max(0.0, Math.min(50.0, rawWindSpeed))
+    : undefined;
+  const rawWindDir = msg?.windDirectionDeg ?? msg?.wind_direction_deg;
+  const windDirectionDeg = rawWindDir !== undefined && Number.isFinite(rawWindDir)
+    ? (((rawWindDir % 360) + 360) % 360)
+    : undefined;
+  const rawCfit = msg?.enableAutoCfitPullUp ?? msg?.enable_auto_cfit_pull_up;
+  const enableAutoCfitPullUp = rawCfit !== undefined ? Boolean(rawCfit) : undefined;
   const viewshedFidelityMode = (msg?.viewshedFidelityMode === 'fast' || msg?.viewshedFidelityMode === 'link-budget-parity')
     ? msg.viewshedFidelityMode
     : undefined;
+  const biomeId = (msg?.biomeId === 'alpine_mountain' || msg?.biomeId === 'arid_desert' || msg?.biomeId === 'open_plains' || msg?.biomeId === 'tropical_jungle' || msg?.biomeId === 'maritime_littoral')
+    ? (msg.biomeId as BiomeId)
+    : undefined;
+  const enableBiomeEmPhysics = msg?.enableBiomeEmPhysics !== undefined ? Boolean(msg.enableBiomeEmPhysics) : undefined;
+  const polarizationMode = (msg?.polarizationMode === 'RHCP' || msg?.polarizationMode === 'LHCP' || msg?.polarizationMode === 'LINEAR_V' || msg?.polarizationMode === 'LINEAR_H')
+    ? (msg.polarizationMode as PolarizationMode)
+    : undefined;
+  const dustVisibilityKm = msg?.dustVisibilityKm !== undefined && Number.isFinite(msg.dustVisibilityKm)
+    ? Math.max(0.02, Math.min(50.0, msg.dustVisibilityKm))
+    : undefined;
+  const foliageDepthM = msg?.foliageDepthM !== undefined && Number.isFinite(msg.foliageDepthM)
+    ? Math.max(0.0, Math.min(500.0, msg.foliageDepthM))
+    : undefined;
+  const weatherCells = Array.isArray(msg?.weatherCells) ? msg.weatherCells : undefined;
   const demError = msg?.demLookaheadErrorStdM !== undefined && Number.isFinite(msg.demLookaheadErrorStdM)
     ? Math.max(0.0, Math.min(25.0, msg.demLookaheadErrorStdM))
     : currentEnv.demLookaheadErrorStdM;
@@ -416,6 +547,24 @@ export function resolveScientificParams(
     enableMacPhyFeedback,
     enableDubinsKinematics,
     viewshedFidelityMode,
+    biomeId,
+    enableBiomeEmPhysics,
+    polarizationMode,
+    dustVisibilityKm,
+    foliageDepthM,
+    weatherCells,
+    enableTransportAbr,
+    eccmMode,
+    enableMvdrNullSteering,
+    enableAdversaryEsmModel,
+    gnssSpoofingRateUsPerSec,
+    enableAntiSpoofHoldover,
+    acnConstellationCount,
+    enableMultiHopManet,
+    enableGroundConvoyMobility,
+    windSpeedMs,
+    windDirectionDeg,
+    enableAutoCfitPullUp,
   };
 }
 
@@ -447,5 +596,55 @@ export function resolveViewshedConfig(
     recomputeRelayAdvisor,
     nextEnvConfig,
     needsObstructionRefresh,
+  };
+}
+
+/**
+ * Validates inbound SET_BIOME command payloads.
+ */
+export function validateSetBiomeCommand(msg: any): {
+  valid: boolean;
+  reason?: string;
+  biomeId?: BiomeId;
+  enableBiomeEmPhysics?: boolean;
+  polarizationMode?: PolarizationMode;
+  dustVisibilityKm?: number;
+  foliageDepthM?: number;
+  weatherCells?: readonly AdvectingWeatherCell[];
+} {
+  if (!msg || typeof msg !== 'object') {
+    return { valid: false, reason: 'Command payload must be an object.' };
+  }
+  const validBiomes: BiomeId[] = [
+    'alpine_mountain',
+    'arid_desert',
+    'open_plains',
+    'tropical_jungle',
+    'maritime_littoral',
+  ];
+  if (!validBiomes.includes(msg.biomeId)) {
+    return { valid: false, reason: `Invalid biomeId: ${String(msg.biomeId)}. Must be one of ${validBiomes.join(', ')}` };
+  }
+  const biomeId = msg.biomeId as BiomeId;
+  const enableBiomeEmPhysics = msg.enableBiomeEmPhysics !== undefined ? Boolean(msg.enableBiomeEmPhysics) : undefined;
+  const polarizationMode = (msg.polarizationMode === 'RHCP' || msg.polarizationMode === 'LHCP' || msg.polarizationMode === 'LINEAR_V' || msg.polarizationMode === 'LINEAR_H')
+    ? (msg.polarizationMode as PolarizationMode)
+    : undefined;
+  const dustVisibilityKm = msg.dustVisibilityKm !== undefined && Number.isFinite(msg.dustVisibilityKm)
+    ? Math.max(0.02, Math.min(50.0, msg.dustVisibilityKm))
+    : undefined;
+  const foliageDepthM = msg.foliageDepthM !== undefined && Number.isFinite(msg.foliageDepthM)
+    ? Math.max(0.0, Math.min(500.0, msg.foliageDepthM))
+    : undefined;
+  const weatherCells = Array.isArray(msg.weatherCells) ? msg.weatherCells : undefined;
+
+  return {
+    valid: true,
+    biomeId,
+    enableBiomeEmPhysics,
+    polarizationMode,
+    dustVisibilityKm,
+    foliageDepthM,
+    weatherCells,
   };
 }

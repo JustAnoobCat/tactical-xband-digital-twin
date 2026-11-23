@@ -32,6 +32,17 @@ import {
   type CorrelatedRicianJakesParams,
   type CorrelatedRicianJakesResult,
 } from './rfPropagationMath';
+import {
+  type BiomeEmParameters,
+  type BiomeId,
+  type PolarizationMode,
+  THEATER_BIOMES,
+  computeTwoRayGroundReflectionDb,
+  computeItuR833VegetationLossDb,
+  computeGoldhirshDustAttenuationDb,
+  computePolarizationMismatchLossDb,
+  evaluateAdvectingWeatherCellsRainMmH,
+} from './biomePhysics';
 
 export type { BullingtonDiffractionResult, DeygoutMultiEdgeResult, CorrelatedRicianJakesParams, CorrelatedRicianJakesResult };
 
@@ -116,6 +127,12 @@ export interface LinkStatus {
   readonly bodyElevationDeg?: number;
   readonly correlatedFadingDb?: number;
   readonly coherenceTimeMs?: number;
+  readonly twoRayDeltaDb?: number;
+  readonly vegetationLossDb?: number;
+  readonly dustStormLossDb?: number;
+  readonly polarizationLossDb?: number;
+  readonly weatherCellRainMmH?: number;
+  readonly biomeId?: BiomeId;
 }
 
 export interface AirframeChannelOptions {
@@ -124,6 +141,7 @@ export interface AirframeChannelOptions {
   readonly enableAirframeShadowing?: boolean;
   readonly losVectorEnu?: { losEast: number; losNorth: number; losUp: number } | readonly [number, number, number];
   readonly correlatedFadingParams?: CorrelatedRicianJakesParams;
+  readonly biomeEmParams?: BiomeEmParameters;
 }
 
 export class LinkBudgetEngine {
@@ -461,12 +479,14 @@ export class LinkBudgetEngine {
     cqiDecodeFailure?: boolean,
     profile?: { distancesM: ArrayLike<number>; elevationsM: ArrayLike<number> },
     diffractionModel?: 'deygout-multiedge' | 'bullington' | 'single-edge',
-    airframeOptions?: AirframeChannelOptions
+    airframeOptions?: AirframeChannelOptions,
+    biomeEmParams?: BiomeEmParameters
   ): LinkStatus {
     // Ergonomic normalization if caller omitted profile / diffractionModel
     let effAirframeOptions = airframeOptions;
     let effProfile = profile;
     let effDiffractionModel = diffractionModel;
+    let effBiomeEmParams = biomeEmParams ?? effAirframeOptions?.biomeEmParams;
 
     if (
       effProfile &&
@@ -474,10 +494,16 @@ export class LinkBudgetEngine {
         'enableAirframeShadowing' in (effProfile as any) ||
         'correlatedFadingParams' in (effProfile as any) ||
         'uavAttitude' in (effProfile as any) ||
-        'antennaMount' in (effProfile as any)
+        'antennaMount' in (effProfile as any) ||
+        'enableBiomeEmPhysics' in (effProfile as any) ||
+        'biomeId' in (effProfile as any)
       )
     ) {
-      effAirframeOptions = effProfile as any;
+      if ('enableBiomeEmPhysics' in (effProfile as any) || 'biomeId' in (effProfile as any)) {
+        effBiomeEmParams = effProfile as any;
+      } else {
+        effAirframeOptions = effProfile as any;
+      }
       effProfile = undefined;
     } else if (
       effDiffractionModel &&
@@ -486,11 +512,20 @@ export class LinkBudgetEngine {
         'enableAirframeShadowing' in (effDiffractionModel as any) ||
         'correlatedFadingParams' in (effDiffractionModel as any) ||
         'uavAttitude' in (effDiffractionModel as any) ||
-        'antennaMount' in (effDiffractionModel as any)
+        'antennaMount' in (effDiffractionModel as any) ||
+        'enableBiomeEmPhysics' in (effDiffractionModel as any) ||
+        'biomeId' in (effDiffractionModel as any)
       )
     ) {
-      effAirframeOptions = effDiffractionModel as any;
+      if ('enableBiomeEmPhysics' in (effDiffractionModel as any) || 'biomeId' in (effDiffractionModel as any)) {
+        effBiomeEmParams = effDiffractionModel as any;
+      } else {
+        effAirframeOptions = effDiffractionModel as any;
+      }
       effDiffractionModel = undefined;
+    }
+    if (!effBiomeEmParams && effAirframeOptions?.biomeEmParams) {
+      effBiomeEmParams = effAirframeOptions.biomeEmParams;
     }
 
     let effDiffractionLossDb = diffractionLossDb;
@@ -518,6 +553,79 @@ export class LinkBudgetEngine {
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
     const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, env, nodeAltM, acnAltM);
 
+    // Biome-adaptive EM physics (Two-ray ground reflection, vegetation, dust, polarization, weather cells)
+    let twoRayDeltaDb: number | undefined = undefined;
+    let vegetationLossDb: number | undefined = undefined;
+    let dustStormLossDb: number | undefined = undefined;
+    let polarizationLossDb: number | undefined = undefined;
+    let weatherCellRainMmH: number | undefined = undefined;
+    let effRainLossDb = rainLossDb;
+
+    if (effBiomeEmParams?.enableBiomeEmPhysics) {
+      const bId = effBiomeEmParams.biomeId ?? 'alpine_mountain';
+      const bDef = THEATER_BIOMES[bId] ?? THEATER_BIOMES.alpine_mountain;
+
+      // Dynamic advecting weather cells
+      if (effBiomeEmParams.weatherCells && effBiomeEmParams.weatherCells.length > 0) {
+        const cellRes = evaluateAdvectingWeatherCellsRainMmH(
+          0.0,
+          0.0,
+          slantRangeM,
+          0.0,
+          effBiomeEmParams.weatherCells,
+          effBiomeEmParams.simTimeSec ?? 0.0
+        );
+        weatherCellRainMmH = cellRes.pathAvgRainMmH;
+        if (weatherCellRainMmH > 0.0) {
+          const cellEnv = new EnvironmentConfig({ ...env, rainRateMmH: (env.rainRateMmH || 0.0) + weatherCellRainMmH });
+          effRainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, cellEnv, nodeAltM, acnAltM);
+        }
+      }
+
+      // 1. Two-ray ground reflection
+      const txAlt = effBiomeEmParams.txAltAglM ?? (acnAltM !== undefined ? acnAltM : 1000.0);
+      const rxAlt = effBiomeEmParams.rxAltAglM ?? (nodeAltM !== undefined ? nodeAltM : 10.0);
+      const horizDist = effBiomeEmParams.horizontalDistM ?? Math.max(1.0, Math.sqrt(Math.max(0.0, slantRangeM * slantRangeM - Math.pow(txAlt - rxAlt, 2))));
+      const isLosClear = !obstacleBlocked && effDiffractionLossDb <= 0.1;
+      const pol = effBiomeEmParams.polarization ?? 'RHCP';
+
+      const twoRayRes = computeTwoRayGroundReflectionDb({
+        txAltAglM: txAlt,
+        rxAltAglM: rxAlt,
+        horizontalDistM: horizDist,
+        freqHz: rf.carrierFrequencyHz,
+        relativePermittivity: bDef.relativePermittivity,
+        conductivitySm: bDef.conductivitySm,
+        surfaceRoughnessM: bDef.surfaceRoughnessM,
+        polarization: pol,
+        isLosClear,
+      });
+      twoRayDeltaDb = twoRayRes.twoRayDeltaDb;
+
+      // 2. ITU-R P.833-10 vegetation attenuation
+      const foliageDepth = effBiomeEmParams.foliageDepthM !== undefined
+        ? effBiomeEmParams.foliageDepthM
+        : bDef.defaultFoliageDepthM;
+      const regime = effBiomeEmParams.foliageRegime ?? (bId === 'tropical_jungle' ? 'tropical-dense' : 'temperate-woodland');
+      vegetationLossDb = computeItuR833VegetationLossDb(rf.carrierFrequencyHz / 1e9, foliageDepth, regime);
+
+      // 3. Goldhirsh dust storm attenuation
+      const dustVis = effBiomeEmParams.dustVisibilityKm !== undefined
+        ? effBiomeEmParams.dustVisibilityKm
+        : bDef.defaultDustVisibilityKm;
+      dustStormLossDb = computeGoldhirshDustAttenuationDb(rf.carrierFrequencyHz / 1e9, slantRangeM / 1000.0, dustVis);
+
+      // 4. Polarization mismatch
+      const relBank = effBiomeEmParams.relativeBankDeg ?? (effAirframeOptions?.uavAttitude?.rollDeg ?? 0.0);
+      polarizationLossDb = computePolarizationMismatchLossDb(pol, pol, relBank, effRainLossDb);
+    }
+
+    const biomeNetLossDb =
+      (vegetationLossDb ?? 0.0) +
+      (dustStormLossDb ?? 0.0) +
+      (polarizationLossDb ?? 0.0) -
+      (twoRayDeltaDb ?? 0.0);
+
     // 3D Airframe attitude & shadowing
     let airframeShadowLossDb: number | undefined = undefined;
     let computedBodyAz: number | undefined = sectorEval?.bodyAzimuthDeg;
@@ -544,10 +652,11 @@ export class LinkBudgetEngine {
       fsplDb +
       effDiffractionLossDb +
       gasLossDb +
-      rainLossDb +
+      effRainLossDb +
       cableLossDb +
       implementationMarginDb +
-      (airframeShadowLossDb ?? 0.0);
+      (airframeShadowLossDb ?? 0.0) +
+      biomeNetLossDb;
 
     // Transceiver parameters
     const { txPowerDbm: defaultTxPowerDbm, antennaGainDbi } = rf.getTransmitterParams(nodeType);
@@ -595,7 +704,7 @@ export class LinkBudgetEngine {
     let pNoiseDbm = pNoiseThermalDbm;
 
     if (nodeAltM !== undefined && acnAltM !== undefined) {
-      const aAtm = gasLossDb + rainLossDb;
+      const aAtm = gasLossDb + effRainLossDb;
       const Tm = 275.0; // Mean atmospheric physical temperature (K)
       skyTemperatureK = Tm * (1.0 - Math.pow(10.0, -aAtm / 10.0));
       const T0 = 290.0; // Reference noise temperature (K)
@@ -639,7 +748,7 @@ export class LinkBudgetEngine {
       fsplDb,
       diffractionLossDb: effDiffractionLossDb,
       gasLossDb,
-      rainLossDb,
+      rainLossDb: effRainLossDb,
       cableLossDb,
       implementationMarginDb,
       totalLossDb,
@@ -687,6 +796,12 @@ export class LinkBudgetEngine {
       bodyElevationDeg: computedBodyEl,
       correlatedFadingDb,
       coherenceTimeMs,
+      twoRayDeltaDb,
+      vegetationLossDb,
+      dustStormLossDb,
+      polarizationLossDb,
+      weatherCellRainMmH,
+      biomeId: effBiomeEmParams?.enableBiomeEmPhysics ? effBiomeEmParams.biomeId : undefined,
     };
   }
 
