@@ -25,6 +25,7 @@ import type {
   SpatialFrameSnapshot,
   SpatialNodeSnapshot,
   SpatialLinkBudgetSnapshot,
+  HiFiPhysicsTelemetry,
 } from '../shared/workerProtocol';
 
 /**
@@ -269,5 +270,50 @@ export function buildSpatialFrameSnapshot(
     selectedLinkBudget,
     acn_heading_deg: params.attitudeHeadingDeg,
     acn_bank_deg: params.attitudeBankDeg,
+  };
+}
+
+export interface BuildHiFiTelemetryParams {
+  readonly enableAirframeShadowing: boolean;
+  readonly enableCorrelatedRicianFading: boolean;
+  readonly enableMacPhyFeedback: boolean;
+  readonly enableDubinsKinematics: boolean;
+  readonly viewshedFidelityMode: 'fast' | 'link-budget-parity';
+  readonly uavAttitude: { rollDeg: number; pitchDeg: number; yawDeg: number };
+  readonly numNodes: number;
+  readonly sumShadowLossDb: number;
+  readonly maxShadowLossDb: number;
+  readonly sumCorrelatedFadingDb: number;
+  readonly latestCoherenceTimeMs: number;
+  readonly cqiLagFrames: number;
+  readonly sumOllaOffsetDb: number;
+  readonly harqRetxTotal: number;
+  readonly latestHarqGainDb: number;
+  readonly dynamicGuardEfficiency: number;
+  readonly dubinsMinTurnRadiusM: number;
+}
+
+export function buildHiFiPhysicsTelemetry(p: BuildHiFiTelemetryParams): HiFiPhysicsTelemetry {
+  const n = p.numNodes > 0 ? p.numNodes : 1;
+  return {
+    enabled_flags: {
+      enableAirframeShadowing: p.enableAirframeShadowing,
+      enableCorrelatedRicianFading: p.enableCorrelatedRicianFading,
+      enableMacPhyFeedback: p.enableMacPhyFeedback,
+      enableDubinsKinematics: p.enableDubinsKinematics,
+      viewshedFidelityMode: p.viewshedFidelityMode,
+    },
+    uav_roll_deg: Number(p.uavAttitude.rollDeg.toFixed(2)),
+    uav_pitch_deg: Number(p.uavAttitude.pitchDeg.toFixed(2)),
+    mean_airframe_shadow_loss_db: Number((p.numNodes > 0 ? p.sumShadowLossDb / n : 0.0).toFixed(2)),
+    max_airframe_shadow_loss_db: Number(p.maxShadowLossDb.toFixed(2)),
+    mean_correlated_fading_db: Number((p.numNodes > 0 ? p.sumCorrelatedFadingDb / n : 0.0).toFixed(2)),
+    coherence_time_ms: Number(p.latestCoherenceTimeMs.toFixed(2)),
+    cqi_lag_frames: p.cqiLagFrames,
+    mean_olla_offset_db: Number((p.numNodes > 0 ? p.sumOllaOffsetDb / n : 0.0).toFixed(2)),
+    harq_retransmissions_total: p.harqRetxTotal,
+    harq_combined_gain_db: Number(p.latestHarqGainDb.toFixed(2)),
+    dynamic_guard_efficiency: Number(p.dynamicGuardEfficiency.toFixed(4)),
+    dubins_min_turn_radius_m: Number(p.dubinsMinTurnRadiusM.toFixed(1)),
   };
 }

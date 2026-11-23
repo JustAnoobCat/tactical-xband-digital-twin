@@ -51,6 +51,10 @@ The simulation executes three parallel, lockstep MAC policies across each sector
 
 ### 2.5 Scientific Visual Instrumentation & Lattice Obsidian C2 Console
 - **Lattice Obsidian C2 Console & 1-Click Direct-Manipulation Toolbox (`UI-01`–`UI-05`):** Unified Keysight PathWave × Ansys STK × Anduril Lattice industrial aerospace styling, zero-emoji military compliance, and on-map direct manipulation tools (Ruler, Probe, Area, 3D Obstacles).
+- **Live High-Fidelity Physics Switches (`V2-01`):** Runtime toggleable ITU-R P.526 knife-edge/cylinder diffraction, P.676 atmospheric absorption, P.838 rain attenuation, and body-fixed quad-sector pattern fidelity.
+- **Publication-Grade $N=30$ Benchmark Dossier (`V2-02`):** Automated multi-seed Monte Carlo engine with Student-t confidence intervals, Welch's unequal-variance t-tests, and IEEE Transactions LaTeX export (`npm run benchmark:ts`).
+- **2D Canvas Label De-Confliction & URL Security (`V2-03`):** Sub-microsecond screen-space AABB collision resolver (`radarLabelLayout.ts`) eliminating tactical callout overlap, paired with hardened DOM/XSS protocol sanitization (`domSafety.ts`).
+- **Bounded Parallel CI & Playwright UX Gate (`V2-04`):** Async child-process worker pool cutting verification runtime to $\sim 95\text{–}120\text{s}$, backed by multi-viewport Playwright Chromium testing and explicit `httpx` dependencies in CI.
 - **ITU-R F.1336 Polar Scope:** Live polar radiation diagram depicting quadrant antenna gain and aircraft heading.
 - **Link Budget Waterfall Cascade:** Real-time breakdown of FSPL, gaseous, rain, crest diffraction, antenna gain, and thermal noise.
 - **4-Lane Superframe Gantt Analyzer:** Sub-millisecond visualization of uplink slots, downlink windows, guard intervals, and pre-occlusion flushes.
@@ -106,7 +110,7 @@ tactical-xband-digital-twin/
 │       ├── constants.ts            # Physical constants (c, FRAME_DT = 0.020s, 8 GHz)
 │       └── workerProtocol.ts       # Typed WorkerInboundCommand & WorkerOutboundMessage
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Comprehensive 99-suite verification runner
+│   ├── run_all_verifications.mjs   # Bounded parallel 102-suite verification runner (--concurrency=N, --serial)
 │   ├── run_ts_benchmark.ts         # Headless multi-seed benchmark CLI
 │   ├── verify-browser-ux.mjs       # Multi-viewport Playwright UX audit suite
 │   └── verify-project.mjs          # Architectural invariants and structure validator
@@ -147,14 +151,18 @@ npm run benchmark:ts -- --duration 10 --traffic-scale 3.5 --terrain-mode real
 
 ### Automated Verification Pipeline & Quality Gates
 The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
-- **`99` TypeScript verification suites (`npm run verify:all`)**
+- **`102` TypeScript verification suites (`npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)**
 - **`27` Python `pytest` suites (`pytest -v`)**
-- **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs`)**
+- **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs` enforced in CI)**
 - **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
 
 ```bash
-# Run all 99 TypeScript verification suites
+# Run all 102 TypeScript verification suites (bounded parallel runner)
 npm run verify:all
+
+# Run with custom concurrency or serial fallback
+npm run verify:all -- --concurrency=4
+npm run verify:all -- --serial
 
 # Run 27 Python pytest suites
 pytest -v
@@ -253,3 +261,9 @@ Detailed engineering design specifications, mathematical models, and architectur
 - [`ui02-lattice-obsidian-cutover.md`](docs/specs/ui02-lattice-obsidian-cutover.md): UI-02 Atomic Lattice Obsidian C2 Console UI Cutover, Stitch Removal, Zero-Emoji Purge, and MIL-STD Soldier EUD Rebuild.
 - [`ui03-canvas-theme-and-stitch-cleanup.md`](docs/specs/ui03-canvas-theme-and-stitch-cleanup.md): UI-03 Unified Canvas Obsidian/CVD Theme, Live Playwright CVD/Air-Gap Checks & Dead Stitch Artifact Cleanup.
 - [`ui05-direct-manipulation-toolbox.md`](docs/specs/ui05-direct-manipulation-toolbox.md): UI-05 Frontier 1-Click Direct-Manipulation Terrain Toolbox (Ruler, Probe, Area, Obstacles).
+
+### Frontier Milestones V2-01–V2-04 Specifications (`docs/specs/`)
+- [`SPEC-ITU-FIRST-PRINCIPLES-RF-AND-TERRAIN.md`](docs/specs/SPEC-ITU-FIRST-PRINCIPLES-RF-AND-TERRAIN.md) (`V2-01`): Live High-Fidelity Physics switches, curved-Earth geometry ($k = 4/3$), atmospheric gas absorption, and ITU-R P.526 multi-ridge diffraction controls.
+- [`wp11-scientific-benchmarking-rigor.md`](docs/specs/wp11-scientific-benchmarking-rigor.md) (`V2-02`): Publication-Grade $N=30$ Monte Carlo benchmark dossier, Welch's t-test hypothesis rejection, and IEEE LaTeX table export (`npm run benchmark:ts`).
+- [`wp09-dom-xss-safety-and-modular-extraction.md`](docs/specs/wp09-dom-xss-safety-and-modular-extraction.md) (`V2-03`): 2D Canvas label de-confliction collision-avoidance layout (`radarLabelLayout.ts`), sub-microsecond DOM/XSS safety layer, and URL security protocol filtering.
+- [`v2-04-parallel-ci-and-release-polish.md`](docs/specs/v2-04-parallel-ci-and-release-polish.md) (`V2-04`): 4× faster bounded parallel verification runner (`run_all_verifications.mjs`), bulletproof CI with explicit `httpx` in `python-verify`, and dedicated 4-viewport Playwright Chromium UX gate.

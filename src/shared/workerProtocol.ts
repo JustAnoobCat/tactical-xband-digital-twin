@@ -475,6 +475,37 @@ export interface TelemetryFrame {
   readonly ai_sky_shepherd_active?: boolean;
   readonly ai_sky_shepherd_node_id?: number | null;
   readonly ai_sky_shepherd_directive?: string;
+  readonly hifi_telemetry?: HiFiPhysicsTelemetry;
+}
+
+export interface HiFiPhysicsConfigFlags {
+  readonly enableAirframeShadowing?: boolean;
+  readonly enableCorrelatedRicianFading?: boolean;
+  readonly enableMacPhyFeedback?: boolean;
+  readonly enableDubinsKinematics?: boolean;
+  readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
+}
+
+export interface HiFiPhysicsTelemetry {
+  readonly enabled_flags: {
+    readonly enableAirframeShadowing: boolean;
+    readonly enableCorrelatedRicianFading: boolean;
+    readonly enableMacPhyFeedback: boolean;
+    readonly enableDubinsKinematics: boolean;
+    readonly viewshedFidelityMode: 'fast' | 'link-budget-parity';
+  };
+  readonly uav_roll_deg: number;
+  readonly uav_pitch_deg: number;
+  readonly mean_airframe_shadow_loss_db: number;
+  readonly max_airframe_shadow_loss_db: number;
+  readonly mean_correlated_fading_db: number;
+  readonly coherence_time_ms: number;
+  readonly cqi_lag_frames: number;
+  readonly mean_olla_offset_db: number;
+  readonly harq_retransmissions_total: number;
+  readonly harq_combined_gain_db: number;
+  readonly dynamic_guard_efficiency: number;
+  readonly dubins_min_turn_radius_m: number;
 }
 
 // ----------------------------------------------------------------------------
@@ -798,10 +829,15 @@ export interface ConfigUpdateParams {
   readonly lookahead_cadence_hz?: number;
   readonly lookahead_interval_frames?: number;
   readonly earthRadiusFactorK?: number;
+  readonly enableAirframeShadowing?: boolean;
+  readonly enableCorrelatedRicianFading?: boolean;
+  readonly enableMacPhyFeedback?: boolean;
+  readonly enableDubinsKinematics?: boolean;
+  readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
 }
 
 export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
-  readonly type: 'CONFIG_UPDATE' | 'SET_PARAMS' | 'UPDATE_PARAMS';
+  readonly type: 'CONFIG_UPDATE' | 'SET_PARAMS' | 'UPDATE_PARAMS' | 'UPDATE_CONFIG';
   readonly request_id?: string | number;
   readonly params?: ConfigUpdateParams;
   readonly carrier_freq_ghz?: number;
@@ -830,6 +866,11 @@ export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
   readonly tdma_frame_config?: Partial<ITdmaFrameConfig>;
   readonly lookahead_cadence_hz?: number;
   readonly lookahead_interval_frames?: number;
+  readonly enableAirframeShadowing?: boolean;
+  readonly enableCorrelatedRicianFading?: boolean;
+  readonly enableMacPhyFeedback?: boolean;
+  readonly enableDubinsKinematics?: boolean;
+  readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
 }
 
 export interface LoadPresetCommand extends BaseWorkerInboundCommand {
@@ -887,6 +928,11 @@ export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
   readonly ricianFadingEnabled?: boolean;
   readonly cqiFeedbackDelayMs?: number;
   readonly earthRadiusFactorK?: number;
+  readonly enableAirframeShadowing?: boolean;
+  readonly enableCorrelatedRicianFading?: boolean;
+  readonly enableMacPhyFeedback?: boolean;
+  readonly enableDubinsKinematics?: boolean;
+  readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
 }
 
 export interface SetViewshedConfigCommand extends BaseWorkerInboundCommand {
@@ -1009,6 +1055,7 @@ export interface TelemetryFrameMessage {
   readonly ai_sky_shepherd_active?: boolean;
   readonly ai_sky_shepherd_node_id?: number | null;
   readonly ai_sky_shepherd_directive?: string;
+  readonly hifi_telemetry?: HiFiPhysicsTelemetry;
 }
 
 export interface ProfileFrameMessage {

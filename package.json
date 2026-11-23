@@ -63,10 +63,14 @@
     "verify:workbench-cutover": "vite-node src/tests/verifyWorkbenchCutover.ts",
     "verify:ui-polish-cleanup": "vite-node src/tests/verifyUiPolishAndCleanup.ts",
     "verify:direct-toolbox": "vite-node src/tests/verifyDirectToolboxUx.ts",
+    "verify:live-hifi-wiring": "vite-node src/tests/verifyLiveHighFidelityWiring.ts",
+    "verify:publication-dossier": "vite-node src/tests/verifyPublicationDossierSync.ts",
+    "verify:canvas-declutter-security": "vite-node src/tests/verifyCanvasDeclutterAndSecurity.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",
-    "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts"
+    "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts",
+    "benchmark:scientific": "vite-node scripts/generate_scientific_dossier.ts"
   },
   "dependencies": {
     "maplibre-gl": "^6.16.0",

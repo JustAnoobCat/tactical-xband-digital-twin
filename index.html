@@ -2504,6 +2504,73 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           </div>
         </div>
       </div>
+
+      <!-- Instrument C: High-Fidelity Physics Engine Controls & Live Diagnostics (V2-01) -->
+      <div class="panel" id="hi-fi-physics-panel" style="margin-top:14px">
+        <div class="panel-head">
+          <span class="sec-title">HIGH-FIDELITY PHYSICS ENGINE</span>
+          <button id="btn-hifi-all-toggle" type="button" class="btn" style="padding:4px 10px;font-size:11px;font-family:var(--lo-mono,monospace);cursor:pointer;" onclick="toggleAllHiFiPhysics()" aria-label="Toggle all high-fidelity physics models">
+            Enable All Models
+          </button>
+        </div>
+        <p class="lede" style="margin-bottom:12px;font-size:11.5px">Direct-manipulation opt-in controls for 3D airframe shadowing, correlated 8 GHz Rician fading, closed-loop MAC/PHY OLLA &amp; HARQ feedback, Dubins fixed-wing kinematics, and dual-fidelity viewshed ray marching.</p>
+        <div class="inspector-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px;">
+          <div class="inspector-metric" style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--lo-bg-card,#12161f);border:1px solid var(--lo-line,#1e2638);border-radius:3px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <label for="toggle-hifi-attitude" style="font-size:11px;font-weight:600;color:var(--lo-text-bright,#e6edf3);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="toggle-hifi-attitude" onchange="onHiFiToggleChange('enableAirframeShadowing', this.checked)" aria-label="Enable 3D Airframe Shadowing and Attitude Dynamics" style="cursor:pointer;">
+                Airframe Shadowing (WP-05)
+              </label>
+            </div>
+            <span style="font-size:10px;color:var(--lo-text-muted,#8b949e);">Bank/pitch attitude &amp; defilade loss</span>
+            <strong id="hifi-attitude-readout" class="c-acc" style="font-size:10.5px;font-family:var(--lo-mono,monospace);color:var(--lo-accent,#38bdf8);">Off (0.0 dB)</strong>
+          </div>
+
+          <div class="inspector-metric" style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--lo-bg-card,#12161f);border:1px solid var(--lo-line,#1e2638);border-radius:3px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <label for="toggle-hifi-rician" style="font-size:11px;font-weight:600;color:var(--lo-text-bright,#e6edf3);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="toggle-hifi-rician" onchange="onHiFiToggleChange('enableCorrelatedRicianFading', this.checked)" aria-label="Enable Correlated 8 GHz Rician-Jakes Fading" style="cursor:pointer;">
+                Correlated Rician (WP-05)
+              </label>
+            </div>
+            <span style="font-size:10px;color:var(--lo-text-muted,#8b949e);">8 GHz Zheng-Xiao multi-sine Jakes</span>
+            <strong id="hifi-rician-readout" class="c-acc" style="font-size:10.5px;font-family:var(--lo-mono,monospace);color:var(--lo-accent,#38bdf8);">Off (AWGN)</strong>
+          </div>
+
+          <div class="inspector-metric" style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--lo-bg-card,#12161f);border:1px solid var(--lo-line,#1e2638);border-radius:3px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <label for="toggle-hifi-harq" style="font-size:11px;font-weight:600;color:var(--lo-text-bright,#e6edf3);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="toggle-hifi-harq" onchange="onHiFiToggleChange('enableMacPhyFeedback', this.checked)" aria-label="Enable MAC/PHY OLLA and HARQ Feedback" style="cursor:pointer;">
+                MAC/PHY Feedback (WP-06)
+              </label>
+            </div>
+            <span style="font-size:10px;color:var(--lo-text-muted,#8b949e);">Delayed CQI, OLLA BLER &amp; HARQ CC</span>
+            <strong id="hifi-harq-readout" class="c-acc" style="font-size:10.5px;font-family:var(--lo-mono,monospace);color:var(--lo-accent,#38bdf8);">Off (Static Guard)</strong>
+          </div>
+
+          <div class="inspector-metric" style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--lo-bg-card,#12161f);border:1px solid var(--lo-line,#1e2638);border-radius:3px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <label for="toggle-hifi-dubins" style="font-size:11px;font-weight:600;color:var(--lo-text-bright,#e6edf3);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="toggle-hifi-dubins" onchange="onHiFiToggleChange('enableDubinsKinematics', this.checked)" aria-label="Enable Dubins Fixed-Wing Flight Kinematics" style="cursor:pointer;">
+                Dubins Kinematics (WP-07)
+              </label>
+            </div>
+            <span style="font-size:10px;color:var(--lo-text-muted,#8b949e);">Bank-angle minimum turn radius limit</span>
+            <strong id="hifi-dubins-readout" class="c-acc" style="font-size:10.5px;font-family:var(--lo-mono,monospace);color:var(--lo-accent,#38bdf8);">Off (Unconstrained)</strong>
+          </div>
+
+          <div class="inspector-metric" style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--lo-bg-card,#12161f);border:1px solid var(--lo-line,#1e2638);border-radius:3px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <label for="toggle-hifi-viewshed-parity" style="font-size:11px;font-weight:600;color:var(--lo-text-bright,#e6edf3);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="toggle-hifi-viewshed-parity" onchange="onHiFiToggleChange('viewshedFidelityMode', this.checked)" aria-label="Enable Exact Viewshed Link Budget Parity" style="cursor:pointer;">
+                Viewshed Parity (WP-10)
+              </label>
+            </div>
+            <span style="font-size:10px;color:var(--lo-text-muted,#8b949e);">Full ray-march ITU-R link budget SINR</span>
+            <strong id="hifi-viewshed-readout" class="c-acc" style="font-size:10.5px;font-family:var(--lo-mono,monospace);color:var(--lo-accent,#38bdf8);">Mode: FAST (Amortized)</strong>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -4069,6 +4136,11 @@ import {
   generateExperimentDossierMarkdown,
 } from './src/core/workerJitterProfiler.ts';
 import {
+  runPhysicsRealismAblation,
+  verifyAllItuReferenceAnchors,
+  buildScientificValidationMarkdown,
+} from './src/core/statisticalBenchmarkEngine.ts';
+import {
   computeGeodeticRulerMetrics,
   snapPointToAngleIncrement,
   evaluateRulerProfileAndBlockingPeak,
@@ -4264,10 +4336,27 @@ import {
   resolveSoldierAiNotificationBanner,
 } from './src/ui/soldierEudRenderer.ts';
 import { initWorkbenchShell } from './src/ui/workbenchShell.ts';
+import { createLabelPlacer } from './src/ui/canvasLabelPlacer.ts';
 
 const $ = id => (id === 'profile-canvas' ? (document.getElementById('terrain-canvas') || document.getElementById('profile-canvas')) : document.getElementById(id));
 const workbenchShell = initWorkbenchShell();
 const radarLabelPlacer = new RadarLabelPlacer();
+let activeRadarLabelPlacer = null;
+
+function drawLabelLeaderTick(ctx, placed) {
+  if (!placed || !placed.displaced || placed.displacementPx <= 8) return;
+  const edgeX = Math.max(placed.x, Math.min(placed.x + placed.width, placed.anchorX));
+  const edgeY = Math.max(placed.y, Math.min(placed.y + placed.height, placed.anchorY));
+  ctx.save();
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(placed.anchorX, placed.anchorY);
+  ctx.lineTo(edgeX, edgeY);
+  ctx.stroke();
+  ctx.restore();
+}
 const diagnosticsTracker = new DiagnosticsTracker();
 let currentOverviewSubview = 'ops';
 let currentAuthoringPane = 'traj';
@@ -7397,6 +7486,7 @@ worker.onmessage = (event) => {
     syncTrajectoryEditorFromWorker(msg.frame.trajectory_config);
     syncTdmaEditorFromWorker(msg.frame.tdma_frame_config);
     updateDashboardDOM(msg.frame);
+    updateHiFiPhysicsUI(msg.frame.hifi_telemetry);
     if (terrainMapMode === 'maplibre' && stageViewMode === '2d' && mapLibreInitialized) {
       const nowMs = performance.now();
       if (nowMs - lastMapLibreOverlaySyncMs >= 150 && !isMapLibreDynamicSourceBusy()) {
@@ -9226,7 +9316,7 @@ function initializeMapLibre() {
   const showOfflineMapLibreNotice = () => {
     mapLibreErrorShown = true;
     if (notice) {
-      notice.textContent = 'Satellite imagery unavailable. Showing vector/DEM overlays.';
+      notice.textContent = 'Air-gap mode: external map tiles blocked/offline — switch to Radar / SRTM DEM';
       notice.hidden = false;
     }
   };
@@ -9786,7 +9876,7 @@ function setMapMode(mode) {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       const notice = $('map-renderer-notice');
       if (notice) {
-        notice.textContent = 'Satellite imagery unavailable. Showing vector/DEM overlays.';
+        notice.textContent = 'Air-gap mode: external map tiles blocked/offline — switch to Radar / SRTM DEM';
         notice.hidden = false;
       }
     }
@@ -13753,6 +13843,147 @@ window.toggleActiveRelay = function() {
   radarNeedsRender = true;
 };
 
+/* ====================================================================
+   HIGH-FIDELITY PHYSICS ENGINE CONTROLS & LIVE TELEMETRY (V2-01)
+   ==================================================================== */
+window.onHiFiToggleChange = function(modelKey, enabled) {
+  const params = {};
+  if (modelKey === 'viewshedFidelityMode') {
+    params.viewshedFidelityMode = enabled ? 'link-budget-parity' : 'fast';
+  } else {
+    params[modelKey] = Boolean(enabled);
+  }
+  sendCommand({ type: 'CONFIG_UPDATE', params });
+  radarNeedsRender = true;
+};
+
+window.toggleAllHiFiPhysics = function() {
+  const att = $('toggle-hifi-attitude');
+  const ric = $('toggle-hifi-rician');
+  const harq = $('toggle-hifi-harq');
+  const dub = $('toggle-hifi-dubins');
+  const view = $('toggle-hifi-viewshed-parity');
+
+  const allOn = Boolean(att?.checked && ric?.checked && harq?.checked && dub?.checked && view?.checked);
+  const next = !allOn;
+
+  if (att) att.checked = next;
+  if (ric) ric.checked = next;
+  if (harq) harq.checked = next;
+  if (dub) dub.checked = next;
+  if (view) view.checked = next;
+
+  const btn = $('btn-hifi-all-toggle');
+  if (btn) {
+    btn.textContent = next ? 'Baseline Mode' : 'Enable All Models';
+  }
+
+  sendCommand({
+    type: 'CONFIG_UPDATE',
+    params: {
+      enableAirframeShadowing: next,
+      enableCorrelatedRicianFading: next,
+      enableMacPhyFeedback: next,
+      enableDubinsKinematics: next,
+      viewshedFidelityMode: next ? 'link-budget-parity' : 'fast',
+    },
+  });
+  radarNeedsRender = true;
+};
+
+function updateHiFiPhysicsUI(hifi) {
+  if (!hifi) return;
+  const flags = hifi.enabled_flags || {};
+
+  const attBox = $('toggle-hifi-attitude');
+  if (attBox && document.activeElement !== attBox) attBox.checked = Boolean(flags.enableAirframeShadowing);
+
+  const ricBox = $('toggle-hifi-rician');
+  if (ricBox && document.activeElement !== ricBox) ricBox.checked = Boolean(flags.enableCorrelatedRicianFading);
+
+  const harqBox = $('toggle-hifi-harq');
+  if (harqBox && document.activeElement !== harqBox) harqBox.checked = Boolean(flags.enableMacPhyFeedback);
+
+  const dubBox = $('toggle-hifi-dubins');
+  if (dubBox && document.activeElement !== dubBox) dubBox.checked = Boolean(flags.enableDubinsKinematics);
+
+  const viewBox = $('toggle-hifi-viewshed-parity');
+  if (viewBox && document.activeElement !== viewBox) viewBox.checked = flags.viewshedFidelityMode === 'link-budget-parity';
+
+  const allOn = Boolean(flags.enableAirframeShadowing && flags.enableCorrelatedRicianFading && flags.enableMacPhyFeedback && flags.enableDubinsKinematics && flags.viewshedFidelityMode === 'link-budget-parity');
+  const btn = $('btn-hifi-all-toggle');
+  if (btn) {
+    btn.textContent = allOn ? 'Baseline Mode' : 'Enable All Models';
+  }
+
+  const attReadout = $('hifi-attitude-readout');
+  if (attReadout) {
+    if (flags.enableAirframeShadowing) {
+      const roll = (hifi.uav_roll_deg ?? 0).toFixed(1);
+      const pitch = (hifi.uav_pitch_deg ?? 0).toFixed(1);
+      const meanLoss = (hifi.mean_airframe_shadow_loss_db ?? 0).toFixed(1);
+      const maxLoss = (hifi.max_airframe_shadow_loss_db ?? 0).toFixed(1);
+      attReadout.textContent = `R:${roll} deg P:${pitch} deg | Loss:${meanLoss} dB (max ${maxLoss} dB)`;
+      attReadout.style.color = 'var(--lo-accent, #38bdf8)';
+    } else {
+      attReadout.textContent = 'Off (0.0 dB)';
+      attReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+    }
+  }
+
+  const ricReadout = $('hifi-rician-readout');
+  if (ricReadout) {
+    if (flags.enableCorrelatedRicianFading) {
+      const fading = (hifi.mean_correlated_fading_db ?? 0).toFixed(1);
+      const coh = (hifi.coherence_time_ms ?? 0).toFixed(1);
+      ricReadout.textContent = `Fading: ${fading} dB | Tc: ${coh} ms`;
+      ricReadout.style.color = 'var(--lo-accent, #38bdf8)';
+    } else {
+      ricReadout.textContent = 'Off (AWGN)';
+      ricReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+    }
+  }
+
+  const harqReadout = $('hifi-harq-readout');
+  if (harqReadout) {
+    if (flags.enableMacPhyFeedback) {
+      const lag = hifi.cqi_lag_frames ?? 0;
+      const olla = (hifi.mean_olla_offset_db ?? 0).toFixed(1);
+      const retx = hifi.harq_retransmissions_total ?? 0;
+      const guardEff = ((hifi.dynamic_guard_efficiency ?? 1) * 100).toFixed(1);
+      harqReadout.textContent = `Lag:${lag}f | OLLA:${olla} dB | Retx:${retx} | Guard:${guardEff}%`;
+      harqReadout.style.color = 'var(--lo-accent, #38bdf8)';
+    } else {
+      harqReadout.textContent = 'Off (Static Guard)';
+      harqReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+    }
+  }
+
+  const dubReadout = $('hifi-dubins-readout');
+  if (dubReadout) {
+    if (flags.enableDubinsKinematics) {
+      const rMin = (hifi.dubins_min_turn_radius_m ?? 0).toFixed(0);
+      dubReadout.textContent = `R_min: ${rMin} m | Kinematics Active`;
+      dubReadout.style.color = 'var(--lo-accent, #38bdf8)';
+    } else {
+      dubReadout.textContent = 'Off (Unconstrained)';
+      dubReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+    }
+  }
+
+  const viewReadout = $('hifi-viewshed-readout');
+  if (viewReadout) {
+    if (flags.viewshedFidelityMode === 'link-budget-parity') {
+      viewReadout.textContent = 'Mode: LINK-BUDGET-PARITY (Ray Marching)';
+      viewReadout.style.color = 'var(--lo-accent, #38bdf8)';
+    } else {
+      viewReadout.textContent = 'Mode: FAST (Amortized)';
+      viewReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+    }
+  }
+}
+window.updateHiFiPhysicsUI = updateHiFiPhysicsUI;
+
 /* ---------- Ground Node Antenna AGL Configuration (Feature 7) ---------- */
 let pendingAglUpdate = null;
 let aglFeedbackTimeout = null;
@@ -16028,7 +16259,11 @@ function initWorkerDossierExporter() {
       rtProfile: report,
     };
 
-    const markdown = generateExperimentDossierMarkdown(snapshot);
+    const profilerMarkdown = generateExperimentDossierMarkdown(snapshot);
+    const ituAnchors = verifyAllItuReferenceAnchors();
+    const ablationResult = runPhysicsRealismAblation(30, 20261122);
+    const scientificMarkdown = buildScientificValidationMarkdown(ablationResult, ituAnchors);
+    const markdown = `${profilerMarkdown}\n\n---\n\n${scientificMarkdown}`;
     const preview = document.getElementById('dossier-markdown-preview');
     if (preview) {
       preview.textContent = markdown;
@@ -16961,6 +17196,11 @@ function renderMapLibreKineticOverlay(ctx, w, h, frame) {
   ctx.clearRect(0, 0, w, h);
   if (!frame || !mapController) return;
 
+  activeRadarLabelPlacer = createLabelPlacer(w, h, 4, 3);
+  activeRadarLabelPlacer.reserveRect(0, 0, 48, h);
+  activeRadarLabelPlacer.reserveRect(Math.max(0, w - 122), Math.max(0, h - 42), 114, 34);
+  activeRadarLabelPlacer.reserveRect(8, Math.max(0, h - 38), 256, 30);
+
   const acn = frame.acn_telemetry;
   const acnPosX = acn?.pos_x ?? 0;
   const acnPosY = acn?.pos_y ?? 0;
@@ -17805,14 +18045,24 @@ function renderGeodeticRulerOverlay(ctx, w, h) {
       const peakText = `[PEAK] BLOCKING PEAK [${Math.round(bp.zMslM)}m]`;
       ctx.font = `bold 9.5px ${MONO}`;
       const mText = ctx.measureText(peakText);
+      const pillW = mText.width + 8;
+      const pillH = 14;
+      const prefX = pPeak.x - pillW * 0.5;
+      const prefY = pPeak.y - 20;
+      const placed = activeRadarLabelPlacer
+        ? activeRadarLabelPlacer.placeLabel(prefX, prefY, pillW, pillH, pPeak.x, pPeak.y)
+        : { x: prefX, y: prefY, width: pillW, height: pillH, displaced: false, displacementPx: 0 };
+      if (placed.displaced && placed.displacementPx > 8) {
+        drawLabelLeaderTick(ctx, placed);
+      }
       ctx.fillStyle = 'rgba(20, 10, 15, 0.9)';
-      ctx.fillRect(pPeak.x - mText.width * 0.5 - 4, pPeak.y - 20, mText.width + 8, 14);
+      ctx.fillRect(placed.x, placed.y, placed.width, placed.height);
       ctx.strokeStyle = '#ff2a54';
       ctx.lineWidth = 1;
-      ctx.strokeRect(pPeak.x - mText.width * 0.5 - 4, pPeak.y - 20, mText.width + 8, 14);
+      ctx.strokeRect(placed.x, placed.y, placed.width, placed.height);
       ctx.fillStyle = '#ff2a54';
       ctx.textAlign = 'center';
-      ctx.fillText(peakText, pPeak.x, pPeak.y - 9);
+      ctx.fillText(peakText, placed.x + placed.width * 0.5, placed.y + 11);
     }
     ctx.restore();
 
@@ -17979,14 +18229,24 @@ function renderGeodeticRulerOverlay(ctx, w, h) {
       const peakText = `[PEAK] BLOCKING PEAK [${Math.round(bp.zMslM)}m]`;
       ctx.font = `bold 9.5px ${MONO}`;
       const mText = ctx.measureText(peakText);
+      const pillW = mText.width + 8;
+      const pillH = 14;
+      const prefX = pPeak.x - pillW * 0.5;
+      const prefY = pPeak.y - 20;
+      const placed = activeRadarLabelPlacer
+        ? activeRadarLabelPlacer.placeLabel(prefX, prefY, pillW, pillH, pPeak.x, pPeak.y)
+        : { x: prefX, y: prefY, width: pillW, height: pillH, displaced: false, displacementPx: 0 };
+      if (placed.displaced && placed.displacementPx > 8) {
+        drawLabelLeaderTick(ctx, placed);
+      }
       ctx.fillStyle = 'rgba(20, 10, 15, 0.9)';
-      ctx.fillRect(pPeak.x - mText.width * 0.5 - 4, pPeak.y - 20, mText.width + 8, 14);
+      ctx.fillRect(placed.x, placed.y, placed.width, placed.height);
       ctx.strokeStyle = '#ff2a54';
       ctx.lineWidth = 1;
-      ctx.strokeRect(pPeak.x - mText.width * 0.5 - 4, pPeak.y - 20, mText.width + 8, 14);
+      ctx.strokeRect(placed.x, placed.y, placed.width, placed.height);
       ctx.fillStyle = '#ff2a54';
       ctx.textAlign = 'center';
-      ctx.fillText(peakText, pPeak.x, pPeak.y - 9);
+      ctx.fillText(peakText, placed.x + placed.width * 0.5, placed.y + 11);
     }
     ctx.restore();
 
@@ -18246,13 +18506,23 @@ function renderPrecisionCursorProbeOverlay(ctx, w, h) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   const skyM = ctx.measureText(skyText);
+  const skyW = skyM.width + 6;
+  const skyH = 12;
+  const prefSkyX = pScreen.x - skyW / 2;
+  const prefSkyY = pScreen.y - ringOuterR - 15;
+  const placedSky = activeRadarLabelPlacer
+    ? activeRadarLabelPlacer.placeLabel(prefSkyX, prefSkyY, skyW, skyH, pScreen.x, pScreen.y)
+    : { x: prefSkyX, y: prefSkyY, width: skyW, height: skyH, displaced: false, displacementPx: 0 };
+  if (placedSky.displaced && placedSky.displacementPx > 8) {
+    drawLabelLeaderTick(ctx, placedSky);
+  }
   ctx.fillStyle = 'rgba(15, 19, 26, 0.94)';
-  ctx.fillRect(pScreen.x - skyM.width / 2 - 3, pScreen.y - ringOuterR - 15, skyM.width + 6, 12);
+  ctx.fillRect(placedSky.x, placedSky.y, placedSky.width, placedSky.height);
   ctx.strokeStyle = '#38bdf8';
   ctx.lineWidth = 1;
-  ctx.strokeRect(pScreen.x - skyM.width / 2 - 3, pScreen.y - ringOuterR - 15, skyM.width + 6, 12);
+  ctx.strokeRect(placedSky.x, placedSky.y, placedSky.width, placedSky.height);
   ctx.fillStyle = '#38bdf8';
-  ctx.fillText(skyText, pScreen.x, pScreen.y - ringOuterR - 4);
+  ctx.fillText(skyText, placedSky.x + placedSky.width / 2, placedSky.y + placedSky.height - 1);
 
   // Clearance and elevation footer tag below ring
   const elSign = analysis.elToAcnDeg >= 0 ? '+' : '';
@@ -18264,14 +18534,25 @@ function renderPrecisionCursorProbeOverlay(ctx, w, h) {
   const pillBorder = isObstructed ? (isCvd ? '#ec4899' : '#ef4444') : '#38bdf8';
   const pillText = isObstructed ? (isCvd ? '#fca5a5' : '#fca5a5') : '#e6edf3';
 
+  const maskW = maskM.width + 8;
+  const maskH = 14;
+  const prefMaskX = pScreen.x - maskW / 2;
+  const prefMaskY = pScreen.y + ringOuterR + 4;
+  const placedMask = activeRadarLabelPlacer
+    ? activeRadarLabelPlacer.placeLabel(prefMaskX, prefMaskY, maskW, maskH, pScreen.x, pScreen.y)
+    : { x: prefMaskX, y: prefMaskY, width: maskW, height: maskH, displaced: false, displacementPx: 0 };
+  if (placedMask.displaced && placedMask.displacementPx > 8) {
+    drawLabelLeaderTick(ctx, placedMask);
+  }
+
   ctx.fillStyle = 'rgba(15, 19, 26, 0.94)';
-  ctx.fillRect(pScreen.x - maskM.width / 2 - 4, pScreen.y + ringOuterR + 4, maskM.width + 8, 14);
+  ctx.fillRect(placedMask.x, placedMask.y, placedMask.width, placedMask.height);
   ctx.strokeStyle = pillBorder;
   ctx.lineWidth = 1;
-  ctx.strokeRect(pScreen.x - maskM.width / 2 - 4, pScreen.y + ringOuterR + 4, maskM.width + 8, 14);
+  ctx.strokeRect(placedMask.x, placedMask.y, placedMask.width, placedMask.height);
   ctx.fillStyle = pillText;
   ctx.textBaseline = 'top';
-  ctx.fillText(maskText, pScreen.x, pScreen.y + ringOuterR + 6);
+  ctx.fillText(maskText, placedMask.x + placedMask.width / 2, placedMask.y + 2);
   ctx.restore();
 
   // 3. Pinned Reference [P1] Anchor & Differential Comparison Vector
@@ -18315,15 +18596,25 @@ function renderPrecisionCursorProbeOverlay(ctx, w, h) {
 
         ctx.font = `bold 9.5px ${MONO}`;
         const diffM = ctx.measureText(diffText);
+        const diffW = diffM.width + 10;
+        const diffH = 16;
+        const prefDiffX = midX - diffW / 2;
+        const prefDiffY = midY - 14;
+        const placedDiff = activeRadarLabelPlacer
+          ? activeRadarLabelPlacer.placeLabel(prefDiffX, prefDiffY, diffW, diffH, midX, midY)
+          : { x: prefDiffX, y: prefDiffY, width: diffW, height: diffH, displaced: false, displacementPx: 0 };
+        if (placedDiff.displaced && placedDiff.displacementPx > 8) {
+          drawLabelLeaderTick(ctx, placedDiff);
+        }
         ctx.fillStyle = 'rgba(11, 15, 23, 0.94)';
-        ctx.fillRect(midX - diffM.width / 2 - 5, midY - 14, diffM.width + 10, 16);
+        ctx.fillRect(placedDiff.x, placedDiff.y, placedDiff.width, placedDiff.height);
         ctx.strokeStyle = '#00e5ff';
         ctx.lineWidth = 1.2;
-        ctx.strokeRect(midX - diffM.width / 2 - 5, midY - 14, diffM.width + 10, 16);
+        ctx.strokeRect(placedDiff.x, placedDiff.y, placedDiff.width, placedDiff.height);
         ctx.fillStyle = d.deltaSinrDb >= 0 ? '#00e676' : '#ffab00';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(diffText, midX, midY - 6);
+        ctx.fillText(diffText, placedDiff.x + placedDiff.width / 2, placedDiff.y + placedDiff.height / 2);
       }
       ctx.restore();
     }
@@ -18510,15 +18801,24 @@ function renderPrecisionAoSwathOverlay(ctx, w, h) {
     const midDiagY = (pSW.y + pNE.y) * 0.5;
     const diagText = `Diag: ${rep.diagonalKm.toFixed(2)} km @ ${rep.diagonalAzimuthDeg.toFixed(1)}° · Area: ${rep.areaKm2.toFixed(2)} km²`;
     const diagWidth = ctx.measureText(diagText).width + 16;
+    const diagHeight = 18;
+    const prefDiagX = midDiagX - diagWidth * 0.5;
+    const prefDiagY = midDiagY - 9;
+    const placedDiag = activeRadarLabelPlacer
+      ? activeRadarLabelPlacer.placeLabel(prefDiagX, prefDiagY, diagWidth, diagHeight, midDiagX, midDiagY)
+      : { x: prefDiagX, y: prefDiagY, width: diagWidth, height: diagHeight, displaced: false, displacementPx: 0 };
+    if (placedDiag.displaced && placedDiag.displacementPx > 8) {
+      drawLabelLeaderTick(ctx, placedDiag);
+    }
     ctx.fillStyle = 'rgba(11, 15, 23, 0.92)';
     ctx.strokeStyle = '#ffab00';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.roundRect(midDiagX - diagWidth * 0.5, midDiagY - 9, diagWidth, 18, 3);
+    ctx.roundRect(placedDiag.x, placedDiag.y, placedDiag.width, placedDiag.height, 3);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = '#ffab00';
-    ctx.fillText(diagText, midDiagX, midDiagY);
+    ctx.fillText(diagText, placedDiag.x + placedDiag.width * 0.5, placedDiag.y + placedDiag.height * 0.5);
 
     // 4. On-Canvas Extreme Pins
     // Summit Peak (Gold triangle)
@@ -18537,16 +18837,25 @@ function renderPrecisionAoSwathOverlay(ctx, w, h) {
 
       const sumBadge = `▲ SUMMIT [${Math.round(rep.summitPeak.zMslM)}m · ${rep.summitPeak.sinrDb.toFixed(1)}dB]`;
       const sWidth = ctx.measureText(sumBadge).width + 8;
+      const sHeight = 16;
+      const prefSumX = pSummit.x + 8;
+      const prefSumY = pSummit.y - 8;
+      const placedSum = activeRadarLabelPlacer
+        ? activeRadarLabelPlacer.placeLabel(prefSumX, prefSumY, sWidth, sHeight, pSummit.x, pSummit.y)
+        : { x: prefSumX, y: prefSumY, width: sWidth, height: sHeight, displaced: false, displacementPx: 0 };
+      if (placedSum.displaced && placedSum.displacementPx > 8) {
+        drawLabelLeaderTick(ctx, placedSum);
+      }
       ctx.fillStyle = 'rgba(11, 15, 23, 0.88)';
       ctx.strokeStyle = '#ffab00';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(pSummit.x + 8, pSummit.y - 8, sWidth, 16, 2);
+      ctx.roundRect(placedSum.x, placedSum.y, placedSum.width, placedSum.height, 2);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#ffab00';
       ctx.textAlign = 'left';
-      ctx.fillText(sumBadge, pSummit.x + 12, pSummit.y);
+      ctx.fillText(sumBadge, placedSum.x + 4, placedSum.y + 8);
     }
 
     // Valley Floor (Cyan inverted triangle)
@@ -18565,16 +18874,25 @@ function renderPrecisionAoSwathOverlay(ctx, w, h) {
 
       const valBadge = `▼ VALLEY [${Math.round(rep.valleyFloor.zMslM)}m]`;
       const vWidth = ctx.measureText(valBadge).width + 8;
+      const vHeight = 16;
+      const prefValX = pValley.x + 8;
+      const prefValY = pValley.y - 8;
+      const placedVal = activeRadarLabelPlacer
+        ? activeRadarLabelPlacer.placeLabel(prefValX, prefValY, vWidth, vHeight, pValley.x, pValley.y)
+        : { x: prefValX, y: prefValY, width: vWidth, height: vHeight, displaced: false, displacementPx: 0 };
+      if (placedVal.displaced && placedVal.displacementPx > 8) {
+        drawLabelLeaderTick(ctx, placedVal);
+      }
       ctx.fillStyle = 'rgba(11, 15, 23, 0.88)';
       ctx.strokeStyle = '#00e5ff';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(pValley.x + 8, pValley.y - 8, vWidth, 16, 2);
+      ctx.roundRect(placedVal.x, placedVal.y, placedVal.width, placedVal.height, 2);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#00e5ff';
       ctx.textAlign = 'left';
-      ctx.fillText(valBadge, pValley.x + 12, pValley.y);
+      ctx.fillText(valBadge, placedVal.x + 4, placedVal.y + 8);
     }
 
     // Worst Dead Zone (Crimson cross)
@@ -18591,16 +18909,25 @@ function renderPrecisionAoSwathOverlay(ctx, w, h) {
 
       const dzBadge = `[DEAD ZONE] [${rep.worstDeadZone.sinrDb.toFixed(1)}dB]`;
       const dWidth = ctx.measureText(dzBadge).width + 8;
+      const dHeight = 16;
+      const prefDzX = pDzk.x + 8;
+      const prefDzY = pDzk.y - 8;
+      const placedDz = activeRadarLabelPlacer
+        ? activeRadarLabelPlacer.placeLabel(prefDzX, prefDzY, dWidth, dHeight, pDzk.x, pDzk.y)
+        : { x: prefDzX, y: prefDzY, width: dWidth, height: dHeight, displaced: false, displacementPx: 0 };
+      if (placedDz.displaced && placedDz.displacementPx > 8) {
+        drawLabelLeaderTick(ctx, placedDz);
+      }
       ctx.fillStyle = 'rgba(11, 15, 23, 0.88)';
       ctx.strokeStyle = '#ff2a54';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(pDzk.x + 8, pDzk.y - 8, dWidth, 16, 2);
+      ctx.roundRect(placedDz.x, placedDz.y, placedDz.width, placedDz.height, 2);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#ff2a54';
       ctx.textAlign = 'left';
-      ctx.fillText(dzBadge, pDzk.x + 12, pDzk.y);
+      ctx.fillText(dzBadge, placedDz.x + 4, placedDz.y + 8);
     }
 
     // 5. Squad Tactical Deployment Coordinate Markers
@@ -18693,6 +19020,11 @@ function drawRadar() {
       return;
     }
     ctx.clearRect(0, 0, w, h);
+
+    activeRadarLabelPlacer = createLabelPlacer(w, h, 4, 3);
+    activeRadarLabelPlacer.reserveRect(0, 0, 48, h);
+    activeRadarLabelPlacer.reserveRect(Math.max(0, w - 122), Math.max(0, h - 42), 114, 34);
+    activeRadarLabelPlacer.reserveRect(8, Math.max(0, h - 38), 256, 30);
 
     const { centerX: cx, centerY: cy, scale } = getRadarGeometry(w, h);
     const bounds_m = THEATER_RADIUS_M || 300000;

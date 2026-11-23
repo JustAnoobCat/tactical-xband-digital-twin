@@ -39,6 +39,11 @@ export interface ValidatedConfigParamsResult {
   readonly targetSpeedMps?: number;
   readonly accelLimitMps2?: number;
   readonly decelLimitMps2?: number;
+  readonly enableAirframeShadowing?: boolean;
+  readonly enableCorrelatedRicianFading?: boolean;
+  readonly enableMacPhyFeedback?: boolean;
+  readonly enableDubinsKinematics?: boolean;
+  readonly viewshedFidelityMode?: 'fast' | 'link-budget-parity';
 }
 
 /**
@@ -72,6 +77,21 @@ export function validateConfigUpdateParams(
 
   if (p.terrain_mode !== undefined && p.terrain_mode !== 'real' && p.terrain_mode !== 'synthetic') {
     return { valid: false, reason: 'terrain_mode must be real or synthetic.' };
+  }
+  if (p.enableAirframeShadowing !== undefined && typeof p.enableAirframeShadowing !== 'boolean') {
+    return { valid: false, reason: 'enableAirframeShadowing must be a boolean.' };
+  }
+  if (p.enableCorrelatedRicianFading !== undefined && typeof p.enableCorrelatedRicianFading !== 'boolean') {
+    return { valid: false, reason: 'enableCorrelatedRicianFading must be a boolean.' };
+  }
+  if (p.enableMacPhyFeedback !== undefined && typeof p.enableMacPhyFeedback !== 'boolean') {
+    return { valid: false, reason: 'enableMacPhyFeedback must be a boolean.' };
+  }
+  if (p.enableDubinsKinematics !== undefined && typeof p.enableDubinsKinematics !== 'boolean') {
+    return { valid: false, reason: 'enableDubinsKinematics must be a boolean.' };
+  }
+  if (p.viewshedFidelityMode !== undefined && p.viewshedFidelityMode !== 'fast' && p.viewshedFidelityMode !== 'link-budget-parity') {
+    return { valid: false, reason: "viewshedFidelityMode must be 'fast' or 'link-budget-parity'." };
   }
   if (p.trajectory_mode !== undefined && p.trajectory_mode !== 'ellipse' && p.trajectory_mode !== 'waypoints') {
     return { valid: false, reason: 'trajectory_mode must be ellipse or waypoints.' };
@@ -243,6 +263,11 @@ export function validateConfigUpdateParams(
     targetSpeedMps: p.loiter_speed_mps,
     accelLimitMps2: p.acceleration_limit_mps2,
     decelLimitMps2: p.deceleration_limit_mps2,
+    enableAirframeShadowing: p.enableAirframeShadowing,
+    enableCorrelatedRicianFading: p.enableCorrelatedRicianFading,
+    enableMacPhyFeedback: p.enableMacPhyFeedback,
+    enableDubinsKinematics: p.enableDubinsKinematics,
+    viewshedFidelityMode: p.viewshedFidelityMode,
   };
 }
 
@@ -325,9 +350,21 @@ export function resolveScientificParams(
   trafficScale: number;
   clearSinrHistory: boolean;
   needsObstructionRefresh: boolean;
+  enableAirframeShadowing?: boolean;
+  enableCorrelatedRicianFading?: boolean;
+  enableMacPhyFeedback?: boolean;
+  enableDubinsKinematics?: boolean;
+  viewshedFidelityMode?: 'fast' | 'link-budget-parity';
 } {
   const viewshedEnabled = msg?.viewshedEnabled !== undefined ? Boolean(msg.viewshedEnabled) : undefined;
   const recomputeRelayAdvisor = Boolean(msg?.recomputeRelayAdvisor);
+  const enableAirframeShadowing = msg?.enableAirframeShadowing !== undefined ? Boolean(msg.enableAirframeShadowing) : undefined;
+  const enableCorrelatedRicianFading = msg?.enableCorrelatedRicianFading !== undefined ? Boolean(msg.enableCorrelatedRicianFading) : undefined;
+  const enableMacPhyFeedback = msg?.enableMacPhyFeedback !== undefined ? Boolean(msg.enableMacPhyFeedback) : undefined;
+  const enableDubinsKinematics = msg?.enableDubinsKinematics !== undefined ? Boolean(msg.enableDubinsKinematics) : undefined;
+  const viewshedFidelityMode = (msg?.viewshedFidelityMode === 'fast' || msg?.viewshedFidelityMode === 'link-budget-parity')
+    ? msg.viewshedFidelityMode
+    : undefined;
   const demError = msg?.demLookaheadErrorStdM !== undefined && Number.isFinite(msg.demLookaheadErrorStdM)
     ? Math.max(0.0, Math.min(25.0, msg.demLookaheadErrorStdM))
     : currentEnv.demLookaheadErrorStdM;
@@ -374,6 +411,11 @@ export function resolveScientificParams(
     trafficScale,
     clearSinrHistory,
     needsObstructionRefresh,
+    enableAirframeShadowing,
+    enableCorrelatedRicianFading,
+    enableMacPhyFeedback,
+    enableDubinsKinematics,
+    viewshedFidelityMode,
   };
 }
 

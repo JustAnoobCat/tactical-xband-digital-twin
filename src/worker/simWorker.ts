@@ -18,7 +18,18 @@ import {
   RFConfig,
   SPEED_OF_LIGHT,
 } from '../core/config';
-import { LinkBudgetEngine, LinkStatus } from '../core/linkBudget';
+import { LinkBudgetEngine, LinkStatus, type AirframeChannelOptions } from '../core/linkBudget';
+import {
+  computeCqiLagFrames,
+  stepOllaOffsetDb,
+  evaluateDelayedCqiAmc,
+  createHarqProcessSlot,
+  stepHarqProcess,
+  computeDynamicTdmaOverhead,
+  SPEED_OF_LIGHT_M_S,
+  type HarqProcessSlot,
+} from '../core/macPhyFeedback';
+import { computeMinTurnRadiusM } from '../core/kinematicPathSmoother';
 import { QuadSectorAntennaEngine } from '../core/antennaArray';
 import { Obstacle } from '../core/obstacles';
 import {
@@ -81,6 +92,7 @@ import {
   NodeTerrainState,
   PredictiveLookAheadEngine,
   PredictiveState,
+  computeAirframeAttitude,
 } from '../core/trajectory';
 import {
   FRAME_DT,
@@ -116,6 +128,7 @@ import type {
   SchedulerEpochMetrics,
   EvictionDropFinalizationRecord,
   EvictionSchedulerId,
+  HiFiPhysicsTelemetry,
 } from '../shared/workerProtocol';
 import {
   HillshadeGenerator,
@@ -162,6 +175,7 @@ import {
   extractSchedulerEpochMetrics as extractSchedulerEpochMetricsHelper,
   createSuperframeEpochRecord,
   buildSpatialFrameSnapshot,
+  buildHiFiPhysicsTelemetry,
 } from './workerKpiHelpers';
 import {
   validateConfigUpdateParams,
@@ -435,6 +449,21 @@ export class SimulationWorkerManager {
   private get aiLastEvalTick(): Map<number, number> { return this.aiCoordinator.aiLastEvalTick; }
   private get aiActiveMovements(): Map<number, ActiveAiMovement> { return this.aiCoordinator.aiActiveMovements; }
   private aiTickCount: number = 0;
+
+  // High-Fidelity Physics Engine Opt-In Flags & Deterministic State (SPEC-V2-01)
+  public enableAirframeShadowing: boolean = false;
+  public enableCorrelatedRicianFading: boolean = false;
+  public enableMacPhyFeedback: boolean = false;
+  public enableDubinsKinematics: boolean = false;
+  public viewshedFidelityMode: 'fast' | 'link-budget-parity' = 'fast';
+
+  // Worker-owned deterministic state for MAC/PHY & Hi-Fi models
+  public readonly ollaOffsetByNode: Map<number, number> = new Map();
+  public readonly cqiHistoryByNode: Map<number, number[]> = new Map();
+  public readonly harqSlotByNode: Map<number, HarqProcessSlot> = new Map();
+  public harqRetxTotal: number = 0;
+  public readonly prevSectorByNode: Map<number, number> = new Map();
+  public hifiTelemetry: HiFiPhysicsTelemetry | undefined = undefined;
 
   private timerId: number | null = null;
   private simDebtMs: number = 0.0;
@@ -796,6 +825,11 @@ export class SimulationWorkerManager {
           obstacles: this.terrainEngine.obstacleField.all,
           jammerPosEnu: this.envConfig.jammerPosEnu,
           jammerEnabled: this.envConfig.jammerEnabled,
+          kinematicConstraints: this.enableDubinsKinematics ? {
+            speedMs: Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]),
+            maxBankDeg: 30.0,
+            minTurnRadiusOverrideM: computeMinTurnRadiusM(Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]), 30.0),
+          } : undefined,
         });
         this.aiRecommendations.set(nid, rec);
         this.aiLastEvalTick.set(nid, this.aiTickCount);
@@ -834,6 +868,11 @@ export class SimulationWorkerManager {
             obstacles: this.terrainEngine.obstacleField.all,
             jammerPosEnu: this.envConfig.jammerPosEnu,
             jammerEnabled: this.envConfig.jammerEnabled,
+            kinematicConstraints: this.enableDubinsKinematics ? {
+              speedMs: Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]),
+              maxBankDeg: 30.0,
+              minTurnRadiusOverrideM: computeMinTurnRadiusM(Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]), 30.0),
+            } : undefined,
           });
           this.aiRecommendations.set(nid, rec);
         }
@@ -1272,6 +1311,20 @@ export class SimulationWorkerManager {
     this.prevAcnVel = acnVel;
     const acnAttitude = this.antennaEngine.computeAcnAttitude(acnVel, timeS, true);
 
+    const horizSpeed = Math.hypot(acnVel[0], acnVel[1]);
+    const bankRad = (acnAttitude.bankDeg * Math.PI) / 180.0;
+    const yawRateRadS = horizSpeed > 1e-3 ? (9.80665 * Math.tan(bankRad)) / horizSpeed : 0.0;
+    const uavAttitude = computeAirframeAttitude(acnVel[0], acnVel[1], acnVel[2], yawRateRadS, 45.0);
+    const dubinsMinTurnRadiusM = computeMinTurnRadiusM(horizSpeed, 30.0);
+
+    let sumShadowLossDb = 0.0;
+    let maxShadowLossDb = 0.0;
+    let sumCorrelatedFadingDb = 0.0;
+    let latestCoherenceTimeMs = 0.0;
+    let sumOllaOffsetDb = 0.0;
+    let latestHarqGainDb = 0.0;
+    let maxSlantRangeM = 1.0;
+
     // Evaluate Contested EW Jammer Ingress & Terrain Shielding
     let jammerInterferenceBySector: readonly [number, number, number, number] | undefined = undefined;
     if (this.envConfig.jammerEnabled) {
@@ -1325,6 +1378,7 @@ export class SimulationWorkerManager {
       const obstruction = this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
       const [nx, ny, nz] = node.position;
       const slantM = Math.hypot(acnPos[0] - nx, acnPos[1] - ny, acnPos[2] - nz);
+      maxSlantRangeM = Math.max(maxSlantRangeM, slantM);
       const sectorEval = this.antennaEngine.evaluateNodeSector(
         nid,
         acnPos,
@@ -1389,6 +1443,53 @@ export class SimulationWorkerManager {
         }
       }
 
+      let ollaMarginDb: number | undefined = undefined;
+      let cqiDecodeFailure: boolean | undefined = undefined;
+
+      if (this.enableMacPhyFeedback) {
+        const cqiLagFrames = computeCqiLagFrames(slantM, this.tdmaConfig.frameDurationMs, 4.0);
+        let cqiHist = this.cqiHistoryByNode.get(nid);
+        if (!cqiHist) {
+          cqiHist = [];
+          this.cqiHistoryByNode.set(nid, cqiHist);
+        }
+        const prevSnr = this.linkStatuses.get(nid)?.snrDb ?? 18.0;
+        cqiHist.push(prevSnr);
+        if (cqiHist.length > 50) cqiHist.shift();
+
+        const currentOlla = this.ollaOffsetByNode.get(nid) ?? 0.0;
+        sumOllaOffsetDb += currentOlla;
+        ollaMarginDb = currentOlla;
+
+        let harqSlot = this.harqSlotByNode.get(nid);
+        if (!harqSlot) {
+          harqSlot = createHarqProcessSlot(nid);
+          this.harqSlotByNode.set(nid, harqSlot);
+        }
+      }
+
+      let airframeOptions: AirframeChannelOptions | undefined = undefined;
+      if (this.enableAirframeShadowing || this.enableCorrelatedRicianFading) {
+        airframeOptions = {
+          uavAttitude: {
+            yawDeg: uavAttitude.yawDeg,
+            pitchDeg: uavAttitude.pitchDeg,
+            rollDeg: uavAttitude.rollDeg,
+          },
+          antennaMount: 'belly',
+          enableAirframeShadowing: this.enableAirframeShadowing,
+          losVectorEnu: [nx - acnPos[0], ny - acnPos[1], nz - acnPos[2]],
+          correlatedFadingParams: this.enableCorrelatedRicianFading ? {
+            simTimeS: this.simTimeS,
+            seed: nid * 1000 + 42,
+            carrierFreqHz: this.rfConfig.carrierFrequencyHz,
+            radialVelocityMs: doppler.radialVelocityMs,
+            relativeSpeedMps: horizSpeed,
+            ricianKFactorDb: 6.0,
+          } : undefined,
+        };
+      }
+
       const ls = this.linkEngine.evaluateLink(
         node.nodeType,
         slantM,
@@ -1408,14 +1509,105 @@ export class SimulationWorkerManager {
         doppler.dopplerRateHzS,
         undefined,
         ricianFadingGainDb,
-        ricianKFactorDb
+        ricianKFactorDb,
+        ollaMarginDb,
+        cqiDecodeFailure,
+        undefined,
+        undefined,
+        airframeOptions
       );
+
+      if (ls.airframeShadowLossDb !== undefined) {
+        sumShadowLossDb += ls.airframeShadowLossDb;
+        maxShadowLossDb = Math.max(maxShadowLossDb, ls.airframeShadowLossDb);
+      }
+      if (ls.correlatedFadingDb !== undefined) {
+        sumCorrelatedFadingDb += ls.correlatedFadingDb;
+      }
+      if (ls.coherenceTimeMs !== undefined && Number.isFinite(ls.coherenceTimeMs)) {
+        latestCoherenceTimeMs = ls.coherenceTimeMs;
+      }
+
+      if (this.enableMacPhyFeedback) {
+        const cqiLagFrames = computeCqiLagFrames(slantM, this.tdmaConfig.frameDurationMs, 4.0);
+        const cqiHist = this.cqiHistoryByNode.get(nid);
+        const delayedIdx = Math.max(0, (cqiHist?.length ?? 1) - 1 - cqiLagFrames);
+        const reportedCqi = cqiHist?.[delayedIdx] ?? ls.snrDb;
+        let currentOlla = this.ollaOffsetByNode.get(nid) ?? 0.0;
+
+        const amcRes = evaluateDelayedCqiAmc({
+          reportedSnrDb: reportedCqi,
+          actualSnrDb: ls.snrDb,
+          ollaOffsetDb: currentOlla,
+        });
+
+        const isAck = amcRes.bler < 0.5 && !amcRes.isLinkOutage;
+        currentOlla = stepOllaOffsetDb(currentOlla, isAck, 0.1, 0.25, 0.0, 10.0);
+        this.ollaOffsetByNode.set(nid, currentOlla);
+
+        const harqSlot = this.harqSlotByNode.get(nid);
+        if (harqSlot) {
+          const harqRes = stepHarqProcess(harqSlot, {
+            currentTimeMs: this.simTimeS * 1000.0,
+            slantRangeM: slantM,
+            actualSnrDb: ls.snrDb,
+            requiredSnrDb: amcRes.selectedModcod?.minSnrDb ?? 5.0,
+            combiningMode: 'chase',
+            maxRetransmissions: 4,
+            seed: nid * 1000 + this.frameIndex,
+          });
+          this.harqSlotByNode.set(nid, harqRes.nextSlot);
+          if (harqRes.event === 'NACK_RETRY_SCHEDULED') {
+            this.harqRetxTotal++;
+          }
+          const harqGain = Math.max(0.0, harqRes.combinedSnrDb - ls.snrDb);
+          latestHarqGainDb = Math.max(latestHarqGainDb, harqGain);
+        }
+      }
 
       nextObstructions.set(nid, obstruction);
       nextLinks.set(nid, ls);
       // Traffic-generation shadow is current geometry or link outage
       nextShadow.set(nid, !obstruction.isLos || obstruction.obstacleBlocked || ls.isOutage);
     }
+
+    let dynamicGuardEfficiency = 1.0;
+    if (this.enableMacPhyFeedback) {
+      const slotsPerFrame = this.tdmaConfig.fixedSlotCount ?? 16;
+      const uplinkMs = Math.max(1.0, this.tdmaConfig.frameDurationMs - this.tdmaConfig.ctrlDurationMs - this.tdmaConfig.dlMinDurationMs);
+      const slotDurationMs = uplinkMs / slotsPerFrame;
+      const guardRes = computeDynamicTdmaOverhead({
+        slotDurationMs,
+        slotsPerFrame,
+        slantRangeM: maxSlantRangeM,
+        timingAdvanceActive: true,
+      });
+      dynamicGuardEfficiency = guardRes.frameDataEfficiency;
+    }
+
+    const cqiLagFrames = this.enableMacPhyFeedback
+      ? computeCqiLagFrames(maxSlantRangeM, this.tdmaConfig.frameDurationMs, 4.0)
+      : 0;
+
+    this.hifiTelemetry = buildHiFiPhysicsTelemetry({
+      enableAirframeShadowing: this.enableAirframeShadowing,
+      enableCorrelatedRicianFading: this.enableCorrelatedRicianFading,
+      enableMacPhyFeedback: this.enableMacPhyFeedback,
+      enableDubinsKinematics: this.enableDubinsKinematics,
+      viewshedFidelityMode: this.viewshedFidelityMode,
+      uavAttitude,
+      numNodes,
+      sumShadowLossDb,
+      maxShadowLossDb,
+      sumCorrelatedFadingDb,
+      latestCoherenceTimeMs,
+      cqiLagFrames,
+      sumOllaOffsetDb,
+      harqRetxTotal: this.harqRetxTotal,
+      latestHarqGainDb,
+      dynamicGuardEfficiency,
+      dubinsMinTurnRadiusM,
+    });
 
     // 1a. Active Two-Hop Decode-and-Forward (DF) Tactical Mesh Relay Evaluation
     let relayedNodeCount = 0;
@@ -1598,7 +1790,8 @@ export class SimulationWorkerManager {
         this.envConfig,
         6,
         acnAttitude,
-        jammerInterferenceBySector
+        jammerInterferenceBySector,
+        this.viewshedFidelityMode
       );
     }
 
@@ -1879,192 +2072,12 @@ export class SimulationWorkerManager {
     linkStatus: LinkStatus;
     predState: PredictiveState;
   } {
-    let obstruction = this.obstructionResults.get(node.nodeId);
-    if (!obstruction) {
-      obstruction = this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
-      this.obstructionResults.set(node.nodeId, obstruction);
+    if (!this.obstructionResults.has(node.nodeId) || !this.linkStatuses.has(node.nodeId) || !this.predStates.has(node.nodeId)) {
+      this.refreshObstructionState(acnPos, this.simTimeS);
     }
-    let linkStatus = this.linkStatuses.get(node.nodeId);
-    if (!linkStatus) {
-      const slantM = Math.hypot(acnPos[0] - node.position[0], acnPos[1] - node.position[1], acnPos[2] - node.position[2]);
-      const rawVel = this.trajectoryEngine.getAcnVelocity(this.simTimeS);
-      const acnVel: [number, number, number] = [rawVel[0], rawVel[1], this.liveVzMps];
-      const sectorEval = this.antennaEngine.evaluateNodeSector(
-        node.nodeId,
-        acnPos,
-        acnVel,
-        node.position,
-        this.rfConfig.acnAntennaGainDbi,
-        false
-      );
-      const doppler = LinkBudgetEngine.computeDopplerKinematics(
-        acnPos,
-        acnVel,
-        node.position,
-        this.rfConfig.carrierFrequencyHz
-      );
-      const nodeJammerInterferenceDbm = this.envConfig.jammerEnabled
-        ? this.jammerSectorInterferenceDbm[sectorEval.activeSectorId]
-        : undefined;
-
-      let ricianKFactorDb: number | undefined = undefined;
-      let ricianFadingGainDb: number | undefined = undefined;
-
-      if (this.envConfig.ricianFadingEnabled) {
-        const fading = LinkBudgetEngine.computeRicianMultipathFading(
-          node.nodeId,
-          this.simTimeS,
-          sectorEval.elevationAngleDeg ?? 0.0,
-          obstruction.diffractionLossDb,
-          doppler.dopplerShiftHz
-        );
-        ricianKFactorDb = fading.ricianKFactorDb;
-        ricianFadingGainDb = fading.fadingGainDb;
-      }
-
-      linkStatus = this.linkEngine.evaluateLink(
-        node.nodeType,
-        slantM,
-        obstruction.diffractionLossDb,
-        this.rfConfig,
-        this.envConfig,
-        obstruction.obstacleBlocked,
-        node.txPowerDbm,
-        sectorEval,
-        node.position[2],
-        acnPos[2],
-        obstruction.crestRadiusM,
-        obstruction.curvatureLossDb,
-        nodeJammerInterferenceDbm,
-        doppler.radialVelocityMs,
-        doppler.dopplerShiftHz,
-        doppler.dopplerRateHzS,
-        undefined,
-        ricianFadingGainDb,
-        ricianKFactorDb
-      );
-
-      if (this.envConfig.activeRelayEnabled && this.relayAdvisorReport && this.relayAdvisorReport.optimalPosEnu && (linkStatus.isOutage || linkStatus.bitrateMbps < 5.0)) {
-        const relayPos = this.relayAdvisorReport.optimalPosEnu;
-        const dHop2M = Math.max(1.0, Math.hypot(acnPos[0] - relayPos[0], acnPos[1] - relayPos[1], acnPos[2] - relayPos[2]));
-        const hop2Obs = this.terrainEngine.evaluateTerrainObstruction(relayPos, acnPos, this.rfConfig, this.envConfig);
-        const hop2SectorEval = this.antennaEngine.evaluateNodeSector(
-          -888,
-          acnPos,
-          acnVel,
-          relayPos,
-          this.rfConfig.acnAntennaGainDbi,
-          false
-        );
-        const hop2Doppler = LinkBudgetEngine.computeDopplerKinematics(
-          acnPos,
-          acnVel,
-          relayPos,
-          this.rfConfig.carrierFrequencyHz
-        );
-        const hop2JammerInterferenceDbm = this.envConfig.jammerEnabled
-          ? this.jammerSectorInterferenceDbm[hop2SectorEval.activeSectorId]
-          : undefined;
-
-        const hop2Link = this.linkEngine.evaluateLink(
-          'mcp',
-          dHop2M,
-          hop2Obs.diffractionLossDb,
-          this.rfConfig,
-          this.envConfig,
-          hop2Obs.obstacleBlocked,
-          this.rfConfig.mcpTxPowerDbm,
-          hop2SectorEval,
-          relayPos[2],
-          acnPos[2],
-          hop2Obs.crestRadiusM,
-          hop2Obs.curvatureLossDb,
-          hop2JammerInterferenceDbm,
-          hop2Doppler.radialVelocityMs,
-          hop2Doppler.dopplerShiftHz,
-          hop2Doppler.dopplerRateHzS
-        );
-
-        let hop1Obs = this.relayHop1ObstructionCache.get(node.nodeId);
-        if (!hop1Obs) {
-          hop1Obs = this.terrainEngine.evaluateTerrainObstruction(
-            node.position,
-            relayPos,
-            this.rfConfig,
-            this.envConfig
-          );
-          this.relayHop1ObstructionCache.set(node.nodeId, hop1Obs);
-        }
-
-        const dHop1M = Math.max(1.0, Math.hypot(
-          relayPos[0] - node.position[0],
-          relayPos[1] - node.position[1],
-          relayPos[2] - node.position[2]
-        ));
-
-        const hop1Link = this.linkEngine.evaluateLink(
-          node.nodeType,
-          dHop1M,
-          hop1Obs.diffractionLossDb,
-          this.rfConfig,
-          this.envConfig,
-          hop1Obs.obstacleBlocked,
-          node.txPowerDbm,
-          undefined,
-          node.position[2],
-          relayPos[2],
-          hop1Obs.crestRadiusM,
-          hop1Obs.curvatureLossDb,
-          undefined,
-          0,
-          0,
-          0,
-          this.envConfig.relayAntennaGainDbi
-        );
-
-        const relayedLink = LinkBudgetEngine.computeDecodeAndForwardRelayLink(
-          linkStatus,
-          hop1Link,
-          hop2Link,
-          dHop1M,
-          dHop2M,
-          this.rfConfig.speedOfLight
-        );
-        if (relayedLink.isRelayed) {
-          linkStatus = relayedLink;
-        }
-      }
-
-      if (this.aiBuddyMeshEnabled && (linkStatus.isOutage || linkStatus.bitrateMbps < 1.0)) {
-        const buddyRes = this.aiBuddyRelayResults.get(node.nodeId);
-        if (buddyRes && buddyRes.buddyNodeId !== null && buddyRes.buddyBitrateMbps > 0) {
-          const harmonicRate = buddyRes.harmonicRateMbps > 0 ? buddyRes.harmonicRateMbps : buddyRes.buddyBitrateMbps;
-          linkStatus = {
-            ...linkStatus,
-            isOutage: false,
-            isRelayed: true,
-            bitrateMbps: harmonicRate,
-            bitrateBps: harmonicRate * 1e6,
-            snrDb: buddyRes.buddySinrDb,
-            modcodName: `BUDDY:S${buddyRes.buddyNodeId}`,
-          };
-        }
-      }
-
-      this.linkStatuses.set(node.nodeId, linkStatus);
-    }
-    let predState = this.predStates.get(node.nodeId);
-    if (!predState) {
-      predState = this.lookaheadEngine.evaluatePredictiveState(
-        node.position,
-        this.simTimeS,
-        obstruction,
-        node.nodeId,
-        this.antennaEngine,
-        linkStatus
-      );
-      this.predStates.set(node.nodeId, predState);
-    }
+    const obstruction = this.obstructionResults.get(node.nodeId) ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
+    const linkStatus = this.linkStatuses.get(node.nodeId) ?? this.linkEngine.evaluateLink(node.nodeType, Math.hypot(acnPos[0] - node.position[0], acnPos[1] - node.position[1], acnPos[2] - node.position[2]), obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm);
+    const predState = this.predStates.get(node.nodeId) ?? this.lookaheadEngine.evaluatePredictiveState(node.position, this.simTimeS, obstruction, node.nodeId, this.antennaEngine, linkStatus);
     return { obstruction, linkStatus, predState };
   }
 
@@ -2195,6 +2208,12 @@ export class SimulationWorkerManager {
     this.relayedNodeCount = 0;
     this.relayBackhaulSectorId = undefined;
     this.relayBackhaulSnrDb = undefined;
+    this.ollaOffsetByNode.clear();
+    this.cqiHistoryByNode.clear();
+    this.harqSlotByNode.clear();
+    this.harqRetxTotal = 0;
+    this.prevSectorByNode.clear();
+    this.hifiTelemetry = undefined;
     this.lookaheadEngine?.invalidateAll();
     this.deferredEmergencyQueue.clear();
     this.metrics = {
@@ -2477,12 +2496,13 @@ export class SimulationWorkerManager {
 
       case 'SET_SCIENTIFIC_PARAMS': {
         const sci = resolveScientificParams(msg, this.envConfig);
-        if (sci.viewshedEnabled !== undefined) {
-          this.viewshedEnabled = sci.viewshedEnabled;
-        }
-        if (sci.recomputeRelayAdvisor) {
-          this.computeRelayAdvisor();
-        }
+        if (sci.viewshedEnabled !== undefined) this.viewshedEnabled = sci.viewshedEnabled;
+        if (sci.recomputeRelayAdvisor) this.computeRelayAdvisor();
+        if (sci.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = sci.enableAirframeShadowing;
+        if (sci.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = sci.enableCorrelatedRicianFading;
+        if (sci.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = sci.enableMacPhyFeedback;
+        if (sci.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = sci.enableDubinsKinematics;
+        if (sci.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = sci.viewshedFidelityMode;
         this.envConfig = sci.nextEnvConfig;
         this.lookaheadEngine.setEnvConfig(this.envConfig);
         for (let i = 0; i < this.nodesStatic.length; i++) {
@@ -2498,7 +2518,14 @@ export class SimulationWorkerManager {
         if (sci.clearSinrHistory) {
           this.nodeSinrHistory.clear();
         }
-        if (sci.needsObstructionRefresh) {
+        if (
+          sci.needsObstructionRefresh ||
+          sci.enableAirframeShadowing !== undefined ||
+          sci.enableCorrelatedRicianFading !== undefined ||
+          sci.enableMacPhyFeedback !== undefined ||
+          sci.enableDubinsKinematics !== undefined ||
+          sci.viewshedFidelityMode !== undefined
+        ) {
           this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         }
         return result(true);
@@ -2598,7 +2625,8 @@ export class SimulationWorkerManager {
 
       case 'SET_PARAMS':
       case 'CONFIG_UPDATE':
-      case 'UPDATE_PARAMS': {
+      case 'UPDATE_PARAMS':
+      case 'UPDATE_CONFIG': {
         const p: ConfigUpdateParams = (msg.params && typeof msg.params === 'object' && !Array.isArray(msg.params)) ? msg.params : msg;
         const validation = validateConfigUpdateParams(
           p,
@@ -2612,6 +2640,12 @@ export class SimulationWorkerManager {
         if (this.spatialLocked && (validation.changesTrajectory || validation.changesTerrain || validation.hasAgl)) {
           return locked();
         }
+
+        if (validation.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = validation.enableAirframeShadowing;
+        if (validation.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = validation.enableCorrelatedRicianFading;
+        if (validation.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = validation.enableMacPhyFeedback;
+        if (validation.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = validation.enableDubinsKinematics;
+        if (validation.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = validation.viewshedFidelityMode;
 
         // Construct the full replacement trajectory before mutating any live configuration.
         let nextFlightConfig: ACNFlightConfig | null = validation.nextFlightConfig ?? null;
@@ -3028,6 +3062,11 @@ export class SimulationWorkerManager {
             getElevationAt: (x, y) => this.terrainEngine.getElevation(x, y),
             qTable: this.aiQTable,
             obstacles: this.terrainEngine.obstacleField.all,
+            kinematicConstraints: this.enableDubinsKinematics ? {
+              speedMs: Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]),
+              maxBankDeg: 30.0,
+              minTurnRadiusOverrideM: computeMinTurnRadiusM(Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]), 30.0),
+            } : undefined,
           });
           this.aiRecommendations.set(nid, rec);
           this.aiLastEvalTick.set(nid, this.aiTickCount);

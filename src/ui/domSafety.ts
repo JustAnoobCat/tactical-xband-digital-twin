@@ -169,8 +169,62 @@ export function safeHtml(strings: TemplateStringsArray, ...values: unknown[]): T
   return new TrustedHtml(result);
 }
 
+const DANGEROUS_ATTR_REGEX = /^on/i;
+const URL_ATTR_NAMES: ReadonlySet<string> = new Set([
+  'href',
+  'src',
+  'action',
+  'formaction',
+  'xlink:href',
+  'poster',
+]);
+
+const CONTROL_AND_WHITESPACE_REGEX = /[\x00-\x1F\x7F\s]+/g;
+const SAFE_RASTER_DATA_REGEX = /^data:image\/(?:png|jpeg|jpg|webp)(?:;charset=[^;]+)?(?:;base64)?,/i;
+
+/**
+ * Validates whether a URL or URI candidate is safe against script execution and malicious protocol injection.
+ * Rejects non-strings, empty strings, protocol-relative URLs (`//...`), and unsafe schemes (`javascript:`, `vbscript:`,
+ * executable `data:` types such as `text/html` or `image/svg+xml`).
+ * Safely permits relative paths (`/`, `./`, `../`, `#`, `?`), `http:`, `https:`, `mailto:`, `blob:`, and safe raster image `data:` URLs.
+ */
+export function isSafeUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.replace(/[\x00-\x1F\x7F]/g, '').trim();
+  if (!trimmed) return false;
+
+  // Reject protocol-relative URLs (//evil.com or \\evil.com)
+  if (trimmed.startsWith('//') || trimmed.startsWith('\\\\')) {
+    return false;
+  }
+
+  // Normalize string for scheme detection by stripping ASCII control characters & whitespace
+  const normalized = trimmed.replace(CONTROL_AND_WHITESPACE_REGEX, '').toLowerCase();
+
+  // Find the first delimiter character indicating scheme boundary or path start
+  const firstDelimIdx = normalized.search(/[:\/?#]/);
+
+  if (firstDelimIdx !== -1 && normalized[firstDelimIdx] === ':') {
+    const scheme = normalized.slice(0, firstDelimIdx);
+    if (scheme === 'https' || scheme === 'http' || scheme === 'mailto' || scheme === 'blob') {
+      return true;
+    }
+    if (scheme === 'data') {
+      return SAFE_RASTER_DATA_REGEX.test(trimmed);
+    }
+    // Block javascript:, vbscript:, file:, etc.
+    return false;
+  }
+
+  // Relative URL or fragment
+  return true;
+}
+
 /**
  * Safe DOM element factory using `document.createElement` and `textContent`.
+ * Enforces strict attribute filtering:
+ * 1. Disallows inline `on*` event handlers and `srcdoc`.
+ * 2. Validates URL attributes (`href`, `src`, `action`, `formaction`, `xlink:href`, `poster`) via `isSafeUrl`.
  */
 export function createSafeElement<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -181,6 +235,20 @@ export function createSafeElement<K extends keyof HTMLElementTagNameMap>(
   if (attrs) {
     for (const [key, val] of Object.entries(attrs)) {
       if (val === null || val === undefined) continue;
+      const lowerKey = key.toLowerCase();
+
+      // Block inline on* event handlers and srcdoc
+      if (DANGEROUS_ATTR_REGEX.test(lowerKey) || lowerKey === 'srcdoc') {
+        continue;
+      }
+
+      // Validate URL attributes with isSafeUrl
+      if (URL_ATTR_NAMES.has(lowerKey)) {
+        if (!isSafeUrl(val)) {
+          continue;
+        }
+      }
+
       if (typeof val === 'boolean') {
         if (val) el.setAttribute(key, '');
       } else {

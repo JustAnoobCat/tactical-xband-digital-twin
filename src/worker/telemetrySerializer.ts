@@ -25,6 +25,7 @@ import type {
   TelemetryGanttAllocation,
   NodeTransferTelemetry,
   ProfileFrameMessage,
+  HiFiPhysicsTelemetry,
 } from '../shared/workerProtocol';
 import { cartesianToGeodetic, type GeodeticCoordinate } from '../core/geodesy';
 import {
@@ -179,6 +180,7 @@ export interface TelemetrySimulationState {
   readonly aiSkyShepherdActive?: boolean;
   readonly aiSkyShepherdNodeId?: number | null;
   readonly aiSkyShepherdDirective?: string;
+  readonly hifiTelemetry?: HiFiPhysicsTelemetry;
 }
 
 /**
@@ -834,6 +836,7 @@ export class TelemetrySerializer {
       ai_sky_shepherd_active: state.aiSkyShepherdActive ?? false,
       ai_sky_shepherd_node_id: state.aiSkyShepherdNodeId ?? null,
       ai_sky_shepherd_directive: state.aiSkyShepherdDirective ?? '',
+      hifi_telemetry: state.hifiTelemetry,
     };
   }
 
