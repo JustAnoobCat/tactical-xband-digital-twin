@@ -2113,6 +2113,11 @@ details.c2-card[open] > summary {
   width: 68px;
 }
 
+.c2-fleet-table-wrap {
+  max-height: 210px;
+  overflow-y: auto;
+}
+
 .c2-fleet-table {
   width: 100%;
   border-collapse: collapse;

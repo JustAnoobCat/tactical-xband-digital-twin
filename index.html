@@ -1611,36 +1611,36 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div class="c2-card">
             <div class="c2-card-head">
               <span class="c2-card-title">3GPP 5QI QoS SLA Compliance</span>
-              <span class="kpi-badge badge-emerald">100% PASS</span>
+              <span id="ops-qos-overall-badge" class="kpi-badge badge-neutral">STANDBY</span>
             </div>
             <div class="c2-qos-list">
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
                   <span class="c2-qos-name">5QI-69 · C2 Control (60 ms)</span>
-                  <span class="c2-qos-val">14.2 ms · +76%</span>
+                  <span id="ops-qos-69-val" class="c2-qos-val">-- ms · --</span>
                 </div>
-                <div class="c2-bar-track"><div class="c2-bar-fill is-accent" style="width:24%"></div></div>
+                <div class="c2-bar-track"><div id="ops-qos-69-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
               </div>
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
                   <span class="c2-qos-name">5QI-65 · PTT Voice (100 ms)</span>
-                  <span class="c2-qos-val">28.4 ms · +71%</span>
+                  <span id="ops-qos-65-val" class="c2-qos-val">-- ms · --</span>
                 </div>
-                <div class="c2-bar-track"><div class="c2-bar-fill" style="width:28%"></div></div>
+                <div class="c2-bar-track"><div id="ops-qos-65-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
               </div>
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
                   <span class="c2-qos-name">5QI-67 · ISR Video (150 ms)</span>
-                  <span class="c2-qos-val is-warn">78.0 ms · +48%</span>
+                  <span id="ops-qos-67-val" class="c2-qos-val">-- ms · --</span>
                 </div>
-                <div class="c2-bar-track"><div class="c2-bar-fill is-warn" style="width:52%"></div></div>
+                <div class="c2-bar-track"><div id="ops-qos-67-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
               </div>
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
                   <span class="c2-qos-name">5QI-70 · Photo Burst (300 ms)</span>
-                  <span class="c2-qos-val">112.5 ms · +62%</span>
+                  <span id="ops-qos-70-val" class="c2-qos-val">-- ms · --</span>
                 </div>
-                <div class="c2-bar-track"><div class="c2-bar-fill" style="width:37%"></div></div>
+                <div class="c2-bar-track"><div id="ops-qos-70-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
               </div>
             </div>
           </div>
@@ -1678,49 +1678,26 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div class="c2-card">
             <div class="c2-card-head">
               <span class="c2-card-title">Fleet Registry</span>
-              <span class="c2-card-sub">4 ACTIVE</span>
+              <span id="ops-fleet-count" class="c2-card-sub">0 ACTIVE</span>
             </div>
-            <table class="c2-fleet-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Callsign</th>
-                  <th>Sec</th>
-                  <th>MODCOD</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="c-acc">N-01</td>
-                  <td>Leh HQ Base</td>
-                  <td>S0</td>
-                  <td>32APSK 3/4</td>
-                  <td class="c-ok">LOS CLEAR</td>
-                </tr>
-                <tr>
-                  <td class="c-acc">N-02</td>
-                  <td>Patrol Alpha</td>
-                  <td>S1</td>
-                  <td>16APSK 2/3</td>
-                  <td class="c-warn">GRAZING 3dB</td>
-                </tr>
-                <tr>
-                  <td class="c-acc">N-03</td>
-                  <td>Armored Bravo</td>
-                  <td>S2</td>
-                  <td>QPSK 1/2</td>
-                  <td class="c-bad">BLOCKED</td>
-                </tr>
-                <tr>
-                  <td class="c-acc">N-04</td>
-                  <td>S4 Recon</td>
-                  <td>S3</td>
-                  <td>8PSK 3/5</td>
-                  <td class="c-warn">OCCL T-3.2s</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="c2-fleet-table-wrap" style="max-height: 210px; overflow-y: auto;">
+              <table class="c2-fleet-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Callsign</th>
+                    <th>Sec</th>
+                    <th>MODCOD</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="ops-fleet-tbody">
+                  <tr>
+                    <td colspan="5" class="muted" style="text-align:center;padding:12px 6px;">Waiting for ground terminals…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <!-- Rolling Goodput Trend -->
@@ -4183,6 +4160,7 @@ import {
 import { exportTimelineDualCsv } from './src/ui/timelineCsvExporter.ts';
 import { HistoricalSessionCoordinator } from './src/ui/historicalSessionCoordinator.ts';
 import { classifyLinkCommunicationStatus } from './src/core/linkStatusClassifier.ts';
+import { escapeHtml } from './src/ui/domSafety.ts';
 import { classifyAndStyleLink, getMapLinkStyle, getStatusBadgeInfo } from './src/ui/mapLinkStyles.ts';
 import {
   computeTerrainScreenBounds,
@@ -11493,6 +11471,7 @@ window.resetSim = function() {
   dataCommVisualizer.reset();
   networkTrafficTracker.clear();
   lastRenderedNodesKey = '';
+  lastOpsFleetSignature = '';
   setSpeed(PLAYBACK_SPEED.defaultValue);
   updateStepControlUI(true);
   updatePauseButtonUI();
@@ -11512,6 +11491,7 @@ window.loadPreset = function(id) {
   pendingAltitudeMode = null;
   flightParamsDirty = false;
   lastRenderedNodesKey = '';
+  lastOpsFleetSignature = '';
   if (id === 'PRESET_RESET' || id === 'PRESET_ACN_ONLY' || id === 'PRESET_16_NODES') {
     if (historyController.isInspecting) {
       historyController.exitHistorical();
@@ -15200,6 +15180,122 @@ function formatDmsStr(deg, isLat) {
   return `${d}°${String(m).padStart(2, '0')}'${s.padStart(4, '0')}"${hemi}`;
 }
 
+/* ---------- OPS Workspace Live Fleet Registry (Milestone 2) ---------- */
+let lastOpsFleetSignature = '';
+
+function renderOpsFleetRegistry(nodes) {
+  const tbody = $('ops-fleet-tbody');
+  const countBadge = $('ops-fleet-count');
+  if (!tbody) return;
+
+  const nodeList = Array.isArray(nodes) ? nodes : [];
+  if (countBadge) {
+    countBadge.textContent = `${nodeList.length} ACTIVE`;
+  }
+
+  if (nodeList.length === 0) {
+    if (lastOpsFleetSignature !== '__EMPTY__') {
+      lastOpsFleetSignature = '__EMPTY__';
+      tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:12px 6px;">No active ground terminals</td></tr>';
+    }
+    return;
+  }
+
+  const rowsData = [];
+  const sigParts = [String(selectedNodeId)];
+
+  for (let i = 0; i < nodeList.length; i++) {
+    const n = nodeList[i];
+    const isSelected = n.node_id === selectedNodeId;
+    const nidStr = 'N-' + String(n.node_id).padStart(2, '0');
+    const callsign = n.name || ('Terminal ' + n.node_id);
+    const secStr = typeof n.active_sector_id === 'number'
+      ? ('S' + n.active_sector_id)
+      : (typeof n.sector_id === 'number' ? ('S' + n.sector_id) : '--');
+    const modcodRaw = n.modcod_name || n.modcod || '--';
+    const modcodStr = (modcodRaw && modcodRaw !== 'LINK_OUTAGE') ? modcodRaw : '--';
+
+    let statusText = 'LOS CLEAR';
+    let statusClass = 'c-ok';
+    const isRelay = Boolean(n.two_hop_active || n.peer_relay_active || n.is_relay || n.node_type === 'relay');
+
+    if (isRelay) {
+      statusText = 'RELAY';
+      statusClass = 'c-acc';
+    } else {
+      const classification = classifyLinkCommunicationStatus(n);
+      switch (classification.status) {
+        case 'CONNECTED':
+          statusText = 'LOS CLEAR';
+          statusClass = 'c-ok';
+          break;
+        case 'DEGRADED':
+          statusText = 'DEGRADED';
+          statusClass = 'c-warn';
+          break;
+        case 'BLOCKED_TERRAIN':
+        case 'BLOCKED_OBSTACLE':
+          statusText = 'BLOCKED';
+          statusClass = 'c-bad';
+          break;
+        case 'OUTAGE_DISCONNECTED':
+          statusText = 'OUTAGE';
+          statusClass = 'c-bad';
+          break;
+        default:
+          if (n.link_outage) {
+            statusText = 'OUTAGE';
+            statusClass = 'c-bad';
+          } else {
+            statusText = 'LOS CLEAR';
+            statusClass = 'c-ok';
+          }
+          break;
+      }
+    }
+
+    sigParts.push(`${n.node_id}:${callsign}:${secStr}:${modcodStr}:${statusText}:${isSelected}`);
+    rowsData.push({
+      nodeId: n.node_id,
+      isSelected,
+      nidStr,
+      callsign,
+      secStr,
+      modcodStr,
+      statusText,
+      statusClass,
+    });
+  }
+
+  const currentSig = sigParts.join('|');
+  if (currentSig === lastOpsFleetSignature) {
+    return;
+  }
+  lastOpsFleetSignature = currentSig;
+
+  const trElements = rowsData.map(r => {
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    if (r.isSelected) tr.classList.add('is-selected');
+    tr.dataset.nodeId = String(r.nodeId);
+    tr.onclick = () => {
+      if (typeof window.onTargetNodeChange === 'function') {
+        window.onTargetNodeChange(r.nodeId);
+      }
+    };
+    tr.innerHTML = `
+      <td class="c-acc">${escapeHtml(r.nidStr)}</td>
+      <td>${escapeHtml(r.callsign)}</td>
+      <td>${escapeHtml(r.secStr)}</td>
+      <td>${escapeHtml(r.modcodStr)}</td>
+      <td class="${escapeHtml(r.statusClass)}">${escapeHtml(r.statusText)}</td>
+    `;
+    return tr;
+  });
+
+  tbody.replaceChildren(...trElements);
+}
+
 function renderTerminalInventory(nodes, selectedId, query = '') {
   const tbody = $('terminal-inventory-tbody');
   if (!tbody || !Array.isArray(nodes)) return;
@@ -15521,6 +15617,88 @@ function renderVsaScope(nodeTel, frame) {
 }
 window.renderVsaScope = renderVsaScope;
 
+/* ---------- OPS Workspace 3GPP 5QI SLA Card (Milestone 1) ---------- */
+function updateOpsQosSlaUI(report, nodes) {
+  const opsOverallBadge = $('ops-qos-overall-badge');
+  const nodeList = Array.isArray(nodes) ? nodes : [];
+
+  if (nodeList.length === 0) {
+    if (opsOverallBadge) {
+      opsOverallBadge.textContent = 'STANDBY';
+      opsOverallBadge.className = 'kpi-badge badge-neutral';
+    }
+    for (const qosId of [69, 65, 67, 70]) {
+      const vEl = $(`ops-qos-${qosId}-val`);
+      const bEl = $(`ops-qos-${qosId}-bar`);
+      if (vEl) {
+        vEl.textContent = '-- ms · --';
+        vEl.className = 'c2-qos-val';
+        vEl.style.color = '';
+      }
+      if (bEl) {
+        bEl.style.width = '0%';
+        bEl.className = 'c2-bar-fill is-accent';
+        bEl.style.backgroundColor = '';
+      }
+    }
+    return;
+  }
+
+  if (opsOverallBadge) {
+    const overallPct = report.overallSlaCompliancePct;
+    if (overallPct >= 95.0) {
+      opsOverallBadge.textContent = `${overallPct.toFixed(0)}% PASS`;
+      opsOverallBadge.className = 'kpi-badge badge-emerald';
+    } else if (overallPct >= 75.0) {
+      opsOverallBadge.textContent = `${overallPct.toFixed(0)}% WARN`;
+      opsOverallBadge.className = 'kpi-badge badge-amber';
+    } else {
+      opsOverallBadge.textContent = `${overallPct.toFixed(0)}% BREACH`;
+      opsOverallBadge.className = 'kpi-badge badge-danger';
+    }
+  }
+
+  for (const b of (report.bearers || [])) {
+    const vEl = $(`ops-qos-${b.qos5qi}-val`);
+    const bEl = $(`ops-qos-${b.qos5qi}-bar`);
+    if (!vEl && !bEl) continue;
+
+    const sojournMs = Number.isFinite(b.estimatedMaxSojournMs) ? b.estimatedMaxSojournMs : 0;
+    const pdbMs = b.pdbMs || 1;
+    const pct = Math.max(0, (sojournMs / pdbMs) * 100);
+    const headroomVal = Math.round(b.pdbHeadroomPct);
+    const headroomText = headroomVal > 0 ? `+${headroomVal}%` : `${headroomVal}%`;
+
+    if (vEl) {
+      vEl.textContent = `${sojournMs.toFixed(1)} ms · ${headroomText}`;
+      if (pct > 100) {
+        vEl.className = 'c2-qos-val c-bad';
+        vEl.style.color = 'var(--lo-err, #ef4444)';
+      } else if (pct > 75) {
+        vEl.className = 'c2-qos-val is-warn';
+        vEl.style.color = '';
+      } else {
+        vEl.className = 'c2-qos-val';
+        vEl.style.color = '';
+      }
+    }
+
+    if (bEl) {
+      bEl.style.width = `${Math.min(100, Math.round(pct))}%`;
+      if (pct > 100) {
+        bEl.className = 'c2-bar-fill';
+        bEl.style.backgroundColor = 'var(--lo-err, #ef4444)';
+      } else if (pct > 75) {
+        bEl.className = 'c2-bar-fill is-warn';
+        bEl.style.backgroundColor = '';
+      } else {
+        bEl.className = 'c2-bar-fill is-accent';
+        bEl.style.backgroundColor = '';
+      }
+    }
+  }
+}
+
 /* ---------- 3GPP TS 23.501 5QI SLA & Jain's Fairness Analyzer Controller ---------- */
 function renderQosSlaAnalyzer(frame) {
   const panel = $('qos-sla-panel');
@@ -15564,6 +15742,9 @@ function renderQosSlaAnalyzer(frame) {
     blBadge.className = report.totalNetworkBacklogKbits > 500 ? 'kpi-badge badge-amber' : 'kpi-badge badge-neutral';
   }
 
+  // 1b. OPS 3GPP 5QI SLA Card live telemetry update (Milestone 1)
+  updateOpsQosSlaUI(report, nodes);
+
   // 2. 4-Bearer SLA Telemetry Table
   const tbody = $('qos-sla-table-body');
   if (tbody) {
@@ -15598,6 +15779,9 @@ function renderQosSlaAnalyzer(frame) {
   }
 
   // 3. 5QI Sojourn vs PDB Ceiling Canvas
+  const activeTabId = document.querySelector('.tab-content.active')?.id;
+  if (activeTabId !== 'tab-network') return;
+
   const canvas = $('qos-sla-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -16358,6 +16542,11 @@ function updateDashboardDOM(frame, force = false) {
     if (activeTabId === 'tab-network' && !isTimelineHist) {
       renderNetworkTrafficInventory(frame);
     }
+  }
+
+  if (!isTimelineHist) {
+    renderOpsFleetRegistry(frame.nodes_telemetry);
+    renderQosSlaAnalyzer(frame);
   }
 
   if (isTimelineHist) return;

@@ -198,6 +198,28 @@ async function ensureKargilScenarioLoaded(page) {
     );
     await page.waitForTimeout(250);
   }
+
+  // UI-06: Verify OPS live telemetry wiring
+  await page.waitForFunction(
+    () => {
+      const rows = document.querySelectorAll('#ops-fleet-tbody tr');
+      const placeholder = document.querySelector('#ops-fleet-tbody tr td[colspan]');
+      const badge = document.getElementById('ops-qos-overall-badge');
+      return !placeholder && rows.length >= 2 && Boolean(badge?.textContent?.trim());
+    },
+    null,
+    { timeout: 10000 },
+  );
+
+  const opsRowCount = await page.locator('#ops-fleet-tbody tr').count();
+  assert.ok(opsRowCount >= 2, `Expected #ops-fleet-tbody to have >= 2 live rows, got ${opsRowCount}`);
+  const opsFleetText = await page.locator('#ops-fleet-tbody').innerText();
+  assert.ok(!opsFleetText.includes('Armored Bravo'), 'Expected #ops-fleet-tbody to not contain stale static placeholder "Armored Bravo"');
+
+  const opsQosBadge = page.locator('#ops-qos-overall-badge');
+  assert.ok(await opsQosBadge.isVisible(), 'Expected #ops-qos-overall-badge to be visible');
+  const badgeText = (await opsQosBadge.innerText()).trim();
+  assert.ok(badgeText.length > 0, 'Expected #ops-qos-overall-badge to be non-empty');
 }
 
 async function selectFirstTerminalFromInventory(page) {

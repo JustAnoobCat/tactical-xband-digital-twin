@@ -49,7 +49,8 @@ The simulation executes three parallel, lockstep MAC policies across each sector
    - **Effective Physical Deadline Compression:** $\tau_{\text{eff-TTL}, i} = \min(\tau_{\text{TTL}, i}, \tau_{\text{occ}, i})$.
    - **Imminent-Expiry Protection Gate:** Pre-occlusion flushes yield ($\Phi_{\text{evac}} = 1.0$) whenever a peer node in the sector has $\ge 82\%$ PDB consumed and $\tau_{\text{TTL}} \le 30\text{ ms}$, ensuring time-critical packets never drop due to lookahead preemption.
 
-### 2.5 Scientific Visual Instrumentation
+### 2.5 Scientific Visual Instrumentation & Lattice Obsidian C2 Console
+- **Lattice Obsidian C2 Console & 1-Click Direct-Manipulation Toolbox (`UI-01`–`UI-05`):** Unified Keysight PathWave × Ansys STK × Anduril Lattice industrial aerospace styling, zero-emoji military compliance, and on-map direct manipulation tools (Ruler, Probe, Area, 3D Obstacles).
 - **ITU-R F.1336 Polar Scope:** Live polar radiation diagram depicting quadrant antenna gain and aircraft heading.
 - **Link Budget Waterfall Cascade:** Real-time breakdown of FSPL, gaseous, rain, crest diffraction, antenna gain, and thermal noise.
 - **4-Lane Superframe Gantt Analyzer:** Sub-millisecond visualization of uplink slots, downlink windows, guard intervals, and pre-occlusion flushes.
@@ -63,21 +64,41 @@ The simulation executes three parallel, lockstep MAC policies across each sector
 ```
 tactical-xband-digital-twin/
 ├── src/
-│   ├── core/                       # Authoritative Domain Models & Physics
+│   ├── core/                       # Authoritative Domain Models & Physics Engines
 │   │   ├── antennaArray.ts         # QuadSectorAntennaEngine (ITU-R F.1336, 4 quadrants)
+│   │   ├── aoSwathScannerEngine.ts # CAD/QGIS-grade area-of-operations swath scanner
 │   │   ├── config.ts               # RFConfig, EnvironmentConfig, ACNFlightConfig
-│   │   ├── geodesy.ts              # WGS-84 / Equirectangular coordinate transforms
+│   │   ├── cursorProbeEngine.ts    # STK-grade precision cursor RF link probe
+│   │   ├── geodesy.ts              # Canonical WGS-84 / ECEF / ENU geodetic transforms
+│   │   ├── geodeticRulerEngine.ts  # Precision geodetic line-of-sight ruler engine
+│   │   ├── kinematicPathSmoother.ts# Kinematic Dubins path smoothing & turn envelope
 │   │   ├── linkBudget.ts           # LinkBudgetEngine (FSPL, P.676, P.838, P.618, DVB-S2X)
-│   │   ├── queues.ts               # FQCoDelQueue, QoS profiles (5QI 69, 65, 67, 70)
+│   │   ├── macPhyFeedback.ts       # AMC with OLLA, HARQ Chase Combining, dynamic guard
+│   │   ├── pduDissector.ts         # Wire-format Layer-1/Layer-2 MAC PDU dissector
+│   │   ├── qosSlaEngine.ts         # 3GPP 5QI SLA compliance & Raj Jain fairness index
+│   │   ├── queues.ts               # FQ-CoDel queue & 3GPP 5QI packet priority profiles
+│   │   ├── rfPropagationMath.ts    # Unified ITU-R propagation & diffraction math
 │   │   ├── scheduler.ts            # Static, Reactive M-LWDF, and Tac-TAD Schedulers
+│   │   ├── tacticalAiPathfinder.ts # Edge-AI NLoS link-recovery pathfinder & squad self-healing
 │   │   ├── tdmaConfig.ts           # TdmaFrameConfig superframe parameters
-│   │   ├── terrain.ts              # TerrainEngine (P.834, P.526-15 Bullington, SRTM DEM)
-│   │   └── trajectory.ts           # ACNTrajectory, Waypoints, PredictiveLookAheadEngine
+│   │   ├── terrain.ts              # TerrainEngine (P.834, P.526-15 Bullington / Deygout, SRTM DEM)
+│   │   ├── trajectory.ts           # ACNTrajectory, Waypoints, PredictiveLookAheadEngine
+│   │   ├── viewshedEngine.ts       # Polar X-band SINR viewshed & relay advisor
+│   │   └── vsaConstellationEngine.ts# DVB-S2X I/Q constellation & EVM analyzer
 │   ├── worker/                     # Authoritative Discrete-Event Web Worker
+│   │   ├── aiCopilotCoordinator.ts # Worker Edge-AI copilot & autonomous repositioning
+│   │   ├── nodeLifecycleManager.ts # Dynamic node addition, movement & lifecycle state
 │   │   ├── simWorker.ts            # SimulationWorkerManager (50 Hz authoritative loop)
-│   │   └── telemetrySerializer.ts  # Binary/typed telemetry serialization & caching
+│   │   ├── telemetrySerializer.ts  # Binary/typed telemetry serialization & caching
+│   │   └── terrainMeshGenerator.ts # Multi-resolution 3D DEM mesh generator
 │   ├── ui/                         # UI Presentation & Visualization Coordinators
-│   │   ├── mapRenderer.ts          # 2D Canvas radar display
+│   │   ├── accessibilityEncoding.ts# WCAG 2.1 accessible status palettes & pattern fills
+│   │   ├── canvasTheme.ts          # Lattice Obsidian & CVD theme tokens for 2D/3D canvases
+│   │   ├── domSafety.ts            # Reusable XSS neutralization & trusted HTML helpers
+│   │   ├── mapController.ts        # 2D Tactical radar canvas & MapLibre GL controller
+│   │   ├── networkTrafficInventory.ts# Authentic ground-relay-ground flow inventory
+│   │   ├── scientificScopesRenderer.ts# HiDPI scopes (Polar, Waterfall, ECDF, Constellation)
+│   │   ├── soldierEudRenderer.ts   # ATAK tactical soldier handheld EUD interface
 │   │   ├── spatialSnapshotBuffer.ts# 3,000-frame bit-packed ring buffer
 │   │   ├── threeFoundation.ts      # Three.js 3D scene & alpine rendering
 │   │   └── timelineCoordinator.ts  # Timeline playback & scrubbing coordinator
@@ -85,7 +106,7 @@ tactical-xband-digital-twin/
 │       ├── constants.ts            # Physical constants (c, FRAME_DT = 0.020s, 8 GHz)
 │       └── workerProtocol.ts       # Typed WorkerInboundCommand & WorkerOutboundMessage
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Comprehensive 59-suite test runner
+│   ├── run_all_verifications.mjs   # Comprehensive 99-suite verification runner
 │   ├── run_ts_benchmark.ts         # Headless multi-seed benchmark CLI
 │   ├── verify-browser-ux.mjs       # Multi-viewport Playwright UX audit suite
 │   └── verify-project.mjs          # Architectural invariants and structure validator
@@ -103,7 +124,7 @@ tactical-xband-digital-twin/
 
 ### Installation
 ```bash
-git clone https://github.com/organization/tactical-xband-digital-twin.git
+git clone https://github.com/JustAnoobCat/tactical-xband-digital-twin.git
 cd tactical-xband-digital-twin
 npm install
 ```
@@ -124,14 +145,22 @@ npm run benchmark:ts -- --duration 5 --traffic-scale 3.5
 npm run benchmark:ts -- --duration 10 --traffic-scale 3.5 --terrain-mode real
 ```
 
-### Automated Verification Pipeline
-The repository features an automated 59-suite verification matrix ensuring 100% adherence to physics and architectural invariants:
+### Automated Verification Pipeline & Quality Gates
+The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
+- **`99` TypeScript verification suites (`npm run verify:all`)**
+- **`27` Python `pytest` suites (`pytest -v`)**
+- **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs`)**
+- **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
+
 ```bash
-# Run all 59 verification suites
+# Run all 99 TypeScript verification suites
 npm run verify:all
 
-# Run multi-viewport Playwright browser verification (1440x900, 1366x768, 1024x768, 780x840)
-npm run verify:browser
+# Run 27 Python pytest suites
+pytest -v
+
+# Run 4-viewport Playwright browser UX verification (1440x900, 1366x768, 1024x768, 780x840)
+node scripts/verify-browser-ux.mjs
 
 # Production build check
 npm run build
@@ -163,7 +192,7 @@ If you utilize this Digital Twin platform, its mathematical formulations, or its
   title = {Tactical X-Band Air-to-Ground Network Digital Twin},
   year = {2026},
   version = {1.2.0},
-  url = {https://github.com/organization/tactical-xband-digital-twin}
+  url = {https://github.com/JustAnoobCat/tactical-xband-digital-twin}
 }
 ```
 
@@ -206,6 +235,21 @@ Detailed engineering design specifications, mathematical models, and architectur
 - [`SPEC-AI-PHYSICS-TRUTH-AND-CLOSED-LOOP-EXECUTION.md`](docs/specs/SPEC-AI-PHYSICS-TRUTH-AND-CLOSED-LOOP-EXECUTION.md): Ground Truth Coupling & Authoritative Closed-Loop Edge-AI (Exact Link Budget Parity, 3D Barrier Sky-Ray Blocking, Future-Orbit Arrival Scoring, Worker Closed-Loop Buddy-Relay Packet Delivery, Sky-Shepherd Physical UAV Repositioning, and LPI/LPD Stealth TX Power Control).
 - [`SPEC-MASTER-MATHEMATICAL-RIGOR-AUDIT.md`](docs/specs/SPEC-MASTER-MATHEMATICAL-RIGOR-AUDIT.md): Master mathematical, physical, and geodetic rigor audit across all 16 core engines, curved-Earth bulge coordinate invariance, 3D body-frame Euler orientation alignment, ITU-R P.526-15 $T(m,n)$ boundary continuity, and 10-domain verification suite.
 - [`SPEC-SOFTWARE-ENGINEERING-MODULARITY-AND-DRY-REFACTOR.md`](docs/specs/SPEC-SOFTWARE-ENGINEERING-MODULARITY-AND-DRY-REFACTOR.md): Software Engineering Modularity, DRY Physics Unification (`rfPropagationMath.ts`), Web Worker Separation of Concerns (`aiCopilotCoordinator.ts`), and TypeScript Static Type-Checked UI Scope Renderers (`scientificScopesRenderer.ts` & `soldierEudRenderer.ts`).
-- [`SPEC-CODEBASE-DRIVEN-STITCH-UI-OVERHAUL.md`](docs/specs/SPEC-CODEBASE-DRIVEN-STITCH-UI-OVERHAUL.md): Full Codebase-Driven Google Stitch MCP UI Generation, Multi-Terrain Industrial Aerospace Design System (Keysight PathWave × Ansys STK × Anduril Lattice), Zero-Emoji Enforcement, and CSS/HTML Transplant across all 9 workspaces and 14 scopes.
 - [`METRICS_PATCH_NOTES.md`](docs/specs/METRICS_PATCH_NOTES.md): Symmetric airtime, throughput accounting, drop classifications, and benchmark provenance logging.
 
+### Work Packages & Lattice Obsidian Foundation (`docs/specs/`)
+- [`wp01-ci-quality-gate.md`](docs/specs/wp01-ci-quality-gate.md): WP-01 Continuous Integration & Deployment Quality Gate (`ci.yml` & `deploy-pages.yml`).
+- [`wp02-backend-electron-hardening.md`](docs/specs/wp02-backend-electron-hardening.md): WP-02 Backend Security, Concurrency Hardening & Electron Desktop Containment.
+- [`wp03-wgs84-ecef-enu-geodesy.md`](docs/specs/wp03-wgs84-ecef-enu-geodesy.md): WP-03 Canonical WGS-84 ECEF / ENU / Vincenty Geodetic Coordinate Engine.
+- [`wp04-itur526-multiedge-diffraction.md`](docs/specs/wp04-itur526-multiedge-diffraction.md): WP-04 ITU-R P.526-15 Multi-Edge Diffraction Engine (Bullington & Cascaded Deygout).
+- [`wp05-airframe-attitude-and-channel-dynamics.md`](docs/specs/wp05-airframe-attitude-and-channel-dynamics.md): WP-05 Airframe Attitude Dynamics, 3D Coordinate Transforms, Fuselage Shadowing & Time-Correlated Rician-Jakes Fading.
+- [`wp06-mac-phy-feedback-dynamics.md`](docs/specs/wp06-mac-phy-feedback-dynamics.md): WP-06 MAC/PHY Feedback Dynamics — Delayed-CQI AMC with OLLA, RTT-Delayed HARQ Chase Combining & Incremental Redundancy, Dynamic TDMA Guard Overhead.
+- [`wp07-kinematic-dubins-pathfinder.md`](docs/specs/wp07-kinematic-dubins-pathfinder.md): WP-07 Kinematic Dubins Path Smoothing & 3D Flight Feasibility Engine.
+- [`wp08-worker-transferables-and-bounded-replay.md`](docs/specs/wp08-worker-transferables-and-bounded-replay.md): WP-08 Web Worker Zero-Copy Transferables & Bounded Adaptive Replay Buffer Engine.
+- [`wp09-dom-xss-safety-and-modular-extraction.md`](docs/specs/wp09-dom-xss-safety-and-modular-extraction.md): WP-09 Reusable DOM/XSS Safety Layer and Pure Worker Modular Decomposition.
+- [`wp10-viewshed-parity-and-accessibility-encoding.md`](docs/specs/wp10-viewshed-parity-and-accessibility-encoding.md): WP-10 Viewshed-vs-Live Link Parity Engine & WCAG 2.1 Accessible Status Encoding.
+- [`wp11-scientific-benchmarking-rigor.md`](docs/specs/wp11-scientific-benchmarking-rigor.md): WP-11 Scientific Benchmarking Rigor — Deterministic Multi-Seed Monte Carlo, Student-t Confidence Intervals, Welch's t-Test & ITU-R Reference Cross-Validation.
+- [`ui01-tactical-workbench-architecture.md`](docs/specs/ui01-tactical-workbench-architecture.md): UI-01 Forensic DOM Contract Audit & Tactical Obsidian Design System Foundation across all 9 workspaces.
+- [`ui02-lattice-obsidian-cutover.md`](docs/specs/ui02-lattice-obsidian-cutover.md): UI-02 Atomic Lattice Obsidian C2 Console UI Cutover, Stitch Removal, Zero-Emoji Purge, and MIL-STD Soldier EUD Rebuild.
+- [`ui03-canvas-theme-and-stitch-cleanup.md`](docs/specs/ui03-canvas-theme-and-stitch-cleanup.md): UI-03 Unified Canvas Obsidian/CVD Theme, Live Playwright CVD/Air-Gap Checks & Dead Stitch Artifact Cleanup.
+- [`ui05-direct-manipulation-toolbox.md`](docs/specs/ui05-direct-manipulation-toolbox.md): UI-05 Frontier 1-Click Direct-Manipulation Terrain Toolbox (Ruler, Probe, Area, Obstacles).
