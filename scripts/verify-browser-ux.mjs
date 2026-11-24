@@ -590,6 +590,12 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
     );
 
     await page.click('#btn-spatial-lock');
+    await page.waitForFunction(
+      () => document.getElementById('btn-spatial-lock')?.getAttribute('aria-pressed') === 'true',
+      null,
+      { timeout: 10000 },
+    );
+    await page.waitForSelector('#radar-hud-locked-pill', { state: 'visible', timeout: 10000 });
     const lockPillBox = await page.locator('#radar-hud-locked-pill').boundingBox();
     assert.ok(lockPillBox, 'Spatial lock pill must be visible when spatial lock is ON');
     assert.ok(
@@ -597,6 +603,11 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
       `Locked HUD pill (${lockPillBox.x}) overlaps left icon rail right edge (${railBox.x + railBox.width})`,
     );
     await page.click('#btn-spatial-lock');
+    await page.waitForFunction(
+      () => document.getElementById('btn-spatial-lock')?.getAttribute('aria-pressed') === 'false',
+      null,
+      { timeout: 10000 },
+    );
 
     // ------------------------------------------------------------------
     // 3. Terrain Toolbox 1-Click Direct Manipulation Workflow (UI-05)
