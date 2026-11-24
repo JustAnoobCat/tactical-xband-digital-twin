@@ -123,6 +123,20 @@ function fmtNum(val: unknown, decimals: number = 2, fallback: string = '0.00'): 
   return fallback;
 }
 
+export function fmtInt(val: unknown, fallback: string = '0'): string {
+  if (typeof val === 'number') {
+    return Number.isFinite(val) ? String(Math.floor(val)) : fallback;
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (trimmed.toLowerCase() === 'nan' || trimmed.length === 0) {
+      return fallback;
+    }
+    return trimmed;
+  }
+  return fallback;
+}
+
 // ============================================================================
 // Markdown Briefing Generator
 // ============================================================================
@@ -154,14 +168,16 @@ export function generateAarMarkdown(snapshot: AarMissionSnapshot): string {
   lines.push(`| **Timestamp (UTC)** | ${snapshot.generatedIso} |`);
   lines.push(`| **Active Biome** | ${snapshot.biomeName} |`);
   lines.push(`| **Elapsed Sim Time** | ${fmtNum(snapshot.simTimeS, 2)} s |`);
-  lines.push(`| **Processed Frames (50 Hz)** | ${Math.max(0, Math.floor(snapshot.frameCount || 0))} |`);
+  lines.push(`| **Processed Frames (50 Hz)** | ${fmtInt(snapshot.frameCount, '0')} |`);
   lines.push(`| **Scheduler Mode** | ${snapshot.schedulerMode} |`);
   lines.push('');
 
   // 2. Scheduler Ablation KPIs
   const wasteSaved = Math.max(0, (kpi.staticWastePct || 0) - (kpi.tacWastePct || 0));
+  const staticDropsNum = typeof kpi.staticDrops === 'number' && Number.isFinite(kpi.staticDrops) ? kpi.staticDrops : 0;
+  const tacDropsNum = typeof kpi.tacDrops === 'number' && Number.isFinite(kpi.tacDrops) ? kpi.tacDrops : 0;
   const dropReduction =
-    kpi.staticDrops > 0 ? Math.max(0, ((kpi.staticDrops - kpi.tacDrops) / kpi.staticDrops) * 100) : 0;
+    staticDropsNum > 0 ? Math.max(0, ((staticDropsNum - tacDropsNum) / staticDropsNum) * 100) : 0;
 
   lines.push('## 2. Scheduler Ablation KPIs (Tac-TAD vs. Static TDMA)');
   lines.push('');
@@ -175,7 +191,7 @@ export function generateAarMarkdown(snapshot: AarMissionSnapshot): string {
     `| **Slot Waste Rate** | ${fmtNum(kpi.tacWastePct, 1)}% | ${fmtNum(kpi.staticWastePct, 1)}% | **-${fmtNum(wasteSaved, 1)}% Reclaimed** |`
   );
   lines.push(
-    `| **Total Packet Drops** | ${kpi.tacDrops} packets | ${kpi.staticDrops} packets | **-${fmtNum(dropReduction, 1)}% Drops** |`
+    `| **Total Packet Drops** | ${fmtInt(kpi.tacDrops, '0')} packets | ${fmtInt(kpi.staticDrops, '0')} packets | **-${fmtNum(dropReduction, 1)}% Drops** |`
   );
   lines.push('');
 
@@ -206,7 +222,7 @@ export function generateAarMarkdown(snapshot: AarMissionSnapshot): string {
   lines.push(`- **Biome EM Ground Reflection:** ${models.biomeEm ? '[ENABLED]' : '[DISABLED]'}`);
   lines.push(`- **Electronic Protection / ECCM:** ${models.eccmMode || 'STANDBY'}`);
   lines.push(`- **MVDR Null-Steering Array:** ${models.mvdrNullSteering ? '[ENABLED]' : '[DISABLED]'}`);
-  lines.push(`- **Airborne Relay Constellation:** ${models.acnCount} active ACN(s)`);
+  lines.push(`- **Airborne Relay Constellation:** ${fmtInt(models.acnCount, '0')} active ACN(s)`);
   lines.push(`- **MANET Multi-Hop Routing:** ${models.manetRouting ? '[ENABLED]' : '[DISABLED]'}`);
   lines.push('');
 
@@ -218,7 +234,7 @@ export function generateAarMarkdown(snapshot: AarMissionSnapshot): string {
   for (const t of fleet) {
     const mgrs = resolveTerminalMgrs(t);
     lines.push(
-      `| ${t.nodeId} | ${t.callsign} | ${t.sector} | \`${mgrs}\` | ${t.modcod} | ${fmtNum(t.sinrDb, 1)} dB | ${t.status} |`
+      `| ${fmtInt(t.nodeId, '0')} | ${t.callsign} | ${t.sector} | \`${mgrs}\` | ${t.modcod} | ${fmtNum(t.sinrDb, 1)} dB | ${t.status} |`
     );
   }
   lines.push('');
@@ -255,7 +271,7 @@ export function generateAarPrintableHtml(snapshot: AarMissionSnapshot): string {
   const biomeSafe = escapeHtml(snapshot.biomeName);
   const schedSafe = escapeHtml(snapshot.schedulerMode);
   const simTimeSafe = fmtNum(snapshot.simTimeS, 2);
-  const framesSafe = String(Math.max(0, Math.floor(snapshot.frameCount || 0)));
+  const framesSafe = fmtInt(snapshot.frameCount, '0');
 
   const kpi = snapshot.kpis;
   const qos = snapshot.qosSlaSummary;
@@ -263,8 +279,10 @@ export function generateAarPrintableHtml(snapshot: AarMissionSnapshot): string {
   const fleet = snapshot.fleet || [];
 
   const wasteSaved = Math.max(0, (kpi.staticWastePct || 0) - (kpi.tacWastePct || 0));
+  const staticDropsNum = typeof kpi.staticDrops === 'number' && Number.isFinite(kpi.staticDrops) ? kpi.staticDrops : 0;
+  const tacDropsNum = typeof kpi.tacDrops === 'number' && Number.isFinite(kpi.tacDrops) ? kpi.tacDrops : 0;
   const dropReduction =
-    kpi.staticDrops > 0 ? Math.max(0, ((kpi.staticDrops - kpi.tacDrops) / kpi.staticDrops) * 100) : 0;
+    staticDropsNum > 0 ? Math.max(0, ((staticDropsNum - tacDropsNum) / staticDropsNum) * 100) : 0;
 
   // Build 5QI QoS rows
   const qosRows = qos.classes
@@ -293,7 +311,7 @@ export function generateAarPrintableHtml(snapshot: AarMissionSnapshot): string {
           ? 'status-degraded'
           : 'status-outage';
       return `<tr>
-        <td><code>#${escapeHtml(t.nodeId)}</code></td>
+        <td><code>#${escapeHtml(fmtInt(t.nodeId, '0'))}</code></td>
         <td><strong>${escapeHtml(t.callsign)}</strong></td>
         <td>${escapeHtml(t.sector)}</td>
         <td><code class="mgrs-code">${mgrsSafe}</code></td>
@@ -647,7 +665,7 @@ export function generateAarPrintableHtml(snapshot: AarMissionSnapshot): string {
       <div class="kpi-card">
         <span class="kpi-label">PACKET DROP REDUCTION</span>
         <span class="kpi-val text-optimal">-${fmtNum(dropReduction, 1)}%</span>
-        <span class="kpi-sub">Tac: ${kpi.tacDrops} vs. Static: ${kpi.staticDrops} drops</span>
+        <span class="kpi-sub">Tac: ${fmtInt(kpi.tacDrops, '0')} vs. Static: ${fmtInt(kpi.staticDrops, '0')} drops</span>
       </div>
     </div>
   </section>
@@ -685,7 +703,7 @@ export function generateAarPrintableHtml(snapshot: AarMissionSnapshot): string {
       <li><span>Biome EM Ground Reflection</span><strong>${models.biomeEm ? 'ENABLED' : 'DISABLED'}</strong></li>
       <li><span>Electronic Protection / ECCM</span><strong>${escapeHtml(models.eccmMode || 'STANDBY')}</strong></li>
       <li><span>MVDR Null-Steering Array</span><strong>${models.mvdrNullSteering ? 'ENABLED' : 'DISABLED'}</strong></li>
-      <li><span>Airborne Relay Constellation</span><strong>${models.acnCount} ACN(s)</strong></li>
+      <li><span>Airborne Relay Constellation</span><strong>${fmtInt(models.acnCount, '0')} ACN(s)</strong></li>
       <li><span>MANET Multi-Hop Routing</span><strong>${models.manetRouting ? 'ENABLED' : 'DISABLED'}</strong></li>
     </ul>
   </section>

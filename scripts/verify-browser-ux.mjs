@@ -789,11 +789,137 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
       `.three-hud-overlay (${threeHudRect?.x}) must clear 36px left rail inside #radar-container (${stageRect?.x})`,
     );
 
+    if (label === 'Desktop') {
+      // 3D Volumetric RF HUD buttons verification
+      const btnFresnel = page.locator('#btn-3d-fresnel');
+      const btnLobes = page.locator('#btn-3d-lobes');
+      const btnVolumes = page.locator('#btn-3d-volumes');
+
+      assert.equal(await btnFresnel.isVisible(), true, '#btn-3d-fresnel must be visible in 3D HUD');
+      assert.equal(await btnLobes.isVisible(), true, '#btn-3d-lobes must be visible in 3D HUD');
+      assert.equal(await btnVolumes.isVisible(), true, '#btn-3d-volumes must be visible in 3D HUD');
+
+      const initialFresnel = await btnFresnel.getAttribute('aria-pressed');
+      await btnFresnel.click();
+      const toggledFresnel = await btnFresnel.getAttribute('aria-pressed');
+      assert.notEqual(initialFresnel, toggledFresnel, '#btn-3d-fresnel must toggle aria-pressed cleanly');
+      await btnFresnel.click();
+      assert.equal(await btnFresnel.getAttribute('aria-pressed'), initialFresnel, '#btn-3d-fresnel must revert aria-pressed cleanly');
+
+      const initialLobes = await btnLobes.getAttribute('aria-pressed');
+      await btnLobes.click();
+      const toggledLobes = await btnLobes.getAttribute('aria-pressed');
+      assert.notEqual(initialLobes, toggledLobes, '#btn-3d-lobes must toggle aria-pressed cleanly');
+      await btnLobes.click();
+      assert.equal(await btnLobes.getAttribute('aria-pressed'), initialLobes, '#btn-3d-lobes must revert aria-pressed cleanly');
+
+      const initialVolumes = await btnVolumes.getAttribute('aria-pressed');
+      await btnVolumes.click();
+      const toggledVolumes = await btnVolumes.getAttribute('aria-pressed');
+      assert.notEqual(initialVolumes, toggledVolumes, '#btn-3d-volumes must toggle aria-pressed cleanly');
+      await btnVolumes.click();
+      assert.equal(await btnVolumes.getAttribute('aria-pressed'), initialVolumes, '#btn-3d-volumes must revert aria-pressed cleanly');
+    }
+
     // Resume briefly in 2D Radar to confirm live loop continues cleanly with zero errors
     await page.locator('#btnView2D').click({ force: true, noWaitAfter: true });
     await page.waitForFunction(() => document.getElementById('radar-stage')?.getAttribute('data-map-renderer') === 'radar', null, { timeout: 15000 });
     await page.click('#btn-pause');
     await page.waitForTimeout(300);
+
+    if (label === 'Desktop') {
+      // ------------------------------------------------------------------
+      // 7. Desktop Live V3 End-to-End Matrix
+      // ------------------------------------------------------------------
+      console.log('  [verify:browser] Running Desktop live V3 End-to-End smoke matrix...');
+
+      // All 9 Rail Tabs
+      const railTabs = [
+        { btn: '#tab-btn-overview', tab: '#tab-overview' },
+        { btn: '#tab-btn-scheduler', tab: '#tab-scheduler' },
+        { btn: '#tab-btn-network', tab: '#tab-network' },
+        { btn: '#tab-btn-terrain', tab: '#tab-terrain' },
+        { btn: '#tab-btn-terminal', tab: '#tab-terminal' },
+        { btn: '#tab-btn-authoring', tab: '#tab-authoring' },
+        { btn: '#tab-btn-doc', tab: '#tab-doc' },
+        { btn: '#tab-btn-registration', tab: '#tab-registration' },
+        { btn: '#tab-btn-soldier', tab: '#tab-soldier' },
+      ];
+
+      for (const { btn, tab } of railTabs) {
+        await page.click(btn);
+        await page.waitForFunction(
+          sel => document.querySelector(sel)?.classList.contains('active'),
+          tab,
+          { timeout: 10000 },
+        );
+        assert.equal(
+          await page.locator(tab).evaluate(el => el.classList.contains('active')),
+          true,
+          `Expected ${tab} to be active after clicking ${btn}`,
+        );
+      }
+
+      // Multi-Biome & High-Fidelity Physics
+      const demSelect = page.locator('#dem-sector-select');
+      const hasArabianVal = (await demSelect.locator('option[value="arabian_maritime"]').count()) > 0;
+      const maritimeVal = hasArabianVal ? 'arabian_maritime' : 'maritime_littoral';
+      await demSelect.selectOption(maritimeVal);
+      await page.dispatchEvent('#dem-sector-select', 'change');
+      await page.waitForTimeout(100);
+      await demSelect.selectOption('ladakh');
+      await page.dispatchEvent('#dem-sector-select', 'change');
+      await page.waitForTimeout(100);
+
+      // In #tab-terrain (RF), click #btn-hifi-all-toggle and verify #toggle-hifi-attitude becomes checked
+      await page.click('#tab-btn-terrain');
+      await page.waitForFunction(() => document.getElementById('tab-terrain')?.classList.contains('active'));
+      await page.locator('#btn-hifi-all-toggle').scrollIntoViewIfNeeded();
+      await page.click('#btn-hifi-all-toggle');
+      const attToggle = page.locator('#toggle-hifi-attitude');
+      assert.equal(await attToggle.isChecked(), true, '#toggle-hifi-attitude must be checked after #btn-hifi-all-toggle');
+
+      // Digital-Twin Auto-Calibration in #tab-doc (LAB)
+      await page.click('#tab-btn-doc');
+      await page.waitForFunction(() => document.getElementById('tab-doc')?.classList.contains('active'));
+      await page.click('#btn-cal-auto-solve');
+      await page.waitForFunction(() => {
+        const badge = document.getElementById('cal-verdict-badge')?.textContent || '';
+        const rmse = document.getElementById('cal-rmse-val')?.textContent || '';
+        return badge.includes('CERTIFIED_TWIN') && rmse.includes('dB');
+      }, null, { timeout: 10000 });
+      const verdictText = await page.textContent('#cal-verdict-badge');
+      const rmseText = await page.textContent('#cal-rmse-val');
+      assert.ok(verdictText?.includes('CERTIFIED_TWIN'), `Expected #cal-verdict-badge to include CERTIFIED_TWIN, got "${verdictText}"`);
+      assert.ok(rmseText?.includes('dB'), `Expected #cal-rmse-val to include dB, got "${rmseText}"`);
+
+      // Command Palette (Ctrl+K)
+      await page.keyboard.press('Control+k');
+      await page.waitForFunction(() => {
+        const modal = document.getElementById('c2-cmd-palette-modal');
+        return modal && modal.hidden === false;
+      }, null, { timeout: 10000 });
+      assert.equal(await page.evaluate(() => document.getElementById('c2-cmd-palette-modal')?.hidden), false);
+
+      await page.fill('#c2-cmd-palette-input', 'maritime');
+      await page.waitForFunction(() => {
+        const items = document.querySelectorAll('#c2-cmd-palette-list li');
+        return items.length >= 1;
+      }, null, { timeout: 10000 });
+      const cmdItemsCount = await page.locator('#c2-cmd-palette-list li').count();
+      assert.ok(cmdItemsCount >= 1, `Expected >= 1 command palette items for "maritime", got ${cmdItemsCount}`);
+
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => {
+        const modal = document.getElementById('c2-cmd-palette-modal');
+        return modal && modal.hidden === true;
+      }, null, { timeout: 10000 });
+      assert.equal(await page.evaluate(() => document.getElementById('c2-cmd-palette-modal')?.hidden), true);
+
+      // Return to overview
+      await page.click('#tab-btn-overview');
+      await page.waitForFunction(() => document.getElementById('tab-overview')?.classList.contains('active'));
+    }
 
     assert.deepEqual(runtimeErrors, [], `Uncaught runtime/console errors on ${label}:\n${runtimeErrors.join('\n')}`);
     console.log(`[verify:browser] PASS ${label} (${viewport.width}x${viewport.height})`);

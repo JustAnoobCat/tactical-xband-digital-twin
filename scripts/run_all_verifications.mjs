@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (106 Total Suites)
+// Verification Suites Registry (114 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -165,7 +165,11 @@ const REGISTERED_SUITES = [
   { id: 'verify:digital-twin-calibration', name: 'True Digital-Twin Calibration & Flight-Test Replay (SPEC-V3-05)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDigitalTwinCalibration.ts'], category: 'benchmark' },
   { id: 'verify:military-gis', name: 'Military Tactical GIS, Cartographic Overlays, GeoTIFF DEM & Mission Persistence (SPEC-V3-06)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMilitaryGisAndPersistence.ts'], category: 'ui' },
   { id: 'verify:three-volumetric-rf', name: '3D Volumetric RF Visualization & Interactive Raycast Picking (SPEC-V3-07)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyThreeVolumetricRf.ts'], category: 'three' },
-  { id: 'verify:command-palette-aar', name: 'Frontier Command Palette & AAR Briefing Exporter (SPEC-V3-08)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyCommandPaletteAndAar.ts'], category: 'ui' }
+  { id: 'verify:command-palette-aar', name: 'Frontier Command Palette & AAR Briefing Exporter (SPEC-V3-08)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyCommandPaletteAndAar.ts'], category: 'ui' },
+  { id: 'verify:typed-ui-controllers-1', name: 'De-Monolithizing index.html Part 1 — Strict TypeScript UI Controllers (SPEC-V3-09)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTypedUiControllersPart1.ts'], category: 'ui' },
+  { id: 'verify:typed-ui-controllers-2', name: 'De-Monolithizing index.html Part 2 — Strictly Typed 2D Radar & Terrain Toolbox (SPEC-V3-10)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTypedUiControllersPart2.ts'], category: 'ui' },
+  { id: 'verify:parity-server-offline-tiles', name: 'Canonical Node/TS Parity Server & Offline Air-Gap Tile Protocol (SPEC-V3-11)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyParityServerAndOfflineTiles.ts'], category: 'server' },
+  { id: 'verify:release-v3-readiness', name: 'V3.0 Release Readiness, Integrity & Zero-Slop Architecture Gate (SPEC-V3-12)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyReleaseV3Readiness.ts'], category: 'release' }
 ];
 
 // -----------------------------------------------------------------------------
@@ -374,6 +378,16 @@ async function main() {
     'verify:live-hifi-wiring',
     'verify:timeline-enhancement',
     'verify:canvas-declutter-security',
+    'verify:ew-eccm-lpi',
+    'verify:constellation-mobility',
+    'verify:digital-twin-calibration',
+    'verify:military-gis',
+    'verify:three-volumetric-rf',
+    'verify:command-palette-aar',
+    'verify:typed-ui-controllers-1',
+    'verify:typed-ui-controllers-2',
+    'verify:parity-server-offline-tiles',
+    'verify:release-v3-readiness',
   ]);
   const serialTasks = [];
   const poolTasks = [];
