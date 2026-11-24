@@ -66,6 +66,7 @@ jobs:
   browser-ux:
     name: Playwright Browser UX Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -87,3 +88,5 @@ jobs:
 
       - name: Run Playwright multi-viewport browser UX verification
         run: node scripts/verify-browser-ux.mjs
+        env:
+          CI: "true"

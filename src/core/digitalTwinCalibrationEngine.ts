@@ -111,6 +111,48 @@ export interface CsvParseResult {
   readonly errors: string[];
 }
 
+export interface OlsCalibrationSample {
+  readonly timeS?: number;
+  readonly slantRangeM?: number;
+  readonly distanceM?: number;
+  readonly rangeM?: number;
+  readonly measuredSnrDb?: number;
+  readonly predictedSnrDb?: number;
+  readonly simSnrDb?: number;
+  readonly measured?: number;
+  readonly sim?: number;
+  readonly txAltM?: number;
+  readonly rxAltM?: number;
+  readonly diffractionNu?: number;
+  readonly rainRateMmH?: number;
+  readonly bankDeg?: number;
+  readonly biomeId?: BiomeId;
+  readonly isMeasuredOutage?: boolean;
+}
+
+export interface TwoParameterOlsResult {
+  readonly offsetDb: number;
+  readonly pathLossSlopeDelta: number;
+  readonly beforeRmseDb: number;
+  readonly afterRmseDb: number;
+  readonly oneDBiasRmseDb: number;
+  readonly olsRmseDb: number;
+  readonly sampleCount: number;
+  readonly rSquared: number;
+  readonly converged: boolean;
+}
+
+export interface CalibrationParametersResult {
+  readonly offsetDb: number;
+  readonly beforeRmseDb: number;
+  readonly afterRmseDb: number;
+  readonly biasDb: number;
+  readonly sampleCount: number;
+  readonly pathLossSlopeDelta?: number;
+  readonly olsRmseDb?: number;
+  readonly oneDBiasRmseDb?: number;
+}
+
 // ============================================================================
 // 1. Pure Deterministic SplitMix32 PRNG (Zero Math.random)
 // ============================================================================
@@ -806,4 +848,209 @@ export function formatCalibrationReportMarkdown(result: AutoCalibrationResult, t
 - **Diffraction Path Loss Scaling:** \`${p.diffractionScale.toFixed(2)}x\`
 - **Atmospheric Rain Scaling:** \`${p.rainAttenScale.toFixed(2)}x\`
 `;
+}
+
+// ============================================================================
+// 7. Closed-Form Two-Parameter Ordinary Least Squares (OLS) Propagation Solver
+// ============================================================================
+
+/**
+ * Fits authoritative 2-parameter digital-twin propagation calibration:
+ * y_hat_i = y_i^sim + Delta_0 + Delta_n * 10 * log10(max(1, d_i) / 1000)
+ *
+ * Solves the exact closed-form 2x2 Ordinary Least Squares normal equations:
+ * Delta_0: System loss trim offset (dB)
+ * Delta_n: Empirical path-loss exponent slope correction (dimensionless)
+ *
+ * Guarantees:
+ * 1. Zero NaN / Infinity on degenerate, single-distance, or collinear inputs (|det| < 1e-12
+ *    falls back cleanly to 1D optimal Delta_0 = -mean_bias, Delta_n = 0).
+ * 2. Strict RMSE monotonic ordering: afterRmseDb <= oneDBiasRmseDb <= beforeRmseDb.
+ * 3. 100% pure deterministic execution with zero Math.random().
+ */
+export function solveTwoParameterOlsCalibration(
+  samples: readonly OlsCalibrationSample[],
+  defaultParams: TwinCalibrationParameters = DEFAULT_CALIBRATION_PARAMS
+): TwoParameterOlsResult {
+  if (!samples || samples.length === 0) {
+    return {
+      offsetDb: 0.0,
+      pathLossSlopeDelta: 0.0,
+      beforeRmseDb: 0.0,
+      afterRmseDb: 0.0,
+      oneDBiasRmseDb: 0.0,
+      olsRmseDb: 0.0,
+      sampleCount: 0,
+      rSquared: 1.0,
+      converged: true,
+    };
+  }
+
+  const validPoints: Array<{ distM: number; x: number; yMeas: number; ySim: number; z: number }> = [];
+
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const distM = Math.max(1.0, s.slantRangeM ?? s.distanceM ?? s.rangeM ?? 1000.0);
+    const yMeas = s.measuredSnrDb ?? s.measured ?? 0.0;
+
+    let ySim: number;
+    if (s.predictedSnrDb !== undefined) {
+      ySim = s.predictedSnrDb;
+    } else if (s.simSnrDb !== undefined) {
+      ySim = s.simSnrDb;
+    } else if (s.sim !== undefined) {
+      ySim = s.sim;
+    } else {
+      // Evaluate simulated SNR via authoritative digital twin physics
+      const txAlt = s.txAltM ?? 5000.0;
+      const rxAlt = s.rxAltM ?? 3500.0;
+      const fsplDb = computeFsplDb(distM, defaultParams.carrierFreqHz);
+      const diffLossDb =
+        s.diffractionNu !== undefined
+          ? computeKnifeEdgeDiffractionLossDb(s.diffractionNu) * defaultParams.diffractionScale
+          : 0.0;
+      const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(
+        distM,
+        rxAlt,
+        txAlt,
+        defaultParams.carrierFreqHz
+      );
+      const shadowLossDb =
+        s.bankDeg !== undefined ? computeAirframeShadowLossDb(90.0, -15.0 + Math.abs(s.bankDeg)) : 0.0;
+
+      ySim =
+        defaultParams.txEirpDbm +
+        defaultParams.rxGainDbi -
+        fsplDb -
+        diffLossDb -
+        gasLossDb -
+        shadowLossDb -
+        defaultParams.systemLossTrimDb -
+        defaultParams.noiseFloorDbm;
+    }
+
+    if (!Number.isFinite(distM) || !Number.isFinite(yMeas) || !Number.isFinite(ySim)) {
+      continue;
+    }
+
+    // Regressor: 10 * log10(d / 1000 m)
+    const x = 10.0 * Math.log10(distM / 1000.0);
+    // Discrepancy target: z_i = y_meas - y_sim
+    const z = yMeas - ySim;
+
+    validPoints.push({ distM, x, yMeas, ySim, z });
+  }
+
+  const N = validPoints.length;
+  if (N === 0) {
+    return {
+      offsetDb: 0.0,
+      pathLossSlopeDelta: 0.0,
+      beforeRmseDb: 0.0,
+      afterRmseDb: 0.0,
+      oneDBiasRmseDb: 0.0,
+      olsRmseDb: 0.0,
+      sampleCount: 0,
+      rSquared: 1.0,
+      converged: true,
+    };
+  }
+
+  let sumX = 0.0;
+  let sumZ = 0.0;
+  let sumSqUncal = 0.0;
+
+  for (let i = 0; i < N; i++) {
+    const pt = validPoints[i];
+    sumX += pt.x;
+    sumZ += pt.z;
+    sumSqUncal += pt.z * pt.z;
+  }
+
+  const meanX = sumX / N;
+  const meanZ = sumZ / N;
+
+  let varX = 0.0;
+  let covXZ = 0.0;
+  let ssTot = 0.0; // sum((z_i - meanZ)^2) = sumSq1D
+
+  for (let i = 0; i < N; i++) {
+    const pt = validPoints[i];
+    const dx = pt.x - meanX;
+    const dz = pt.z - meanZ;
+    varX += dx * dx;
+    covXZ += dx * dz;
+    ssTot += dz * dz;
+  }
+
+  let offsetDb: number;
+  let pathLossSlopeDelta: number;
+
+  // Covariance determinant guard: |det| = N * varX
+  if (varX < 1e-12) {
+    // Collinear or identical slant ranges: pure 1D offset fallback (bias correction)
+    offsetDb = meanZ;
+    pathLossSlopeDelta = 0.0;
+  } else {
+    // Full 2-parameter OLS normal equations solution
+    pathLossSlopeDelta = covXZ / varX;
+    offsetDb = meanZ - pathLossSlopeDelta * meanX;
+  }
+
+  // Compute residuals and RMSE for Uncalibrated, 1D Bias, and 2D OLS
+  let sumSqOLS = 0.0;
+  for (let i = 0; i < N; i++) {
+    const pt = validPoints[i];
+    // Model prediction: y_hat = ySim + offsetDb + pathLossSlopeDelta * x
+    // Residual: y_hat - yMeas = (offsetDb + pathLossSlopeDelta * x) - z
+    const resOls = offsetDb + pathLossSlopeDelta * pt.x - pt.z;
+    sumSqOLS += resOls * resOls;
+  }
+
+  const beforeRmseDb = Math.sqrt(sumSqUncal / N);
+  const oneDBiasRmseDb = Math.sqrt(ssTot / N);
+  let afterRmseDb = Math.sqrt(sumSqOLS / N);
+
+  // Numerical precision guard: 2-parameter OLS can never exceed 1D RMSE
+  if (afterRmseDb > oneDBiasRmseDb + 1e-9) {
+    afterRmseDb = oneDBiasRmseDb;
+  }
+
+  let rSquared = 1.0;
+  if (ssTot > 1e-12) {
+    rSquared = Math.max(0.0, Math.min(1.0, 1.0 - sumSqOLS / ssTot));
+  }
+
+  return {
+    offsetDb: Number(offsetDb.toFixed(4)),
+    pathLossSlopeDelta: Number(pathLossSlopeDelta.toFixed(4)),
+    beforeRmseDb: Number(beforeRmseDb.toFixed(4)),
+    afterRmseDb: Number(afterRmseDb.toFixed(4)),
+    oneDBiasRmseDb: Number(oneDBiasRmseDb.toFixed(4)),
+    olsRmseDb: Number(afterRmseDb.toFixed(4)),
+    sampleCount: N,
+    rSquared: Number(rSquared.toFixed(4)),
+    converged: true,
+  };
+}
+
+/**
+ * Backward-compatible calibration parameters solver. Populates standard 1D offset
+ * alongside optional 2-parameter OLS metrics when slant ranges vary.
+ */
+export function solveCalibrationParameters(
+  samples: readonly any[],
+  defaultParams: TwinCalibrationParameters = DEFAULT_CALIBRATION_PARAMS
+): CalibrationParametersResult {
+  const ols = solveTwoParameterOlsCalibration(samples, defaultParams);
+  return {
+    offsetDb: ols.offsetDb,
+    beforeRmseDb: ols.beforeRmseDb,
+    afterRmseDb: ols.oneDBiasRmseDb,
+    biasDb: -ols.offsetDb,
+    sampleCount: ols.sampleCount,
+    pathLossSlopeDelta: ols.pathLossSlopeDelta,
+    olsRmseDb: ols.afterRmseDb,
+    oneDBiasRmseDb: ols.oneDBiasRmseDb,
+  };
 }

@@ -104,27 +104,28 @@ tactical-xband-digital-twin/
 │   │   ├── simWorker.ts            # SimulationWorkerManager (50 Hz authoritative loop, 3,281 lines)
 │   │   └── telemetrySerializer.ts  # Binary/typed telemetry serialization & caching
 │   ├── ui/                         # UI Presentation & Visualization Coordinators
-│   │   ├── controllers/            # Strictly Typed UI Controllers
+│   │   ├── controllers/            # Typed UI Controller Modules (delegating alongside primary HTML workbench)
 │   │   │   ├── commandPaletteController.ts       # Command Palette dialog controller
 │   │   │   ├── dashboardAndAuthoringController.ts# Authoring studio & secondary scopes
 │   │   │   ├── missionIoController.ts            # Mission I/O, GIS & calibration UI
 │   │   │   ├── radar2dController.ts              # 2D tactical radar canvas controller
 │   │   │   └── terrainToolboxController.ts       # Direct-manipulation terrain toolbox
+│   │   ├── three/                  # Modular Three.js 3D Subsystem (sceneManager.ts, tacticalEntityManager.ts, terrainBuilder.ts, threeVolumetricRfLayer.ts)
+│   │   ├── canvasLabelPlacer.ts    # 2D tactical radar label collision-avoidance layout
 │   │   ├── canvasTheme.ts          # Lattice Obsidian & CVD theme tokens for 2D/3D canvases
-│   │   ├── domSafety.ts            # Reusable XSS neutralization & trusted HTML helpers
-│   │   └── threeFoundation.ts      # Three.js 3D scene & volumetric RF rendering
+│   │   └── domSafety.ts            # Reusable XSS neutralization & trusted HTML helpers
 │   └── shared/                     # Shared IPC Contracts & Protocols
 │       ├── constants.ts            # Physical constants (c, FRAME_DT = 0.020s, 8 GHz)
 │       └── workerProtocol.ts       # Typed WorkerInboundCommand & WorkerOutboundMessage
 ├── server/
 │   └── ts_parity_server.ts         # Canonical Node/TS headless parity server (node:http)
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Bounded parallel 114-suite runner (--concurrency=N, --serial)
+│   ├── run_all_verifications.mjs   # Bounded parallel 114/116-suite runner (--concurrency=N, --serial)
 │   ├── run_v8_coverage.mjs         # Native Node V8 code coverage reporter
-│   ├── verify-browser-ux.mjs       # Multi-viewport (4 viewports + 9 tabs) Playwright E2E gate
+│   ├── verify-browser-ux.mjs       # Multi-viewport (4 viewports + 9 tabs) Playwright Chromium UX gate
 │   └── generate_scientific_dossier.ts# N=30 Monte Carlo research dossier generator
 ├── public/terrain/                 # Authentic 512x512 SRTM DEM binaries
-└── index.html                      # C2 Operator Workbench & Scientific Instruments (9 Rail Tabs)
+└── index.html                      # C2 Operator Workbench & Scientific Instruments (9 Rail Tabs, ~18.2k lines)
 ```
 
 ---
@@ -171,13 +172,13 @@ npm run benchmark:scientific
 
 ### Automated Verification Pipeline & Quality Gates
 The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
-- **`114` TypeScript verification suites (`npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)**
+- **`116` TypeScript verification suites** (114 core registered suites in `scripts/run_all_verifications.mjs` + Fix-01/02 algorithmic hardening gates; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
 - **`27` Python `pytest` suites (`pytest -v`)**
-- **`4`-viewport + 9-rail-tab Playwright Chromium E2E gate (`node scripts/verify-browser-ux.mjs` enforced in CI)**
+- **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs` across 4 viewports + 9 rail tabs enforced in CI)**
 - **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
 
 ```bash
-# Run all 114 TypeScript verification suites
+# Run all 116 TypeScript verification suites (114 core + hardening gates)
 npm run verify:all
 
 # Run with custom concurrency or serial fallback
@@ -196,7 +197,27 @@ npm run build
 
 ---
 
-## 5. Representative 3-Way Ablation Benchmark Results
+## 5. Benchmark Results & Scientific Ablation
+
+### 5.1 Multi-Seed Physics-Realism Ablation Study ($N = 30$ Seeds, 95% Student-$t$ CI)
+
+Evaluated across $N = 30$ independent pseudo-random flight seeds (base seed = `20261122`, 60 frames per seed @ 50 Hz) over identical high-relief Ladakh flight trajectories, matching [`benchmark_results/scientific_ablation_n30.csv`](benchmark_results/scientific_ablation_n30.csv):
+
+| Configuration | Goodput Factor (95% CI) | Residual BLER (95% CI) | Outage Ratio (95% CI) | Mean SNR [dB] (95% CI) |
+|:---|:---:|:---:|:---:|:---:|
+| **1. Baseline Idealized** | $1.492 \pm 0.018$ | $0.540 \pm 0.009$ | $0.511 \pm 0.008$ | $+4.69 \pm 0.16$ |
+| **2. Multi-Edge & Attitude** | $1.111 \pm 0.016$ | $0.657 \pm 0.006$ | $0.634 \pm 0.006$ | $-2.66 \pm 0.16$ |
+| **3. Delayed-CQI Unprotected** | $0.795 \pm 0.027$ | $0.761 \pm 0.006$ | $0.616 \pm 0.008$ | $-2.66 \pm 0.16$ |
+| **4. Full Realistic Stack (OLLA + HARQ)** | **$0.844 \pm 0.023$** | **$0.727 \pm 0.007$** | **$0.626 \pm 0.008$** | **$-2.66 \pm 0.16$** |
+
+#### Welch Two-Sample $t$-Test Hypothesis Verification
+- **Hypothesis 1 (Optimistic Bias of Idealized Models):** Baseline idealized propagation significantly overestimates effective goodput compared to the realistic physical stack ($\Delta = +0.648$, $t = 44.73$, $\text{df} = 54.64$, $p = 9.92 \times 10^{-45}$, Cohen's $d = 11.55$, **Confirmed $p < 0.01$**).
+- **Hypothesis 2 (Closed-Loop Error Recovery via OLLA + HARQ):** Closed-loop OLLA adaptation combined with HARQ Chase Combining significantly suppresses residual BLER against uncompensated delayed CQI ($\Delta = -0.035$, $t = 7.25$, $\text{df} = 56.84$, $p = 1.25 \times 10^{-9}$, Cohen's $d = 1.87$, **Confirmed $p < 0.01$**).
+- **Hypothesis 3 (Multi-Edge & Airframe Obstacle Defilade Loss):** Cascaded Deygout multi-edge diffraction and airframe bank shadowing reduce received channel SNR by $7.35\text{ dB}$ ($t = 64.88$, $\text{df} = 58.00$, $p = 7.67 \times 10^{-56}$, Cohen's $d = 16.75$, **Confirmed $p < 0.01$**).
+
+---
+
+### 5.2 Representative 3-Way MAC Scheduler Ablation Results
 
 *Run conditions: 5-second simulation (250 frames @ 50 Hz), $3.5\times$ traffic load multiplier, $\sigma_{\text{DEM}} = 5.0\text{ m}$ elevation uncertainty, 16 ground nodes.*
 
@@ -297,8 +318,10 @@ Detailed engineering design specifications, mathematical models, and architectur
 - [`ui03-canvas-theme-and-stitch-cleanup.md`](docs/specs/ui03-canvas-theme-and-stitch-cleanup.md): UI-03 Unified Canvas Obsidian/CVD Theme, Live Playwright CVD/Air-Gap Checks & Dead Stitch Artifact Cleanup.
 - [`ui05-direct-manipulation-toolbox.md`](docs/specs/ui05-direct-manipulation-toolbox.md): UI-05 Frontier 1-Click Direct-Manipulation Terrain Toolbox (Ruler, Probe, Area, Obstacles).
 
-### Frontier Milestones V2-01–V2-04 Specifications (`docs/specs/`)
-- [`SPEC-ITU-FIRST-PRINCIPLES-RF-AND-TERRAIN.md`](docs/specs/SPEC-ITU-FIRST-PRINCIPLES-RF-AND-TERRAIN.md) (`V2-01`): Live High-Fidelity Physics switches, curved-Earth geometry ($k = 4/3$), atmospheric gas absorption, and ITU-R P.526 multi-ridge diffraction controls.
-- [`wp11-scientific-benchmarking-rigor.md`](docs/specs/wp11-scientific-benchmarking-rigor.md) (`V2-02`): Publication-Grade $N=30$ Monte Carlo benchmark dossier, Welch's t-test hypothesis rejection, and IEEE LaTeX table export (`npm run benchmark:ts`).
-- [`wp09-dom-xss-safety-and-modular-extraction.md`](docs/specs/wp09-dom-xss-safety-and-modular-extraction.md) (`V2-03`): 2D Canvas label de-confliction collision-avoidance layout (`radarLabelLayout.ts`), sub-microsecond DOM/XSS safety layer, and URL security protocol filtering.
+### Frontier Milestones V2-01–V2-04 & Maintenance Fix Specifications (`docs/specs/`)
+- [`v2-01-live-hifi-physics-wiring.md`](docs/specs/v2-01-live-hifi-physics-wiring.md) (`V2-01`): Live High-Fidelity Physics switches, curved-Earth geometry ($k = 4/3$), atmospheric gas absorption, and ITU-R P.526 multi-ridge diffraction controls.
+- [`v2-02-publication-scientific-dossier.md`](docs/specs/v2-02-publication-scientific-dossier.md) (`V2-02`): Publication-Grade $N=30$ Monte Carlo benchmark dossier, Welch's t-test hypothesis rejection, and IEEE LaTeX table export (`npm run benchmark:ts`).
+- [`v2-03-canvas-declutter-and-security.md`](docs/specs/v2-03-canvas-declutter-and-security.md) (`V2-03`): 2D Canvas label de-confliction collision-avoidance layout (`src/ui/canvasLabelPlacer.ts`), sub-microsecond DOM/XSS safety layer, and URL security protocol filtering.
 - [`v2-04-parallel-ci-and-release-polish.md`](docs/specs/v2-04-parallel-ci-and-release-polish.md) (`V2-04`): 4× faster bounded parallel verification runner (`run_all_verifications.mjs`), bulletproof CI with explicit `httpx` in `python-verify`, and dedicated 4-viewport Playwright Chromium UX gate.
+- [`fix-01-ci-server-electron-hardening.md`](docs/specs/fix-01-ci-server-electron-hardening.md) (`FIX-01`): Green Playwright CI hardening, `server:ts` security parity and dependency fix, and asynchronous PMTiles v3 byte-range serving in Electron.
+- [`fix-02-scientific-algorithmic-hardening.md`](docs/specs/fix-02-scientific-algorithmic-hardening.md) (`FIX-02`): Closed-form 2-parameter OLS propagation calibration, exact 2D MANET routing with A2A terrain clearance, and MGRS meridional arc band-boundary recovery with actionable GeoTIFF diagnostics.

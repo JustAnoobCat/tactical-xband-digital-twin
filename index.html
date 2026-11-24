@@ -1065,9 +1065,8 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <div id="terrain-toolbox-panel" class="terrain-toolbox-panel is-collapsed" aria-label="Terrain toolbox">
       <div class="tb-panel-toprow">
         <div class="tb-mode-tabs" role="tablist" aria-label="Terrain toolbox modes">
-          <button type="button" class="tb-mode-tab" data-tb-mode="dem" id="tb-tool-dem" role="tab" aria-selected="false">
+          <button type="button" class="tb-mode-tab" data-tb-mode="dem" id="tb-tool-dem" role="tab" aria-selected="false" title="Pan, zoom &amp; inspect">
             <span class="tb-tool-title">Terrain Navigate</span>
-            <span class="tb-tool-sub">Pan, zoom &amp; inspect</span>
           </button>
           <button type="button" class="tb-mode-tab active" data-tb-mode="transect" id="tb-tool-transect" role="tab" aria-selected="true">
             <span class="tb-tool-title">Measure Line &amp; LoS</span>
@@ -3342,8 +3341,8 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
       <section class="report-section" id="report-abstract">
         <h3>1. Project overview</h3>
-        <p>The X-Band Digital Twin simulates an aerial communication node (ACN) serving sixteen registered ground nodes over a terrain-aware air-to-ground network. Ground nodes represent dismounted tactical terminals and a command-post class. Traffic is generated into QoS queues, links are evaluated from geometry and RF assumptions, and a TDMA scheduler allocates the shared uplink.</p>
-        <p>The platform is intended for controlled research demonstrations of terrain-induced outages, queue behavior, link adaptation, and adaptive airtime allocation. It demonstrates a browser-hosted simulation with telemetry, map views, scheduler diagnostics, path editing, and historical inspection. It does not ingest measured aircraft telemetry, synchronize with a live network, or establish operational performance.</p>
+        <p>The X-Band Digital Twin simulates an aerial communication node (ACN) serving sixteen registered ground nodes over a terrain-aware air-to-ground network. Ground nodes represent dismounted tactical terminals and a command-post class across six regional theaters and multi-biome terrains (Alpine Mountain, Arid Desert, Open Plains / Urban, Tropical Jungle, and Maritime Littoral, alongside custom SRTM .hgt and uncompressed GeoTIFF DEM ingestion). Traffic is generated into QoS queues, links are evaluated from geometry and first-principles RF propagation models, and a TDMA scheduler allocates the shared uplink.</p>
+        <p>The platform supports offline flight-test CSV trace calibration (V3-05 2-parameter OLS empirical tuning and residual validation), telemetry inspection, 2D/3D tactical map views, scheduler diagnostics, and mission scenario authoring. It is intended for controlled research demonstrations, comparative scheduler evaluations, and digital-twin calibration studies; it does not connect to live airborne hardware-in-the-loop avionics, synchronize with real-time operational C2 networks, or establish field operational airworthiness.</p>
         <div class="report-callout"><strong>Research comparison:</strong> <code>Legacy_Static_TDMA</code> assigns fixed equal uplink slots, while <code>Tac-TAD</code> adapts allocation using queue urgency, link state, and predictive terrain transitions. A fair comparison requires identical configuration, traffic, terrain, duration, and metric definitions.</div>
       </section>
 
@@ -3405,7 +3404,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="formula-card">FSPL = 20 log₁₀(d₃D) + 20 log₁₀(f_c) + 20 log₁₀(4π/c)<br>P_noise = k_B T_sys B, &nbsp;&nbsp; T_sys = T₀(10^(NF/10) − 1) + T_sky<br>SNR_dB = P_rx,dBm − (P_noise,dBm + ΔN_sky)</div>
         <p>The airborne communication node (ACN) models a body-fixed 4-sector quadrant array (0°, 90°, 180°, 270° boresights: forward, starboard, aft, port) with ITU-R F.1336 parabolic azimuth/elevation roll-off (−12(Δφ/θ_3dB)² dB, θ_3dB = 65°), dynamic centripetal aircraft bank-angle coupling (roll angle computed from airspeed and yaw turn-rate), and 1.5 dB handover hysteresis at quadrant crossover boundaries to prevent sector chattering.</p>
         <p>Slant-path atmospheric loss incorporates ITU-R P.676-13 two-component barometric scale-height gaseous absorption (integrating dry oxygen h_o = 6.0 km and water vapor h_w = 2.0 km exponential profiles). Precipitation attenuation uses ITU-R P.838-3 specific rain attenuation coupled with ITU-R P.839-4 0°C freezing isotherm partitioning (h_freeze = 4,800 m MSL in Ladakh), zeroing rain attenuation above the liquid-precipitation ceiling. Effective receiver noise couples directly to ITU-R P.618-14 sky-noise brightness temperature (ΔT_sky, ΔN_sky) driven by atmospheric and rain path absorption.</p>
-        <p>Topographic diffraction implements ITU-R P.526-15 §4.5.1 Bullington double-horizon equivalent knife-edge diffraction coupled with ITU-R P.526-15 §4.2 physical DEM crest radius of curvature R_crest cylinder attenuation T(m, n) computed from adjacent terrain profile samples. A discrete eight-tier DVB-S2X / 3GPP Rel-17 NTN adaptive coding and modulation (ACM) table maps instantaneous SNR to spectral efficiency and physical PHY bitrate. Obstacle intersections force outage classification. Only multipath small-scale fading, co-channel jamming/interference, and polarization mismatch remain out of scope.</p>
+        <p>Topographic diffraction implements ITU-R P.526-15 §4.5.1 Bullington double-horizon equivalent knife-edge diffraction coupled with ITU-R P.526-15 §4.2 physical DEM crest radius of curvature R_crest cylinder attenuation T(m, n) computed from adjacent terrain profile samples. A discrete eight-tier DVB-S2X / 3GPP Rel-17 NTN adaptive coding and modulation (ACM) table maps instantaneous SNR to spectral efficiency and physical PHY bitrate. Obstacle intersections force outage classification. The platform features active, opt-in High-Fidelity and Multi-Biome physics engines: Zheng-Xiao isotropic/non-isotropic Rician-Jakes small-scale multipath fading, polarization mismatch loss and cross-polarization discrimination (XPD), two-ray ground Fresnel reflection, ITU-R P.833 vegetation canopy clutter, Goldhirsh dust storm scattering, dynamic electronic warfare (FHSS/DSSS ECCM, MVDR spatial beamforming, ESM direction-finding, and LPI/LPD power control), and multi-ACN / 2D MANET mesh relay routing.</p>
       </section>
 
       <section class="report-section" id="report-scheduler">
@@ -3633,18 +3632,28 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       <section class="report-section" id="report-limitations">
         <h3>15. Limitations and future research</h3>
         <h4>Implemented capabilities</h4>
-        <ul><li>Browser TypeScript worker simulation at a 20 ms physical step.</li><li>4-sector ITU-R F.1336 antenna array with bank-angle coupling, ITU-R P.526-15 Bullington + crest curvature diffraction, P.676-13 gas absorption, P.838/839 rain loss, P.618-14 sky noise, 4-channel parallel TDMA with deficit drainage, 3-way ablation (Static, Reactive M-LWDF, Tac-TAD), trajectory editing, obstacle geometry, map views, and telemetry history.</li></ul>
-        <h4>Simplifications and unresolved validation</h4>
         <ul>
-          <li>No measured field telemetry synchronization or calibrated end-to-end channel model is present.</li>
-          <li>Terrain diffraction uses DEM-sampled knife-edge and curvature approximations; multipath small-scale fading, co-channel jamming/interference, and antenna polarization mismatch are not simulated.</li>
-          <li>The MODCOD table is a discrete engineering abstraction and is not proof of DVB-S2X or 3GPP conformance.</li>
-          <li>History stores telemetry snapshots and does not provide deterministic re-execution from a complete event log.</li>
-          <li>Legacy Python artifacts and archived benchmark numbers are not current TypeScript results unless parity is independently demonstrated.</li>
+          <li>Browser TypeScript worker simulation at a 20 ms physical step with strict Web Worker state authority.</li>
+          <li>4-sector ITU-R F.1336 antenna array with bank-angle coupling, ITU-R P.526-15 Bullington + crest curvature diffraction, P.676-13 gas absorption, P.838/839 rain loss, P.618-14 sky noise, 4-channel parallel TDMA with deficit drainage, 3-way ablation (Static, Reactive M-LWDF, Tac-TAD), trajectory editing, obstacle geometry, map views, and telemetry history.</li>
+          <li>Opt-in High-Fidelity &amp; Multi-Biome RF engines: Zheng-Xiao Rician-Jakes small-scale fading, polarization mismatch / XPD, two-ray Fresnel ground reflection, ITU-R P.833 foliage canopy loss, Goldhirsh dust storm attenuation, electronic warfare (FHSS/DSSS ECCM, MVDR beamforming, ESM/LPI/LPD, GNSS spoofing defilade), multi-ACN 2D MANET routing, and offline flight-test trace calibration (V3-05 2-parameter OLS).</li>
+        </ul>
+        <h4>Simplifications and operational boundaries</h4>
+        <ul>
+          <li>The simulation does not interface with live airborne hardware-in-the-loop avionics or operational C2 tactical datalinks in flight.</li>
+          <li>High-fidelity physics (multipath, polarization mismatch, dust, foliage, EW jamming) operate as configurable, calibrated discrete-event models rather than full-wave 3D electromagnetic Maxwell solvers.</li>
+          <li>The MODCOD table is an 8-tier engineering abstraction and is not proof of full-standard DVB-S2X or 3GPP Rel-17 conformance under arbitrary hardware impairments.</li>
+          <li>History stores rolling telemetry snapshots for diagnostic inspection and does not provide deterministic re-execution from an immutable event log.</li>
+          <li>Legacy Python artifacts and archived benchmark numbers are historical reference baselines; active production benchmarks derive from the TypeScript engine.</li>
         </ul>
         <div class="report-callout report-callout-warning"><strong>Historical benchmark results (legacy Python engine):</strong> archived values are not a verified statement about the current TypeScript engine and must not be presented as current-worker measurements without a controlled <strong>Python ↔ TypeScript parity</strong> study. <strong>Data-quality flag:</strong> archived distributions require review before use in claims.</div>
         <h4>Recommended research extensions</h4>
-        <ol><li>Calibrate propagation and antenna assumptions against measured link data.</li><li>Define cross-engine golden fixtures only where legacy parity is required.</li><li>Run paired multi-seed experiments with manifests, confidence intervals, and metric definitions.</li><li>Profile worker latency, UI frame time, memory, and long-duration stability on named hardware.</li><li>Extend the channel model with interference, weather profiles, and richer terrain/multipath treatment.</li></ol>
+        <ol>
+          <li>Perform live flight-test validation with airborne SDR transceivers to ingest expanded empirical calibration datasets.</li>
+          <li>Define cross-engine golden fixtures only where legacy parity is required.</li>
+          <li>Run paired multi-seed experiments with manifests, confidence intervals, and metric definitions.</li>
+          <li>Profile worker latency, UI frame time, memory, and long-duration stability on named hardware.</li>
+          <li>Incorporate full-wave 3D ray-tracing EM solvers for micro-urban multipath clutter.</li>
+        </ol>
       </section>
 
       <footer class="research-footer">Document status: current implementation reference. Source files are authoritative; numerical claims require reproducible run provenance and should not be read as field-performance guarantees.</footer>

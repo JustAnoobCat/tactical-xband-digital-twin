@@ -31,10 +31,12 @@ export interface A2aCrosslinkResult {
   distanceM: number;
   horizonDistanceM: number;
   isLineOfSightClear: boolean;
+  losClear?: boolean;
   fsplDb: number;
   rxPowerDbm: number;
   snrDb: number;
   capacityMbps: number;
+  backhaulMbps?: number;
 }
 
 export interface NodeHandoverState {
@@ -230,7 +232,8 @@ export function generateConstellationAcnPositions(
 
 /**
  * Evaluates directional X-Band Air-to-Air (A2A) cross-link backhaul between two ACNs.
- * Checks smooth-Earth 4/3 effective Earth radius radio horizon clearance.
+ * Checks smooth-Earth 4/3 effective Earth radius radio horizon clearance and optional
+ * intermediate high-relief terrain ridge blockage.
  */
 export function evaluateA2aCrosslink(
   acnA: [number, number, number],
@@ -241,7 +244,8 @@ export function evaluateA2aCrosslink(
   rxGainDbi: number = 15.0,
   bandwidthHz: number = 50e6,
   noiseFigureDb: number = 4.0,
-  maxCapacityMbps: number = 150.0
+  maxCapacityMbps: number = 150.0,
+  peakTerrainElevM?: number
 ): A2aCrosslinkResult {
   const dx = acnA[0] - acnB[0];
   const dy = acnA[1] - acnB[1];
@@ -260,11 +264,36 @@ export function evaluateA2aCrosslink(
       distanceM: d,
       horizonDistanceM,
       isLineOfSightClear: false,
+      losClear: false,
       fsplDb: 999.0,
       rxPowerDbm: -999.0,
       snrDb: -99.0,
       capacityMbps: 0.0,
+      backhaulMbps: 0.0,
     };
+  }
+
+  // Terrain ridge clearance check if peakTerrainElevM supplied
+  if (peakTerrainElevM !== undefined) {
+    // Straight-line midpoint altitude above MSL
+    const midAltMslM = (hA + hB) * 0.5;
+    // 4/3 Re Earth curvature drop at midpoint: d^2 / (8 * Re')
+    const earthCurvatureDropM = (d * d) / (8.0 * effectiveEarthRadiusM);
+    const rayMidAltM = midAltMslM - earthCurvatureDropM;
+
+    if (rayMidAltM < peakTerrainElevM) {
+      return {
+        distanceM: d,
+        horizonDistanceM,
+        isLineOfSightClear: false,
+        losClear: false,
+        fsplDb: 999.0,
+        rxPowerDbm: -999.0,
+        snrDb: -99.0,
+        capacityMbps: 0.0,
+        backhaulMbps: 0.0,
+      };
+    }
   }
 
   // FSPL = 20 log10(d) + 20 log10(f) - 147.55
@@ -279,15 +308,18 @@ export function evaluateA2aCrosslink(
   const linearSnrMargin = Math.pow(10.0, (snrDb - 3.0) / 10.0);
   const capacityBps = bandwidthHz * (Math.log(1.0 + linearSnrMargin) / Math.LN2);
   const capacityMbps = Math.min(maxCapacityMbps, Math.max(0.0, capacityBps / 1e6));
+  const roundedCapacity = Number(capacityMbps.toFixed(3));
 
   return {
     distanceM: d,
     horizonDistanceM,
     isLineOfSightClear: true,
+    losClear: true,
     fsplDb,
     rxPowerDbm,
     snrDb,
-    capacityMbps: Number(capacityMbps.toFixed(3)),
+    capacityMbps: roundedCapacity,
+    backhaulMbps: roundedCapacity,
   };
 }
 
@@ -459,7 +491,7 @@ export function computeMultiHopManetRoute(params: ManetRouteParams): ManetRouteR
     adj.get(link.toId)!.push({ to: link.fromId, capacityMbps: link.capacityMbps, distanceM: link.distanceM, weight });
   }
 
-  // Dijkstra search prioritizing lowest cost path within maxHops
+  // 2D Dijkstra search tracking lowest cost per (nodeId, hopCount) pair within maxHops
   interface DijkstraNode {
     nodeId: number;
     cost: number;
@@ -467,8 +499,9 @@ export function computeMultiHopManetRoute(params: ManetRouteParams): ManetRouteR
     path: number[];
   }
 
-  const dist = new Map<number, number>();
-  dist.set(sourceNodeId, 0.0);
+  // dist2D tracks min cost for each (nodeId, hops) pair: key `${nodeId}:${hops}`
+  const dist2D = new Map<string, number>();
+  dist2D.set(`${sourceNodeId}:0`, 0.0);
 
   const queue: DijkstraNode[] = [{ nodeId: sourceNodeId, cost: 0.0, hops: 0, path: [sourceNodeId] }];
   let bestRoute: number[] = [];
@@ -478,6 +511,8 @@ export function computeMultiHopManetRoute(params: ManetRouteParams): ManetRouteR
     // Deterministic min extraction
     queue.sort((a, b) => a.cost - b.cost);
     const curr = queue.shift()!;
+
+    if (curr.cost >= bestCost) continue;
 
     if (gatewayNodeIds.includes(curr.nodeId)) {
       if (curr.cost < bestCost) {
@@ -489,19 +524,21 @@ export function computeMultiHopManetRoute(params: ManetRouteParams): ManetRouteR
 
     if (curr.hops >= maxHops) continue;
 
+    const nextHops = curr.hops + 1;
     const neighbors = adj.get(curr.nodeId) || [];
     for (const edge of neighbors) {
-      if (curr.path.includes(edge.to)) continue; // Avoid cycles
+      if (curr.path.includes(edge.to)) continue; // Avoid topological cycles
 
       const nextCost = curr.cost + edge.weight;
-      const existingDist = dist.get(edge.to) ?? Infinity;
+      const stateKey = `${edge.to}:${nextHops}`;
+      const existingDist = dist2D.get(stateKey) ?? Infinity;
 
-      if (nextCost < existingDist) {
-        dist.set(edge.to, nextCost);
+      if (nextCost < existingDist - 1e-9) {
+        dist2D.set(stateKey, nextCost);
         queue.push({
           nodeId: edge.to,
           cost: nextCost,
-          hops: curr.hops + 1,
+          hops: nextHops,
           path: [...curr.path, edge.to],
         });
       }

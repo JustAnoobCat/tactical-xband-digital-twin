@@ -464,23 +464,43 @@ export function mgrsToGeodetic(mgrsStr: string): GeodeticCoordinate {
 
   const fullEasting = baseEasting + eastingRem;
 
-  // 3. Resolve 2,000 km ambiguity using Latitude Band
+  // 3. Resolve 2,000 km ambiguity using Latitude Band minimum northing lookup
   const bandIndex = LAT_BANDS.indexOf(zoneLetter);
   const approxBandLatMin = bandIndex * 8.0 - 80.0;
   const approxBandLatMax = zoneLetter === 'X' ? 84.0 : approxBandLatMin + 8.0;
   const targetMidLat = (approxBandLatMin + approxBandLatMax) / 2.0;
 
-  let bestLatDiff = Infinity;
+  // Latitude band northing range lookup via meridional arc (with 150 km boundary buffer)
+  const phiMin = (approxBandLatMin * Math.PI) / 180.0;
+  const phiMax = (approxBandLatMax * Math.PI) / 180.0;
+  const mArcMin = M_ALPHA * phiMin - M_BETA * Math.sin(2.0 * phiMin) + M_GAMMA * Math.sin(4.0 * phiMin) - M_DELTA * Math.sin(6.0 * phiMin) + M_EPSILON * Math.sin(8.0 * phiMin);
+  const mArcMax = M_ALPHA * phiMax - M_BETA * Math.sin(2.0 * phiMax) + M_GAMMA * Math.sin(4.0 * phiMax) - M_DELTA * Math.sin(6.0 * phiMax) + M_EPSILON * Math.sin(8.0 * phiMax);
+  const falseNorthing = hemisphere === 'S' ? 10000000.0 : 0.0;
+  const nArc1 = K0 * mArcMin + falseNorthing;
+  const nArc2 = K0 * mArcMax + falseNorthing;
+  const minBandNorthingM = Math.min(nArc1, nArc2) - 150000.0;
+  const maxBandNorthingM = Math.max(nArc1, nArc2) + 150000.0;
+
+  let bestScore = Infinity;
   let bestCoords: GeodeticCoordinate = { latDeg: 0, lonDeg: 0 };
 
   // Scan through candidate 2,000 km northing steps (0 to 10,000 km)
   for (let block = 0; block <= 10000000.0; block += 2000000.0) {
     const candidateNorthing = block + cycleNorthing + northingRem;
+    if (candidateNorthing < minBandNorthingM || candidateNorthing > maxBandNorthingM) {
+      continue;
+    }
     try {
       const geo = utmToGeodetic(zoneNumber, hemisphere, fullEasting, candidateNorthing);
-      const diff = Math.abs(geo.latDeg - targetMidLat);
-      if (diff < bestLatDiff) {
-        bestLatDiff = diff;
+      if (!Number.isFinite(geo.latDeg) || !Number.isFinite(geo.lonDeg)) continue;
+
+      // Penalize candidates outside the latitude band
+      const inBand = geo.latDeg >= approxBandLatMin - 0.25 && geo.latDeg <= approxBandLatMax + 0.25;
+      const penalty = inBand ? 0.0 : 1000.0 + Math.min(Math.abs(geo.latDeg - approxBandLatMin), Math.abs(geo.latDeg - approxBandLatMax));
+      const score = penalty + Math.abs(geo.latDeg - targetMidLat);
+
+      if (score < bestScore) {
+        bestScore = score;
         bestCoords = geo;
       }
     } catch {
@@ -488,8 +508,31 @@ export function mgrsToGeodetic(mgrsStr: string): GeodeticCoordinate {
     }
   }
 
+  // Fallback if candidate was slightly outside buffered northing bounds
+  if (bestScore === Infinity) {
+    for (let block = 0; block <= 10000000.0; block += 2000000.0) {
+      const candidateNorthing = block + cycleNorthing + northingRem;
+      try {
+        const geo = utmToGeodetic(zoneNumber, hemisphere, fullEasting, candidateNorthing);
+        const diff = Math.abs(geo.latDeg - targetMidLat);
+        if (diff < bestScore) {
+          bestScore = diff;
+          bestCoords = geo;
+        }
+      } catch {
+        // Out of bounds projection candidate, continue scan
+      }
+    }
+  }
+
   return bestCoords;
 }
+
+/** Pure forward geodetic-to-MGRS alias */
+export const latLonToMgrs = geodeticToMgrs;
+
+/** Pure inverse MGRS-to-geodetic alias */
+export const mgrsToLatLon = mgrsToGeodetic;
 
 // ============================================================================
 // 3. Uncompressed Baseline GeoTIFF DEM Parser
@@ -539,6 +582,7 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
     let stripOffsets: number[] = [];
     let rowsPerStrip = 0;
     let stripByteCounts: number[] = [];
+    let isTiled = false;
     let pixelScale: [number, number, number] | null = null;
     let tiePoints: number[] | null = null;
 
@@ -584,6 +628,7 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
       else if (tag === 273) stripOffsets = readArray();
       else if (tag === 278) rowsPerStrip = readEntryValue();
       else if (tag === 279) stripByteCounts = readArray();
+      else if (tag === 322 || tag === 323 || tag === 324 || tag === 325) isTiled = true;
       else if (tag === 339) sampleFormat = readEntryValue();
       else if (tag === 33550) {
         const sc = readArray();
@@ -598,7 +643,29 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
     }
 
     if (compression !== 1) {
-      return { ok: false, error: `Compressed GeoTIFF (compression mode ${compression}) is not supported. Uncompressed baseline GeoTIFF required.` };
+      const compressionNames: Record<number, string> = {
+        2: 'CCITT Group 3 1-D Modified Huffman',
+        3: 'CCITT Group 3 Fax',
+        4: 'CCITT Group 4 Fax',
+        5: 'LZW',
+        6: 'JPEG (Old-style)',
+        7: 'JPEG',
+        8: 'Adobe Deflate / ZIP',
+        32773: 'PackBits',
+        50000: 'ZSTD',
+      };
+      const compDesc = compressionNames[compression] ?? `mode ${compression}`;
+      return {
+        ok: false,
+        error: `Compressed GeoTIFF detected (tag 259 compression = ${compression}: ${compDesc}). Tactical digital twin requires uncompressed baseline GeoTIFF. Convert with: gdal_translate -co COMPRESS=NONE input.tif uncompressed.tif`,
+      };
+    }
+
+    if (isTiled) {
+      return {
+        ok: false,
+        error: `Tiled GeoTIFF detected (tag 322 TileWidth / tag 324 TileOffsets). Tiled layout is not supported; strip-based uncompressed GeoTIFF required. Convert with: gdal_translate -co TILED=NO -co COMPRESS=NONE input.tif stripped.tif`,
+      };
     }
 
     if (stripOffsets.length === 0) {

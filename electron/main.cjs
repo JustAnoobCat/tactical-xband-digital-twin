@@ -38,6 +38,7 @@ const MIME_TYPES = {
   ".webp": "image/webp",
   ".pbf": "application/x-protobuf",
   ".mvt": "application/x-protobuf",
+  ".pmtiles": "application/octet-stream",
 };
 
 function createWindow() {
@@ -119,18 +120,129 @@ app.whenReady().then(() => {
         return new Response("Bad Request: Path traversal outside tiles directory", { status: 400 });
       }
 
-      if (!fs.existsSync(normalizedTarget)) {
+      // Strict realpath symlink containment check
+      const realRoot = await fs.promises.realpath(TILES_ROOT).catch(() => path.resolve(TILES_ROOT));
+      let realTarget;
+      try {
+        realTarget = await fs.promises.realpath(normalizedTarget);
+      } catch {
         return new Response("Not Found", { status: 404 });
       }
 
-      const ext = path.extname(normalizedTarget).toLowerCase();
-      const mimeType = MIME_TYPES[ext] || "application/octet-stream";
-      const buffer = fs.readFileSync(normalizedTarget);
+      if (!realTarget.startsWith(realRoot + path.sep)) {
+        return new Response("Forbidden: Symlink traversal outside tiles directory", { status: 403 });
+      }
 
+      let stats;
+      try {
+        stats = await fs.promises.stat(realTarget);
+      } catch {
+        return new Response("Not Found", { status: 404 });
+      }
+
+      if (!stats.isFile()) {
+        return new Response("Not Found", { status: 404 });
+      }
+
+      const ext = path.extname(realTarget).toLowerCase();
+      const mimeType = MIME_TYPES[ext] || "application/octet-stream";
+      const fileSize = stats.size;
+
+      // RFC 9110 Range Header handling
+      const rangeHeader = request.headers.get("range") || request.headers.get("Range");
+      if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+        const rangeSpec = rangeHeader.slice(6).trim();
+        // Support single range: bytes=start-end, bytes=start-, bytes=-suffixLength
+        const parts = rangeSpec.split("-");
+        if (parts.length === 2) {
+          const rawStart = parts[0].trim();
+          const rawEnd = parts[1].trim();
+
+          let start;
+          let end;
+
+          if (rawStart === "") {
+            // Suffix range: bytes=-suffixLength
+            const suffixLength = parseInt(rawEnd, 10);
+            if (isNaN(suffixLength) || suffixLength <= 0 || fileSize === 0) {
+              return new Response(null, {
+                status: 416,
+                headers: {
+                  "Content-Range": `bytes */${fileSize}`,
+                  "Accept-Ranges": "bytes",
+                },
+              });
+            }
+            start = Math.max(0, fileSize - suffixLength);
+            end = fileSize - 1;
+          } else {
+            start = parseInt(rawStart, 10);
+            if (isNaN(start) || start < 0 || start >= fileSize) {
+              return new Response(null, {
+                status: 416,
+                headers: {
+                  "Content-Range": `bytes */${fileSize}`,
+                  "Accept-Ranges": "bytes",
+                },
+              });
+            }
+            if (rawEnd === "") {
+              // Open-ended range: bytes=start-
+              end = fileSize - 1;
+            } else {
+              end = parseInt(rawEnd, 10);
+              if (isNaN(end) || end < start) {
+                return new Response(null, {
+                  status: 416,
+                  headers: {
+                    "Content-Range": `bytes */${fileSize}`,
+                    "Accept-Ranges": "bytes",
+                  },
+                });
+              }
+              if (end >= fileSize) {
+                end = fileSize - 1;
+              }
+            }
+          }
+
+          const chunkLength = end - start + 1;
+          const buf = Buffer.alloc(chunkLength);
+          const fileHandle = await fs.promises.open(realTarget, "r");
+          try {
+            await fileHandle.read(buf, 0, chunkLength, start);
+          } finally {
+            await fileHandle.close();
+          }
+
+          return new Response(buf, {
+            status: 206,
+            headers: {
+              "Content-Type": mimeType,
+              "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+              "Content-Length": String(chunkLength),
+              "Accept-Ranges": "bytes",
+              "Cache-Control": "public, max-age=86400",
+            },
+          });
+        }
+      }
+
+      // No range or unrecognized range: reject > 64 MB to prevent OOM on full reads
+      if (fileSize > 64 * 1024 * 1024) {
+        return new Response("Payload Too Large: File exceeds 64 MB for non-range requests", {
+          status: 413,
+          headers: { "Accept-Ranges": "bytes" },
+        });
+      }
+
+      const buffer = await fs.promises.readFile(realTarget);
       return new Response(buffer, {
         status: 200,
         headers: {
           "Content-Type": mimeType,
+          "Content-Length": String(fileSize),
+          "Accept-Ranges": "bytes",
           "Cache-Control": "public, max-age=86400",
         },
       });

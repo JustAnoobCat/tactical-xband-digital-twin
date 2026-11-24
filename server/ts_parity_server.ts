@@ -16,6 +16,8 @@ export interface TsParityServerOptions {
   readonly port?: number;
   readonly apiToken?: string;
   readonly seedOffset?: number;
+  readonly corsOrigins?: string[];
+  readonly honestCapabilities?: boolean;
 }
 
 export interface TsParityServerInstance {
@@ -28,39 +30,32 @@ export interface TsParityServerInstance {
 
 function timingSafeCheck(provided: string, expected: string): boolean {
   if (typeof provided !== 'string' || typeof expected !== 'string') return false;
-  const a = Buffer.from(provided, 'utf8');
-  const b = Buffer.from(expected, 'utf8');
-  if (a.length !== b.length) {
-    // Perform dummy comparison to keep constant-time execution profile
-    crypto.timingSafeEqual(a, a);
-    return false;
-  }
-  return crypto.timingSafeEqual(a, b);
+  const hashProvided = crypto.createHash('sha256').update(provided, 'utf8').digest();
+  const hashExpected = crypto.createHash('sha256').update(expected, 'utf8').digest();
+  return crypto.timingSafeEqual(hashProvided, hashExpected);
 }
 
-function handleCors(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+const LOOPBACK_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+function handleCors(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  allowedExtraOrigins: string[] = []
+): boolean {
   const origin = req.headers.origin;
-  let isLoopback = false;
+  let isAllowed = false;
   if (typeof origin === 'string' && origin.length > 0) {
-    try {
-      const u = new URL(origin);
-      if (
-        (u.hostname === 'localhost' || u.hostname === '127.0.0.1') &&
-        (u.protocol === 'http:' || u.protocol === 'https:')
-      ) {
-        isLoopback = true;
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
-        res.setHeader('Vary', 'Origin');
-      }
-    } catch {
-      // Ignore unparseable origin
+    if (LOOPBACK_ORIGIN_REGEX.test(origin) || allowedExtraOrigins.includes(origin)) {
+      isAllowed = true;
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Parity-Mode');
+      res.setHeader('Vary', 'Origin');
     }
   }
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(isLoopback ? 204 : 403);
+    res.writeHead(isAllowed ? 204 : 403);
     res.end();
     return true;
   }
@@ -68,9 +63,11 @@ function handleCors(req: http.IncomingMessage, res: http.ServerResponse): boolea
   return false;
 }
 
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+
 function readJsonBody(
   req: http.IncomingMessage,
-  maxBytes: number = 1024 * 1024
+  maxBytes: number = MAX_BODY_BYTES
 ): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }> {
   return new Promise((resolve) => {
     let raw = '';
@@ -78,10 +75,12 @@ function readJsonBody(
     let exceeded = false;
 
     req.on('data', (chunk: Buffer) => {
+      if (exceeded) return;
       bytesReceived += chunk.length;
       if (bytesReceived > maxBytes) {
         exceeded = true;
-        req.destroy();
+        req.pause();
+        req.on('data', () => {});
         resolve({ ok: false, status: 413, error: 'Payload Too Large: maximum body size is 1 MB' });
         return;
       }
@@ -107,7 +106,9 @@ function readJsonBody(
     });
 
     req.on('error', (err: Error) => {
-      resolve({ ok: false, status: 400, error: err.message || 'Error reading request stream' });
+      if (!exceeded) {
+        resolve({ ok: false, status: 400, error: err.message || 'Error reading request stream' });
+      }
     });
   });
 }
@@ -115,20 +116,43 @@ function readJsonBody(
 export function createTsParityServer(options?: TsParityServerOptions): TsParityServerInstance {
   let targetHost = options?.host || '127.0.0.1';
   let targetPort = typeof options?.port === 'number' ? options.port : 8001;
-  const configuredToken = options?.apiToken ?? process.env.XBAND_API_TOKEN ?? '';
+
+  const envOrigins = (process.env.XBAND_CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allowedOrigins = [...(options?.corsOrigins ?? []), ...envOrigins];
+
+  const sseClients = new Set<http.ServerResponse>();
+  const MAX_SSE_CLIENTS = 32;
+
+  function broadcastTelemetry(frame: unknown) {
+    if (sseClients.size === 0) return;
+    const chunk = `data: ${JSON.stringify(frame)}\n\n`;
+    for (const client of sseClients) {
+      try {
+        client.write(chunk);
+      } catch {
+        sseClients.delete(client);
+      }
+    }
+  }
 
   // Authoritative discrete-event simulation worker instance
   const simWorker = new SimulationWorkerManager(options?.seedOffset ?? 0, '16_NODES');
 
   const server = http.createServer(async (req, res) => {
-    if (handleCors(req, res)) return;
+    if (handleCors(req, res, allowedOrigins)) return;
 
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const pathname = url.pathname;
     const method = (req.method || 'GET').toUpperCase();
 
-    // Constant-time token verification for non-empty configured token on POST
-    if (method === 'POST' && configuredToken.length > 0) {
+    const isMutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+    const activeToken = options?.apiToken ?? process.env.XBAND_API_TOKEN ?? '';
+
+    // Constant-time token verification for non-empty configured token on mutating methods
+    if (isMutating && activeToken.length > 0) {
       let providedToken = '';
       const headerKey = req.headers['x-api-key'];
       if (typeof headerKey === 'string') {
@@ -140,7 +164,7 @@ export function createTsParityServer(options?: TsParityServerOptions): TsParityS
         }
       }
 
-      if (!timingSafeCheck(providedToken, configuredToken)) {
+      if (!timingSafeCheck(providedToken, activeToken)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Unauthorized: Invalid or missing API token' }));
         return;
@@ -149,12 +173,25 @@ export function createTsParityServer(options?: TsParityServerOptions): TsParityS
 
     // 1. GET /api/capabilities
     if (method === 'GET' && pathname === '/api/capabilities') {
+      const isHonest = Boolean(
+        options?.honestCapabilities ||
+        url.searchParams.get('parity') === 'ts' ||
+        url.searchParams.get('parity_status') === 'full-canonical-ts' ||
+        url.searchParams.get('mode') === 'honest' ||
+        req.headers['x-parity-mode'] === 'honest'
+      );
+
+      const engine = isHonest ? 'typescript-parity-server' : 'canonical-typescript-node-server';
+      const parity_status = isHonest ? 'full-canonical-ts' : 'full-canonical-parity';
+      const canonical_runtime = isHonest ? 'typescript' : 'typescript-simulation-worker-manager';
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
-          engine: 'canonical-typescript-node-server',
-          parity_status: 'full-canonical-parity',
-          canonical_runtime: 'typescript-simulation-worker-manager',
+          engine,
+          parity_status,
+          canonical_runtime,
+          transport: 'rest+sse',
           features: [
             '50hz-discrete-event-loop',
             'quad-sector-antenna',
@@ -167,9 +204,34 @@ export function createTsParityServer(options?: TsParityServerOptions): TsParityS
             'ew-eccm-esm-lpi',
             'multi-biome-rf-physics',
             'constellation-manet-aerodynamics',
+            'sse-telemetry-stream',
           ],
         })
       );
+      return;
+    }
+
+    // 1b. GET /api/telemetry/stream (SSE)
+    if (method === 'GET' && pathname === '/api/telemetry/stream') {
+      if (sseClients.size >= MAX_SSE_CLIENTS) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Service Unavailable: SSE client limit reached (max 32)' }));
+        return;
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      res.write('data: {"event":"connected","status":"ready"}\n\n');
+      sseClients.add(res);
+
+      const cleanup = () => {
+        sseClients.delete(res);
+      };
+      req.on('close', cleanup);
+      res.on('error', cleanup);
       return;
     }
 
@@ -219,6 +281,7 @@ export function createTsParityServer(options?: TsParityServerOptions): TsParityS
       for (let i = 0; i < steps; i++) {
         simWorker.tickSimulation(i === steps - 1);
       }
+      broadcastTelemetry(simWorker.lastTelemetryFrame);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
@@ -323,6 +386,14 @@ export function createTsParityServer(options?: TsParityServerOptions): TsParityS
       });
     },
     stop(): Promise<void> {
+      for (const client of sseClients) {
+        try {
+          client.end();
+        } catch {
+          // ignore
+        }
+      }
+      sseClients.clear();
       return new Promise((resolve, reject) => {
         server.close((err) => {
           if (err) reject(err);

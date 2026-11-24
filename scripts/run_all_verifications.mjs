@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (114 Total Suites)
+// Verification Suites Registry (116 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -171,6 +171,11 @@ const REGISTERED_SUITES = [
   { id: 'verify:parity-server-offline-tiles', name: 'Canonical Node/TS Parity Server & Offline Air-Gap Tile Protocol (SPEC-V3-11)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyParityServerAndOfflineTiles.ts'], category: 'server' },
   { id: 'verify:release-v3-readiness', name: 'V3.0 Release Readiness, Integrity & Zero-Slop Architecture Gate (SPEC-V3-12)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyReleaseV3Readiness.ts'], category: 'release' }
 ];
+
+REGISTERED_SUITES.push(
+  { id: 'verify:fix01-hardening', name: 'CI/Server/Electron Hardening & RFC 9110 Range (FIX-01)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyHardeningFix01.ts'], category: 'hardening' },
+  { id: 'verify:fix02-algorithms', name: 'Scientific & Algorithmic Hardening (FIX-02)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyHardeningFix02.ts'], category: 'hardening' }
+);
 
 // -----------------------------------------------------------------------------
 // Environment & Provenance Capture
@@ -388,6 +393,7 @@ async function main() {
     'verify:typed-ui-controllers-2',
     'verify:parity-server-offline-tiles',
     'verify:release-v3-readiness',
+    'verify:fix01-hardening',
   ]);
   const serialTasks = [];
   const poolTasks = [];
