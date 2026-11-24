@@ -3632,28 +3632,12 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       <section class="report-section" id="report-limitations">
         <h3>15. Limitations and future research</h3>
         <h4>Implemented capabilities</h4>
-        <ul>
-          <li>Browser TypeScript worker simulation at a 20 ms physical step with strict Web Worker state authority.</li>
-          <li>4-sector ITU-R F.1336 antenna array with bank-angle coupling, ITU-R P.526-15 Bullington + crest curvature diffraction, P.676-13 gas absorption, P.838/839 rain loss, P.618-14 sky noise, 4-channel parallel TDMA with deficit drainage, 3-way ablation (Static, Reactive M-LWDF, Tac-TAD), trajectory editing, obstacle geometry, map views, and telemetry history.</li>
-          <li>Opt-in High-Fidelity &amp; Multi-Biome RF engines: Zheng-Xiao Rician-Jakes small-scale fading, polarization mismatch / XPD, two-ray Fresnel ground reflection, ITU-R P.833 foliage canopy loss, Goldhirsh dust storm attenuation, electronic warfare (FHSS/DSSS ECCM, MVDR beamforming, ESM/LPI/LPD, GNSS spoofing defilade), multi-ACN 2D MANET routing, and offline flight-test trace calibration (V3-05 2-parameter OLS).</li>
-        </ul>
+        <ul><li>Browser TypeScript worker simulation at a 20 ms physical step with strict Web Worker state authority.</li><li>4-sector ITU-R F.1336 antenna array with bank-angle coupling, ITU-R P.526-15 Bullington + crest curvature diffraction, P.676-13 gas absorption, P.838/839 rain loss, P.618-14 sky noise, 4-channel parallel TDMA with deficit drainage, 3-way ablation (Static, Reactive M-LWDF, Tac-TAD), trajectory editing, obstacle geometry, map views, and telemetry history.</li><li>Opt-in High-Fidelity &amp; Multi-Biome RF engines: Zheng-Xiao Rician-Jakes small-scale fading, polarization mismatch / XPD, two-ray Fresnel ground reflection, ITU-R P.833 foliage canopy loss, Goldhirsh dust storm attenuation, electronic warfare (FHSS/DSSS ECCM, MVDR beamforming, ESM/LPI/LPD, GNSS spoofing defilade), multi-ACN 2D MANET routing, and offline flight-test trace calibration (V3-05 2-parameter OLS).</li></ul>
         <h4>Simplifications and operational boundaries</h4>
-        <ul>
-          <li>The simulation does not interface with live airborne hardware-in-the-loop avionics or operational C2 tactical datalinks in flight.</li>
-          <li>High-fidelity physics (multipath, polarization mismatch, dust, foliage, EW jamming) operate as configurable, calibrated discrete-event models rather than full-wave 3D electromagnetic Maxwell solvers.</li>
-          <li>The MODCOD table is an 8-tier engineering abstraction and is not proof of full-standard DVB-S2X or 3GPP Rel-17 conformance under arbitrary hardware impairments.</li>
-          <li>History stores rolling telemetry snapshots for diagnostic inspection and does not provide deterministic re-execution from an immutable event log.</li>
-          <li>Legacy Python artifacts and archived benchmark numbers are historical reference baselines; active production benchmarks derive from the TypeScript engine.</li>
-        </ul>
+        <ul><li>The simulation does not interface with live airborne hardware-in-the-loop avionics or operational C2 tactical datalinks in flight.</li><li>High-fidelity physics (multipath, polarization mismatch, dust, foliage, EW jamming) operate as configurable, calibrated discrete-event models rather than full-wave 3D electromagnetic Maxwell solvers.</li><li>The MODCOD table is an 8-tier engineering abstraction and is not proof of full-standard DVB-S2X or 3GPP Rel-17 conformance under arbitrary hardware impairments.</li><li>History stores rolling telemetry snapshots for diagnostic inspection and does not provide deterministic re-execution from an immutable event log.</li><li>Legacy Python artifacts and archived benchmark numbers are historical reference baselines; active production benchmarks derive from the TypeScript engine.</li></ul>
         <div class="report-callout report-callout-warning"><strong>Historical benchmark results (legacy Python engine):</strong> archived values are not a verified statement about the current TypeScript engine and must not be presented as current-worker measurements without a controlled <strong>Python ↔ TypeScript parity</strong> study. <strong>Data-quality flag:</strong> archived distributions require review before use in claims.</div>
         <h4>Recommended research extensions</h4>
-        <ol>
-          <li>Perform live flight-test validation with airborne SDR transceivers to ingest expanded empirical calibration datasets.</li>
-          <li>Define cross-engine golden fixtures only where legacy parity is required.</li>
-          <li>Run paired multi-seed experiments with manifests, confidence intervals, and metric definitions.</li>
-          <li>Profile worker latency, UI frame time, memory, and long-duration stability on named hardware.</li>
-          <li>Incorporate full-wave 3D ray-tracing EM solvers for micro-urban multipath clutter.</li>
-        </ol>
+        <ol><li>Perform live flight-test validation with airborne SDR transceivers to ingest expanded empirical calibration datasets.</li><li>Define cross-engine golden fixtures only where legacy parity is required.</li><li>Run paired multi-seed experiments with manifests, confidence intervals, and metric definitions.</li><li>Profile worker latency, UI frame time, memory, and long-duration stability on named hardware.</li><li>Incorporate full-wave 3D ray-tracing EM solvers for micro-urban multipath clutter.</li></ol>
       </section>
 
       <footer class="research-footer">Document status: current implementation reference. Source files are authoritative; numerical claims require reproducible run provenance and should not be read as field-performance guarantees.</footer>
