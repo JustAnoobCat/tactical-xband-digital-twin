@@ -63,6 +63,29 @@ export interface ThreeSceneMetrics {
   readonly terrainTriangleCount?: number;
   readonly drawCalls?: number;
   readonly entityCount?: number;
+  readonly volumetricRf?: VolumetricRfState;
+}
+
+export interface VolumetricRfOptions {
+  /** Whether 3D Fresnel ellipsoids (0.6 F1 clearance boundary) are rendered */
+  readonly showFresnel?: boolean;
+  /** Whether 3D banking quad-sector antenna lobes are rendered */
+  readonly showSectorLobes?: boolean;
+  /** Whether 3D EW jammer and storm weather threat volumes are rendered */
+  readonly showThreatVolumes?: boolean;
+  /** Optional visual scale factor for Fresnel ellipsoid radius (default 12.0) */
+  readonly fresnelVisualScale?: number;
+  /** Optional minimum clearance ratio threshold (default 0.6) */
+  readonly clearanceThreshold?: number;
+}
+
+export interface VolumetricRfState {
+  readonly showFresnel: boolean;
+  readonly showSectorLobes: boolean;
+  readonly showThreatVolumes: boolean;
+  readonly activeEllipsoidCount: number;
+  readonly activeLobeCount: number;
+  readonly activeThreatVolumeCount: number;
 }
 
 export interface CameraPresetConfig {

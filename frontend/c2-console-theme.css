@@ -3019,3 +3019,188 @@ details.c2-card[open] > summary {
   width: 26px;
   height: 26px;
 }
+
+/* ==========================================================================
+ * Frontier Command Palette (Ctrl+K) & Secondary-Tab Polish (SPEC-V3-08)
+ * ========================================================================== */
+#btn-command-palette {
+  font-family: var(--lo-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  min-height: 24px;
+  border-radius: 2px;
+  background: var(--lo-control);
+  border: 1px solid var(--lo-line-strong);
+  color: var(--lo-accent);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#btn-command-palette:hover {
+  background: var(--lo-control-hover);
+  border-color: var(--lo-accent);
+  color: #ffffff;
+}
+
+.c2-cmd-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(8, 10, 13, 0.82);
+  backdrop-filter: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.c2-cmd-palette-backdrop[hidden] {
+  display: none;
+}
+
+.c2-cmd-palette-dialog {
+  width: 100%;
+  max-width: 620px;
+  background: var(--lo-surface, #0f131a);
+  border: 1px solid var(--lo-line-strong, #37455a);
+  border-radius: 4px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.c2-cmd-palette-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--lo-line, #232c3a);
+  background: var(--lo-bg, #0b0e13);
+}
+
+.c2-cmd-palette-search-icon {
+  font-family: var(--lo-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--lo-accent, #38bdf8);
+  flex: none;
+}
+
+.c2-cmd-palette-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--lo-text-bright, #f0f4f8);
+  font-family: var(--lo-sans);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.c2-cmd-palette-input::placeholder {
+  color: var(--lo-text-muted, #78879b);
+  font-size: 12px;
+}
+
+.c2-cmd-palette-esc-pill {
+  font-family: var(--lo-mono);
+  font-size: 10px;
+  color: var(--lo-text-dim, #9aa7b8);
+  background: var(--lo-control, #1a212d);
+  border: 1px solid var(--lo-line, #232c3a);
+  border-radius: 3px;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.c2-cmd-palette-list {
+  max-height: 360px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.c2-cmd-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--lo-text, #dce4ee);
+  border-left: 3px solid transparent;
+  transition: background 0.1s ease;
+}
+
+.c2-cmd-palette-item:hover,
+.c2-cmd-palette-item.is-selected {
+  background: var(--lo-control, #1a212d);
+  color: #ffffff;
+  border-left-color: var(--lo-accent, #38bdf8);
+}
+
+.c2-cmd-palette-cat-badge {
+  font-family: var(--lo-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px 5px;
+  border-radius: 2px;
+  background: var(--lo-card, #131821);
+  border: 1px solid var(--lo-line, #232c3a);
+  color: var(--lo-accent, #38bdf8);
+  flex: none;
+  min-width: 52px;
+  text-align: center;
+}
+
+.c2-cmd-palette-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c2-cmd-palette-shortcut {
+  font-family: var(--lo-mono);
+  font-size: 10px;
+  color: var(--lo-text-muted, #78879b);
+  background: var(--lo-bg, #0b0e13);
+  border: 1px solid var(--lo-line, #232c3a);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex: none;
+}
+
+.c2-cmd-palette-empty {
+  padding: 20px 14px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--lo-text-muted, #78879b);
+}
+
+.c2-cmd-palette-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 14px;
+  background: var(--lo-bg, #0b0e13);
+  border-top: 1px solid var(--lo-line, #232c3a);
+  font-size: 10px;
+  color: var(--lo-text-muted, #78879b);
+}
+
+.c2-cmd-palette-footer kbd {
+  font-family: var(--lo-mono);
+  font-size: 10px;
+  background: var(--lo-control, #1a212d);
+  border: 1px solid var(--lo-line, #232c3a);
+  border-radius: 2px;
+  padding: 1px 4px;
+  color: var(--lo-text-dim, #9aa7b8);
+}
+

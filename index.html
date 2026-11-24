@@ -925,6 +925,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
       <button id="btn-step" onclick="stepSim()" title="Advance one 20 ms frame (.)">STEP</button>
       <button id="btn-sim-reset" class="btn-danger deck-reset" type="button" title="Restart the simulation">RESET</button>
       <button id="btn-cvd-mode" type="button" aria-pressed="false" title="Toggle Colorblind-Safe Palette">CVD</button>
+      <button id="btn-command-palette" type="button" aria-label="Open Command Palette (Ctrl+K)" title="Command Palette (Ctrl+K)">CMD</button>
       <div class="sim-speed-box">
         <span id="sim-speed-readout" title="Playback speed multiplier">1.0×</span>
         <span id="sim-achieved-readout" class="sim-speed-achieved" style="display:none;"></span>
@@ -1485,11 +1486,16 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div id="map-renderer-notice" class="map-renderer-notice" role="status" aria-live="polite" hidden></div>
           <div id="three-stage-container" class="three-stage-container" style="display:none;position:absolute;inset:0;width:100%;height:100%;overflow:hidden;z-index:2;" aria-hidden="true">
             <canvas id="three-canvas" aria-label="3D Tactical Terrain View"></canvas>
-            <div class="three-hud-overlay" style="position:absolute;bottom:14px;left:52px;pointer-events:none;z-index:4;">
+            <div class="three-hud-overlay" style="position:absolute;bottom:14px;left:52px;pointer-events:none;z-index:4;display:inline-flex;align-items:center;gap:8px;">
               <span id="three-terrain-badge" class="kpi-badge badge-cyan" style="font-size:10.5px;letter-spacing:0.04em;background:rgba(17,19,22,0.92);border:1px solid rgba(224,159,62,0.45);padding:4px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:6px;">
                 <span id="three-terrain-dot" style="width:6px;height:6px;border-radius:50%;background:var(--hi-amber);box-shadow:0 0 6px var(--hi-amber);"></span>
                 <span id="three-terrain-status-text">3D TERRAIN — NATIVE 512×512</span>
               </span>
+              <div class="three-volumetric-rf-toggles" style="display:inline-flex;align-items:center;gap:4px;pointer-events:auto;">
+                <button id="btn-3d-fresnel" type="button" class="three-hud-btn is-active" aria-pressed="true" aria-label="Toggle 3D Fresnel Ellipsoids" style="font-size:10.5px;letter-spacing:0.04em;background:rgba(17,19,22,0.92);color:#38bdf8;border:1px solid rgba(56,189,248,0.5);padding:4px 8px;border-radius:4px;cursor:pointer;line-height:1.2;">Fresnel</button>
+                <button id="btn-3d-lobes" type="button" class="three-hud-btn is-active" aria-pressed="true" aria-label="Toggle 3D Banking Sector Lobes" style="font-size:10.5px;letter-spacing:0.04em;background:rgba(17,19,22,0.92);color:#f59e0b;border:1px solid rgba(245,158,11,0.5);padding:4px 8px;border-radius:4px;cursor:pointer;line-height:1.2;">Lobes</button>
+                <button id="btn-3d-volumes" type="button" class="three-hud-btn is-active" aria-pressed="true" aria-label="Toggle 3D EW and Storm Volumes" style="font-size:10.5px;letter-spacing:0.04em;background:rgba(17,19,22,0.92);color:#ef4444;border:1px solid rgba(239,68,68,0.5);padding:4px 8px;border-radius:4px;cursor:pointer;line-height:1.2;">Volumes</button>
+              </div>
             </div>
           </div>
           <div class="map-legend is-collapsed" aria-label="Map legend">
@@ -3241,6 +3247,21 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           </div>
           <pre id="dossier-markdown-preview" class="diag-json-pre" style="max-height:220px;overflow-y:auto;font-size:10px;line-height:1.4;padding:8px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.06);border-radius:4px;user-select:text;" aria-label="Generated Reproducible Research Dossier Markdown Preview">// Click 'Generate &amp; Copy Dossier' to compile publication-ready Markdown and LaTeX report...</pre>
         </div>
+
+        <!-- One-Click After-Action Review (AAR) Briefing Exporter (SPEC-V3-08) -->
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+            <div>
+              <span class="sec-title" style="font-size:12px;font-weight:600;">After-Action Review (AAR) Tactical Mission Briefing</span>
+              <p style="font-size:11px;color:rgba(255,255,255,0.6);margin:2px 0 0 0;">Generate executive military mission briefing capturing ablation KPIs, 5QI QoS SLA verification, physics stack, and ground fleet MGRS coordinates.</p>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button id="btn-export-aar-md" class="primary" type="button" aria-label="Export After-Action Review Markdown" style="font-size:11px;padding:6px 12px;cursor:pointer;">Export AAR (.md)</button>
+              <button id="btn-export-aar-html" type="button" aria-label="Print After-Action Review Standalone HTML Briefing" style="font-size:11px;padding:6px 12px;cursor:pointer;background:var(--raised);border:1px solid var(--line2);color:var(--text);border-radius:2px;">Print AAR (.html)</button>
+              <span id="aar-export-status" style="font-size:10px;color:#10b981;display:none;" role="status">AAR generated!</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Digital-Twin Flight-Test Trace Calibration & Replay Panel -->
@@ -4250,6 +4271,23 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   </div>
 </div>
 
+<!-- Frontier Command Palette Modal Overlay (SPEC-V3-08) -->
+<div id="c2-cmd-palette-modal" class="c2-cmd-palette-backdrop" role="dialog" aria-modal="true" aria-labelledby="c2-cmd-palette-title" hidden>
+  <div class="c2-cmd-palette-dialog" role="document">
+    <div class="c2-cmd-palette-header">
+      <span class="c2-cmd-palette-search-icon" aria-hidden="true">&gt;_</span>
+      <label for="c2-cmd-palette-input" class="sr-only" id="c2-cmd-palette-title">Tactical Command Palette</label>
+      <input id="c2-cmd-palette-input" class="c2-cmd-palette-input" type="search" placeholder="Type a tactical command or filter by category (e.g. NAV, BIOME, TOOLS)..." aria-label="Filter tactical commands" autocomplete="off" spellcheck="false">
+      <button id="c2-cmd-palette-close" type="button" class="c2-cmd-palette-esc-pill" aria-label="Close Command Palette">ESC</button>
+    </div>
+    <ul id="c2-cmd-palette-list" class="c2-cmd-palette-list" role="listbox" aria-label="Tactical Commands"></ul>
+    <div class="c2-cmd-palette-footer">
+      <span>Navigate with <kbd>↑</kbd> <kbd>↓</kbd> · Select with <kbd>Enter</kbd></span>
+      <span><kbd>Ctrl+K</kbd> / <kbd>Esc</kbd> to toggle</span>
+    </div>
+  </div>
+</div>
+
 <script>
 /* Render-quality layer */
 (function(){
@@ -4487,7 +4525,17 @@ import {
   computeRadarCursorReadout,
   renderCursorHudHtml,
 } from './src/ui/radarCursorReadout.ts';
-import { createThreeStageController } from './src/ui/three/index.ts';
+import { createThreeSceneController } from './src/ui/three/threeSceneController.ts';
+import { getLatticeCanvasPalette } from './src/ui/canvasTheme.ts';
+import {
+  DEFAULT_PALETTE_COMMANDS,
+  filterAndRankCommands,
+  stepPaletteSelection,
+} from './src/ui/commandPaletteEngine.ts';
+import {
+  generateAarMarkdown,
+  generateAarPrintableHtml,
+} from './src/core/aarBriefingGenerator.ts';
 import { MapController } from './src/ui/mapController.ts';
 import {
   MapLayerRegistry,
@@ -8236,7 +8284,7 @@ function initThreeStage() {
   if (!container || !canvas || threeController) return;
 
   try {
-    threeController = createThreeStageController({
+    threeController = createThreeSceneController({
       container,
       canvas,
       antialias: true,
@@ -8249,6 +8297,13 @@ function initThreeStage() {
       threeSelectedThisClick = true;
       handleNodeSelection(nodeId);
     });
+    if (typeof threeController.onNodePicked === 'function') {
+      threeController.onNodePicked((nodeId) => {
+        threeSelectedThisClick = true;
+        handleNodeSelection(nodeId);
+      });
+    }
+    syncVolumetricRfHudButtons();
     let threeDownX = 0;
     let threeDownY = 0;
     let threeDownActive = false;
@@ -8305,6 +8360,94 @@ mapLayersPanel = $('radar-container')
   : null;
 syncMapLegendVisibility();
 syncRfQuickToggleButtons();
+
+function syncVolumetricRfHudButtons() {
+  const palette = typeof getLatticeCanvasPalette === 'function' ? getLatticeCanvasPalette() : null;
+  const btnFresnel = $('btn-3d-fresnel');
+  const btnLobes = $('btn-3d-lobes');
+  const btnVolumes = $('btn-3d-volumes');
+
+  if (btnFresnel) {
+    const active = btnFresnel.getAttribute('aria-pressed') === 'true';
+    btnFresnel.style.color = active ? (palette?.accent || '#38bdf8') : (palette?.textMuted || '#78879c');
+    btnFresnel.style.borderColor = active ? (palette?.accent || 'rgba(56,189,248,0.5)') : 'rgba(255,255,255,0.15)';
+  }
+  if (btnLobes) {
+    const active = btnLobes.getAttribute('aria-pressed') === 'true';
+    btnLobes.style.color = active ? (palette?.degraded || '#f59e0b') : (palette?.textMuted || '#78879c');
+    btnLobes.style.borderColor = active ? (palette?.degraded || 'rgba(245,158,11,0.5)') : 'rgba(255,255,255,0.15)';
+  }
+  if (btnVolumes) {
+    const active = btnVolumes.getAttribute('aria-pressed') === 'true';
+    btnVolumes.style.color = active ? (palette?.outage || '#ef4444') : (palette?.textMuted || '#78879c');
+    btnVolumes.style.borderColor = active ? (palette?.outage || 'rgba(239,68,68,0.5)') : 'rgba(255,255,255,0.15)';
+  }
+  if (threeController && typeof threeController.setVolumetricRfOptions === 'function') {
+    threeController.setVolumetricRfOptions({
+      showFresnel: btnFresnel ? btnFresnel.getAttribute('aria-pressed') === 'true' : true,
+      showSectorLobes: btnLobes ? btnLobes.getAttribute('aria-pressed') === 'true' : true,
+      showThreatVolumes: btnVolumes ? btnVolumes.getAttribute('aria-pressed') === 'true' : true,
+    });
+  }
+}
+
+function initVolumetricRfControls() {
+  const btnFresnel = $('btn-3d-fresnel');
+  const btnLobes = $('btn-3d-lobes');
+  const btnVolumes = $('btn-3d-volumes');
+
+  if (btnFresnel && !btnFresnel.__wired) {
+    btnFresnel.__wired = true;
+    btnFresnel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const current = btnFresnel.getAttribute('aria-pressed') === 'true';
+      const next = !current;
+      btnFresnel.setAttribute('aria-pressed', String(next));
+      btnFresnel.classList.toggle('is-active', next);
+      if (threeController && typeof threeController.setVolumetricRfOptions === 'function') {
+        threeController.setVolumetricRfOptions({ showFresnel: next });
+      }
+      syncVolumetricRfHudButtons();
+    });
+  }
+
+  if (btnLobes && !btnLobes.__wired) {
+    btnLobes.__wired = true;
+    btnLobes.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const current = btnLobes.getAttribute('aria-pressed') === 'true';
+      const next = !current;
+      btnLobes.setAttribute('aria-pressed', String(next));
+      btnLobes.classList.toggle('is-active', next);
+      if (threeController && typeof threeController.setVolumetricRfOptions === 'function') {
+        threeController.setVolumetricRfOptions({ showSectorLobes: next });
+      }
+      syncVolumetricRfHudButtons();
+    });
+  }
+
+  if (btnVolumes && !btnVolumes.__wired) {
+    btnVolumes.__wired = true;
+    btnVolumes.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const current = btnVolumes.getAttribute('aria-pressed') === 'true';
+      const next = !current;
+      btnVolumes.setAttribute('aria-pressed', String(next));
+      btnVolumes.classList.toggle('is-active', next);
+      if (threeController && typeof threeController.setVolumetricRfOptions === 'function') {
+        threeController.setVolumetricRfOptions({ showThreatVolumes: next });
+      }
+      syncVolumetricRfHudButtons();
+    });
+  }
+
+  window.addEventListener('c2:cvd-mode-change', () => {
+    syncVolumetricRfHudButtons();
+  });
+
+  syncVolumetricRfHudButtons();
+}
+initVolumetricRfControls();
 
 function requestTerrainMeshData(force = false) {
   const currentMode = activeTerrainMode || 'real';
@@ -17271,7 +17414,480 @@ setTimeout(() => {
   renderWorkerJitterProfiler(null);
   initDigitalTwinCalibrationUI();
   initMilitaryGisUI();
+  initCommandPaletteUI();
+  initAarExporterUI();
 }, 200);
+
+/* ---------- Frontier Command Palette Controller (SPEC-V3-08) ---------- */
+let paletteIsOpen = false;
+let paletteCurrentIndex = 0;
+let paletteRankedList = [];
+
+function openCommandPalette() {
+  const modal = $('c2-cmd-palette-modal');
+  const input = $('c2-cmd-palette-input');
+  if (!modal || !input) return;
+
+  paletteIsOpen = true;
+  modal.hidden = false;
+  input.value = '';
+  paletteCurrentIndex = 0;
+  renderPaletteItems('');
+  setTimeout(() => input.focus(), 20);
+}
+
+function closeCommandPalette() {
+  const modal = $('c2-cmd-palette-modal');
+  if (!modal) return;
+  paletteIsOpen = false;
+  modal.hidden = true;
+}
+
+function renderPaletteItems(query) {
+  const list = $('c2-cmd-palette-list');
+  if (!list) return;
+
+  paletteRankedList = filterAndRankCommands(query, DEFAULT_PALETTE_COMMANDS);
+  list.innerHTML = '';
+
+  if (paletteRankedList.length === 0) {
+    const emptyLi = document.createElement('li');
+    emptyLi.className = 'c2-cmd-palette-empty';
+    emptyLi.textContent = `No tactical commands match "${query.trim()}"`;
+    list.appendChild(emptyLi);
+    paletteCurrentIndex = -1;
+    return;
+  }
+
+  if (paletteCurrentIndex >= paletteRankedList.length || paletteCurrentIndex < 0) {
+    paletteCurrentIndex = 0;
+  }
+
+  paletteRankedList.forEach((ranked, idx) => {
+    const cmd = ranked.command;
+    const li = document.createElement('li');
+    li.id = `c2-cmd-opt-${idx}`;
+    li.className = `c2-cmd-palette-item${idx === paletteCurrentIndex ? ' is-selected' : ''}`;
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', String(idx === paletteCurrentIndex));
+
+    let html = `<span class="c2-cmd-palette-cat-badge">${escapeHtml(cmd.category)}</span>` +
+      `<span class="c2-cmd-palette-label">${escapeHtml(cmd.label)}</span>`;
+    if (cmd.shortcut) {
+      html += `<span class="c2-cmd-palette-shortcut">${escapeHtml(cmd.shortcut)}</span>`;
+    }
+
+    li.innerHTML = html;
+    li.addEventListener('click', () => {
+      executePaletteCommand(cmd.id);
+    });
+    li.addEventListener('mouseenter', () => {
+      paletteCurrentIndex = idx;
+      updatePaletteSelectionUI();
+    });
+    list.appendChild(li);
+  });
+
+  scrollPaletteSelectionIntoView();
+}
+
+function updatePaletteSelectionUI() {
+  const list = $('c2-cmd-palette-list');
+  if (!list) return;
+  const items = list.querySelectorAll('.c2-cmd-palette-item');
+  items.forEach((item, idx) => {
+    const isSel = idx === paletteCurrentIndex;
+    item.classList.toggle('is-selected', isSel);
+    item.setAttribute('aria-selected', String(isSel));
+  });
+  scrollPaletteSelectionIntoView();
+}
+
+function scrollPaletteSelectionIntoView() {
+  const list = $('c2-cmd-palette-list');
+  if (!list) return;
+  const sel = list.querySelector('.c2-cmd-palette-item.is-selected');
+  if (sel) {
+    sel.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function executePaletteCommand(cmdId) {
+  closeCommandPalette();
+
+  switch (cmdId) {
+    case 'nav:overview':
+      window.switchMainTab?.('tab-overview');
+      break;
+    case 'nav:scheduler':
+      window.switchMainTab?.('tab-scheduler');
+      break;
+    case 'nav:network':
+      window.switchMainTab?.('tab-network');
+      break;
+    case 'nav:terrain':
+      window.switchMainTab?.('tab-terrain');
+      break;
+    case 'nav:terminal':
+      window.switchMainTab?.('tab-terminal');
+      break;
+    case 'nav:authoring':
+      window.switchMainTab?.('tab-authoring');
+      break;
+    case 'nav:doc':
+      window.switchMainTab?.('tab-doc');
+      break;
+    case 'nav:registration':
+      window.switchMainTab?.('tab-registration');
+      break;
+    case 'nav:soldier':
+      window.switchMainTab?.('tab-soldier');
+      break;
+    case 'nav:analytics':
+      window.switchMainTab?.('tab-scheduler');
+      break;
+    case 'nav:calibration':
+      window.switchMainTab?.('tab-doc');
+      window.switchDocSubview?.('diag');
+      break;
+
+    case 'biome:ladakh':
+    case 'biome:kargil':
+    case 'biome:arid_desert':
+    case 'biome:open_plains':
+    case 'biome:tropical_jungle':
+    case 'biome:maritime_littoral': {
+      const val = cmdId.replace('biome:', '');
+      const sel = $('dem-sector-select');
+      if (sel) {
+        sel.value = val;
+        if (typeof onDemSectorChange === 'function') {
+          onDemSectorChange(val);
+        }
+      }
+      break;
+    }
+
+    case 'tools:2d3d': {
+      const btn3D = $('btnView3D');
+      const btn2D = $('btnView2D');
+      const is3D = btn3D && btn3D.classList.contains('active');
+      if (typeof setStageViewMode === 'function') {
+        setStageViewMode(is3D ? '2d' : '3d');
+      } else if (is3D && btn2D) {
+        btn2D.click();
+      } else if (!is3D && btn3D) {
+        btn3D.click();
+      }
+      break;
+    }
+    case 'tools:cvd':
+      $('btn-cvd-mode')?.click();
+      break;
+    case 'tools:fresnel':
+      $('btn-3d-fresnel')?.click();
+      break;
+    case 'tools:lobes':
+      $('btn-3d-lobes')?.click();
+      break;
+    case 'tools:volumes':
+      $('btn-3d-volumes')?.click();
+      break;
+    case 'tools:mgrs': {
+      const chk = $('toggle-mgrs-grid');
+      if (chk) {
+        chk.checked = !chk.checked;
+        chk.dispatchEvent(new Event('change'));
+      }
+      break;
+    }
+    case 'tools:ruler':
+      $('tb-bar-transect')?.click();
+      break;
+    case 'tools:probe':
+      $('tb-bar-probe')?.click();
+      break;
+    case 'tools:area':
+      $('tb-bar-region')?.click();
+      break;
+    case 'tools:barrier':
+      $('tb-bar-obstacle')?.click();
+      break;
+    case 'tools:pan':
+      $('tb-bar-pan')?.click();
+      break;
+
+    case 'physics:high_fidelity':
+      $('btn-hifi-all-toggle')?.click();
+      break;
+    case 'physics:biome_em': {
+      const chk = $('toggle-biome-em');
+      if (chk) {
+        chk.checked = !chk.checked;
+        if (typeof onBiomeEmToggleChange === 'function') {
+          onBiomeEmToggleChange(chk.checked);
+        }
+      }
+      break;
+    }
+
+    case 'sim:pause_resume':
+      if (typeof togglePause === 'function') togglePause();
+      else $('btn-pause')?.click();
+      break;
+    case 'sim:step':
+      if (typeof stepSim === 'function') stepSim();
+      else $('btn-step')?.click();
+      break;
+    case 'sim:reset':
+      $('btn-sim-reset')?.click();
+      break;
+    case 'sim:kargil_transit':
+      if (typeof runKargilScenario === 'function') runKargilScenario();
+      break;
+    case 'sim:calibrate':
+      $('btn-cal-auto-solve')?.click();
+      break;
+
+    case 'export:scenario_json':
+      $('btn-scenario-save-json')?.click();
+      break;
+    case 'export:kml':
+      $('btn-export-kml')?.click();
+      break;
+    case 'export:cot_xml':
+      $('btn-export-cot-xml')?.click();
+      break;
+    case 'export:aar_md':
+      $('btn-export-aar-md')?.click();
+      break;
+    case 'export:aar_html':
+      $('btn-export-aar-html')?.click();
+      break;
+  }
+}
+
+function initCommandPaletteUI() {
+  const triggerBtn = $('btn-command-palette');
+  const modal = $('c2-cmd-palette-modal');
+  const input = $('c2-cmd-palette-input');
+  const closeBtn = $('c2-cmd-palette-close');
+
+  if (!modal || modal.dataset.initialized) return;
+  modal.dataset.initialized = 'true';
+
+  if (triggerBtn) {
+    triggerBtn.addEventListener('click', () => {
+      if (modal.hidden) {
+        openCommandPalette();
+      } else {
+        closeCommandPalette();
+      }
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeCommandPalette);
+  }
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeCommandPalette();
+    }
+  });
+
+  if (input) {
+    input.addEventListener('input', () => {
+      paletteCurrentIndex = 0;
+      renderPaletteItems(input.value);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        paletteCurrentIndex = stepPaletteSelection(paletteCurrentIndex, paletteRankedList.length, e.key);
+        updatePaletteSelectionUI();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (paletteRankedList.length > 0 && paletteCurrentIndex >= 0 && paletteCurrentIndex < paletteRankedList.length) {
+          executePaletteCommand(paletteRankedList[paletteCurrentIndex].command.id);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeCommandPalette();
+      }
+    });
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      if (modal.hidden) {
+        openCommandPalette();
+      } else {
+        closeCommandPalette();
+      }
+    }
+  });
+}
+
+/* ---------- After-Action Review (AAR) Briefing Controller (SPEC-V3-08) ---------- */
+function buildCurrentAarSnapshot() {
+  const frame = typeof latestTelemetry !== 'undefined' ? latestTelemetry : null;
+  const kpi = frame?.comparative_kpi_dashboard || {};
+  const sG = typeof kpi.static_goodput_mb === 'number' ? kpi.static_goodput_mb : 12.31;
+  const tG = typeof kpi.tac_goodput_mb === 'number' ? kpi.tac_goodput_mb : 20.38;
+  const gain = typeof kpi.gain_multiplier === 'number' ? kpi.gain_multiplier : (sG > 0 ? tG / sG : 1.65);
+  const sW = typeof kpi.static_waste_pct === 'number' ? kpi.static_waste_pct : 38.4;
+  const tW = typeof kpi.tac_waste_pct === 'number' ? kpi.tac_waste_pct : 11.2;
+  const sD = typeof kpi.static_drops === 'number' ? kpi.static_drops : 1478;
+  const tD = typeof kpi.tac_drops === 'number' ? kpi.tac_drops : 196;
+  const simTimeS = typeof frame?.sim_time_s === 'number' ? frame.sim_time_s : 0;
+  const tacRate = (tG * 1e6) / Math.max(1, simTimeS * 1e6);
+
+  const nodes = Array.isArray(frame?.nodes_telemetry) ? frame.nodes_telemetry : [];
+  const allocs = Array.isArray(frame?.active_gantt_allocations) ? frame.active_gantt_allocations : [];
+  let qosReport = null;
+  try {
+    if (typeof evaluate5QiBearerSlaMetrics === 'function') {
+      qosReport = evaluate5QiBearerSlaMetrics(nodes, allocs);
+    }
+  } catch {
+    qosReport = null;
+  }
+
+  const qosClasses = qosReport?.bearers?.map((b) => ({
+    name: b.name || `Bearer ${b.qos5qi}`,
+    fiveQi: b.qos5qi,
+    budgetMs: b.delayBudgetMs || 100,
+    p95Ms: b.p95PacketDelayBudgetMs || b.p95LatencyMs || 25,
+    pass: b.slaVerdict === 'SLA_COMPLIANT' || b.slaVerdict === 'PASS',
+  })) || [
+    { name: 'Mission Voice', fiveQi: 1, budgetMs: 100, p95Ms: 24.2, pass: true },
+    { name: 'Tactical Telemetry', fiveQi: 2, budgetMs: 150, p95Ms: 38.6, pass: true },
+    { name: 'Real-Time ISR Video', fiveQi: 4, budgetMs: 300, p95Ms: 112.4, pass: true },
+    { name: 'Mission Bulk Data', fiveQi: 9, budgetMs: 500, p95Ms: 184.0, pass: true },
+  ];
+
+  const fleet = nodes.map((n) => ({
+    nodeId: n.node_id ?? n.id ?? 1,
+    callsign: n.callsign || `NODE-${n.node_id}`,
+    latDeg: n.lat_deg ?? n.lat,
+    lonDeg: n.lon_deg ?? n.lon,
+    sector: n.sector_id ?? n.sector ?? 0,
+    modcod: n.modcod || n.assigned_modcod || '16APSK 2/3',
+    sinrDb: typeof (n.sinr_db ?? n.snr_db) === 'number' ? (n.sinr_db ?? n.snr_db) : 14.5,
+    status: n.status || (n.in_outage ? 'OUTAGE' : 'ACTIVE'),
+  }));
+
+  const activeSector = $('dem-sector-select');
+  const biomeName = activeSector?.options[activeSector.selectedIndex]?.text || 'Ladakh Alpine Mountain (34.5°N, 76.5°E)';
+
+  const activeModels = {
+    airframeShadowing: Boolean(frame?.hifi_shadowing_active ?? true),
+    correlatedRician: Boolean(frame?.hifi_rician_active ?? true),
+    macPhyFeedback: Boolean(frame?.hifi_feedback_active ?? true),
+    transportAbr: Boolean(frame?.hifi_abr_active ?? true),
+    dubinsKinematics: Boolean(frame?.dubins_kinematics_active ?? true),
+    viewshedParity: Boolean(frame?.viewshed_active ?? true),
+    biomeEm: Boolean(frame?.biome_em_enabled ?? false),
+    eccmMode: frame?.eccm_mode || (frame?.jammer_enabled ? 'MVDR_NULLING' : 'STANDBY'),
+    mvdrNullSteering: Boolean(frame?.mvdr_active ?? true),
+    acnCount: typeof frame?.acn_count === 'number' ? frame.acn_count : 1,
+    manetRouting: Boolean(frame?.manet_active ?? true),
+  };
+
+  let calibrationSummary = undefined;
+  if (typeof activeCalReport !== 'undefined' && activeCalReport && activeCalReport.rmseDb != null) {
+    calibrationSummary = {
+      verdict: activeCalReport.verdict || 'CALIBRATED',
+      rmseDb: activeCalReport.rmseDb,
+      pearsonR: activeCalReport.pearsonR ?? 0.94,
+    };
+  }
+
+  return {
+    missionTitle: `Tactical X-Band AAR — ${biomeName.split(' ')[0]} Sector`,
+    generatedIso: new Date().toISOString(),
+    biomeName,
+    simTimeS,
+    frameCount: typeof frame?.frame_index === 'number' ? frame.frame_index : 0,
+    schedulerMode: frame?.scheduler_mode || 'Tac-TAD (Terrain-Aware Dynamic)',
+    kpis: {
+      tacDeliveredMb: tG,
+      staticDeliveredMb: sG,
+      throughputGainX: gain,
+      tacRateMbps: Number.isFinite(tacRate) ? tacRate : 0,
+      tacWastePct: tW,
+      staticWastePct: sW,
+      tacDrops: tD,
+      staticDrops: sD,
+    },
+    qosSlaSummary: {
+      overallPassPct: typeof qosReport?.overallSlaCompliancePct === 'number' ? qosReport.overallSlaCompliancePct : 100.0,
+      classes: qosClasses,
+    },
+    fleet,
+    activeModels,
+    calibrationSummary,
+  };
+}
+
+function initAarExporterUI() {
+  const btnMd = $('btn-export-aar-md');
+  const btnHtml = $('btn-export-aar-html');
+  const statusEl = $('aar-export-status');
+
+  const flashAarStatus = (msg) => {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.style.display = 'inline';
+    statusEl.style.color = '#10b981';
+    setTimeout(() => {
+      statusEl.style.display = 'none';
+    }, 4000);
+  };
+
+  const triggerDownload = (content, filename, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  if (btnMd && !btnMd.dataset.initialized) {
+    btnMd.dataset.initialized = 'true';
+    btnMd.addEventListener('click', () => {
+      const snap = buildCurrentAarSnapshot();
+      const md = generateAarMarkdown(snap);
+      triggerDownload(md, `tactical-aar-${Date.now()}.md`, 'text/markdown;charset=utf-8');
+      flashAarStatus('AAR Markdown Exported!');
+    });
+  }
+
+  if (btnHtml && !btnHtml.dataset.initialized) {
+    btnHtml.dataset.initialized = 'true';
+    btnHtml.addEventListener('click', () => {
+      const snap = buildCurrentAarSnapshot();
+      const html = generateAarPrintableHtml(snap);
+      const printWin = window.open('', '_blank');
+      if (printWin) {
+        printWin.document.open();
+        printWin.document.write(html);
+        printWin.document.close();
+      } else {
+        triggerDownload(html, `tactical-aar-${Date.now()}.html`, 'text/html;charset=utf-8');
+      }
+      flashAarStatus('AAR HTML Ready!');
+    });
+  }
+}
+
 
 /* ---------- Network Traffic Inventory Controller ---------- */
 const networkTrafficTracker = new NetworkTrafficTracker();

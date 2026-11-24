@@ -72,6 +72,8 @@
     "verify:constellation-mobility": "vite-node src/tests/verifyConstellationAndMobility.ts",
     "verify:digital-twin-calibration": "vite-node src/tests/verifyDigitalTwinCalibration.ts",
     "verify:military-gis": "vite-node src/tests/verifyMilitaryGisAndPersistence.ts",
+    "verify:three-volumetric-rf": "vite-node src/tests/verifyThreeVolumetricRf.ts",
+    "verify:command-palette-aar": "vite-node src/tests/verifyCommandPaletteAndAar.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",
