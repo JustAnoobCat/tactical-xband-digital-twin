@@ -69,15 +69,26 @@ export interface GroundNodeEntity {
   tacticalPriority?: number;
 }
 
+let fallbackUuidCounter = 1;
+
 /**
  * Generates an RFC 4122 UUID v4 identifier.
+ * Uses crypto.randomUUID() when available, falling back to a deterministic
+ * xorshift32 PRNG (never Math.random()) so simulation environments stay reproducible.
  */
 export function generateUuidV4(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
+  let state = (0x9e3779b9 ^ (fallbackUuidCounter++ * 0x85ebca6b)) >>> 0;
+  const nextNibble = (): number => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) & 0xf;
+  };
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
+    const r = nextNibble();
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });

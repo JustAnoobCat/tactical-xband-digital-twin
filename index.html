@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>[TAC-C2] X-BAND (8.0 GHz) DIGITAL TWIN // SYS_REF: LATTICE-90</title>
+<title>Stratos — X-Band Air-to-Ground Network Digital Twin</title>
+<meta name="description" content="Real-time 8.0 GHz X-Band air-to-ground TDMA network digital twin with terrain propagation, predictive scheduling, and multi-mode cartography.">
 <style>
-:root{--ink:#06080d;--surface:#101622;--raised:#161f30;--elevated:#1b263b;--line:rgba(148,163,184,0.14);--line2:rgba(148,163,184,0.28);--text:#f1f5f9;--muted:#94a3b8;--faint:#64748b;--accent:#00e5ff;--ok:#00e676;--warn:#ffab00;--bad:#ff2a54;
---sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--mono:"JetBrains Mono",ui-monospace,Consolas,Menlo,monospace}
+:root{--ink:#0d1016;--surface:#12161f;--raised:#1d2433;--elevated:#252e41;--line:rgba(255,255,255,0.095);--line2:rgba(255,255,255,0.17);--text:#d7e0ec;--muted:#92a0b5;--faint:#6e7d94;--accent:#38bdf8;--ok:#22c55e;--warn:#eab308;--bad:#ef4444;
+--sans:"Plus Jakarta Sans Variable","Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--mono:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,Consolas,Menlo,monospace}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{background:var(--ink);color:var(--text);font:13px/1.5 var(--sans);display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
@@ -45,10 +46,10 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radiu
 /* shell + navigation rail */
 .shell{flex:1;min-height:0;display:flex}
 .rail{width:90px;flex:none;background:var(--ink);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:6px 4px;gap:3px}
-.nav-tab{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:56px;gap:4px;padding:6px 2px;background:transparent;border:1px solid transparent;border-left:3px solid transparent;color:var(--muted);font-size:10px;border-radius:0 2px 2px 0;white-space:normal;text-align:center;line-height:1.2}
-.nav-tab svg{width:22px !important;height:22px !important;min-width:22px;min-height:22px;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;flex:none;flex-shrink:0 !important}
+.nav-tab{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:50px;gap:4px;padding:6px 4px;background:transparent;border:1px solid transparent;color:var(--muted);font-size:10.5px;border-radius:8px;white-space:normal;text-align:center;line-height:1.15}
+.nav-tab svg{width:17px;height:17px;min-width:17px;min-height:17px;stroke:currentColor;fill:none;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;flex:none;flex-shrink:0}
 .nav-tab:hover{background:var(--raised);color:var(--text)}
-.nav-tab.active{background:var(--surface);color:var(--accent);border-left-color:var(--accent);font-weight:700}
+.nav-tab.active{background:rgba(56,189,248,0.11);color:var(--accent);font-weight:600}
 .network-layout>*{max-width:none}
 .network-layout .lede{max-width:80ch}
 .network-dashboard-grid{display:grid;grid-template-columns:minmax(280px,340px) minmax(0,1fr);gap:16px;align-items:start;width:100%}
@@ -97,7 +98,7 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
 .radar-canvas-container canvas,.waterfall-canvas-container canvas,.fresnel-canvas-box canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
 .terrain-toolbox-panel{position:absolute;top:10px;left:10px;z-index:5;display:flex;flex-direction:column;gap:6px;max-width:min(280px,calc(100% - 20px));padding:8px;background:rgba(16,22,34,.96);border:1px solid rgba(0,229,255,.35);border-radius:2px;box-shadow:0 8px 32px rgba(6,8,13,.8);font-size:10px;color:var(--text);pointer-events:auto}
 .terrain-toolbox-panel.is-collapsed{display:none!important}
-.terrain-toolbox-toggle-btn{position:absolute;top:10px;left:10px;z-index:5;display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:rgba(16,22,34,.92);border:1px solid var(--line);border-left:2px solid var(--accent);border-radius:2px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text);box-shadow:0 4px 12px rgba(0,0,0,.35);backdrop-filter:blur(4px);cursor:pointer;pointer-events:auto;transition:all .15s ease}
+.terrain-toolbox-toggle-btn{position:absolute;top:10px;left:10px;z-index:5;display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:rgba(16,22,34,.96);border:1px solid var(--line);border-left:2px solid var(--accent);border-radius:2px;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text);box-shadow:0 4px 12px rgba(0,0,0,.35);cursor:pointer;pointer-events:auto;transition:all .15s ease}
 .terrain-toolbox-toggle-btn:hover{background:var(--raised);border-color:var(--accent);color:#fff}
 .terrain-toolbox-toggle-btn.is-hidden{display:none!important}
 .btn-close-toolbox{margin-left:auto;background:transparent;border:1px solid transparent;color:var(--muted);font-size:14px;line-height:1;padding:1px 5px!important;border-radius:2px;cursor:pointer}
@@ -149,13 +150,12 @@ body.is-resizing,body.is-resizing *{cursor:col-resize!important;user-select:none
   gap: 4px 8px;
   max-width: calc(100% - 20px);
   padding: 4px 8px;
-  background: rgba(18, 23, 29, .92);
+  background: rgba(18, 23, 29, .96);
   border: 1px solid var(--line2);
   border-radius: 5px;
   font-size: 10px;
   line-height: 1.35;
   pointer-events: none;
-  backdrop-filter: blur(4px);
 }
 .map-legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .legend-dot{width:7px;height:7px;border-radius:50%;display:inline-block}.legend-dot.los{background:var(--ok)}.legend-dot.warning{background:var(--warn)}.legend-dot.shadow{background:var(--bad)}.legend-square{width:7px;height:7px;background:#e09f3e;display:inline-block}
@@ -376,7 +376,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 .research-footer{margin-top:30px;padding:15px 0;border-top:1px solid var(--line);color:var(--faint);font-size:11.5px}
 
 /* upload dialog */
-.modal-backdrop{position:fixed;inset:0;background:rgba(8,11,15,.82);backdrop-filter:blur(5px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-backdrop{position:fixed;inset:0;background:rgba(8,11,15,.88);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal-backdrop[hidden]{display:none!important}
 .modal-card{width:540px;max-width:94vw;background:var(--surface);border:1px solid var(--line2);border-radius:9px;box-shadow:0 20px 50px rgba(0,0,0,.6);overflow:hidden}
 .modal-header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.modal-header h3{font-size:14px;font-weight:600}
@@ -766,23 +766,20 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   margin-top: 2px;
 }
 
-/* Floating 1-row HUD pill bar on Map */
 .map-active-tool-bar {
   position: absolute;
-  top: 10px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  background: rgba(11, 15, 23, 0.92);
-  border: 1px solid var(--hi-line-strong, rgba(148, 163, 184, 0.28));
-  border-radius: 20px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  gap: 5px;
+  padding: 4px 6px;
+  background: rgba(15, 19, 28, 0.96);
+  border: 1px solid var(--hi-line-strong, rgba(255, 255, 255, 0.17));
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   pointer-events: auto;
 }
 
@@ -882,56 +879,58 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   <a class="skip-link sr-only" href="#main-workspace">Skip to simulation workspace</a>
   <div class="topbar-left">
     <div class="brand-mark">
-      <span class="brand-pip" aria-hidden="true"></span>
-      <span class="brand-band">XBAND-DT</span>
-      <span>8.0 GHz</span>
+      <span class="brand-emblem" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v2.2M8 11.3v2.2M2.5 8h2.2M11.3 8h2.2"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg>
+      </span>
+      <span class="brand-band">STRATOS</span>
+      <span class="brand-freq">8.0 GHz</span>
     </div>
     <div class="topbar-group">
       <select id="dem-sector-select" aria-label="Terrain DEM Sector" onchange="onDemSectorChange(this.value)">
-        <option value="ladakh" selected>Ladakh Alpine Mountain (34.5°N, 76.5°E)</option>
+        <option value="ladakh" selected>Ladakh Alpine (34.5°N, 76.5°E)</option>
         <option value="kargil">Kargil Valley Corridor</option>
         <option value="arid_desert">Thar Arid Desert (27.0°N, 71.5°E)</option>
-        <option value="open_plains">Indo-Gangetic Open Plains (28.5°N, 77.2°E)</option>
-        <option value="tropical_jungle">Northeast Tropical Jungle (26.0°N, 93.0°E)</option>
-        <option value="maritime_littoral">Arabian Sea Maritime Littoral (18.5°N, 72.0°E)</option>
-        <option value="synthetic">Synthetic Geomorphology</option>
+        <option value="open_plains">Indo-Gangetic Plains (28.5°N, 77.2°E)</option>
+        <option value="tropical_jungle">Northeast Jungle (26.0°N, 93.0°E)</option>
+        <option value="maritime_littoral">Arabian Sea Littoral (18.5°N, 72.0°E)</option>
+        <option value="synthetic">Synthetic Relief</option>
       </select>
     </div>
   </div>
 
   <div class="topbar-telemetry">
     <div class="topbar-metric">
-      <span class="topbar-metric-k">CLK</span>
+      <span class="topbar-metric-k">Elapsed</span>
       <span id="clock-display" class="topbar-metric-v">T+00:00.0s</span>
       <span id="frame-display">#0</span>
     </div>
     <div class="topbar-metric">
-      <span class="topbar-metric-k">THRU</span>
+      <span class="topbar-metric-k">Goodput</span>
       <span id="topbar-agg-thruput" class="topbar-metric-v">-- Mbps</span>
     </div>
     <div class="topbar-metric topbar-metric-jitter">
-      <span class="topbar-metric-k">JIT</span>
+      <span class="topbar-metric-k">Jitter</span>
       <span id="topbar-jitter" class="topbar-metric-v">0.42 ms</span>
     </div>
     <div class="topbar-metric topbar-metric-ew">
-      <span class="topbar-metric-k">EW</span>
+      <span class="topbar-metric-k">Spectrum</span>
       <span id="topbar-ew-threat" class="topbar-metric-v">CLEAN</span>
     </div>
   </div>
 
   <div class="topbar-right">
     <div class="sim-controls" role="group" aria-label="Simulation transport">
-      <button id="btn-pause" onclick="togglePause()" title="Pause or resume (Space)">PAUSE</button>
-      <button id="btn-step" onclick="stepSim()" title="Advance one 20 ms frame (.)">STEP</button>
-      <button id="btn-sim-reset" class="btn-danger deck-reset" type="button" title="Restart the simulation">RESET</button>
-      <button id="btn-cvd-mode" type="button" aria-pressed="false" title="Toggle Colorblind-Safe Palette">CVD</button>
-      <button id="btn-command-palette" type="button" aria-label="Open Command Palette (Ctrl+K)" title="Command Palette (Ctrl+K)">CMD</button>
+      <button id="btn-pause" onclick="togglePause()" title="Pause or resume simulation (Space)">PAUSE</button>
+      <button id="btn-step" onclick="stepSim()" title="Advance one 20 ms frame (.)">Step</button>
+      <button id="btn-sim-reset" class="btn-danger deck-reset" type="button" title="Restart the simulation">Reset</button>
       <div class="sim-speed-box">
         <span id="sim-speed-readout" title="Playback speed multiplier">1.0×</span>
         <span id="sim-achieved-readout" class="sim-speed-achieved" style="display:none;"></span>
         <input type="range" id="sim-speed-slider" class="sim-speed-slider" min="0.1" max="10" step="0.05" value="1.0" aria-label="Simulation speed slider" title="Playback speed (0.1×–10×)" oninput="onSpeedSliderInput(this.value)">
         <input type="number" id="sim-speed-input" class="sim-speed-input sr-only" min="0.1" max="10" step="0.05" value="1.0" aria-label="Simulation speed numeric entry" onchange="onSpeedNumInput(this.value)" oninput="onSpeedNumInput(this.value)">
       </div>
+      <button id="btn-cvd-mode" type="button" aria-pressed="false" title="Toggle Colorblind-Safe Palette">CVD</button>
+      <button id="btn-command-palette" type="button" aria-label="Open Command Palette (Ctrl+K)" title="Quick Command Palette (Ctrl+K)">Search <kbd>Ctrl+K</kbd></button>
     </div>
   </div>
 </header>
@@ -946,47 +945,47 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
 <div class="shell app-body console-body">
 <nav class="rail" role="tablist" aria-label="Workspaces" aria-orientation="vertical">
-  <button class="nav-tab active" role="tab" aria-selected="true" aria-controls="tab-overview" tabindex="0" aria-label="Mission" id="tab-btn-overview" onclick="switchMainTab('tab-overview')" title="Mission Overview (1)">
+  <button class="nav-tab active" role="tab" aria-selected="true" aria-controls="tab-overview" tabindex="0" aria-label="Mission" id="tab-btn-overview" onclick="switchMainTab('tab-overview')" title="Mission Control (1)">
     <span data-c2-icon="map2d"></span>
-    <span>OPS</span>
+    <span>Mission</span>
   </button>
-  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-scheduler" tabindex="-1" aria-label="Scheduler" id="tab-btn-scheduler" onclick="switchMainTab('tab-scheduler')" title="Scheduler (2)">
+  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-scheduler" tabindex="-1" aria-label="Scheduler" id="tab-btn-scheduler" onclick="switchMainTab('tab-scheduler')" title="TDMA Scheduler &amp; Ablation (2)">
     <span data-c2-icon="packet"></span>
-    <span>TDMA</span>
+    <span>Schedule</span>
   </button>
-  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-network" tabindex="-1" aria-label="Network performance" id="tab-btn-network" onclick="switchMainTab('tab-network')" title="Network Performance (3)">
+  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-network" tabindex="-1" aria-label="Network performance" id="tab-btn-network" onclick="switchMainTab('tab-network')" title="Network Traffic &amp; QoS (3)">
     <span data-c2-icon="queue"></span>
-    <span>NET</span>
+    <span>Traffic</span>
   </button>
-  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-terrain" tabindex="-1" aria-label="Terrain and RF" id="tab-btn-terrain" onclick="switchMainTab('tab-terrain')" title="Terrain & RF (4)">
+  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-terrain" tabindex="-1" aria-label="Terrain and RF" id="tab-btn-terrain" onclick="switchMainTab('tab-terrain')" title="Terrain &amp; RF Propagation (4)">
     <span data-c2-icon="rfLink"></span>
-    <span>RF</span>
+    <span>RF Link</span>
   </button>
-  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-terminal" tabindex="-1" aria-label="Terminals" id="tab-btn-terminal" onclick="switchMainTab('tab-terminal')" title="Terminals & VSA (5)">
+  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-terminal" tabindex="-1" aria-label="Terminals" id="tab-btn-terminal" onclick="switchMainTab('tab-terminal')" title="Fleet Terminals &amp; VSA (5)">
     <span data-c2-icon="antenna"></span>
-    <span>NODES</span>
+    <span>Fleet</span>
   </button>
-  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-authoring" tabindex="-1" aria-label="Authoring" id="tab-btn-authoring" onclick="switchMainTab('tab-authoring')" title="Scenario Authoring (6)">
+  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-authoring" tabindex="-1" aria-label="Authoring" id="tab-btn-authoring" onclick="switchMainTab('tab-authoring')" title="Scenario &amp; Flight Planner (6)">
     <span data-c2-icon="waypoint"></span>
-    <span>PLAN</span>
+    <span>Planner</span>
   </button>
-  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-doc" tabindex="-1" aria-label="Diagnostics and Reference" id="tab-btn-doc" onclick="switchMainTab('tab-doc')" title="Diagnostics & Reference (7)">
+  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-doc" tabindex="-1" aria-label="Diagnostics and Reference" id="tab-btn-doc" onclick="switchMainTab('tab-doc')" title="Research Lab &amp; Diagnostics (7)">
     <span data-c2-icon="benchmark"></span>
-    <span>LAB</span>
+    <span>Research</span>
   </button>
-  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-registration" tabindex="-1" aria-label="Registration" id="tab-btn-registration" onclick="switchMainTab('tab-registration')" title="Registration & Security (8)">
+  <button class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-registration" tabindex="-1" aria-label="Registration" id="tab-btn-registration" onclick="switchMainTab('tab-registration')" title="3GPP NTN Signaling &amp; Registration (8)">
     <span data-c2-icon="satellite"></span>
-    <span>NTN</span>
+    <span>Signaling</span>
   </button>
-  <button class="nav-tab rail-btn" role="tab" aria-selected="false" aria-controls="tab-soldier" data-tab="tab-soldier" tabindex="-1" aria-label="Soldier AI" id="tab-btn-soldier" onclick="switchMainTab('tab-soldier')" type="button" title="Soldier Handheld Phone (ATAK AI View)">
+  <button class="nav-tab rail-btn" role="tab" aria-selected="false" aria-controls="tab-soldier" data-tab="tab-soldier" tabindex="-1" aria-label="Soldier AI" id="tab-btn-soldier" onclick="switchMainTab('tab-soldier')" type="button" title="Field Handheld Companion (ATAK AI)">
     <span data-c2-icon="soldierEud"></span>
-    <span>EUD</span>
+    <span>Handheld</span>
   </button>
-  <button id="btn-expert" class="rail-utility" type="button" aria-pressed="false" title="Open every collapsed section">
-    <span>CFG</span>
+  <button id="btn-expert" class="rail-utility" type="button" aria-pressed="false" title="Expand all inspector sections">
+    <span>Expand</span>
   </button>
-  <button id="btn-help" class="rail-utility" type="button" title="Show the quick tour">
-    <span>SHELL</span>
+  <button id="btn-help" class="rail-utility" type="button" title="Show quick workspace guide">
+    <span>Guide</span>
   </button>
 </nav>
 
@@ -1037,12 +1036,12 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   <section class="detail-viewport" id="detail-viewport" aria-label="Selected workspace">
   <div class="detail-status-strip" aria-label="Live terminal health and assessment">
     <div class="health-tally-strip" aria-label="Network terminal health summary">
-      <div class="health-chip is-sage" role="button" tabindex="0" title="Click to inspect terminals in Terminals tab" style="cursor:pointer"><span>Connected</span><b id="tally-connected">0</b></div>
-      <div class="health-chip is-ochre" role="button" tabindex="0" title="Click to inspect terminals in Terminals tab" style="cursor:pointer"><span>Degraded</span><b id="tally-degraded">0</b></div>
-      <div class="health-chip is-vermilion" role="button" tabindex="0" title="Click to inspect terminals in Terminals tab" style="cursor:pointer"><span>Blocked</span><b id="tally-blocked">0</b></div>
-      <div class="health-chip is-ash" role="button" tabindex="0" title="Click to inspect terminals in Terminals tab" style="cursor:pointer"><span>Outage / Unk</span><b id="tally-outage">0</b></div>
+      <div class="health-chip is-sage" role="button" tabindex="0" title="Click to inspect terminals in Fleet tab" style="cursor:pointer"><span>Connected</span><b id="tally-connected">0</b></div>
+      <div class="health-chip is-ochre" role="button" tabindex="0" title="Click to inspect terminals in Fleet tab" style="cursor:pointer"><span>Degraded</span><b id="tally-degraded">0</b></div>
+      <div class="health-chip is-vermilion" role="button" tabindex="0" title="Click to inspect terminals in Fleet tab" style="cursor:pointer"><span>Blocked</span><b id="tally-blocked">0</b></div>
+      <div class="health-chip is-ash" role="button" tabindex="0" title="Click to inspect terminals in Fleet tab" style="cursor:pointer"><span>Outage</span><b id="tally-outage">0</b></div>
     </div>
-    <div class="situation-strip" id="situation-strip"><strong>Live assessment</strong><span id="overview-narrative" title="Telemetry synchronized. Watching terrain-aware links, terminal health, and delivery pressure.">Telemetry synchronized. Watching terrain-aware links, terminal health, and delivery pressure.</span><button id="btn-narrative-expand" class="btn-narrative-expand" type="button" aria-expanded="false" aria-controls="overview-narrative" title="Expand or collapse live assessment" aria-label="Expand or collapse live assessment"><svg viewBox="0 0 16 16" width="12" height="12" style="pointer-events:none;" aria-hidden="true"><path d="M3.5 6L8 10.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+    <div class="situation-strip" id="situation-strip"><strong>Assessment</strong><span id="overview-narrative" title="Telemetry synchronized. Watching terrain-aware links, terminal health, and delivery pressure.">Telemetry synchronized. Watching terrain-aware links, terminal health, and delivery pressure.</span><button id="btn-narrative-expand" class="btn-narrative-expand" type="button" aria-expanded="false" aria-controls="overview-narrative" title="Expand or collapse live assessment" aria-label="Expand or collapse live assessment"><svg viewBox="0 0 16 16" width="12" height="12" style="pointer-events:none;" aria-hidden="true"><path d="M3.5 6L8 10.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
   </div>
 
   <div id="terrain-toolbox" class="terrain-toolbox-viewport" style="display:none;" aria-label="Terrain Toolbox Inspector">
@@ -1352,25 +1351,22 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div class="stage-toolbar-row stage-toolbar-row-primary">
             <div class="tool-cluster">
               <div class="tool-group">
-                <span class="tool-label">View</span>
-                <div class="seg" id="view-mode-toggle">
+                <div class="seg" id="view-mode-toggle" aria-label="Viewport dimension">
                   <button id="btnView2D" class="active" onclick="setStageViewMode('2d')" title="2D Tactical Radar Map">2D</button>
-                  <button id="btnView3D" onclick="setStageViewMode('3d')" title="3D Tactical Terrain View">3D</button>
+                  <button id="btnView3D" onclick="setStageViewMode('3d')" title="3D Terrain Relief View">3D</button>
                 </div>
               </div>
               <div class="tool-group">
-                <span class="tool-label">Map</span>
-                <div class="seg" id="map-mode-toggle">
-                  <button id="btnMapRadar" class="active" type="button" title="Existing radar terrain map">Radar</button>
-                  <button id="btnMapLibre" type="button" title="Geographic MapLibre map">Geo</button>
+                <div class="seg" id="map-mode-toggle" aria-label="Map projection">
+                  <button id="btnMapRadar" class="active" type="button" title="Dark tactical Radar elevation map">Radar</button>
+                  <button id="btnMapLibre" type="button" title="Satellite imagery geographic map">Geo</button>
                 </div>
               </div>
               <div class="tool-group">
-                <span class="tool-label">DEM</span>
-                <div class="seg">
-                  <button id="btnRealTerrain" class="active" onclick="setTerrainMode('real')" title="Real satellite elevation data">SAT</button>
-                  <button id="btnSynthTerrain" onclick="setTerrainMode('synthetic')" title="Generated fractal terrain">SYN</button>
-                  <button id="btnUploadTerrain" onclick="openUploadModal()" title="Upload SRTM .hgt or heightmap">HGT…</button>
+                <div class="seg" aria-label="Elevation data source">
+                  <button id="btnRealTerrain" class="active" onclick="setTerrainMode('real')" title="Real satellite DEM elevation data">Satellite</button>
+                  <button id="btnSynthTerrain" onclick="setTerrainMode('synthetic')" title="Procedural fractal terrain">Synthetic</button>
+                  <button id="btnUploadTerrain" onclick="openUploadModal()" title="Import SRTM .hgt or heightmap">Import</button>
                 </div>
               </div>
               <div class="tool-group" id="mesh-res-group">
@@ -1390,13 +1386,13 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                   <button id="zoom-60" data-range="60000" class="active" onclick="setRadarRange(60000)">60</button>
                   <button id="zoom-100" data-range="100000" onclick="setRadarRange(100000)">100</button>
                   <button id="zoom-200" data-range="200000" onclick="setRadarRange(200000)">200</button>
-                  <button id="btn-center" onclick="centerMapOnACN()" title="Re-center on airborne relay">CTR</button>
+                  <button id="btn-center" onclick="centerMapOnACN()" title="Re-center on airborne relay">Center</button>
                 </div>
               </div>
               <button id="toggle-viewshed-heatmap" type="button" aria-pressed="false" aria-label="Toggle Real-Time X-Band SINR Viewshed Heatmap" onclick="toggleViewshedHeatmap()" title="Signal-to-Interference+Noise Ratio coverage heatmap across terrain">SINR Map</button>
               <button id="obstacle-map-tool" type="button" aria-pressed="false" title="Open 3D Barrier tool in Terrain Toolbox">Edit Obstacles</button>
               <button id="btn-spatial-lock" type="button" aria-pressed="false" onclick="toggleSpatialLock()" title="Lock or unlock scenario spatial edits">Lock Scenario</button>
-              <button type="button" id="btn-legend-toggle" class="btn-legend-toggle" aria-pressed="false" title="Toggle map legend overlay">LEGEND</button>
+              <button type="button" id="btn-legend-toggle" class="btn-legend-toggle" aria-pressed="false" title="Toggle map legend overlay">Legend</button>
               <span class="map-live-dot" role="status" aria-label="Live telemetry feed active"></span>
               <span class="map-chrome-mode" id="map-chrome-mode-badge">Live</span>
             </div>
@@ -1413,6 +1409,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="radar-stage-body">
         <div class="radar-canvas-container" id="radar-container" style="cursor:grab">
           <canvas id="radar-canvas" aria-label="Live terrain and ground terminal network map"></canvas>
+          <div id="radar-node-markers" class="radar-node-markers" aria-hidden="true"></div>
           <div id="maplibre-stage" class="maplibre-stage" style="display:none;" aria-label="Geographic MapLibre simulation map">
             <div id="maplibre-map" style="position:absolute;inset:0"></div>
           </div>
@@ -1530,11 +1527,11 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
       <aside class="pane overview-sidebar">
         <div class="c2-mission-head">
-          <h2>
-            <span data-c2-icon="benchmark"></span>
-            MISSION COMMAND // TAC-TAD
-          </h2>
-          <span class="kpi-badge badge-cyan">TAC-TAD ACTIVE</span>
+          <div class="c2-mission-head-title">
+            <h2>Mission Control</h2>
+            <span class="c2-mission-sub">Predictive X-Band Air-to-Ground Operations</span>
+          </div>
+          <span class="kpi-badge badge-cyan">Tac-TAD Active</span>
         </div>
 
         <div class="welcome" id="welcome" style="display:none">
@@ -1549,33 +1546,33 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <!-- Scenario Control Card -->
           <div class="c2-card">
             <div class="c2-card-head">
-              <span class="c2-card-title">Scenario · Kargil Corridor Transit</span>
-              <span class="c2-card-sub">TRACK-B</span>
+              <span class="c2-card-title">Kargil Corridor Transit</span>
+              <span class="c2-card-sub">Mountain Occlusion</span>
             </div>
             <div class="c2-run-bar">
-              <button class="primary" onclick="runKargilScenario()">Run Kargil corridor transit</button>
+              <button class="primary" onclick="runKargilScenario()">Run Kargil Corridor Transit</button>
               <button id="scheduler-quick-toggle" onclick="toggleActiveScheduler()" title="Switch between Tac-TAD (dynamic) and Static scheduling">Mode: Tac-TAD</button>
             </div>
             <div class="c2-mode-compare">
               <div class="c2-mode-tile is-primary">
                 <span class="c2-mode-tile-k">Tac-TAD Lookahead</span>
-                <span class="c2-mode-tile-v">DYNAMIC</span>
+                <span class="c2-mode-tile-v">Dynamic TDMA</span>
                 <span class="c2-mode-tile-s">Predictive slot allocation</span>
               </div>
               <div class="c2-mode-tile">
                 <span class="c2-mode-tile-k">Baseline Arm</span>
-                <span class="c2-mode-tile-v">STATIC TDMA</span>
+                <span class="c2-mode-tile-v">Static TDMA</span>
                 <span class="c2-mode-tile-s">Fixed slot epoch</span>
               </div>
             </div>
             <details class="preset-drawer">
-              <summary>More scenarios and reset</summary>
+              <summary>More scenarios &amp; reset</summary>
               <div class="run-row">
                 <button onclick="loadPreset('PRESET_16_NODES')">16-Node Patrol</button>
                 <button onclick="loadPreset('PRESET_ACN_ONLY')">ACN Only (0 Nodes)</button>
                 <button onclick="loadPreset('PRESET_AMBUSH')">Platoon Ambush</button>
                 <button onclick="loadPreset('PRESET_MONSOON')">Monsoon (35 mm/h)</button>
-                <button id="btn-reset-theater" class="btn-danger" type="button">Reset theater</button>
+                <button id="btn-reset-theater" class="btn-danger" type="button">Reset Theater</button>
               </div>
             </details>
           </div>
@@ -1595,7 +1592,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
             <div class="c2-kpi-card">
               <div class="c2-kpi-top">
-                <span class="c2-kpi-label">Waste</span>
+                <span class="c2-kpi-label">Airtime Waste</span>
                 <span id="kpi-waste-saved-badge" class="c2-kpi-delta">0.0%</span>
               </div>
               <div id="kpi-tac-waste" class="c2-kpi-val is-ok">0.0%</div>
@@ -1606,7 +1603,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
             <div class="c2-kpi-card">
               <div class="c2-kpi-top">
-                <span class="c2-kpi-label">Drops</span>
+                <span class="c2-kpi-label">Packet Drops</span>
                 <span id="kpi-drop-reduc-badge" class="c2-kpi-delta">0%</span>
               </div>
               <div id="kpi-tac-drop" class="c2-kpi-val">0 (0.0%)</div>
@@ -1619,34 +1616,34 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <!-- 3GPP 5QI SLA Card -->
           <div class="c2-card">
             <div class="c2-card-head">
-              <span class="c2-card-title">3GPP 5QI QoS SLA Compliance</span>
-              <span id="ops-qos-overall-badge" class="kpi-badge badge-neutral">STANDBY</span>
+              <span class="c2-card-title">3GPP 5QI QoS Compliance</span>
+              <span id="ops-qos-overall-badge" class="kpi-badge badge-neutral">Standby</span>
             </div>
             <div class="c2-qos-list">
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
-                  <span class="c2-qos-name">5QI-69 · C2 Control (60 ms)</span>
+                  <span class="c2-qos-name">C2 Control · 5QI-69 (60 ms)</span>
                   <span id="ops-qos-69-val" class="c2-qos-val">-- ms · --</span>
                 </div>
                 <div class="c2-bar-track"><div id="ops-qos-69-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
               </div>
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
-                  <span class="c2-qos-name">5QI-65 · PTT Voice (100 ms)</span>
+                  <span class="c2-qos-name">PTT Voice · 5QI-65 (100 ms)</span>
                   <span id="ops-qos-65-val" class="c2-qos-val">-- ms · --</span>
                 </div>
                 <div class="c2-bar-track"><div id="ops-qos-65-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
               </div>
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
-                  <span class="c2-qos-name">5QI-67 · ISR Video (150 ms)</span>
+                  <span class="c2-qos-name">ISR Video · 5QI-67 (150 ms)</span>
                   <span id="ops-qos-67-val" class="c2-qos-val">-- ms · --</span>
                 </div>
                 <div class="c2-bar-track"><div id="ops-qos-67-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
               </div>
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
-                  <span class="c2-qos-name">5QI-70 · Photo Burst (300 ms)</span>
+                  <span class="c2-qos-name">Photo Burst · 5QI-70 (300 ms)</span>
                   <span id="ops-qos-70-val" class="c2-qos-val">-- ms · --</span>
                 </div>
                 <div class="c2-bar-track"><div id="ops-qos-70-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
@@ -1657,24 +1654,24 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <!-- Inspect Terminal Card -->
           <details class="c2-card" open data-adv>
             <summary>
-              <span>Inspect Terminal · Live Link</span>
-              <span id="overview-state-badge" class="kpi-badge badge-neutral">UNSELECTED</span>
+              <span>Terminal Inspector</span>
+              <span id="overview-state-badge" class="kpi-badge badge-neutral">Unselected</span>
             </summary>
             <div class="more-body">
               <select id="quickNodeSelect" onchange="onTargetNodeChange(this.value)" aria-label="Target terminal">
                 <option value="4" selected>Node 4: S4 - Recon Patrol (Occlusion Target)</option>
               </select>
               <div class="c2-agl-row">
-                <label for="quick-node-agl-input">Antenna AGL (m)</label>
+                <label for="quick-node-agl-input">Antenna Height (m AGL)</label>
                 <div class="c2-agl-input-wrap">
                   <input type="number" id="quick-node-agl-input" min="0" max="1000" step="0.5" value="2.0" onchange="onNodeAglChange(this.value)" aria-label="Antenna height above ground level">
                   <span id="quick-node-agl-feedback" class="c2-card-sub"></span>
                 </div>
               </div>
               <div class="stats">
-                <div class="stat"><span>Slant</span><b id="glance-slant">--</b></div>
-                <div class="stat"><span>SINR</span><b id="glance-snr">--</b></div>
-                <div class="stat"><span>Rate</span><b id="glance-rate" class="c-acc">--</b></div>
+                <div class="stat"><span>Slant Range</span><b id="glance-slant">--</b></div>
+                <div class="stat"><span>Link SINR</span><b id="glance-snr">--</b></div>
+                <div class="stat"><span>Data Rate</span><b id="glance-rate" class="c-acc">--</b></div>
               </div>
               <div class="actions">
                 <button type="button" class="link-btn" onclick="switchMainTab('tab-terminal')">Inspect queues &amp; traffic →</button>
@@ -1687,9 +1684,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <div class="c2-card">
             <div class="c2-card-head">
               <span class="c2-card-title">Fleet Registry</span>
-              <span id="ops-fleet-count" class="c2-card-sub">0 ACTIVE</span>
+              <span id="ops-fleet-count" class="c2-card-sub">0 Active</span>
             </div>
-            <div class="c2-fleet-table-wrap" style="max-height: 210px; overflow-y: auto;">
+            <div class="c2-fleet-table-wrap">
               <table class="c2-fleet-table">
                 <thead>
                   <tr>
@@ -1702,7 +1699,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 </thead>
                 <tbody id="ops-fleet-tbody">
                   <tr>
-                    <td colspan="5" class="muted" style="text-align:center;padding:12px 6px;">Waiting for ground terminals…</td>
+                    <td colspan="5" class="muted" style="text-align:center;padding:14px 6px;">Waiting for ground terminals…</td>
                   </tr>
                 </tbody>
               </table>
@@ -1712,7 +1709,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <!-- Rolling Goodput Trend -->
           <details class="c2-card" data-adv>
             <summary>
-              <span>Telemetry Trend · 60s Goodput</span>
+              <span>Goodput Trend (60s)</span>
               <span class="c2-card-sub">50 Hz</span>
             </summary>
             <div class="more-body">
@@ -1720,7 +1717,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
                 <canvas id="overview-goodput-canvas" aria-label="Rolling delivered goodput trend"></canvas>
               </div>
               <div class="overview-trend-footer">
-                <span>50 Hz cadence</span>
+                <span>50 Hz telemetry cadence</span>
                 <span id="overview-trend-sample-count" class="mono muted">0 samples</span>
               </div>
               <ol id="overview-event-list" class="overview-event-list" aria-live="polite">
@@ -1956,7 +1953,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div style="margin-bottom:4px">
               <label for="sci-traffic-scale-select" id="lbl-sci-traffic-scale" style="font-size:11px;font-weight:600;color:var(--text)">Offered Traffic Load Multiplier</label>
             </div>
-            <select id="sci-traffic-scale-select" aria-label="Offered Traffic Load Multiplier" style="width:100%;padding:4px 8px;font-size:11px;background:#17140f;border:1px solid var(--line);color:#fff;border-radius:4px" onchange="onScientificParamChange()">
+            <select id="sci-traffic-scale-select" aria-label="Offered Traffic Load Multiplier" style="width:100%;padding:5px 9px;font-size:11.5px;background:var(--bg-raised);border:1px solid var(--line);color:var(--text);border-radius:6px" onchange="onScientificParamChange()">
               <option value="1.0" selected>1.0x (Nominal)</option>
               <option value="2.0">2.0x (Elevated)</option>
               <option value="3.5">3.5x (Congested Burst)</option>
@@ -1967,7 +1964,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div style="margin-bottom:4px">
               <label for="sci-jammer-select" id="lbl-sci-jammer-select" style="font-size:11px;font-weight:600;color:var(--text)">Electronic Warfare X-Band Jammer Mode</label>
             </div>
-            <select id="sci-jammer-select" aria-label="Electronic Warfare X-Band Jammer Mode" style="width:100%;padding:4px 8px;font-size:11px;background:#17140f;border:1px solid var(--line);color:#fff;border-radius:4px" onchange="onScientificParamChange()">
+            <select id="sci-jammer-select" aria-label="Electronic Warfare X-Band Jammer Mode" style="width:100%;padding:5px 9px;font-size:11.5px;background:var(--bg-raised);border:1px solid var(--line);color:var(--text);border-radius:6px" onchange="onScientificParamChange()">
               <option value="off" selected>OFF (Clean Spectrum)</option>
               <option value="tactical">ACTIVE: 55 dBm Tactical Jammer</option>
               <option value="barrage">ACTIVE: 70 dBm High-Power Barrage Jammer</option>
@@ -1980,9 +1977,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div style="margin-bottom:4px">
               <label for="sci-relay-select" id="lbl-sci-relay-select" style="font-size:11px;font-weight:600;color:var(--text)">Two-Hop Mesh Relay Mode</label>
             </div>
-            <select id="sci-relay-select" aria-label="Two-Hop Mesh Relay Mode" style="width:100%;padding:4px 8px;font-size:11px;background:#17140f;border:1px solid var(--line);color:#fff;border-radius:4px" onchange="onScientificParamChange()">
+            <select id="sci-relay-select" aria-label="Two-Hop Mesh Relay Mode" style="width:100%;padding:5px 9px;font-size:11.5px;background:var(--bg-raised);border:1px solid var(--line);color:var(--text);border-radius:6px" onchange="onScientificParamChange()">
               <option value="disabled" selected>DISABLED (Direct Only)</option>
-              <option value="active">ACTIVE [MCP-OPT] Ridge Relay</option>
+              <option value="active">ACTIVE Ridge Relay</option>
             </select>
             <div style="margin-top:4px">
               <span id="sci-relay-readout" style="font-size:10px;font-family:var(--mono);color:var(--text-muted)">Relayed: 0 nodes | Backhaul: —</span>
@@ -1992,7 +1989,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div style="margin-bottom:4px">
               <label for="sci-fading-cqi-select" id="lbl-sci-fading-cqi" style="font-size:11px;font-weight:600;color:var(--text)">3GPP Small-Scale Fading &amp; CQI Delay</label>
             </div>
-            <select id="sci-fading-cqi-select" aria-label="3GPP TR 38.811 Rician Multipath Fading and CQI Delay Mode" style="width:100%;padding:4px 8px;font-size:11px;background:#17140f;border:1px solid var(--line);color:#fff;border-radius:4px" onchange="onScientificParamChange()">
+            <select id="sci-fading-cqi-select" aria-label="3GPP TR 38.811 Rician Multipath Fading and CQI Delay Mode" style="width:100%;padding:5px 9px;font-size:11.5px;background:var(--bg-raised);border:1px solid var(--line);color:var(--text);border-radius:6px" onchange="onScientificParamChange()">
               <option value="awgn-0ms" selected>Deterministic AWGN (0 ms CQI Delay)</option>
               <option value="rician-0ms">3GPP Rician Fading + 0 ms Ideal CQI</option>
               <option value="rician-20ms">3GPP Rician Fading + 20 ms CQI Delay (OLLA Active)</option>
@@ -2343,7 +2340,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="panel-head">
           <div>
             <span class="sec-title">Terrain path profile</span>
-            <span id="terrain-node-label" class="badge-sub">Node 4</span>
+            <span id="terrain-node-label" class="badge-sub">Standby (ACN Only)</span>
             <span id="terrain-zoom-label" class="badge-sub">1.0×</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -2452,7 +2449,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <span class="muted" style="font-size:11px">Antenna above ground</span>
               <div style="display:flex;align-items:center;gap:6px">
                 <input type="number" id="terrain-node-agl-input" min="0" max="1000" step="0.5" value="2.0"
-                       style="width:75px;padding:3px 6px;font-family:var(--mono);font-size:11.5px;background:#17140f;border:1px solid #332d24;color:#fff;border-radius:4px"
+                       style="width:75px;padding:4px 7px;font-family:var(--mono);font-size:11.5px;background:var(--bg-raised);border:1px solid var(--line);color:var(--text);border-radius:6px"
                        onchange="onNodeAglChange(this.value)" aria-label="Target terminal antenna height above ground level">
                 <span id="terrain-node-agl-feedback" class="muted" style="font-size:11px"></span>
               </div>
@@ -2842,9 +2839,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="panel-head">
           <div>
             <span class="sec-title">Ground terminal inventory</span>
-            <span id="inventory-nodes-count" class="badge-sub">16 active nodes · WGS-84 &amp; Local Cartesian</span>
+            <span id="inventory-nodes-count" class="badge-sub">0 active nodes · ACN-Only Standby</span>
           </div>
-          <span id="inventory-selected-pill" class="kpi-badge badge-cyan">Selected: Node 4</span>
+          <span id="inventory-selected-pill" class="kpi-badge badge-cyan">No Node Selected (ACN Only)</span>
         </div>
         <p class="muted" style="font-size:11.5px;margin-bottom:10px">
           Coordinate reference: Local Cartesian theater projection (X/Y metres relative to DEM center 34.5°N, 76.5°E) with calibrated WGS-84 Local Equirectangular mapping (standard parallel 34.5°N; 1° lat = 110,931.5 m, 1° lon = 91,840.0 m). Hover over Lat/Lon for DMS format. Click any row to select the terminal.
@@ -3063,8 +3060,8 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             </div>
             <div class="traffic-flow-diagram">
               <div class="traffic-flow-node" id="flow-node-source">
-                <strong id="flow-node-source-title">Node 4 [S4]</strong>
-                <small id="flow-node-source-role">Recon Patrol</small>
+                <strong id="flow-node-source-title">No Terminal Selected</strong>
+                <small id="flow-node-source-role">Standby (ACN Only)</small>
                 <span id="flow-node-source-rate" class="direction-badge uplink">UL: 0.00 Mbps</span>
               </div>
               <div class="traffic-flow-link">
@@ -4040,8 +4037,8 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <div class="pane" style="display:flex;flex-direction:column;gap:14px;padding:14px;height:100%;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
-          <h2 style="margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
-            <span class="kpi-badge badge-cyan" style="font-size:9px;padding:1px 5px">[EUD]</span> Tactical Soldier Handheld EUD (ATAK AI View)
+          <h2 style="margin:0;font-size:17px;font-weight:600;letter-spacing:-0.015em;color:var(--text)">
+            Soldier Handheld Terminal (ATAK AI View)
           </h2>
           <p class="lede" style="margin:2px 0 0 0;font-size:12px;color:var(--muted)">
             Ruggedized soldier end-user device displaying real-time turn-by-turn micro-terrain guidance, local buddy-mesh rescue, EW defilade shielding, LPI stealth RF power, and blackout prediction.
@@ -4513,7 +4510,7 @@ import {
   renderDemCoverageBoundary,
 } from './src/ui/terrainMapRenderer.ts';
 import { TerrainEngine } from './src/core/terrain.ts';
-import { cartesianToGeodetic, geodeticToCartesian } from './src/core/geodesy.ts';
+import { cartesianToGeodetic, geodeticToCartesian, METERS_PER_DEG_LON } from './src/core/geodesy.ts';
 import {
   computeRadarCursorReadout,
   renderCursorHudHtml,
@@ -4668,6 +4665,14 @@ import {
   createDashboardAndAuthoringController,
   TDMA_PRESETS_UI,
 } from './src/ui/controllers/dashboardAndAuthoringController.ts';
+import {
+  WorldTileLayer,
+  DEFAULT_WORLD_SATELLITE_TILE_URL,
+  DEFAULT_WORLD_SATELLITE_ATTRIBUTION,
+  DEFAULT_WORLD_RADAR_DEM_TILE_URL,
+  geodeticToUnwrappedEnu,
+} from './src/ui/worldTileLayer.ts';
+import { createRadarNodeMarkerLayer } from './src/ui/radarNodeMarkerLayer.ts';
 
 const $ = id => (id === 'profile-canvas' ? (document.getElementById('terrain-canvas') || document.getElementById('profile-canvas')) : document.getElementById(id));
 const workbenchShell = initWorkbenchShell();
@@ -4703,6 +4708,26 @@ function getCommandPaletteController() {
   return commandPaletteControllerInstance;
 }
 
+let radarWorldTileLayer = null;
+function getRadarWorldTileLayer() {
+  if (!radarWorldTileLayer) {
+    const customDem = window.__xbandRadarDemTileUrl || DEFAULT_WORLD_RADAR_DEM_TILE_URL;
+    radarWorldTileLayer = new WorldTileLayer({ tileUrlTemplate: customDem, renderMode: 'radar-terrarium' });
+  }
+  return radarWorldTileLayer;
+}
+
+let radarNodeMarkerLayer = null;
+function getRadarNodeMarkerLayer() {
+  if (!radarNodeMarkerLayer) {
+    const markerRoot = $('radar-node-markers');
+    if (markerRoot) {
+      radarNodeMarkerLayer = createRadarNodeMarkerLayer({ container: markerRoot });
+    }
+  }
+  return radarNodeMarkerLayer;
+}
+
 let radar2dRendererInstance = null;
 function getRadar2dRenderer() {
   if (!radar2dRendererInstance) {
@@ -4713,6 +4738,10 @@ function getRadar2dRenderer() {
       getPanOffset: () => ({ xM: panOffsetX_m, yM: panOffsetY_m }),
       getStageViewMode: () => stageViewMode,
       getTerrainMapMode: () => terrainMapMode,
+      getTerrainMode: () => activeTerrainMode,
+      getWorldTileLayer: () => getRadarWorldTileLayer(),
+      getNodeMarkerLayer: () => getRadarNodeMarkerLayer(),
+      projectEnuToScreen: (xM, yM) => mapController.projectEnuToContainerPoint(xM, yM),
       getLatestTelemetry: () => latestTelemetry,
       getHistoricalSnapshot: () => (simTimelineController && simTimelineController.isHistoricalInspecting)
         ? simTimelineController.getActiveSpatialSnapshot()
@@ -6328,32 +6357,37 @@ function syncRangeButtonHighlights(rangeM) {
   });
 }
 
+function getMaxRadarRangeM() {
+  return (activeTerrainMode === 'real' || terrainMapMode === 'maplibre') ? 16000000 : 300000;
+}
+
 function syncMapLibreCameraFromRadarState(duration = 0, resetOrientation = false) {
   if (!mapLibreInstance || !mapLibreInitialized) return;
   const container = mapLibreInstance.getContainer();
   const cw = Math.max(100, container?.clientWidth || 600);
   const ch = Math.max(100, container?.clientHeight || 500);
   const limitingSpan = Math.min(cw, ch) * 0.94;
+  const token = beginMapLibreCameraSync(duration);
+  const centerGeo = cartesianToGeodetic(panOffsetX_m, panOffsetY_m);
+  const clampedCenter = [Math.max(-180, Math.min(180, ((centerGeo.lonDeg + 180) % 360 + 360) % 360 - 180)), Math.max(-80, Math.min(80, centerGeo.latDeg))];
+  if (currentRadarRangeM >= 2500000) {
+    const scale = (limitingSpan * 0.5) / currentRadarRangeM;
+    const spanLonDeg = Math.max(1, (cw / scale) / METERS_PER_DEG_LON);
+    const zoom = Math.max(0.4, Math.min(14, Math.log2((360 * cw) / (512 * spanLonDeg))));
+    const camOpts = { center: clampedCenter, zoom, duration, ...(resetOrientation ? { bearing: 0, pitch: 0 } : {}) };
+    if (duration <= 0) { try { mapLibreInstance.jumpTo(camOpts); } finally { endMapLibreCameraSync(token); } }
+    else { mapLibreInstance.easeTo(camOpts); }
+    return;
+  }
   const padH = Math.max(8, (cw - limitingSpan) / 2);
   const padV = Math.max(8, (ch - limitingSpan) / 2);
-  const sw = mapLibreCoordinate(panOffsetX_m - currentRadarRangeM, panOffsetY_m - currentRadarRangeM);
-  const ne = mapLibreCoordinate(panOffsetX_m + currentRadarRangeM, panOffsetY_m + currentRadarRangeM);
-  const token = beginMapLibreCameraSync(duration);
-  const fitOpts = {
-    padding: { top: padV, bottom: padV, left: padH, right: padH },
-    duration,
-    maxZoom: 14,
-  };
-  if (resetOrientation) {
-    fitOpts.bearing = 0;
-    fitOpts.pitch = 0;
-  }
+  const swRaw = mapLibreCoordinate(panOffsetX_m - currentRadarRangeM, panOffsetY_m - currentRadarRangeM);
+  const neRaw = mapLibreCoordinate(panOffsetX_m + currentRadarRangeM, panOffsetY_m + currentRadarRangeM);
+  const sw = [Math.max(-179.5, Math.min(179.5, swRaw[0])), Math.max(-84, Math.min(84, swRaw[1]))];
+  const ne = [Math.max(-179.5, Math.min(179.5, neRaw[0])), Math.max(-84, Math.min(84, neRaw[1]))];
+  const fitOpts = { padding: { top: padV, bottom: padV, left: padH, right: padH }, duration, maxZoom: 14, ...(resetOrientation ? { bearing: 0, pitch: 0 } : {}) };
   if (duration <= 0) {
-    try {
-      mapLibreInstance.fitBounds([sw, ne], fitOpts);
-    } finally {
-      endMapLibreCameraSync(token);
-    }
+    try { mapLibreInstance.fitBounds([sw, ne], fitOpts); } finally { endMapLibreCameraSync(token); }
   } else {
     mapLibreInstance.fitBounds([sw, ne], fitOpts);
   }
@@ -6362,20 +6396,9 @@ function syncMapLibreCameraFromRadarState(duration = 0, resetOrientation = false
 function easeMapLibreToLocalCenter(xM, yM, duration = 250, resetOrientation = false) {
   if (!mapLibreInstance || !mapLibreInitialized || !Number.isFinite(xM) || !Number.isFinite(yM)) return;
   const token = beginMapLibreCameraSync(duration);
-  const easeOpts = {
-    center: mapLibreCoordinate(xM, yM),
-    duration,
-  };
-  if (resetOrientation) {
-    easeOpts.bearing = 0;
-    easeOpts.pitch = 0;
-  }
+  const easeOpts = { center: mapLibreCoordinate(xM, yM), duration, ...(resetOrientation ? { bearing: 0, pitch: 0 } : {}) };
   if (duration <= 0) {
-    try {
-      mapLibreInstance.easeTo(easeOpts);
-    } finally {
-      endMapLibreCameraSync(token);
-    }
+    try { mapLibreInstance.easeTo(easeOpts); } finally { endMapLibreCameraSync(token); }
   } else {
     mapLibreInstance.easeTo(easeOpts);
   }
@@ -6384,7 +6407,9 @@ function easeMapLibreToLocalCenter(xM, yM, duration = 250, resetOrientation = fa
 function syncRadarStateFromMapLibreCamera() {
   if (!mapLibreInstance || !mapLibreInitialized) return;
   const center = mapLibreInstance.getCenter();
-  const localCenter = geodeticToCartesian(center.lat, center.lng);
+  const wrappedLng = ((center.lng + 180) % 360 + 360) % 360 - 180;
+  const clampedLat = Math.max(-85, Math.min(85, center.lat));
+  const localCenter = geodeticToUnwrappedEnu(clampedLat, wrappedLng);
   if (Number.isFinite(localCenter.xM) && Number.isFinite(localCenter.yM)) {
     panOffsetX_m = localCenter.xM;
     panOffsetY_m = localCenter.yM;
@@ -6396,10 +6421,10 @@ function syncRadarStateFromMapLibreCamera() {
   if (cw >= 100 && ch >= 100 && halfSpanPx > 10) {
     const leftGeo = mapLibreInstance.unproject([cw / 2 - halfSpanPx, ch / 2]);
     const rightGeo = mapLibreInstance.unproject([cw / 2 + halfSpanPx, ch / 2]);
-    const leftM = geodeticToCartesian(leftGeo.lat, leftGeo.lng);
-    const rightM = geodeticToCartesian(rightGeo.lat, rightGeo.lng);
-    if ([leftM.xM, leftM.yM, rightM.xM, rightM.yM].every(Number.isFinite)) {
-      currentRadarRangeM = Math.max(15000, Math.min(300000, Math.hypot(rightM.xM - leftM.xM, rightM.yM - leftM.yM) / 2));
+    const deltaLon = Math.abs(rightGeo.lng - leftGeo.lng);
+    const estRangeM = (deltaLon * METERS_PER_DEG_LON) / 2;
+    if (Number.isFinite(estRangeM) && estRangeM > 0) {
+      currentRadarRangeM = Math.max(15000, Math.min(getMaxRadarRangeM(), estRangeM));
       syncRangeButtonHighlights(currentRadarRangeM);
       applyMapLibreLayerState();
     }
@@ -6491,9 +6516,7 @@ function syncObstacleFieldMirror(force = false) {
   lastMirroredObstacleRev = currentSpatialRevision;
   invalidateToolboxCache();
 }
-mainTerrainEngine.loadRealSatelliteDem().then((loaded) => {
-  if (loaded) invalidateToolboxCache();
-}).catch(() => {});
+// DEM grid is populated directly from the authoritative worker TERRAIN_GRID broadcast (avoids duplicate 1 MB boot fetch).
 
 let lastReadoutX = Number.NaN, lastReadoutY = Number.NaN, lastInsideRadar = false;
 function updateRadarCursorReadout(xM, yM, isInside) {
@@ -7431,7 +7454,7 @@ function renderRegistration(frame) {
   }
   const body = document.querySelector('#registration-table tbody');
   if (body) {
-    body.innerHTML = nodes.map(n => `<tr data-node-id="${n.node_id}" style="cursor:pointer"><td>${n.name || `Node ${n.node_id}`}</td><td>${n.registration_state || 'UNREGISTERED'}</td><td>${n.registration_start_time_s == null ? '—' : `${Number(n.registration_start_time_s).toFixed(2)} s`}</td><td>${n.registration_completion_time_s == null ? '—' : `${Number(n.registration_completion_time_s).toFixed(2)} s`}</td><td>${n.registration_elapsed_s == null ? '—' : `${Number(n.registration_elapsed_s).toFixed(2)} s`}</td><td>${n.link_outage ? 'RF outage' : 'RF available'}</td><td>${n.communication_eligible ? 'Association eligible' : 'No'}</td></tr>`).join('');
+    body.innerHTML = nodes.map(n => `<tr data-node-id="${Number(n.node_id)}" style="cursor:pointer"><td>${escapeHtml(n.name || `Node ${n.node_id}`)}</td><td>${escapeHtml(n.registration_state || 'UNREGISTERED')}</td><td>${n.registration_start_time_s == null ? '—' : `${Number(n.registration_start_time_s).toFixed(2)} s`}</td><td>${n.registration_completion_time_s == null ? '—' : `${Number(n.registration_completion_time_s).toFixed(2)} s`}</td><td>${n.registration_elapsed_s == null ? '—' : `${Number(n.registration_elapsed_s).toFixed(2)} s`}</td><td>${n.link_outage ? 'RF outage' : 'RF available'}</td><td>${n.communication_eligible ? 'Association eligible' : 'No'}</td></tr>`).join('');
     if (!body.dataset.listenerBound) {
       body.dataset.listenerBound = 'true';
       body.addEventListener('click', (e) => {
@@ -7453,7 +7476,7 @@ function renderRegistration(frame) {
     if (evts.length === 0) {
       eventBody.innerHTML = '<tr><td colspan="3" class="network-chart-status">No lifecycle events recorded yet. Run a scenario to populate the lifecycle log.</td></tr>';
     } else {
-      eventBody.innerHTML = evts.slice(-100).reverse().map(e => `<tr><td>${Number(e.sim_time_s).toFixed(2)} s</td><td>${e.node_id}</td><td>${e.state}</td></tr>`).join('');
+      eventBody.innerHTML = evts.slice(-100).reverse().map(e => `<tr><td>${Number(e.sim_time_s).toFixed(2)} s</td><td>${Number(e.node_id)}</td><td>${escapeHtml(String(e.state || ''))}</td></tr>`).join('');
     }
   }
   renderNtnSignalingAnalyzer(frame);
@@ -7484,7 +7507,7 @@ function renderNtnSignalingAnalyzer(frame) {
     if (currentOptionCount !== nodes.length) {
       const currentVal = selectedNtnNodeId;
       selectEl.innerHTML = nodes.map(n =>
-        `<option value="${n.node_id}" ${n.node_id === currentVal ? 'selected' : ''}>${n.name || `Node ${n.node_id}`}</option>`
+        `<option value="${Number(n.node_id)}" ${n.node_id === currentVal ? 'selected' : ''}>${escapeHtml(n.name || `Node ${n.node_id}`)}</option>`
       ).join('');
       if (!nodes.some(n => n.node_id === selectedNtnNodeId)) {
         selectedNtnNodeId = nodes[0]?.node_id ?? 1;
@@ -8101,7 +8124,7 @@ function updateSpatialLockControl(locked) {
   obstacleEditor.setSpatialLock(locked);
   const button = $('btn-spatial-lock');
   if (button) {
-    button.textContent = locked ? '[LOCKED] Scenario Locked' : '[LOCK] Lock Scenario';
+    button.textContent = locked ? 'Scenario Locked' : 'Lock Scenario';
     button.setAttribute('aria-pressed', String(locked));
     button.classList.toggle('active', locked);
   }
@@ -9228,8 +9251,8 @@ function applyMapLibreLayerState() {
   mapLibreTerrainVisible = visTerrain;
   mapLibreTerrainOpacity = opTerrain;
   setMapLibreLayerVisibility('maplibre-hgt-layer', visTerrain);
-  setMapLibreLayerOpacity('maplibre-hgt-layer', 'raster-opacity', visTerrain ? opTerrain : 0);
-  setMapLibreLayerVisibility('maplibre-satellite-layer', visTerrain);
+  setMapLibreLayerOpacity('maplibre-hgt-layer', 'raster-opacity', visTerrain ? Math.min(opTerrain, 0.72) : 0);
+  setMapLibreLayerVisibility('maplibre-satellite-layer', true);
 
   const visAcn = mapLayerRegistry.getEffectiveVisibility('entities.acn', ctx);
   const visNodes = mapLayerRegistry.getEffectiveVisibility('entities.groundNodes', ctx);
@@ -9841,32 +9864,14 @@ function initializeMapLibre() {
   if (mapLibreInstance) return;
   const notice = $('map-renderer-notice');
   const rasterConfig = window.__xbandMapLibreRaster || {};
-  const rasterTiles = rasterConfig.tiles || window.__xbandMapLibreRasterTileUrl ||
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-  const rasterAttribution = rasterConfig.attribution || window.__xbandMapLibreRasterAttribution ||
-    'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community';
+  const configuredTiles = rasterConfig.tiles || window.__xbandMapLibreRasterTileUrl || DEFAULT_WORLD_SATELLITE_TILE_URL;
+  const rasterTiles = Array.isArray(configuredTiles) ? configuredTiles : [configuredTiles];
+  const rasterAttribution = rasterConfig.attribution || window.__xbandMapLibreRasterAttribution || DEFAULT_WORLD_SATELLITE_ATTRIBUTION;
   const rasterMaxZoom = Number.isFinite(Number(rasterConfig.maxzoom)) ? Number(rasterConfig.maxzoom) : 19;
+  const bgLayer = { id: 'airgap-bg', type: 'background', paint: { 'background-color': '#0b1017' } };
+  const mapStyle = { version: 8, sources: { 'maplibre-satellite': { type: 'raster', tiles: rasterTiles, tileSize: 256, maxzoom: rasterMaxZoom, attribution: rasterAttribution } }, layers: [bgLayer, { id: 'maplibre-satellite-layer', type: 'raster', source: 'maplibre-satellite' }] };
   setWorkerUrl(mapLibreWorkerUrl);
-  mapLibreInstance = new MapLibreMap({
-    container: 'maplibre-map',
-    style: {
-      version: 8,
-      sources: {
-        'maplibre-satellite': {
-          type: 'raster',
-          tiles: Array.isArray(rasterTiles) ? rasterTiles : [rasterTiles],
-          tileSize: 256,
-          maxzoom: rasterMaxZoom,
-          attribution: rasterAttribution,
-        },
-      },
-      layers: [{ id: 'maplibre-satellite-layer', type: 'raster', source: 'maplibre-satellite' }],
-    },
-    center: [76.5, 34.5],
-    zoom: 6,
-    attributionControl: { compact: true },
-    cooperativeGestures: false,
-  });
+  mapLibreInstance = new MapLibreMap({ container: 'maplibre-map', style: mapStyle, center: [76.5, 34.5], zoom: 6, minZoom: 0, attributionControl: { compact: true }, cooperativeGestures: false });
   mapController.setMapInstance(mapLibreInstance);
   requestAnimationFrame(() => {
     const attribEl = document.querySelector('#maplibre-map .maplibregl-ctrl-attrib');
@@ -9878,7 +9883,7 @@ function initializeMapLibre() {
   const showOfflineMapLibreNotice = () => {
     mapLibreErrorShown = true;
     if (notice) {
-      notice.textContent = 'Air-gap mode: external map tiles blocked/offline — switch to Radar / SRTM DEM';
+      notice.textContent = 'Offline / tile fetch blocked — using local SRTM DEM fallback';
       notice.hidden = false;
     }
   };
@@ -9890,6 +9895,9 @@ function initializeMapLibre() {
     if (mapLibreErrorShown) return;
     showOfflineMapLibreNotice();
     console.error('MapLibre map error', event.error || event);
+  });
+  mapLibreInstance.on('move', () => {
+    if (terrainMapMode === 'maplibre') drawRadar();
   });
   mapLibreInstance.on('moveend', event => {
     if (event?.originalEvent) {
@@ -11027,9 +11035,10 @@ window.toggleActiveScheduler = function() {
 };
 
 function setRadarRange(rangeM, options = { duration: 200 }) {
-  currentRadarRangeM = Math.max(15000, Math.min(300000, Number.isFinite(rangeM) ? rangeM : 60000));
+  currentRadarRangeM = Math.max(15000, Math.min(getMaxRadarRangeM(), Number.isFinite(rangeM) ? rangeM : 60000));
   syncRangeButtonHighlights(currentRadarRangeM);
-  setText('tb-span-readout', `Span: ${((currentRadarRangeM * 2) / 1000).toFixed(1)} km`);
+  const spanKm = (currentRadarRangeM * 2) / 1000;
+  setText('tb-span-readout', spanKm >= 1000 ? `Span: ${Math.round(spanKm).toLocaleString()} km` : `Span: ${spanKm.toFixed(1)} km`);
   markRadarDirty();
   if (terrainMapMode === 'maplibre' && mapLibreInitialized) {
     syncMapLibreCameraFromRadarState(options?.duration ?? 200, Boolean(options?.resetOrientation));
@@ -11038,6 +11047,14 @@ function setRadarRange(rangeM, options = { duration: 200 }) {
   }
 }
 window.setRadarRange = setRadarRange;
+$('terrain-zoom-out-btn')?.addEventListener('click', () => {
+  if (terrainMapMode === 'maplibre' && mapLibreInstance) mapLibreInstance.zoomOut({ duration: 200 });
+  else setRadarRange(currentRadarRangeM * 1.6);
+});
+$('terrain-zoom-in-btn')?.addEventListener('click', () => {
+  if (terrainMapMode === 'maplibre' && mapLibreInstance) mapLibreInstance.zoomIn({ duration: 200 });
+  else setRadarRange(currentRadarRangeM / 1.6);
+});
 
 function getRadarPointerWorld(event) {
   const rect = radarCanvas.getBoundingClientRect();
@@ -11872,7 +11889,6 @@ function handleToolboxMapClick(point) {
     refreshTerrainToolbox();
     updateMapLibreToolSources();
     if (terrainMapMode !== 'maplibre') drawRadar();
-    getTerrainToolboxController().handleMapClick(point);
     return;
   }
   if (terrainToolMode === 'transect-poly') {
@@ -11883,7 +11899,6 @@ function handleToolboxMapClick(point) {
     refreshTerrainToolbox();
     updateMapLibreToolSources();
     if (terrainMapMode !== 'maplibre') drawRadar();
-    getTerrainToolboxController().handleMapClick(point);
     return;
   }
   if (terrainToolMode === 'region') {
@@ -11905,7 +11920,6 @@ function handleToolboxMapClick(point) {
     refreshTerrainToolbox();
     updateMapLibreToolSources();
     if (terrainMapMode !== 'maplibre') drawRadar();
-    getTerrainToolboxController().handleMapClick(point);
     return;
   }
   if (terrainToolMode === 'probe') {
@@ -11919,7 +11933,6 @@ function handleToolboxMapClick(point) {
     refreshTerrainToolbox();
     updateMapLibreToolSources();
     if (terrainMapMode !== 'maplibre') drawRadar();
-    getTerrainToolboxController().handleMapClick(point);
     return;
   }
   if (terrainToolMode === 'bridge-a') {
@@ -11929,7 +11942,6 @@ function handleToolboxMapClick(point) {
     refreshTerrainToolbox();
     updateMapLibreToolSources();
     if (terrainMapMode !== 'maplibre') drawRadar();
-    getTerrainToolboxController().handleMapClick(point);
     return;
   }
   if (terrainToolMode === 'bridge-b') {
@@ -11939,7 +11951,6 @@ function handleToolboxMapClick(point) {
     refreshTerrainToolbox();
     updateMapLibreToolSources();
     if (terrainMapMode !== 'maplibre') drawRadar();
-    getTerrainToolboxController().handleMapClick(point);
     return;
   }
   if (terrainToolMode === 'obstacle-place') {
@@ -11970,7 +11981,6 @@ function handleToolboxMapClick(point) {
     renderObstacleInventoryList();
     refreshTerrainToolbox();
     if (terrainMapMode !== 'maplibre') drawRadar();
-    getTerrainToolboxController().handleMapClick(point);
     return;
   }
   getTerrainToolboxController().handleMapClick(point);
@@ -13237,9 +13247,14 @@ window.setTerrainMode = function(mode) {
   updateTerrainHudBadge();
   $('btnRealTerrain').classList.toggle('active', mode === 'real');
   $('btnSynthTerrain').classList.toggle('active', mode === 'synthetic');
+  if (mode === 'synthetic' && currentRadarRangeM > 300000) {
+    currentRadarRangeM = 300000;
+  }
   sendCommand({ type: 'SET_TERRAIN_MODE', mode: mode });
   sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: mode } });
   requestTerrainMeshData(true);
+  markRadarDirty();
+  if (terrainMapMode !== 'maplibre') drawRadar();
   if (isMouseInsideRadar) {
     updateRadarCursorReadout(mouseWorldX, mouseWorldY, true);
   }
@@ -13775,7 +13790,7 @@ window.switchMainTab = function(targetTabId) {
       { force: true, isPanelVisible: true }
     );
   }
-  setTimeout(resizeCanvases, 20);
+  scheduleResizeCanvases();
 };
 
 const workspaceRail = document.querySelector('.rail[role="tablist"]');
@@ -14100,63 +14115,50 @@ function renderSoldierPhoneWorkspace(frame) {
 }
 
 /* ---------- Canvas Resize Engine ---------- */
+let resizeCanvasesRafId = null;
+function scheduleResizeCanvases() {
+  if (resizeCanvasesRafId !== null) return;
+  resizeCanvasesRafId = requestAnimationFrame(() => { resizeCanvasesRafId = null; resizeCanvases(); });
+}
 function resizeCanvases() {
-  const chart1 = $('sched-chart-utilization');
-  const chart2 = $('sched-chart-backlog');
-  const fpCanvas = $('fp-vertical-profile-canvas');
-  const workerJitterCvs = $('worker-jitter-canvas');
-  const soldierPhoneCanvas = $('soldier-phone-canvas');
-  const twinCalCvs = $('twin-calibration-canvas');
-  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2, polarAntennaCanvas, linkWaterfallCanvas, fpCanvas, workerJitterCvs, soldierPhoneCanvas, twinCalCvs].forEach(cvs => {
-    if (!cvs) return;
-    syncCanvasDpr(cvs);
-  });
-  renderFlightPlanVerticalProfile();
-  if (isDiagnosticsPanelVisible()) {
+  const activeTabId = document.querySelector('.tab-content.active')?.id || 'tab-overview';
+  if (terrainMapMode === 'maplibre') { mapLibreInstance?.resize(); }
+  else if (terrainMapMode === '3d') { threeController?.handleResize(); }
+  else if (radarCanvas) { syncCanvasDpr(radarCanvas); drawRadar(); }
+  if (simTimelineRenderer) { simTimelineRenderer.syncCanvas(); simTimelineRenderer.render(); }
+  if (activeTabId === 'tab-scheduler') {
+    [waterfallCanvas, $('sched-chart-utilization'), $('sched-chart-backlog')].forEach(c => c && syncCanvasDpr(c));
+    drawWaterfall(); drawSchedulerCharts();
+    if (latestTelemetry) { drawEcdfDelayScope(latestTelemetry); drawSensitivitySweepScope(latestTelemetry); }
+  } else if (activeTabId === 'tab-terrain') {
+    [terrainCanvas, polarAntennaCanvas, linkWaterfallCanvas].forEach(c => c && syncCanvasDpr(c));
+    if (activeTerrainBounds && terrainTopViewport?.fitToBounds) terrainTopViewport.fitToBounds(activeTerrainBounds, getTerrainLayout(), 0.08);
+    drawFresnel();
+    if (latestTelemetry) { drawPolarAntennaScope(latestTelemetry); drawLinkWaterfallCanvas(latestTelemetry); }
+  } else if (activeTabId === 'tab-network') {
+    drawNetworkCharts();
+    if (latestTelemetry) renderQosSlaAnalyzer(latestTelemetry);
+  } else if (activeTabId === 'tab-authoring') {
+    const fpCanvas = $('fp-vertical-profile-canvas');
+    if (fpCanvas) syncCanvasDpr(fpCanvas);
+    renderFlightPlanVerticalProfile();
+  } else if (activeTabId === 'tab-doc' && isDiagnosticsPanelVisible()) {
+    [$('worker-jitter-canvas'), $('twin-calibration-canvas')].forEach(c => c && syncCanvasDpr(c));
     renderWorkerJitterProfiler(typeof latestTelemetry !== 'undefined' ? latestTelemetry : null);
     renderTwinCalibrationScope();
+  } else if (activeTabId === 'tab-soldier') {
+    const sc = $('soldier-phone-canvas');
+    if (sc) syncCanvasDpr(sc);
   }
-  if (threeController) {
-    threeController.handleResize();
-  }
-  if (simTimelineRenderer) {
-    simTimelineRenderer.syncCanvas();
-    simTimelineRenderer.render();
-  }
-  if (mapLibreInstance && terrainMapMode === 'maplibre') {
-    mapLibreInstance.resize();
-  }
-  if (activeTerrainBounds && terrainTopViewport && typeof terrainTopViewport.fitToBounds === 'function') {
-    terrainTopViewport.fitToBounds(activeTerrainBounds, getTerrainLayout(), 0.08);
-  }
-  drawRadar();
-  drawWaterfall();
-  drawFresnel();
-  if (latestTelemetry) {
-    drawPolarAntennaScope(latestTelemetry);
-    drawLinkWaterfallCanvas(latestTelemetry);
-    drawEcdfDelayScope(latestTelemetry);
-    drawSensitivitySweepScope(latestTelemetry);
-  }
-  drawSchedulerCharts();
-  drawNetworkCharts();
-  if (latestTelemetry) renderQosSlaAnalyzer(latestTelemetry);
   syncFloatingOverlayLayout();
 }
-window.addEventListener('resize', resizeCanvases);
-setTimeout(resizeCanvases, 30);
-
+window.addEventListener('resize', scheduleResizeCanvases);
+setTimeout(scheduleResizeCanvases, 30);
 if ('ResizeObserver' in window) {
-  const ro = new ResizeObserver(() => resizeCanvases());
-  [
-    radarCanvas, waterfallCanvas, terrainCanvas,
-    polarAntennaCanvas, linkWaterfallCanvas,
-    $('sched-chart-utilization'), $('sched-chart-backlog'),
-    $('network-individual-chart'), $('network-aggregate-chart'),
-    $('qos-sla-canvas')
-  ].forEach(c => {
-    if (c && c.parentElement) ro.observe(c.parentElement);
+  const ro = new ResizeObserver((entries) => {
+    if (entries.some((e) => e.contentRect && e.contentRect.width > 0 && e.contentRect.height > 0)) scheduleResizeCanvases();
   });
+  [radarCanvas, waterfallCanvas, terrainCanvas, polarAntennaCanvas, linkWaterfallCanvas, $('sched-chart-utilization'), $('sched-chart-backlog'), $('network-individual-chart'), $('network-aggregate-chart'), $('qos-sla-canvas')].forEach(c => c?.parentElement && ro.observe(c.parentElement));
 }
 
 /* ---------- Dashboard DOM Updates ---------- */
@@ -14231,7 +14233,8 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
       };
     }
 
-    const nodeColor = n.color_hex || (n.node_type === 'mcp' ? '#e9c46a' : '#e09f3e');
+    const rawColor = n.color_hex || (n.node_type === 'mcp' ? '#e9c46a' : '#e09f3e');
+    const nodeColor = /^#[0-9a-fA-F]{3,8}$/.test(String(rawColor)) ? String(rawColor) : '#e09f3e';
     const txPwr = typeof n.tx_power_dbm === 'number' ? `${n.tx_power_dbm.toFixed(1)} dBm` : (n.node_type === 'mcp' ? '43.0 dBm' : '36.0 dBm');
     const batLvl = typeof n.battery_level_pct === 'number' ? n.battery_level_pct.toFixed(0) : '100';
     const batCap = typeof n.battery_capacity_mah === 'number' ? n.battery_capacity_mah.toFixed(0) : (n.node_type === 'mcp' ? '20000' : '5000');
@@ -14248,22 +14251,22 @@ function renderTerminalInventory(nodes, selectedId, query = '') {
     };
 
     tr.innerHTML = `
-      <td style="text-align:left;font-family:var(--mono)">${n.node_id}</td>
+      <td style="text-align:left;font-family:var(--mono)">${Number(n.node_id)}</td>
       <td style="text-align:left;font-weight:600">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${nodeColor};margin-right:6px;vertical-align:middle"></span>${callsign}
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${nodeColor};margin-right:6px;vertical-align:middle"></span>${escapeHtml(callsign)}
       </td>
-      <td style="text-align:left;font-family:var(--sans)">${role}</td>
+      <td style="text-align:left;font-family:var(--sans)">${escapeHtml(role)}</td>
       <td style="font-family:var(--mono)">${txPwr}</td>
       <td style="font-family:var(--mono)">${batStr}</td>
       <td style="font-family:var(--mono)">${priStr}</td>
-      <td title="${latDms}" style="font-family:var(--mono)">${latStr}</td>
-      <td title="${lonDms}" style="font-family:var(--mono)">${lonStr}</td>
+      <td title="${escapeHtml(latDms)}" style="font-family:var(--mono)">${escapeHtml(latStr)}</td>
+      <td title="${escapeHtml(lonDms)}" style="font-family:var(--mono)">${escapeHtml(lonStr)}</td>
       <td>${x.toFixed(0)}</td>
       <td>${y.toFixed(0)}</td>
       <td>${agl.toFixed(1)}</td>
       <td>${terrainMsl.toFixed(1)}</td>
       <td>${totalMsl.toFixed(1)}</td>
-      <td style="text-align:center"><span class="${badge.badgeClass}" style="display:inline-block;padding:2px 6px;font-size:10px">${badge.badgeText}</span></td>
+      <td style="text-align:center"><span class="${escapeHtml(badge.badgeClass)}" style="display:inline-block;padding:2px 6px;font-size:10px">${escapeHtml(badge.badgeText)}</span></td>
     `;
     rows.push(tr);
   }
@@ -14978,9 +14981,9 @@ function renderNetworkTrafficInventory(frame) {
     const lostHtml = r.packetsLost > 0 ? `<b style="color:#ef4444">${r.packetsLost}</b>` : '0';
 
     tr.innerHTML = `
-      <td style="font-weight:600;text-align:left">${r.fromName}</td>
+      <td style="font-weight:600;text-align:left">${escapeHtml(r.fromName)}</td>
       <td style="font-family:var(--mono);text-align:right">${formatTrafficBytes(r.dataSentBytes)}</td>
-      <td style="text-align:left;color:var(--muted)">${r.toName}</td>
+      <td style="text-align:left;color:var(--muted)">${escapeHtml(r.toName)}</td>
       <td style="font-family:var(--mono);text-align:right">${formatTrafficBytes(r.dataReceivedBytes)}</td>
       <td style="text-align:center"><span class="direction-badge ${dirClass}">${r.direction}</span></td>
       <td style="font-family:var(--mono);text-align:right;color:${rateColor}">${formatTrafficRate(r.dataRateMbps)}</td>
@@ -16044,6 +16047,7 @@ function renderPrecisionAoSwathOverlay(ctx, w, h) {
 
 function drawRadar() {
   const cvs = radarCanvas;
+  if (stageViewMode === '3d') radarNodeMarkerLayer?.hide();
   if (!cvs || stageViewMode === '3d') return;
   getRadar2dRenderer().renderRadar();
 }
@@ -16776,7 +16780,7 @@ window.addEventListener('pointerup', finishRadarDrag);
 window.addEventListener('pointercancel', finishRadarDrag);
 radarCanvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  currentRadarRangeM = Math.max(15000, Math.min(300000, currentRadarRangeM * (e.deltaY < 0 ? 0.85 : 1.15)));
+  currentRadarRangeM = Math.max(15000, Math.min(getMaxRadarRangeM(), currentRadarRangeM * (e.deltaY < 0 ? 0.82 : 1.22)));
   setRadarRange(currentRadarRangeM);
 }, { passive: false });
 

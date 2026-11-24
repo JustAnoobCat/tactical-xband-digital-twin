@@ -39,6 +39,14 @@ import {
 import { cartesianToGeodetic } from '../../core/geodesy';
 import { obstacleContainsPoint } from '../../core/obstacles';
 import { escapeHtml } from '../domSafety';
+import type { WorldTileLayer } from '../worldTileLayer';
+import {
+  formatRadarNodeTag,
+  resolveRadarNodeMarkerStatus,
+  type RadarCameraSignature,
+  type RadarMarkerProjection,
+  type RadarNodeMarkerLayer,
+} from '../radarNodeMarkerLayer';
 
 // ============================================================================
 // Types & Interfaces
@@ -79,6 +87,10 @@ export interface Radar2dRendererDeps {
   readonly getPanOffset: () => { xM: number; yM: number };
   readonly getStageViewMode: () => string;
   readonly getTerrainMapMode: () => string;
+  readonly getTerrainMode?: () => string;
+  readonly getWorldTileLayer?: () => WorldTileLayer | null;
+  readonly getNodeMarkerLayer?: () => RadarNodeMarkerLayer | null;
+  readonly projectEnuToScreen?: (xM: number, yM: number) => RadarPoint2D | null;
   readonly getLatestTelemetry: () => any;
   readonly getHistoricalSnapshot: () => any;
   readonly getActiveTerrainBounds: () => any;
@@ -563,7 +575,11 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
 
   const renderRadar = () => {
     const cvs = deps.canvas;
-    if (!cvs || deps.getStageViewMode() === '3d') return;
+    const nodeMarkerLayer = deps.getNodeMarkerLayer?.() ?? null;
+    if (!cvs || deps.getStageViewMode() === '3d') {
+      nodeMarkerLayer?.hide();
+      return;
+    }
 
     const w = cvs.parentElement?.clientWidth || cvs.width || 600;
     const h = cvs.parentElement?.clientHeight || cvs.height || 500;
@@ -573,6 +589,24 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
     ctx.clearRect(0, 0, w, h);
 
     const vp = getViewport(w, h);
+
+    // In MapLibre Geo mode, MapLibre renders the geographic world basemap, DEM, links,
+    // nodes, and ACN natively. Keep radar-canvas transparent and draw only CAD tool overlays
+    // projected through MapLibre's live camera.
+    if (deps.getTerrainMapMode() === 'maplibre') {
+      nodeMarkerLayer?.hide();
+      const proj = deps.projectEnuToScreen;
+      if (proj) {
+        const safeProj = (xM: number, yM: number): RadarPoint2D => proj(xM, yM) ?? { x: -1e6, y: -1e6 };
+        const tbState = deps.getToolboxState();
+        renderGeodeticRulerOverlay(ctx, w, h, tbState, vp, safeProj);
+        renderPrecisionCursorProbeOverlay(ctx, w, h, tbState, vp, safeProj);
+        renderPrecisionAoSwathOverlay(ctx, w, h, tbState, vp, safeProj);
+        renderPrecisionCadObstacleOverlay(ctx, w, h, tbState, vp, safeProj);
+      }
+      return;
+    }
+
     const geometry = getRadarGeometry(w, h, vp.rangeM);
     const focusCtx = deps.getContextualMapContext();
     const mapLayers = deps.getMapLayerRegistry();
@@ -581,18 +615,49 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
     ctx.fillStyle = HIGHLAND_THEME.substrate.void;
     ctx.fillRect(0, 0, w, h);
 
-    // 2. Terrain DEM / hillshade if enabled
+    // 2. Terrain DEM bounds & exterior world satellite basemap (Radar SAT mode when zoomed out past DEM)
     const visTerrainDem = mapLayers?.getEffectiveVisibility('base.terrainDem', focusCtx) ?? true;
     const opTerrainDem = mapLayers?.getLayerOpacity('base.terrainDem') ?? 0.8;
     const activeBackdrop = deps.getBackdropMode() !== 'relief' ? deps.getBackdropCanvas() : deps.getHillshadeCanvas();
+    const isSatelliteTerrainMode = deps.getTerrainMode?.() === 'real';
+    const worldTileLayer = deps.getWorldTileLayer?.() ?? null;
 
-    if (activeBackdrop && visTerrainDem) {
-      const terrainBounds = computeTerrainScreenBounds(
-        deps.getActiveTerrainBounds(),
-        300000,
-        geometry,
-        deps.getPanOffset()
+    const terrainBounds = (activeBackdrop && visTerrainDem)
+      ? computeTerrainScreenBounds(
+          deps.getActiveTerrainBounds(),
+          300000,
+          geometry,
+          deps.getPanOffset()
+        )
+      : null;
+
+    if (isSatelliteTerrainMode && worldTileLayer) {
+      const fullyCoveredByDem = Boolean(
+        terrainBounds &&
+        terrainBounds.isRealMode &&
+        terrainBounds.tl.x <= 0 &&
+        terrainBounds.tl.y <= 0 &&
+        terrainBounds.br.x >= w &&
+        terrainBounds.br.y >= h
       );
+      if (!fullyCoveredByDem) {
+        ctx.save();
+        if (terrainBounds && terrainBounds.isRealMode && terrainBounds.width > 1 && terrainBounds.height > 1) {
+          // Clip world satellite imagery strictly OUTSIDE the Ladakh DEM coverage box so
+          // Radar mode always keeps its authentic dark-mode DEM hillshade inside the AO.
+          ctx.beginPath();
+          ctx.rect(0, 0, w, h);
+          ctx.rect(terrainBounds.tl.x, terrainBounds.tl.y, terrainBounds.width, terrainBounds.height);
+          ctx.clip('evenodd');
+        }
+        worldTileLayer.draw(ctx, vp, () => {
+          deps.markDirty?.();
+        });
+        ctx.restore();
+      }
+    }
+
+    if (activeBackdrop && visTerrainDem && terrainBounds) {
       ctx.save();
       ctx.imageSmoothingEnabled = true;
       ctx.globalAlpha = opTerrainDem;
@@ -602,9 +667,23 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       // Satellite DEM coverage boundary if in real mode
       const visDemBoundary = mapLayers?.getEffectiveVisibility('base.demBoundary', focusCtx) ?? true;
       if (visDemBoundary && terrainBounds.isRealMode) {
-        const boundaryGeom = computeDemBoundaryGeometry(terrainBounds, w, h, deps.getActiveTerrainBounds());
-        if (boundaryGeom) {
-          renderDemCoverageBoundary(ctx, boundaryGeom, MONO);
+        if (terrainBounds.width >= 20 && terrainBounds.height >= 20) {
+          const boundaryGeom = computeDemBoundaryGeometry(terrainBounds, w, h, deps.getActiveTerrainBounds());
+          if (boundaryGeom) {
+            renderDemCoverageBoundary(ctx, boundaryGeom, MONO);
+          }
+        } else {
+          // Compact AO locator reticle when zoomed out to continental/world scale
+          const cx = (terrainBounds.tl.x + terrainBounds.br.x) * 0.5;
+          const cy = (terrainBounds.tl.y + terrainBounds.br.y) * 0.5;
+          ctx.save();
+          ctx.strokeStyle = HIGHLAND_THEME.signal.amber;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(cx - 7, cy - 7, 14, 14);
+          ctx.font = `bold 9px ${MONO}`;
+          ctx.fillStyle = HIGHLAND_THEME.signal.amber;
+          ctx.fillText('LADAKH AO', cx - 24, cy + 17);
+          ctx.restore();
         }
       }
     }
@@ -638,27 +717,51 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       : { x: liveTelemetry?.acn_telemetry?.pos_x ?? 0, y: liveTelemetry?.acn_telemetry?.pos_y ?? 0 };
 
     const nodes = histSnap
-      ? histSnap.nodes.map((n: any) => ({ nodeId: n.nodeId, posX: n.posX, posY: n.posY, snrDb: n.snrDb, isLos: n.isLos }))
+      ? histSnap.nodes.map((n: any) => ({
+          nodeId: Number(n.nodeId),
+          callsign: n.callsign ?? null,
+          posX: Number(n.posX),
+          posY: Number(n.posY),
+          snrDb: n.snrDb,
+          isLos: Boolean(n.isLos),
+          raw: n,
+          markerStatus: resolveRadarNodeMarkerStatus(n),
+        }))
       : (liveTelemetry?.nodes_telemetry || []).map((n: any) => ({
-          nodeId: n.node_id,
+          nodeId: Number(n.node_id),
+          callsign: n.callsign ?? n.label ?? null,
           posX: Number(n.x_m ?? n.position?.[0] ?? 0),
           posY: Number(n.y_m ?? n.position?.[1] ?? 0),
           snrDb: n.snr_db,
-          isLos: n.terrain_is_los,
+          isLos: Boolean(n.terrain_is_los),
+          raw: n,
+          markerStatus: resolveRadarNodeMarkerStatus(n),
         }));
 
+    const selectedNodeId = deps.getSelectedNodeId();
     const visLinks = mapLayers?.getEffectiveVisibility('comm.links', focusCtx) ?? true;
     if (visLinks && Number.isFinite(acnPosWorld.x) && Number.isFinite(acnPosWorld.y)) {
       const acnPt = worldToScreen(acnPosWorld.x, acnPosWorld.y, w, h);
       ctx.save();
       for (const node of nodes) {
         const nodePt = worldToScreen(node.posX, node.posY, w, h);
-        const isSelected = deps.getSelectedNodeId() === node.nodeId;
-        const strokeColor = node.isLos ? '#10b981' : '#ef4444';
+        const isSelected = String(selectedNodeId) === String(node.nodeId);
+        const linkStyle =
+          node.markerStatus === 'connected'
+            ? getMapLinkStyle('CONNECTED')
+            : node.markerStatus === 'degraded'
+              ? getMapLinkStyle('DEGRADED')
+              : node.markerStatus === 'blocked-terrain'
+                ? getMapLinkStyle('BLOCKED_TERRAIN')
+                : node.markerStatus === 'blocked-obstacle'
+                  ? getMapLinkStyle('BLOCKED_OBSTACLE')
+                  : node.markerStatus === 'outage'
+                    ? getMapLinkStyle('OUTAGE_DISCONNECTED')
+                    : getMapLinkStyle('UNKNOWN');
 
-        ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = isSelected ? 2.5 : 1.2;
-        if (!node.isLos) ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = isSelected ? linkStyle.selectedStrokeColor : linkStyle.strokeColor;
+        ctx.lineWidth = isSelected ? linkStyle.selectedLineWidth : linkStyle.lineWidth;
+        ctx.setLineDash([...linkStyle.lineDash]);
 
         ctx.beginPath();
         ctx.moveTo(acnPt.x, acnPt.y);
@@ -669,13 +772,38 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       ctx.restore();
     }
 
-    // 6. Ground Nodes
+    // 6. Ground Nodes (GPU-composited DOM marker overlay with CSS/WAAPI transitions,
+    //    falling back to canvas dots in headless environments without a DOM overlay)
     const visGroundNodes = mapLayers?.getEffectiveVisibility('entities.groundNodes', focusCtx) ?? true;
-    if (visGroundNodes) {
+    if (nodeMarkerLayer) {
+      const pan = deps.getPanOffset();
+      const cameraSig: RadarCameraSignature = {
+        width: w,
+        height: h,
+        rangeM: vp.rangeM,
+        panX: pan.xM,
+        panY: pan.yM,
+      };
+      const projections: RadarMarkerProjection[] = visGroundNodes
+        ? nodes.map((node: any) => {
+            const nodePt = worldToScreen(node.posX, node.posY, w, h);
+            return {
+              nodeId: node.nodeId,
+              x: nodePt.x,
+              y: nodePt.y,
+              status: node.markerStatus,
+              selected: String(selectedNodeId) === String(node.nodeId),
+              label: formatRadarNodeTag(node.nodeId, node.callsign),
+              snrDb: typeof node.snrDb === 'number' ? node.snrDb : null,
+            };
+          })
+        : [];
+      nodeMarkerLayer.sync(projections, cameraSig, visGroundNodes);
+    } else if (visGroundNodes) {
       ctx.save();
       for (const node of nodes) {
         const nodePt = worldToScreen(node.posX, node.posY, w, h);
-        const isSelected = deps.getSelectedNodeId() === node.nodeId;
+        const isSelected = String(selectedNodeId) === String(node.nodeId);
 
         ctx.fillStyle = isSelected ? '#38bdf8' : '#94a3b8';
         ctx.strokeStyle = '#000000';
@@ -688,7 +816,7 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
 
         ctx.font = `9px ${MONO}`;
         ctx.fillStyle = isSelected ? '#38bdf8' : '#cbd5e1';
-        ctx.fillText(`S${node.nodeId}`, nodePt.x + 8, nodePt.y - 4);
+        ctx.fillText(formatRadarNodeTag(node.nodeId, node.callsign), nodePt.x + 8, nodePt.y - 4);
       }
       ctx.restore();
     }

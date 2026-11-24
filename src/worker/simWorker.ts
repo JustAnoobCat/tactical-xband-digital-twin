@@ -368,6 +368,11 @@ export class SimulationWorkerManager {
   public readonly ollaOffsetByNode: Map<number, number> = new Map();
   public readonly cqiHistoryByNode: Map<number, number[]> = new Map();
   public readonly harqSlotByNode: Map<number, HarqProcessSlot> = new Map();
+  public readonly guardScaleByNode: Map<number, number> = new Map();
+  public readonly delayedCqiSnrByNode: Map<number, number> = new Map();
+  private readonly cqiDecodeFailureByNode: Map<number, boolean> = new Map();
+  private readonly lpiSavedTxPowerByNode: Map<number, number | undefined> = new Map();
+  private lastObstructionTimeS: number = -1.0;
   public harqRetxTotal: number = 0;
   public readonly prevSectorByNode: Map<number, number> = new Map();
   public hifiTelemetry: HiFiPhysicsTelemetry | undefined = undefined;
@@ -701,9 +706,9 @@ export class SimulationWorkerManager {
           jammerPosEnu: this.envConfig.jammerPosEnu,
           jammerEnabled: this.envConfig.jammerEnabled,
           kinematicConstraints: this.enableDubinsKinematics ? {
-            speedMs: Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]),
-            maxBankDeg: 30.0,
-            minTurnRadiusOverrideM: computeMinTurnRadiusM(Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]), 30.0),
+            speedMs: node.nodeType === 'mcp' ? 8.0 : 1.4,
+            maxBankDeg: 0.0,
+            minTurnRadiusOverrideM: node.nodeType === 'mcp' ? 12.0 : 3.0,
           } : undefined,
         });
         this.aiRecommendations.set(nid, rec);
@@ -744,9 +749,9 @@ export class SimulationWorkerManager {
             jammerPosEnu: this.envConfig.jammerPosEnu,
             jammerEnabled: this.envConfig.jammerEnabled,
             kinematicConstraints: this.enableDubinsKinematics ? {
-              speedMs: Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]),
-              maxBankDeg: 30.0,
-              minTurnRadiusOverrideM: computeMinTurnRadiusM(Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]), 30.0),
+              speedMs: node.nodeType === 'mcp' ? 8.0 : 1.4,
+              maxBankDeg: 0.0,
+              minTurnRadiusOverrideM: node.nodeType === 'mcp' ? 12.0 : 3.0,
             } : undefined,
           });
           this.aiRecommendations.set(nid, rec);
@@ -943,6 +948,9 @@ export class SimulationWorkerManager {
     const macFeedbackOptions: SchedulerMacFeedbackOptions | undefined = this.enableMacPhyFeedback
       ? {
           nodeClosedLoopCapacityScale: this.closedLoopCapacityScaleByNode,
+          nodeGuardScale: this.guardScaleByNode,
+          nodeDelayedCqiSnrDb: this.delayedCqiSnrByNode,
+          nodeOllaOffsetDb: this.ollaOffsetByNode,
         }
       : undefined;
 
@@ -990,9 +998,9 @@ export class SimulationWorkerManager {
     this.metrics.tacWastedBits += reportTac.totalBitsWastedOnOutage;
     this.metrics.reactiveGoodputBits = (this.metrics.reactiveGoodputBits ?? 0) + reportReactive.totalBitsTransmitted;
     this.metrics.reactiveWastedBits = (this.metrics.reactiveWastedBits ?? 0) + reportReactive.totalBitsWastedOnOutage;
-    this.metrics.staticDroppedPkts = reportStatic.packetsDroppedDelay + reportStatic.packetsDroppedOverflow;
-    this.metrics.tacDroppedPkts = reportTac.packetsDroppedDelay + reportTac.packetsDroppedOverflow;
-    this.metrics.reactiveDroppedPkts = reportReactive.packetsDroppedDelay + reportReactive.packetsDroppedOverflow;
+    this.metrics.staticDroppedPkts += reportStatic.packetsDroppedDelayThisFrame + reportStatic.packetsDroppedOverflowThisFrame;
+    this.metrics.tacDroppedPkts += reportTac.packetsDroppedDelayThisFrame + reportTac.packetsDroppedOverflowThisFrame;
+    this.metrics.reactiveDroppedPkts = (this.metrics.reactiveDroppedPkts ?? 0) + reportReactive.packetsDroppedDelayThisFrame + reportReactive.packetsDroppedOverflowThisFrame;
     this.metrics.lastStaticUtilPct = reportStatic.totalUlUtilizationPct;
     this.metrics.lastTacUtilPct = reportTac.totalUlUtilizationPct;
     this.metrics.lastReactiveUtilPct = reportReactive.totalUlUtilizationPct;
@@ -1035,36 +1043,26 @@ export class SimulationWorkerManager {
       this.node4Frozen = true;
     }
 
-    // 4.5. Deterministic Node Battery & Energy Drain Model
-    const activeReport = this.schedulerMode === 'tac_tad' ? reportTac : reportStatic;
-    for (let i = 0; i < this.nodesTac.length; i++) {
-      const nodeTac = this.nodesTac[i];
-      const nodeStat = this.nodesStatic[i];
-      const nid = nodeTac.nodeId;
-      const isMcp = nodeTac.nodeType === 'mcp';
-      const iIdleMa = isMcp ? 400.0 : 150.0;
-      const pTxDbm = nodeTac.txPowerDbm ?? (isMcp ? 43.0 : 36.0);
-      const pRfWatts = Math.pow(10.0, (pTxDbm - 30.0) / 10.0);
-      const iTxRfMa = (pRfWatts / (0.35 * 12.0)) * 1000.0;
-      const iTxTotalMa = iIdleMa + iTxRfMa;
-
-      const alloc = activeReport.allocations.find((a) => a.nodeId === nid);
-      const tTxS = alloc && alloc.durationS > 0 && !nodeTac.isDepleted ? alloc.durationS : 0.0;
-      const tIdleS = Math.max(0.0, tFrame - tTxS);
-      const drainedMah = (iIdleMa * tIdleS + iTxTotalMa * tTxS) / 3600.0;
-      const capacityMah = Math.max(100.0, nodeTac.batteryCapacityMah || (isMcp ? 20000.0 : 5000.0));
-      const deltaPct = (drainedMah / capacityMah) * 100.0;
-      const nextLevelPct = Math.max(0.0, Math.min(100.0, nodeTac.batteryLevelPct - deltaPct));
-
-      nodeTac.batteryLevelPct = nextLevelPct;
-      nodeStat.batteryLevelPct = nextLevelPct;
-      if (this.nodesReactive[i]) this.nodesReactive[i].batteryLevelPct = nextLevelPct;
-      const depleted = nextLevelPct <= 0.0;
-      nodeTac.isDepleted = depleted;
-      nodeStat.isDepleted = depleted;
-      if (this.nodesReactive[i]) this.nodesReactive[i].isDepleted = depleted;
-      this.nodeRegistry.updateBatteryLevel(nid, nextLevelPct);
-    }
+    // 4.5. Deterministic Per-Arm Node Battery & Energy Drain Model
+    const drainArm = (nodes: GroundNodeTrafficSubsystem[], report: FrameScheduleReport, syncRegistry: boolean) => {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const isMcp = node.nodeType === 'mcp';
+        const iIdleMa = isMcp ? 400.0 : 150.0;
+        const pTxDbm = node.txPowerDbm ?? (isMcp ? 43.0 : 36.0);
+        const iTxTotalMa = iIdleMa + (Math.pow(10.0, (pTxDbm - 30.0) / 10.0) / 4.2) * 1000.0;
+        const alloc = report.allocations.find((a) => a.nodeId === node.nodeId);
+        const tTxS = alloc && alloc.durationS > 0 && !node.isDepleted ? alloc.durationS : 0.0;
+        const drainedMah = (iIdleMa * Math.max(0.0, tFrame - tTxS) + iTxTotalMa * tTxS) / 3600.0;
+        const capMah = Math.max(100.0, node.batteryCapacityMah || (isMcp ? 20000.0 : 5000.0));
+        node.batteryLevelPct = Math.max(0.0, Math.min(100.0, node.batteryLevelPct - (drainedMah / capMah) * 100.0));
+        node.isDepleted = node.batteryLevelPct <= 0.0;
+        if (syncRegistry) this.nodeRegistry.updateBatteryLevel(node.nodeId, node.batteryLevelPct);
+      }
+    };
+    drainArm(this.nodesTac, reportTac, this.schedulerMode === 'tac_tad');
+    drainArm(this.nodesStatic, reportStatic, this.schedulerMode === 'static');
+    drainArm(this.nodesReactive, reportReactive, this.schedulerMode !== 'tac_tad' && this.schedulerMode !== 'static');
   }
 
   public captureSpatialFrameSnapshot(acnPos: [number, number, number]): SpatialFrameSnapshot {
@@ -1133,13 +1131,14 @@ export class SimulationWorkerManager {
 
     const rawVel = this.trajectoryEngine.getAcnVelocity(timeS);
     const acnVel: [number, number, number] = [rawVel[0], rawVel[1], this.liveVzMps];
-    const dtStep = 0.02;
-    const acnAccel: Position3D = [
-      (acnVel[0] - this.prevAcnVel[0]) / dtStep,
-      (acnVel[1] - this.prevAcnVel[1]) / dtStep,
-      (acnVel[2] - this.prevAcnVel[2]) / dtStep,
-    ];
-    this.prevAcnVel = acnVel;
+    const dtStep = this.lastObstructionTimeS >= 0 ? timeS - this.lastObstructionTimeS : 0.0;
+    const acnAccel: Position3D = dtStep > 1e-6
+      ? [(acnVel[0] - this.prevAcnVel[0]) / dtStep, (acnVel[1] - this.prevAcnVel[1]) / dtStep, (acnVel[2] - this.prevAcnVel[2]) / dtStep]
+      : [0, 0, 0];
+    if (dtStep > 1e-6 || this.lastObstructionTimeS < 0) {
+      this.prevAcnVel = acnVel;
+      this.lastObstructionTimeS = timeS;
+    }
     const acnAttitude = this.antennaEngine.computeAcnAttitude(acnVel, timeS, true);
 
     const horizSpeed = Math.hypot(acnVel[0], acnVel[1]);
@@ -1165,7 +1164,7 @@ export class SimulationWorkerManager {
     let taDriftUs = 0.0;
     let effectiveTaResidualErrorM = 50.0;
     if (this.gnssSpoofingRateUsPerSec > 0.0) {
-      this.gnssSpoofElapsedSec += FRAME_DT;
+      if (dtStep > 1e-6) this.gnssSpoofElapsedSec += dtStep;
       taDriftUs = computeGnssSpoofingTaDriftUs(
         this.gnssSpoofElapsedSec,
         this.gnssSpoofingRateUsPerSec,
@@ -1255,8 +1254,13 @@ export class SimulationWorkerManager {
 
       let ricianKFactorDb: number | undefined = undefined;
       let ricianFadingGainDb: number | undefined = undefined;
+      const dynamicRicianKDb = Math.max(
+        -2.0,
+        Math.min(20.0, 4.0 + 13.5 * Math.sin((Math.max(Math.abs(sectorEval.elevationAngleDeg ?? 0.0), 2.0) * Math.PI) / 180.0) - 0.35 * Math.min(Math.max(obstruction.diffractionLossDb, 0.0), 25.0))
+      );
 
-      if (this.envConfig.ricianFadingEnabled) {
+      // Avoid double-applying fading when correlated Jakes Rician fading is active
+      if (this.envConfig.ricianFadingEnabled && !this.enableCorrelatedRicianFading) {
         const fading = LinkBudgetEngine.computeRicianMultipathFading(
           node.nodeId,
           this.simTimeS,
@@ -1268,54 +1272,41 @@ export class SimulationWorkerManager {
         ricianFadingGainDb = fading.fadingGainDb;
       }
 
-      // Closed-Loop Pillar 4: AI LPI/LPD Stealth RF Power Throttling
+      // Closed-Loop Pillar 4: AI LPI/LPD Stealth RF Power Throttling (preserves custom user TX power when off)
       let customTxPowerDbm = node.txPowerDbm;
       if (this.aiLpiStealthEnabled) {
-        const nominalTxPowerDbm = node.nodeType === 'mcp'
-          ? (this.rfConfig.mcpTxPowerDbm ?? 40.0)
-          : (this.rfConfig.soldierTxPowerDbm ?? 36.0);
-        const roughSinr = this.linkStatuses.get(nid)?.snrDb ?? 20.0;
-        const lpiResult = computeAiLpiStealthPower(
-          nominalTxPowerDbm,
-          roughSinr,
-          !obstruction.isLos || (obstruction.obstacleBlocked ?? false),
-          18.5
-        );
+        if (!this.lpiSavedTxPowerByNode.has(nid)) this.lpiSavedTxPowerByNode.set(nid, node.txPowerDbm);
+        const nominalTxPowerDbm = this.lpiSavedTxPowerByNode.get(nid) ?? (node.nodeType === 'mcp' ? (this.rfConfig.mcpTxPowerDbm ?? 40.0) : (this.rfConfig.soldierTxPowerDbm ?? 36.0));
+        const lpiResult = computeAiLpiStealthPower(nominalTxPowerDbm, this.linkStatuses.get(nid)?.snrDb ?? 20.0, !obstruction.isLos || (obstruction.obstacleBlocked ?? false), 18.5);
         this.aiLpiStealthResults.set(nid, lpiResult);
         customTxPowerDbm = lpiResult.lpiTxPowerDbm;
         node.txPowerDbm = customTxPowerDbm;
-      } else if (node.txPowerDbm !== undefined && !this.aiLpiStealthEnabled) {
-        const nominalTxPowerDbm = node.nodeType === 'mcp'
-          ? (this.rfConfig.mcpTxPowerDbm ?? 40.0)
-          : (this.rfConfig.soldierTxPowerDbm ?? 36.0);
-        if (node.txPowerDbm < nominalTxPowerDbm) {
-          node.txPowerDbm = nominalTxPowerDbm;
-          customTxPowerDbm = nominalTxPowerDbm;
-        }
+      } else if (this.lpiSavedTxPowerByNode.has(nid)) {
+        const restored = this.lpiSavedTxPowerByNode.get(nid);
+        this.lpiSavedTxPowerByNode.delete(nid);
+        node.txPowerDbm = restored;
+        customTxPowerDbm = restored;
       }
 
       let ollaMarginDb: number | undefined = undefined;
       let cqiDecodeFailure: boolean | undefined = undefined;
 
       if (this.enableMacPhyFeedback) {
-        const cqiLagFrames = computeCqiLagFrames(slantM, this.tdmaConfig.frameDurationMs, 4.0);
         let cqiHist = this.cqiHistoryByNode.get(nid);
         if (!cqiHist) {
           cqiHist = [];
           this.cqiHistoryByNode.set(nid, cqiHist);
         }
-        const prevSnr = this.linkStatuses.get(nid)?.snrDb ?? 18.0;
-        cqiHist.push(prevSnr);
+        cqiHist.push(this.linkStatuses.get(nid)?.snrDb ?? 18.0);
         if (cqiHist.length > 50) cqiHist.shift();
 
         const currentOlla = this.ollaOffsetByNode.get(nid) ?? 0.0;
         sumOllaOffsetDb += currentOlla;
         ollaMarginDb = currentOlla;
+        cqiDecodeFailure = this.cqiDecodeFailureByNode.get(nid);
 
-        let harqSlot = this.harqSlotByNode.get(nid);
-        if (!harqSlot) {
-          harqSlot = createHarqProcessSlot(nid);
-          this.harqSlotByNode.set(nid, harqSlot);
+        if (!this.harqSlotByNode.has(nid)) {
+          this.harqSlotByNode.set(nid, createHarqProcessSlot(nid));
         }
       }
 
@@ -1336,18 +1327,20 @@ export class SimulationWorkerManager {
             carrierFreqHz: this.rfConfig.carrierFrequencyHz,
             radialVelocityMs: doppler.radialVelocityMs,
             relativeSpeedMps: horizSpeed,
-            ricianKFactorDb: 6.0,
+            ricianKFactorDb: dynamicRicianKDb,
           } : undefined,
         };
       }
 
       if (this.enableBiomeEmPhysics) {
+        const acnGroundElevM = this.terrainEngine.getElevation(acnPos[0], acnPos[1]);
+        const acnAltAglM = Math.max(10.0, acnPos[2] - (Number.isFinite(acnGroundElevM) ? acnGroundElevM : 0.0));
         airframeOptions = {
           ...airframeOptions,
           biomeEmParams: {
             enableBiomeEmPhysics: true,
             biomeId: this.biomeId,
-            txAltAglM: this.liveAltitudeM ?? 1000.0,
+            txAltAglM: acnAltAglM,
             rxAltAglM: node.aglM ?? 10.0,
             polarization: this.polarizationMode,
             relativeBankDeg: uavAttitude.rollDeg ?? 0.0,
@@ -1471,6 +1464,9 @@ export class SimulationWorkerManager {
           harqCombinedSnrMarginDb: amcRes.snrMarginDb,
         });
         this.closedLoopCapacityScaleByNode.set(nid, closedLoopScale);
+        this.guardScaleByNode.set(nid, guardRes.frameDataEfficiency);
+        this.delayedCqiSnrByNode.set(nid, reportedCqi);
+        this.cqiDecodeFailureByNode.set(nid, !isAck && !amcRes.isLinkOutage);
       }
 
       nextObstructions.set(nid, obstruction);
@@ -1481,6 +1477,9 @@ export class SimulationWorkerManager {
 
     if (!this.enableMacPhyFeedback) {
       this.closedLoopCapacityScaleByNode.clear();
+      this.guardScaleByNode.clear();
+      this.delayedCqiSnrByNode.clear();
+      this.cqiDecodeFailureByNode.clear();
     }
 
     let dynamicGuardEfficiency = 1.0;

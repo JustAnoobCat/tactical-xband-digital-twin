@@ -143,6 +143,69 @@ export function parseOfflineTileRequestUrl(rawUrl: string): ParseTileResult {
   };
 }
 
+export const MAX_OFFLINE_TILE_CHUNK_BYTES = 16 * 1024 * 1024;
+export const MAX_OFFLINE_TILE_FILE_BYTES = 64 * 1024 * 1024;
+
+export type ByteRangeParseResult =
+  | { readonly ok: true; readonly start: number; readonly end: number; readonly chunkLength: number }
+  | { readonly ok: false; readonly status: 413 | 416; readonly error: string };
+
+/**
+ * Parses an RFC 9110 single byte-range header against a known fileSize and enforces a strict
+ * maximum chunk allocation cap (16 MB by default) so open-ended or oversized ranges cannot OOM.
+ */
+export function parseByteRangeHeader(
+  rangeHeader: string,
+  fileSize: number,
+  maxChunkBytes: number = MAX_OFFLINE_TILE_CHUNK_BYTES
+): ByteRangeParseResult {
+  if (!rangeHeader || !rangeHeader.startsWith('bytes=') || fileSize <= 0) {
+    return { ok: false, status: 416, error: 'Invalid or unsatisfiable range' };
+  }
+  const parts = rangeHeader.slice(6).trim().split('-');
+  if (parts.length !== 2) {
+    return { ok: false, status: 416, error: 'Unsupported multi-range or malformed range header' };
+  }
+  const rawStart = parts[0].trim();
+  const rawEnd = parts[1].trim();
+  let start: number;
+  let end: number;
+
+  if (rawStart === '') {
+    const suffixLength = parseInt(rawEnd, 10);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+      return { ok: false, status: 416, error: 'Invalid suffix byte range' };
+    }
+    start = Math.max(0, fileSize - suffixLength);
+    end = fileSize - 1;
+  } else {
+    start = parseInt(rawStart, 10);
+    if (!Number.isFinite(start) || start < 0 || start >= fileSize) {
+      return { ok: false, status: 416, error: 'Range start out of bounds' };
+    }
+    if (rawEnd === '') {
+      end = fileSize - 1;
+    } else {
+      end = parseInt(rawEnd, 10);
+      if (!Number.isFinite(end) || end < start) {
+        return { ok: false, status: 416, error: 'Range end out of bounds' };
+      }
+      if (end >= fileSize) end = fileSize - 1;
+    }
+  }
+
+  const chunkLength = end - start + 1;
+  if (chunkLength > maxChunkBytes) {
+    return {
+      ok: false,
+      status: 413,
+      error: `Requested byte range (${chunkLength} bytes) exceeds maximum chunk limit (${maxChunkBytes} bytes)`,
+    };
+  }
+
+  return { ok: true, start, end, chunkLength };
+}
+
 export interface PmTilesV3Header {
   readonly specVersion: number;
   readonly rootDirectoryOffset: number;

@@ -38,7 +38,8 @@ const NICE_SCALE_STEPS_M = [
   50, 100, 200, 500,
   1000, 2000, 5000,
   10000, 20000, 50000,
-  100000, 200000,
+  100000, 200000, 500000,
+  1000000, 2000000, 5000000, 10000000,
 ];
 
 /**
@@ -109,7 +110,7 @@ export function drawCartographicOverlays(
   // ==========================================================================
   // 1. Optional MGRS Tactical Coordinate Grid
   // ==========================================================================
-  if (showMgrsGrid && screenToWorld && worldToScreen) {
+  if (showMgrsGrid && mpp < 5000 && screenToWorld && worldToScreen) {
     const topLeft = screenToWorld(0, 0);
     const botRight = screenToWorld(w, h);
 

@@ -8,14 +8,14 @@ export default defineConfig({
       : "/",
 
   server: {
-    port: 8000,
-    open: true,
+    port: Number(process.env.PORT) || 3000,
+    open: false,
     host: "0.0.0.0",
   },
 
   preview: {
-    port: 8000,
-    open: true,
+    port: Number(process.env.PORT) || 3000,
+    open: false,
     host: "0.0.0.0",
   },
 
@@ -25,7 +25,7 @@ export default defineConfig({
 
   build: {
     target: "esnext",
-    sourcemap: true,
+    sourcemap: process.env.VITE_SOURCEMAP === "true",
     rollupOptions: {
       output: {
         manualChunks: {

@@ -14,6 +14,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import time
 import traceback
@@ -1447,6 +1448,9 @@ def _error(exc: Exception, status: int = 400) -> JSONResponse:
 
 @app.get("/")
 async def index() -> FileResponse:
+    root_index = ROOT_DIR / "index.html"
+    if root_index.exists():
+        return FileResponse(str(root_index))
     return FileResponse(str(FRONTEND_DIR / "index.html"))
 
 
@@ -1461,6 +1465,10 @@ async def get_hillshade() -> dict[str, Any]:
     }
 
 
+MAX_TERRAIN_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB strict upload ceiling
+MAX_TERRAIN_GRID_DIM = 4096
+
+
 @app.post("/api/terrain/upload")
 async def post_terrain_upload(file: UploadFile = File(...)) -> JSONResponse:
     """
@@ -1469,10 +1477,23 @@ async def post_terrain_upload(file: UploadFile = File(...)) -> JSONResponse:
     """
     try:
         filename = (file.filename or "uploaded").lower()
-        contents = await file.read()
+        chunks: list[bytes] = []
+        total_bytes = 0
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > MAX_TERRAIN_UPLOAD_BYTES:
+                return JSONResponse(
+                    {"status": "error", "message": "Terrain file exceeds maximum allowed size of 25 MB"},
+                    status_code=413,
+                )
+            chunks.append(chunk)
+        contents = b"".join(chunks)
 
         if filename.endswith(".npy"):
-            grid = np.load(io.BytesIO(contents)).astype(np.float32)
+            grid = np.load(io.BytesIO(contents), allow_pickle=False).astype(np.float32)
         elif filename.endswith((".png", ".jpg", ".jpeg")):
             img = Image.open(io.BytesIO(contents)).convert("L")
             arr = np.asarray(img, dtype=np.float32)
@@ -1484,6 +1505,17 @@ async def post_terrain_upload(file: UploadFile = File(...)) -> JSONResponse:
             return JSONResponse(
                 {"status": "error", "message": "Unsupported format. Please upload .npy, .png, .jpg, or .csv"},
                 status_code=400,
+            )
+
+        if grid.ndim != 2 or grid.shape[0] < 2 or grid.shape[1] < 2:
+            return JSONResponse(
+                {"status": "error", "message": f"Uploaded terrain grid must be a 2D matrix (got shape {grid.shape})"},
+                status_code=400,
+            )
+        if grid.shape[0] > MAX_TERRAIN_GRID_DIM or grid.shape[1] > MAX_TERRAIN_GRID_DIM:
+            return JSONResponse(
+                {"status": "error", "message": f"Uploaded terrain dimensions exceed {MAX_TERRAIN_GRID_DIM}x{MAX_TERRAIN_GRID_DIM}"},
+                status_code=413,
             )
 
         async with sim_lock:
@@ -1678,11 +1710,28 @@ async def post_control(req: ControlRequest) -> JSONResponse:
         return _error(exc)
 
 
+def _is_allowed_ws_origin(origin: Optional[str]) -> bool:
+    if not origin:
+        return True
+    env_origins = os.environ.get("XBAND_CORS_ORIGINS", "").strip()
+    if env_origins:
+        allowed = {o.strip() for o in env_origins.split(",") if o.strip()}
+        if origin in allowed:
+            return True
+    if origin in DEFAULT_CORS_ORIGINS:
+        return True
+    return bool(re.match(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$", origin))
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
+    origin = ws.headers.get("origin")
+    if not _is_allowed_ws_origin(origin):
+        await ws.close(code=1008, reason="Forbidden: untrusted WebSocket origin")
+        return
     expected = _get_api_token()
     if expected:
-        token = ws.query_params.get("token") or _extract_token_from_headers(ws.headers)
+        token = _extract_token_from_headers(ws.headers) or ws.query_params.get("token")
         if not _verify_token(token):
             await ws.close(code=1008, reason="Unauthorized: invalid or missing API token")
             return
@@ -1712,4 +1761,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    bind_host = os.environ.get("XBAND_HOST", "127.0.0.1")
+    bind_port = int(os.environ.get("XBAND_PORT", "8000"))
+    uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")

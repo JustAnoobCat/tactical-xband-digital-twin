@@ -181,7 +181,7 @@ async function runAllTests(): Promise<void> {
       `index.html must have zero duplicate IDs (found: ${duplicates.map(([id, c]) => `${id}×${c}`).join(', ')})`
     );
 
-    // External CDN links/scripts check
+    // External CDN / remote tile links/scripts check
     const externalPatterns = [
       'cdn.tailwindcss.com',
       'fonts.googleapis.com',

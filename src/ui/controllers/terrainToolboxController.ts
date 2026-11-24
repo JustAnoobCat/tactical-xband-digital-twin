@@ -509,11 +509,18 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
     renderToolboxDrawer();
   };
 
+  const setBridgePoint = (slot: 'A' | 'B', pt: ToolboxPoint | null) => {
+    if (slot === 'A') bridgeA = pt;
+    else bridgeB = pt;
+  };
+
   const runBridgeFinder = () => {
-    if (!bridgeA || !bridgeB) return;
+    const ptSourceA = bridgeA;
+    const ptSourceB = bridgeB;
+    if (!ptSourceA || !ptSourceB) return;
     const ctx = buildSimContext();
-    const ptA = { xM: bridgeA.xM ?? bridgeA.x, yM: bridgeA.yM ?? bridgeA.y, aglM: 2, label: 'A' };
-    const ptB = { xM: bridgeB.xM ?? bridgeB.x, yM: bridgeB.yM ?? bridgeB.y, aglM: 2, label: 'B' };
+    const ptA = { xM: ptSourceA.xM ?? ptSourceA.x, yM: ptSourceA.yM ?? ptSourceA.y, aglM: 2, label: 'A' };
+    const ptB = { xM: ptSourceB.xM ?? ptSourceB.x, yM: ptSourceB.yM ?? ptSourceB.y, aglM: 2, label: 'B' };
     const activeReg = terrainRegions.find(r => r.id === selectedRegionId) || null;
     bridgeResult = findJointRelayBridge(
       ctx,
@@ -598,6 +605,22 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
         <div class="terrain-toolbox-row" style="margin-top:6px;">
           <button id="tb-export-geojson-btn" type="button">Export GeoJSON</button>
         </div>`;
+      $('tb-export-geojson-btn')?.addEventListener('click', () => {
+        const activeRegion = terrainRegions.find(r => r.id === selectedRegionId) || terrainRegions[terrainRegions.length - 1] || null;
+        if (!activeRegion || !zonalStats) return;
+        const payload = exportRegionGeoJson(activeRegion, zonalStats);
+        if ((win as any)?.downloadTextBlob) {
+          (win as any).downloadTextBlob('terrain-region-zonal.geojson', payload, 'application/geo+json;charset=utf-8');
+        } else if (doc) {
+          const blob = new Blob([payload], { type: 'application/geo+json;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = doc.createElement('a');
+          a.href = url;
+          a.download = 'terrain-region-zonal.geojson';
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      });
     }
 
     drawer.classList.toggle('is-collapsed', !hasBody);
@@ -858,6 +881,26 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
       return;
     }
 
+    if (toolMode === 'bridge-a') {
+      bridgeA = pt;
+      toolMode = 'idle';
+      setStatus('Bridge endpoint A set. Pick B or run Bridge Finder.');
+      if (bridgeA && bridgeB) runBridgeFinder();
+      refreshTerrainToolbox();
+      deps.drawRadar();
+      return;
+    }
+
+    if (toolMode === 'bridge-b') {
+      bridgeB = pt;
+      toolMode = 'idle';
+      setStatus('Bridge endpoint B set. Computing joint relay bridge.');
+      if (bridgeA && bridgeB) runBridgeFinder();
+      refreshTerrainToolbox();
+      deps.drawRadar();
+      return;
+    }
+
     if (toolMode === 'obstacle-place') {
       const editor = deps.getObstacleEditor();
       if (editor) {
@@ -937,6 +980,7 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
     recomputeTransect,
     recomputeProbeAnalysis,
     recomputeRegionZonal,
+    setBridgePoint,
     runBridgeFinder,
     renderToolboxDrawer,
     cancelTerrainTool,

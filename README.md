@@ -147,13 +147,13 @@ npm install
 ```bash
 npm run dev
 ```
-Open `http://localhost:5173` in any modern Chromium/Firefox/WebKit browser.
+Open `http://localhost:3000` in any modern Chromium/Firefox/WebKit browser.
 
 ### Launch Canonical Node/TS Headless Parity Server
 ```bash
 npm run server:ts
 ```
-Starts the authoritative headless simulation server on `http://127.0.0.1:8080` with RESTful `/api/capabilities`, `/api/health`, `/api/telemetry`, and `/api/control` endpoints.
+Starts the authoritative headless simulation server on `http://127.0.0.1:8001` with RESTful `/api/capabilities`, `/api/health`, `/api/telemetry`, and `/api/control` endpoints.
 
 ### Generate Native Node V8 Code Coverage
 ```bash

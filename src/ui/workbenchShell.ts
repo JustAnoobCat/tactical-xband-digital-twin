@@ -13,6 +13,7 @@
  */
 
 import { isTacticalIconName, renderTacticalIcon } from './tacticalIcons';
+import { TACTICAL_STATUS_ENCODINGS } from './accessibilityEncoding';
 
 export type CvdVisualMode = 'standard' | 'colorblind-safe';
 
@@ -97,6 +98,19 @@ export function initWorkbenchShell(): WorkbenchShellHandle {
     cvdMode = mode;
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.dataset.cvdMode = mode;
+      const rootStyle = document.documentElement.style;
+      if (mode === 'colorblind-safe') {
+        const safe = TACTICAL_STATUS_ENCODINGS['colorblind-safe'];
+        rootStyle.setProperty('--cvd-ok', safe.OPTIMAL.color);
+        rootStyle.setProperty('--cvd-warn', safe.DEGRADED.color);
+        rootStyle.setProperty('--cvd-danger', safe.OUTAGE.color);
+        rootStyle.setProperty('--cvd-info', safe.RELAY_ACTIVE.color);
+      } else {
+        rootStyle.removeProperty('--cvd-ok');
+        rootStyle.removeProperty('--cvd-warn');
+        rootStyle.removeProperty('--cvd-danger');
+        rootStyle.removeProperty('--cvd-info');
+      }
     }
     if (typeof document !== 'undefined') {
       const btn = document.getElementById('btn-cvd-mode');

@@ -1169,11 +1169,13 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
           const ps = getPred(nid);
           const ls = getLink(nid);
           const closedLoopScale = getClosedLoopScale(nid);
+          const guardScale = getGuardScale(nid);
           const rInst = (ls?.bitrateBps ?? 1e6) * closedLoopScale;
+          const rEff = Math.max(1.0, rInst * guardScale);
           const qTotalBits = node.queue.getTotalBacklogBits();
           if (qTotalBits === 0) continue;
 
-          const tauReq = qTotalBits / rInst;
+          const tauReq = qTotalBits / rEff;
           const maxAvailSlot = secRemainingUlTimeS - this.config.guardIntervalS;
           let tauSlot: number;
           let isFlush = false;
@@ -1187,14 +1189,14 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
             const maxSlot = Math.min(0.015, maxAvailSlot);
             tauSlot = Math.min(tauReq, maxSlot, maxAvailSlot);
           } else {
-            // Reactive M-LWDF strictly bounded by per-sector fair share
+            // Reactive M-LWDF fair-share bound in Pass-1 (leftover airtime redistributed work-conservingly in Pass-2)
             const maxSlot = Math.min(maxReactiveSlot, maxAvailSlot);
             tauSlot = Math.min(tauReq, maxSlot, maxAvailSlot);
           }
 
           if (tauSlot < this.config.minSlotDurationS) continue;
 
-          const capBits = Math.floor(tauSlot * rInst);
+          const capBits = Math.floor(tauSlot * rEff);
           const remainingBacklog = Math.max(0, qTotalBits - capBits);
 
           candidatePlan.push({
@@ -1212,14 +1214,16 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         }
 
         // Pass 2: Work-Conserving Deficit Drainage
-        // Redistribute leftover sector airtime to backlogged candidates without adding guard intervals
+        // Redistribute leftover sector airtime fairly to backlogged candidates without adding guard intervals
         if (secRemainingUlTimeS > 0.0001) {
-          const maxAllowedSlot = this.enablePredictiveLookahead ? Math.min(0.016, tUlAvailable) : maxReactiveSlot;
+          const maxAllowedSlot = Math.min(0.016, tUlAvailable);
           for (let i = 0; i < candidatePlan.length && secRemainingUlTimeS > 0.0001; i++) {
             const plan = candidatePlan[i];
             if (plan.remainingBacklogBits <= 0) continue;
 
-            const extraTauReq = plan.remainingBacklogBits / plan.rInst;
+            const guardScale = getGuardScale(plan.nid);
+            const rEff = Math.max(1.0, plan.rInst * guardScale);
+            const extraTauReq = plan.remainingBacklogBits / rEff;
             const maxAddTau = Math.min(
               Math.max(0, maxAllowedSlot - plan.tauSlot),
               secRemainingUlTimeS
@@ -1229,7 +1233,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
             if (addTau > 0.00001) {
               plan.tauSlot += addTau;
               secRemainingUlTimeS -= addTau;
-              const additionalBits = Math.floor(addTau * plan.rInst);
+              const additionalBits = Math.floor(addTau * rEff);
               plan.remainingBacklogBits = Math.max(0, plan.remainingBacklogBits - additionalBits);
             }
           }
@@ -1279,6 +1283,8 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
           totalPayloadBitsDequeued += bitsServed;
           if (plan.ls?.cqiDecodeFailure) {
             totalBitsWasted += bitsServed;
+            // HARQ retention: keep undecoded packets in queue for retransmission until decoded or deadline-expired
+            plan.node.queue.requeueForHarq(served);
           } else {
             totalBitsTx += bitsServed;
             secBitsTx += bitsServed;

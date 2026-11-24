@@ -278,6 +278,21 @@ export class FQCoDelQueue {
   }
 
   /**
+   * Re-inserts undecoded packets at the head of their priority subqueues for HARQ retransmission
+   * without inflating totalEnqueued counters or dropping them on decode failure.
+   */
+  public requeueForHarq(packets: readonly Packet[]): void {
+    for (let i = packets.length - 1; i >= 0; i--) {
+      const pkt = packets[i];
+      const q = this.subqueues.get(pkt.qos5qi);
+      if (!q) continue;
+      if (this.getTotalPackets() >= this.maxBufferPackets) continue;
+      pkt.sojournTimeS = 0.0;
+      q.unshift(pkt);
+    }
+  }
+
+  /**
    * Prunes non-C2 packets exceeding their packet delay budget.
    * 5QI 69 is explicitly exempt from deadline pruning during mountain shadow outrages.
    */

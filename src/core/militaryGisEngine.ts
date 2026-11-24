@@ -861,9 +861,17 @@ export function serializeMissionScenarioJson(scenario: MissionScenarioV3): strin
   return JSON.stringify(scenario, null, 2);
 }
 
+const MAX_SCENARIO_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_SCENARIO_NODES = 256;
+const MAX_SCENARIO_WAYPOINTS = 256;
+const MAX_SCENARIO_OBSTACLES = 256;
+const MAX_SCENARIO_OBSTACLE_POINTS = 128;
+const FORBIDDEN_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /**
  * Safely parses, validates, and bounds-clamps a Mission Scenario JSON v3 string.
- * Strictly defends against prototype pollution (`__proto__`, `constructor`, `prototype`).
+ * Defends against dangerous object keys (including unicode-escaped keys) via a JSON.parse reviver
+ * and enforces strict payload and array length limits.
  */
 export function parseMissionScenarioJson(jsonText: string): ScenarioParseResult {
   const warnings: string[] = [];
@@ -872,16 +880,26 @@ export function parseMissionScenarioJson(jsonText: string): ScenarioParseResult 
     return { ok: false, error: 'Empty JSON text', warnings };
   }
 
-  // 1. Prototype pollution string defense
-  if (jsonText.includes('__proto__') || jsonText.includes('"constructor"') || jsonText.includes('"prototype"')) {
-    return { ok: false, error: 'Security violation: JSON contains forbidden prototype pollution properties', warnings };
+  if (jsonText.length > MAX_SCENARIO_JSON_BYTES) {
+    return { ok: false, error: `Scenario JSON exceeds maximum allowed size (${MAX_SCENARIO_JSON_BYTES} bytes)`, warnings };
   }
 
   let raw: any;
+  let forbiddenKeyFound: string | null = null;
   try {
-    raw = JSON.parse(jsonText);
+    raw = JSON.parse(jsonText, (key, value) => {
+      if (FORBIDDEN_OBJECT_KEYS.has(key)) {
+        forbiddenKeyFound = key;
+        return undefined;
+      }
+      return value;
+    });
   } catch (err) {
     return { ok: false, error: `Invalid JSON syntax: ${err instanceof Error ? err.message : String(err)}`, warnings };
+  }
+
+  if (forbiddenKeyFound !== null) {
+    return { ok: false, error: `Security violation: prototype pollution attempt via forbidden key "${forbiddenKeyFound}" rejected`, warnings };
   }
 
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -912,45 +930,52 @@ export function parseMissionScenarioJson(jsonText: string): ScenarioParseResult 
   const cruiseSpeed = Number.isFinite(raw.acn?.cruiseAirspeedMs) ? Math.min(250, Math.max(20, raw.acn.cruiseAirspeedMs)) : 50.0;
   const pattern = typeof raw.acn?.orbitPattern === 'string' ? raw.acn.orbitPattern : 'ellipse_orbit';
 
-  const waypoints = Array.isArray(raw.acn?.waypoints)
-    ? raw.acn.waypoints.map((w: any) => ({
-        xM: Number.isFinite(w?.xM) ? w.xM : 0,
-        yM: Number.isFinite(w?.yM) ? w.yM : 0,
-        altM: Number.isFinite(w?.altM) ? Math.min(12000, Math.max(500, w.altM)) : cruiseAlt,
-      }))
-    : [];
+  const rawWaypoints = Array.isArray(raw.acn?.waypoints) ? raw.acn.waypoints : [];
+  if (rawWaypoints.length > MAX_SCENARIO_WAYPOINTS) {
+    warnings.push(`Waypoints truncated to ${MAX_SCENARIO_WAYPOINTS} items`);
+  }
+  const waypoints = rawWaypoints.slice(0, MAX_SCENARIO_WAYPOINTS).map((w: any) => ({
+    xM: Number.isFinite(w?.xM) ? w.xM : 0,
+    yM: Number.isFinite(w?.yM) ? w.yM : 0,
+    altM: Number.isFinite(w?.altM) ? Math.min(12000, Math.max(500, w.altM)) : cruiseAlt,
+  }));
 
   // Ground Nodes
-  const nodes = Array.isArray(raw.nodes)
-    ? raw.nodes.map((n: any, idx: number) => ({
-        id: Number.isInteger(n?.id) ? n.id : idx + 1,
-        callsign: typeof n?.callsign === 'string' ? n.callsign.slice(0, 24) : `NODE-${idx + 1}`,
-        xM: Number.isFinite(n?.xM) ? n.xM : 0,
-        yM: Number.isFinite(n?.yM) ? n.yM : 0,
-        aglM: Number.isFinite(n?.aglM) ? Math.min(200, Math.max(1, n.aglM)) : 2.5,
-        tacticalPriority: Number.isInteger(n?.tacticalPriority) ? Math.min(5, Math.max(1, n.tacticalPriority)) : 3,
-      }))
-    : [];
+  const rawNodes = Array.isArray(raw.nodes) ? raw.nodes : [];
+  if (rawNodes.length > MAX_SCENARIO_NODES) {
+    warnings.push(`Nodes truncated to ${MAX_SCENARIO_NODES} items`);
+  }
+  const nodes = rawNodes.slice(0, MAX_SCENARIO_NODES).map((n: any, idx: number) => ({
+    id: Number.isInteger(n?.id) ? n.id : idx + 1,
+    callsign: typeof n?.callsign === 'string' ? n.callsign.slice(0, 24) : `NODE-${idx + 1}`,
+    xM: Number.isFinite(n?.xM) ? n.xM : 0,
+    yM: Number.isFinite(n?.yM) ? n.yM : 0,
+    aglM: Number.isFinite(n?.aglM) ? Math.min(200, Math.max(1, n.aglM)) : 2.5,
+    tacticalPriority: Number.isInteger(n?.tacticalPriority) ? Math.min(5, Math.max(1, n.tacticalPriority)) : 3,
+  }));
 
   // 3D Obstacles
-  const obstacles = Array.isArray(raw.obstacles)
-    ? raw.obstacles.map((o: any, idx: number) => ({
-        id: typeof o?.id === 'string' ? o.id : `obs-${idx}`,
-        name: typeof o?.name === 'string' ? o.name.slice(0, 40) : `Obstacle ${idx + 1}`,
-        type: typeof o?.type === 'string' ? o.type : 'ridge',
-        points: Array.isArray(o?.points)
-          ? o.points.map((pt: any) => ({
-              x: Number.isFinite(pt?.x) ? pt.x : 0,
-              y: Number.isFinite(pt?.y) ? pt.y : 0,
-            }))
-          : [],
-        heightM: Number.isFinite(o?.heightM) ? Math.min(2000, Math.max(1, o.heightM)) : 50.0,
-      }))
-    : [];
+  const rawObstacles = Array.isArray(raw.obstacles) ? raw.obstacles : [];
+  if (rawObstacles.length > MAX_SCENARIO_OBSTACLES) {
+    warnings.push(`Obstacles truncated to ${MAX_SCENARIO_OBSTACLES} items`);
+  }
+  const obstacles = rawObstacles.slice(0, MAX_SCENARIO_OBSTACLES).map((o: any, idx: number) => ({
+    id: typeof o?.id === 'string' ? o.id.slice(0, 64) : `obs-${idx}`,
+    name: typeof o?.name === 'string' ? o.name.slice(0, 40) : `Obstacle ${idx + 1}`,
+    type: typeof o?.type === 'string' ? o.type.slice(0, 32) : 'ridge',
+    points: Array.isArray(o?.points)
+      ? o.points.slice(0, MAX_SCENARIO_OBSTACLE_POINTS).map((pt: any) => ({
+          x: Number.isFinite(pt?.x) ? pt.x : 0,
+          y: Number.isFinite(pt?.y) ? pt.y : 0,
+        }))
+      : [],
+    heightM: Number.isFinite(o?.heightM) ? Math.min(2000, Math.max(1, o.heightM)) : 50.0,
+  }));
 
-  const rfConfig: Record<string, number | boolean | string> = {};
-  if (raw.rfConfig && typeof raw.rfConfig === 'object') {
+  const rfConfig: Record<string, number | boolean | string> = Object.create(null);
+  if (raw.rfConfig && typeof raw.rfConfig === 'object' && !Array.isArray(raw.rfConfig)) {
     for (const [k, v] of Object.entries(raw.rfConfig)) {
+      if (FORBIDDEN_OBJECT_KEYS.has(k)) continue;
       if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') {
         rfConfig[k] = v;
       }

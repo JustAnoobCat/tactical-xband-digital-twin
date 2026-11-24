@@ -856,16 +856,6 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
       btnHtml.dataset.initialized = 'true';
       btnHtml.addEventListener('click', () => {
         const html = exportAarHtml();
-        if (typeof window !== 'undefined' && typeof window.open === 'function') {
-          const printWin = window.open('', '_blank');
-          if (printWin) {
-            printWin.document.open();
-            printWin.document.write(html);
-            printWin.document.close();
-            flashAarStatus('AAR HTML Ready!');
-            return;
-          }
-        }
         triggerDownload(
           html,
           `tactical-aar-${Date.now()}.html`,

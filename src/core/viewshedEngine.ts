@@ -555,8 +555,9 @@ export class PolarViewshedEngine {
     let validNodeCount = 0;
     for (const node of groundNodes) {
       const pos = node.position;
-      const elev = pos.length >= 3 && Number.isFinite(pos[2])
-        ? pos[2]
+      const posZ = pos.length >= 3 ? pos[2] : undefined;
+      const elev = posZ !== undefined && Number.isFinite(posZ)
+        ? posZ
         : (terrain.getElevation(pos[0], pos[1]) || 3500.0);
       meanGroundElev += elev;
       validNodeCount++;
@@ -587,6 +588,16 @@ export class PolarViewshedEngine {
     const R_END_M = 14000.0;
     const rStep = (R_END_M - R_START_M) / (CAND_RADII - 1);
 
+    // Precompute real thermal noise floor from RFConfig (bandwidth + NF + temperature)
+    const thermalNoise = LinkBudgetEngine.computeThermalNoiseFloorDbm(
+      rf.channelBandwidthHz,
+      rf.acnNoiseFigureDb,
+      env.atmosphericTemperatureK,
+      rf.boltzmannConstant
+    );
+    const baseNoiseW = thermalNoise.pNoiseW;
+    const baseNoiseDbm = thermalNoise.pNoiseDbm;
+
     let bestScore = -Infinity;
     let bestCandPos: Position3D = [0, 0, meanGroundElev + 500];
     let bestOrbitAvail = 0.0;
@@ -615,23 +626,58 @@ export class PolarViewshedEngine {
         for (let m = 0; m < orbitPhasesCount; m++) {
           const acnPos = orbitalAcnPositions[m];
           const acnVel = orbitalAcnVelocities[m];
-          const dM = Math.max(Math.hypot(acnPos[0] - candX, acnPos[1] - candY, acnPos[2] - candZ), 1.0);
+          const dx = candX - acnPos[0];
+          const dy = candY - acnPos[1];
+          const dz = candZ - acnPos[2];
+          const dM = Math.max(Math.hypot(dx, dy, dz), 1.0);
 
           const obs = terrain.evaluateTerrainObstruction(candPos, acnPos, rf, env, 200.0);
           const diffLossDb = obs.obstacleBlocked
             ? 35.0
             : (Number.isFinite(obs.diffractionLossDb) ? obs.diffractionLossDb! : (obs.isLos ? 0.0 : 45.0));
 
-          // Slant link budget to ACN
+          // Slant link budget to ACN (FSPL + diffraction + gas + rain + losses)
           const fsplDb = LinkBudgetEngine.computeFsplDb(dM, rf.carrierFrequencyHz, rf.speedOfLight);
           const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(dM, candZ, acnPos[2], rf.carrierFrequencyHz);
           const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dM, env, candZ, acnPos[2]);
           const totalLossDb = fsplDb + diffLossDb + gasLossDb + rainLossDb + rf.cableLossDb + rf.implementationMarginDb;
 
-          // Relay transmitter: 30 dBm, 5 dBi directional antenna, ACN 15 dBi
-          const pRxDbm = 30.0 + 5.0 + rf.acnAntennaGainDbi - totalLossDb;
-          const pNoiseDbm = -105.0;
-          const sinrDb = pRxDbm - pNoiseDbm;
+          // Quad-sector body-frame elevation & azimuth roll-off using acnVel heading
+          const horizD = Math.max(Math.hypot(dx, dy), 1.0);
+          const elevDeg = (Math.atan2(dz, horizD) * 180.0) / Math.PI; // negative below ACN
+          const acnHeadingRad = Math.atan2(acnVel[0], acnVel[1]);
+          const targetAzRad = Math.atan2(dx, dy);
+          let bodyAzDeg = (((targetAzRad - acnHeadingRad) * 180.0) / Math.PI) % 360.0;
+          if (bodyAzDeg < 0) bodyAzDeg += 360.0;
+          const nearestSectorCenter = Math.round(bodyAzDeg / 90.0) * 90.0;
+          const offAzDeg = Math.abs(bodyAzDeg - nearestSectorCenter);
+          const offElDeg = Math.abs(elevDeg - (-15.0)); // -15 deg sector downtilt
+          const patternRolloffDb = Math.min(18.0, 12.0 * Math.pow(offAzDeg / 90.0, 2) + 12.0 * Math.pow(offElDeg / 65.0, 2));
+          const effAcnGainDbi = rf.acnAntennaGainDbi - patternRolloffDb;
+
+          // Sky noise temperature increase from atmospheric + rain attenuation
+          const atmoLossDb = gasLossDb + rainLossDb;
+          const tSkyK = 275.0 * (1.0 - Math.pow(10.0, -atmoLossDb / 10.0));
+          const noiseFactor = Math.pow(10.0, rf.acnNoiseFigureDb / 10.0);
+          const effNoiseTempK = env.atmosphericTemperatureK * noiseFactor + tSkyK;
+          let totalInterfNoiseW = rf.boltzmannConstant * effNoiseTempK * rf.channelBandwidthHz;
+
+          // Optional EW jammer ingress at ACN
+          if (env.jammerEnabled && env.jammerPosEnu) {
+            const jPos = env.jammerPosEnu;
+            const dJamM = Math.max(Math.hypot(acnPos[0] - jPos[0], acnPos[1] - jPos[1], acnPos[2] - jPos[2]), 1.0);
+            const jObs = terrain.evaluateTerrainObstruction(jPos, acnPos, rf, env, 300.0);
+            const jDiffDb = jObs.obstacleBlocked ? 35.0 : (Number.isFinite(jObs.diffractionLossDb) ? jObs.diffractionLossDb! : 0.0);
+            const jFsplDb = LinkBudgetEngine.computeFsplDb(dJamM, rf.carrierFrequencyHz, rf.speedOfLight);
+            const jRxDbm = (env.jammerEirpDbm ?? 50.0) + rf.acnAntennaGainDbi - 6.0 - (jFsplDb + jDiffDb);
+            totalInterfNoiseW += Math.pow(10.0, (jRxDbm - 30.0) / 10.0);
+          }
+
+          const pNoisePlusInterfDbm = 10.0 * Math.log10(Math.max(totalInterfNoiseW, 1e-22) * 1000.0);
+
+          // Relay transmitter: 30 dBm, 5 dBi directional antenna, ACN directional sector gain
+          const pRxDbm = 30.0 + 5.0 + effAcnGainDbi - totalLossDb;
+          const sinrDb = pRxDbm - pNoisePlusInterfDbm;
 
           sumSinrToAcn += sinrDb;
           if (sinrDb >= 10.0) {
@@ -647,8 +693,9 @@ export class PolarViewshedEngine {
           const gnPos = gNode.position;
           const gnElev = terrain.getElevation(gnPos[0], gnPos[1]);
           const terrainSurfaceZ = (Number.isFinite(gnElev) ? gnElev : 3500.0) + 2.0;
-          const gnZ = gnPos.length >= 3 && Number.isFinite(gnPos[2])
-            ? Math.max(gnPos[2], terrainSurfaceZ)
+          const gnPosZ = gnPos.length >= 3 ? gnPos[2] : undefined;
+          const gnZ = gnPosZ !== undefined && Number.isFinite(gnPosZ)
+            ? Math.max(gnPosZ, terrainSurfaceZ)
             : terrainSurfaceZ;
           const gNodePos: Position3D = [gnPos[0], gnPos[1], gnZ];
 
@@ -659,8 +706,15 @@ export class PolarViewshedEngine {
             : (Number.isFinite(obsNode.diffractionLossDb) ? obsNode.diffractionLossDb! : (obsNode.isLos ? 0.0 : 45.0));
 
           const fsplDb = LinkBudgetEngine.computeFsplDb(dGroundM, rf.carrierFrequencyHz, rf.speedOfLight);
-          const pRxGroundDbm = 30.0 + 0.0 + 5.0 - (fsplDb + diffLossDb + rf.cableLossDb + rf.implementationMarginDb);
-          const groundSinrDb = pRxGroundDbm - (-105.0);
+          const gGasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(dGroundM, gnZ, candZ, rf.carrierFrequencyHz);
+          const gRainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dGroundM, env, gnZ, candZ);
+          const gAtmoLossDb = gGasLossDb + gRainLossDb;
+          const gSkyK = 275.0 * (1.0 - Math.pow(10.0, -gAtmoLossDb / 10.0));
+          const gNoiseW = baseNoiseW + rf.boltzmannConstant * gSkyK * rf.channelBandwidthHz;
+          const gNoiseDbm = 10.0 * Math.log10(Math.max(gNoiseW, 1e-22) * 1000.0);
+
+          const pRxGroundDbm = 30.0 + 0.0 + 5.0 - (fsplDb + diffLossDb + gAtmoLossDb + rf.cableLossDb + rf.implementationMarginDb);
+          const groundSinrDb = pRxGroundDbm - (Number.isFinite(gNoiseDbm) ? gNoiseDbm : baseNoiseDbm);
 
           if (groundSinrDb >= 4.0 || obsNode.isLos) {
             coveredGroundCount++;
