@@ -70,6 +70,8 @@
     "verify:closed-loop-mac-transport": "vite-node src/tests/verifyClosedLoopMacTransport.ts",
     "verify:ew-eccm-lpi": "vite-node src/tests/verifyEwEccmAndLpi.ts",
     "verify:constellation-mobility": "vite-node src/tests/verifyConstellationAndMobility.ts",
+    "verify:digital-twin-calibration": "vite-node src/tests/verifyDigitalTwinCalibration.ts",
+    "verify:military-gis": "vite-node src/tests/verifyMilitaryGisAndPersistence.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",

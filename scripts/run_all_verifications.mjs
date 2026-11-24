@@ -161,7 +161,9 @@ const REGISTERED_SUITES = [
   { id: 'verify:multi-biome-physics', name: 'Multi-Biome Theater Platform & Biome-Adaptive RF Physics (SPEC-V3-01)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMultiBiomePhysics.ts'], category: 'physics' },
   { id: 'verify:closed-loop-mac-transport', name: 'Closed-Loop MAC/PHY Scheduler Coupling, Transport AIMD & Video ABR (SPEC-V3-02)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyClosedLoopMacTransport.ts'], category: 'physics' },
   { id: 'verify:ew-eccm-lpi', name: 'Defense EW / ECCM, MVDR Null-Steering, ESM/LPI & GNSS Spoofing (SPEC-V3-03)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyEwEccmAndLpi.ts'], category: 'physics' },
-  { id: 'verify:constellation-mobility', name: 'Multi-ACN Constellation & Handover, Multi-Hop MANET Routing & High-Altitude Aerodynamics (SPEC-V3-04)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyConstellationAndMobility.ts'], category: 'physics' }
+  { id: 'verify:constellation-mobility', name: 'Multi-ACN Constellation & Handover, Multi-Hop MANET Routing & High-Altitude Aerodynamics (SPEC-V3-04)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyConstellationAndMobility.ts'], category: 'physics' },
+  { id: 'verify:digital-twin-calibration', name: 'True Digital-Twin Calibration & Flight-Test Replay (SPEC-V3-05)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDigitalTwinCalibration.ts'], category: 'benchmark' },
+  { id: 'verify:military-gis', name: 'Military Tactical GIS, Cartographic Overlays, GeoTIFF DEM & Mission Persistence (SPEC-V3-06)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMilitaryGisAndPersistence.ts'], category: 'ui' }
 ];
 
 // -----------------------------------------------------------------------------

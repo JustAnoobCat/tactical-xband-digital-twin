@@ -3242,6 +3242,60 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <pre id="dossier-markdown-preview" class="diag-json-pre" style="max-height:220px;overflow-y:auto;font-size:10px;line-height:1.4;padding:8px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.06);border-radius:4px;user-select:text;" aria-label="Generated Reproducible Research Dossier Markdown Preview">// Click 'Generate &amp; Copy Dossier' to compile publication-ready Markdown and LaTeX report...</pre>
         </div>
       </div>
+
+      <!-- Digital-Twin Flight-Test Trace Calibration & Replay Panel -->
+      <div class="panel" id="twin-calibration-panel" aria-labelledby="cal-panel-heading" style="margin-top: 14px;">
+        <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h3 id="cal-panel-heading" style="margin:0;font-size:13px;font-weight:600;letter-spacing:0.04em;">DIGITAL-TWIN TRACE VALIDATION &amp; AUTO-CALIBRATION</h3>
+            <p style="font-size:11px;color:rgba(255,255,255,0.6);margin:3px 0 0 0;">Empirical flight-test telemetry replay, simulation residual diagnostics, and multi-scale coordinate descent parameter auto-tuning.</p>
+          </div>
+          <span id="cal-verdict-badge" class="kpi-badge" style="font-size:11px;padding:2px 8px;background:rgba(100,116,139,0.25);color:#94a3b8;border:1px solid rgba(148,163,184,0.3);" aria-label="Digital twin calibration certification status">STANDBY</span>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;margin-bottom:12px;background:rgba(15,23,42,0.4);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:8px 10px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <label for="cal-preset-select" style="font-size:11px;color:rgba(255,255,255,0.7);font-weight:500;">Preset Flight Trace:</label>
+            <select id="cal-preset-select" aria-label="Preset flight test trace selection" style="font-size:11px;background:#0f172a;color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:4px 8px;">
+              <option value="kargil_alpine_ridge">Kargil Alpine Ridge (80 pts, Mountainous/Diffraction)</option>
+              <option value="arabian_maritime_multipath">Arabian Maritime (80 pts, Sea Multipath/Radome)</option>
+            </select>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:6px;">
+            <label for="cal-csv-file-input" style="font-size:11px;color:rgba(255,255,255,0.7);font-weight:500;">Custom CSV:</label>
+            <input type="file" id="cal-csv-file-input" accept=".csv,.txt" aria-label="Upload custom flight test CSV trace" style="font-size:10px;color:rgba(255,255,255,0.8);max-width:180px;" />
+          </div>
+
+          <div style="display:flex;gap:6px;margin-left:auto;align-items:center;">
+            <button id="btn-cal-evaluate" class="primary" type="button" aria-label="Validate digital twin against flight trace" style="font-size:11px;padding:5px 10px;cursor:pointer;">Validate Twin</button>
+            <button id="btn-cal-auto-solve" class="btn-secondary" type="button" aria-label="Auto-calibrate digital twin physical parameters" style="font-size:11px;padding:5px 10px;cursor:pointer;background:#0284c7;color:#fff;border:none;border-radius:4px;">Auto-Calibrate</button>
+            <button id="btn-cal-export" type="button" aria-label="Copy digital twin calibration report to clipboard" style="font-size:11px;padding:5px 10px;cursor:pointer;background:rgba(255,255,255,0.08);color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:4px;">Copy Report</button>
+          </div>
+        </div>
+
+        <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:10px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:rgba(255,255,255,0.7);">Flight-Test Measured vs Digital-Twin Predicted SNR (dB)</span>
+            <span id="cal-trace-legend" style="font-size:10px;color:rgba(255,255,255,0.5);">Amber = Measured Trace | Cyan = Predicted Trace | Red = Outage Threshold (-1.5 dB)</span>
+          </div>
+          <canvas id="twin-calibration-canvas" height="190" style="width:100%;height:190px;display:block;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:#080b12;" aria-label="Digital-Twin vs Measured Flight-Test SNR Scope"></canvas>
+        </div>
+
+        <div class="diag-live-grid" aria-label="Digital twin calibration residual metrics" style="margin-bottom:10px;">
+          <div class="diag-card"><span>Root-Mean-Square Error (RMSE)</span><strong id="cal-rmse-val" style="font-size:11px;">-- dB</strong></div>
+          <div class="diag-card"><span>Mean Absolute Error (MAE)</span><strong id="cal-mae-val" style="font-size:11px;">-- dB</strong></div>
+          <div class="diag-card"><span>Mean Bias Error (MBE)</span><strong id="cal-bias-val" style="font-size:11px;">-- dB</strong></div>
+          <div class="diag-card"><span>Pearson Correlation (r / R2)</span><strong id="cal-pearson-val" style="font-size:11px;">--</strong></div>
+          <div class="diag-card"><span>Outage Classification Accuracy</span><strong id="cal-outage-acc-val" style="font-size:11px;">-- %</strong></div>
+          <div class="diag-card"><span>Calibrated Trim Offsets</span><strong id="cal-trims-val" style="font-size:11px;">Trim: 0.0 dB · Diff: 1.00x</strong></div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:4px;">
+          <span id="cal-status-readout" style="font-size:10px;color:rgba(255,255,255,0.6);" role="status" aria-live="polite">Ready. Select a flight preset or upload CSV, then click 'Validate Twin' or 'Auto-Calibrate'.</span>
+          <span id="cal-copy-status" style="font-size:10px;color:#10b981;display:none;">Report copied to clipboard!</span>
+        </div>
+      </div>
       </section>
       </div>
 
@@ -4137,6 +4191,37 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
         </div>
 
+        <!-- ===== Tactical Military GIS & Mission Persistence Workstation Card ===== -->
+        <div id="mission-gis-panel" class="panel" style="margin-top:12px;padding:10px;background:rgba(15,23,42,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:6px;">
+          <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+            <div>
+              <h3 style="margin:0;font-size:12.5px;font-weight:600;letter-spacing:0.04em;">TACTICAL MILITARY GIS &amp; MISSION PERSISTENCE</h3>
+              <p style="font-size:10.5px;color:rgba(255,255,255,0.6);margin:2px 0 0 0;">WGS-84 / UTM / MGRS spatial tools, ATAK Cursor-on-Target (CoT), OGC KML 2.2 export, and mission scenario save/load.</p>
+            </div>
+            <span id="gis-status-badge" class="kpi-badge badge-neutral" style="font-size:10px;padding:2px 6px;">READY</span>
+          </div>
+
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="toggle-mgrs-grid" aria-label="Toggle MGRS 10km grid overlay on 2D tactical radar" style="cursor:pointer;" />
+              <label for="toggle-mgrs-grid" style="font-size:11px;color:rgba(255,255,255,0.85);cursor:pointer;user-select:none;">MGRS Grid Overlay (2D Radar)</label>
+            </div>
+
+            <div style="display:flex;gap:6px;margin-left:auto;align-items:center;flex-wrap:wrap;">
+              <button id="btn-scenario-save-json" type="button" class="btn-secondary" aria-label="Save full mission scenario to JSON v3" style="font-size:11px;padding:5px 10px;cursor:pointer;background:rgba(255,255,255,0.08);color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:4px;">Save Scenario JSON</button>
+              <label for="scenario-json-file-input" class="btn-secondary" style="font-size:11px;padding:5px 10px;cursor:pointer;background:rgba(255,255,255,0.08);color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:4px;display:inline-block;">Load Scenario</label>
+              <input type="file" id="scenario-json-file-input" accept=".json" aria-label="Load mission scenario JSON file" style="display:none;" />
+              <button id="btn-export-kml" type="button" class="btn-secondary" aria-label="Export mission entities and links to OGC KML 2.2" style="font-size:11px;padding:5px 10px;cursor:pointer;background:rgba(255,255,255,0.08);color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:4px;">Export KML</button>
+              <button id="btn-export-cot-xml" type="button" class="btn-secondary" aria-label="Export mission entities to ATAK Cursor-on-Target XML" style="font-size:11px;padding:5px 10px;cursor:pointer;background:rgba(255,255,255,0.08);color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:4px;">Export CoT XML</button>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:4px;">
+            <span id="mission-gis-status" style="font-size:10px;color:rgba(255,255,255,0.6);" role="status" aria-live="polite">MGRS Engine Active · Standard WGS-84 Ellipsoid (Zone 43S, Ladakh Sector)</span>
+            <span id="mission-gis-action-status" style="font-size:10px;color:#10b981;display:none;">Saved!</span>
+          </div>
+        </div>
+
       </div>
     </div>
   </section>
@@ -4150,9 +4235,9 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
     <div class="modal-header"><h3>Upload custom terrain (DEM / SRTM)</h3><button class="modal-close-btn" onclick="closeUploadModal()" aria-label="Close">&times;</button></div>
     <div class="modal-body">
       <div id="dropzone" class="dropzone" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDropFile(event)">
-        <input type="file" id="terrainFileInput" aria-label="Select terrain file" accept=".hgt,.png,.jpg,.jpeg,.bin" style="display:none" onchange="onFileSelected(this.files[0])">
+        <input type="file" id="terrainFileInput" aria-label="Select terrain file" accept=".hgt,.png,.jpg,.jpeg,.bin,.tif,.tiff" style="display:none" onchange="onFileSelected(this.files[0])">
         <input type="file" id="terrainFolderInput" aria-label="Select HGT terrain folder" webkitdirectory directory multiple style="display:none" onchange="onFolderSelected(this.files)">
-        <div class="drop-text">Drop an SRTM (.hgt) file, heightmap (.png/.jpg), or folder here</div>
+        <div class="drop-text">Drop an SRTM (.hgt), GeoTIFF (.tif/.tiff), heightmap (.png/.jpg), or folder here</div>
         <div class="drop-sub">Single files or multi-tile folder with neighbour stitching & patch streaming</div>
         <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
           <button type="button" onclick="document.getElementById('terrainFileInput').click()">Browse single file</button>
@@ -4491,6 +4576,33 @@ import {
   drawSoldierCompassScope,
   resolveSoldierAiNotificationBanner,
 } from './src/ui/soldierEudRenderer.ts';
+import {
+  parseFlightTestTraceCsv,
+  getReferenceFlightTestTrace,
+  evaluateTwinCalibrationTrace,
+  autoCalibrateTwinParameters,
+  formatCalibrationReportMarkdown,
+  DEFAULT_CALIBRATION_PARAMS,
+} from './src/core/digitalTwinCalibrationEngine.ts';
+import {
+  drawTwinCalibrationScope,
+  formatCalibrationKpiText,
+} from './src/ui/calibrationPanelRenderer.ts';
+import {
+  geodeticToUtm,
+  utmToGeodetic,
+  geodeticToMgrs,
+  mgrsToGeodetic,
+  parseGeoTiffDem,
+  exportMissionToAtakCotXml,
+  exportMissionToKml,
+  serializeMissionScenarioJson,
+  parseMissionScenarioJson,
+} from './src/core/militaryGisEngine.ts';
+import {
+  computeNiceScaleBarLengthM,
+  drawCartographicOverlays,
+} from './src/ui/cartographyRenderer.ts';
 import { initWorkbenchShell } from './src/ui/workbenchShell.ts';
 import { createLabelPlacer } from './src/ui/canvasLabelPlacer.ts';
 
@@ -4576,6 +4688,7 @@ window.switchDocSubview = function(subview) {
       );
     }
     window.renderWorkerJitterProfiler?.(typeof latestTelemetry !== 'undefined' ? latestTelemetry : null);
+    window.renderTwinCalibrationScope?.();
   }
 };
 
@@ -6232,8 +6345,17 @@ function updateRadarCursorReadout(xM, yM, isInside) {
     isWithinCoverage: (x, y) => mainTerrainEngine.isWithinDemCoverage(x, y),
   });
 
-  hudEl.innerHTML = renderCursorHudHtml(readout);
-  hudEl.title = readout.tooltipText;
+  const baseHtml = renderCursorHudHtml(readout);
+  let mgrsHtml = '';
+  let mgrsTooltip = '';
+  try {
+    const mgrs = geodeticToMgrs(readout.latDeg, readout.lonDeg, 5);
+    mgrsHtml = ` <span style="color:var(--hi-line-strong, #2e3440);user-select:none;">|</span> <span style="display:inline-flex;align-items:center;gap:4px;"><span style="color:${HIGHLAND_THEME.text.muted};font-size:10px;">MGRS:</span><strong style="color:#38bdf8;font-size:10px;font-family:ui-monospace, monospace;">${mgrs}</strong></span>`;
+    mgrsTooltip = `\nMGRS: ${mgrs}`;
+  } catch (_) {}
+
+  hudEl.innerHTML = baseHtml + mgrsHtml;
+  hudEl.title = readout.tooltipText + mgrsTooltip;
 }
 
 let latestTelemetry = {
@@ -15089,6 +15211,65 @@ window.onFileSelected = function(file) {
       statusBox.textContent = `[ERR] Failed to read file: ${file.name}`;
     };
     reader.readAsArrayBuffer(file);
+  } else if (lowerName.endsWith('.tif') || lowerName.endsWith('.tiff')) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target.result;
+        const parseResult = parseGeoTiffDem(buffer);
+        if (!parseResult.ok || !parseResult.elevationsM || !parseResult.width || !parseResult.height) {
+          statusBox.className = 'upload-status-box status-error';
+          statusBox.textContent = `[ERR] Error: ${parseResult.error || 'Failed to parse GeoTIFF DEM'}`;
+          return;
+        }
+
+        const minLat = parseResult.geoBounds?.minLatDeg ?? 33.5;
+        const maxLat = parseResult.geoBounds?.maxLatDeg ?? 35.5;
+        const minLon = parseResult.geoBounds?.minLonDeg ?? 75.5;
+        const maxLon = parseResult.geoBounds?.maxLonDeg ?? 77.5;
+        const meta = {
+          tileName: file.name,
+          minLatDeg: minLat,
+          maxLatDeg: maxLat,
+          minLonDeg: minLon,
+          maxLonDeg: maxLon,
+          centerLatDeg: (minLat + maxLat) / 2.0,
+          centerLonDeg: (minLon + maxLon) / 2.0,
+          halfWidthM: 91839.9774,
+          halfHeightM: 110931.4506,
+          sampleCount: parseResult.width,
+        };
+
+        mainTerrainEngine.loadCustomDem(parseResult.elevationsM, meta);
+        activeTerrainBounds = meta;
+        pendingTerrainCenteringBounds = meta;
+        setMapLibreTerrainRaster(parseResult.elevationsM, meta);
+        invalidateToolboxCache();
+
+        sendCommand({
+          type: 'LOAD_CUSTOM_DEM',
+          elevations: parseResult.elevationsM,
+          metadata: meta,
+        });
+        sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
+        sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
+        requestTerrainMeshData(true);
+
+        window.centerMapOnTerrain(meta);
+
+        statusBox.className = 'upload-status-box status-success';
+        statusBox.textContent = `[OK] Loaded GeoTIFF ${file.name} (${parseResult.width}×${parseResult.height}, Elev: ${parseResult.minElevationM?.toFixed(0)}m–${parseResult.maxElevationM?.toFixed(0)}m MSL) · View Centered`;
+        setTimeout(() => window.closeUploadModal && window.closeUploadModal(), 1500);
+      } catch (err) {
+        statusBox.className = 'upload-status-box status-error';
+        statusBox.textContent = `[ERR] Failed to process GeoTIFF: ${err?.message || err}`;
+      }
+    };
+    reader.onerror = () => {
+      statusBox.className = 'upload-status-box status-error';
+      statusBox.textContent = `[ERR] Failed to read file: ${file.name}`;
+    };
+    reader.readAsArrayBuffer(file);
   } else if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -15724,13 +15905,15 @@ function resizeCanvases() {
   const fpCanvas = $('fp-vertical-profile-canvas');
   const workerJitterCvs = $('worker-jitter-canvas');
   const soldierPhoneCanvas = $('soldier-phone-canvas');
-  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2, polarAntennaCanvas, linkWaterfallCanvas, fpCanvas, workerJitterCvs, soldierPhoneCanvas].forEach(cvs => {
+  const twinCalCvs = $('twin-calibration-canvas');
+  [radarCanvas, waterfallCanvas, terrainCanvas, chart1, chart2, polarAntennaCanvas, linkWaterfallCanvas, fpCanvas, workerJitterCvs, soldierPhoneCanvas, twinCalCvs].forEach(cvs => {
     if (!cvs) return;
     syncCanvasDpr(cvs);
   });
   renderFlightPlanVerticalProfile();
   if (isDiagnosticsPanelVisible()) {
     renderWorkerJitterProfiler(typeof latestTelemetry !== 'undefined' ? latestTelemetry : null);
+    renderTwinCalibrationScope();
   }
   if (threeController) {
     threeController.handleResize();
@@ -16659,11 +16842,435 @@ function initWorkerDossierExporter() {
   });
 }
 
+/* ---------- Digital-Twin Trace Calibration & Replay Controller ---------- */
+let activeCalTrace = null;
+let activeCalReport = null;
+let activeCalAutoResult = null;
+let activeCalParams = { ...DEFAULT_CALIBRATION_PARAMS };
+let activeCalTraceName = 'Kargil Alpine Ridge';
+
+function renderTwinCalibrationScope() {
+  const canvas = $('twin-calibration-canvas');
+  if (!canvas) return;
+  drawTwinCalibrationScope(canvas, activeCalReport);
+}
+
+function updateTwinCalibrationDOM(report) {
+  const rmseEl = $('cal-rmse-val');
+  const maeEl = $('cal-mae-val');
+  const biasEl = $('cal-bias-val');
+  const pearsonEl = $('cal-pearson-val');
+  const outageAccEl = $('cal-outage-acc-val');
+  const trimsEl = $('cal-trims-val');
+  const badgeEl = $('cal-verdict-badge');
+
+  const kpis = formatCalibrationKpiText(report);
+  if (rmseEl) rmseEl.textContent = kpis.rmse;
+  if (maeEl) maeEl.textContent = kpis.mae;
+  if (biasEl) biasEl.textContent = kpis.bias;
+  if (pearsonEl) pearsonEl.textContent = kpis.pearson;
+  if (outageAccEl) outageAccEl.textContent = kpis.outageAcc;
+  if (trimsEl) trimsEl.textContent = kpis.trims;
+
+  if (badgeEl) {
+    if (!report) {
+      badgeEl.textContent = 'STANDBY';
+      badgeEl.style.background = 'rgba(100,116,139,0.25)';
+      badgeEl.style.color = '#94a3b8';
+      badgeEl.style.borderColor = 'rgba(148,163,184,0.3)';
+    } else {
+      badgeEl.textContent = report.verdict;
+      if (report.verdict === 'CERTIFIED_TWIN') {
+        badgeEl.style.background = 'rgba(16,185,129,0.25)';
+        badgeEl.style.color = '#10b981';
+        badgeEl.style.borderColor = 'rgba(16,185,129,0.4)';
+      } else if (report.verdict === 'CALIBRATED') {
+        badgeEl.style.background = 'rgba(56,189,248,0.25)';
+        badgeEl.style.color = '#38bdf8';
+        badgeEl.style.borderColor = 'rgba(56,189,248,0.4)';
+      } else {
+        badgeEl.style.background = 'rgba(239,68,68,0.25)';
+        badgeEl.style.color = '#ef4444';
+        badgeEl.style.borderColor = 'rgba(239,68,68,0.4)';
+      }
+    }
+  }
+
+  renderTwinCalibrationScope();
+}
+
+function initDigitalTwinCalibrationUI() {
+  const presetSelect = $('cal-preset-select');
+  const fileInput = $('cal-csv-file-input');
+  const btnEvaluate = $('btn-cal-evaluate');
+  const btnAutoSolve = $('btn-cal-auto-solve');
+  const btnExport = $('btn-cal-export');
+  const statusEl = $('cal-status-readout');
+  const copyStatusEl = $('cal-copy-status');
+
+  const loadPresetTrace = (presetKey) => {
+    const key = presetKey === 'arabian_maritime_multipath' ? 'arabian_maritime_multipath' : 'kargil_alpine_ridge';
+    activeCalTrace = getReferenceFlightTestTrace(key);
+    activeCalTraceName = key === 'arabian_maritime_multipath' ? 'Arabian Maritime Multipath' : 'Kargil Alpine Ridge';
+    activeCalAutoResult = null;
+    activeCalParams = { ...DEFAULT_CALIBRATION_PARAMS };
+    activeCalReport = evaluateTwinCalibrationTrace(activeCalTrace, activeCalParams);
+    updateTwinCalibrationDOM(activeCalReport);
+    if (statusEl) {
+      statusEl.textContent = `Loaded ${activeCalTrace.length} samples (${activeCalTraceName}). Raw uncalibrated RMSE: ${activeCalReport.rmseDb.toFixed(2)} dB [${activeCalReport.verdict}].`;
+    }
+  };
+
+  if (presetSelect && !presetSelect.dataset.initialized) {
+    presetSelect.dataset.initialized = 'true';
+    presetSelect.addEventListener('change', () => {
+      loadPresetTrace(presetSelect.value);
+    });
+  }
+
+  if (fileInput && !fileInput.dataset.initialized) {
+    fileInput.dataset.initialized = 'true';
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result;
+        if (typeof text !== 'string') return;
+        const parseRes = parseFlightTestTraceCsv(text);
+        if (parseRes.samples.length === 0) {
+          if (statusEl) {
+            statusEl.textContent = `Failed to parse CSV: ${parseRes.errors.join('; ') || 'No valid numeric samples'}`;
+          }
+          return;
+        }
+        activeCalTrace = parseRes.samples;
+        activeCalTraceName = file.name || 'Custom CSV Trace';
+        activeCalAutoResult = null;
+        activeCalParams = { ...DEFAULT_CALIBRATION_PARAMS };
+        activeCalReport = evaluateTwinCalibrationTrace(activeCalTrace, activeCalParams);
+        updateTwinCalibrationDOM(activeCalReport);
+        if (statusEl) {
+          statusEl.textContent = `Parsed ${parseRes.samples.length} samples from "${activeCalTraceName}" (${parseRes.skippedCount} skipped). RMSE: ${activeCalReport.rmseDb.toFixed(2)} dB [${activeCalReport.verdict}].`;
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  if (btnEvaluate && !btnEvaluate.dataset.initialized) {
+    btnEvaluate.dataset.initialized = 'true';
+    btnEvaluate.addEventListener('click', () => {
+      if (!activeCalTrace) {
+        loadPresetTrace(presetSelect?.value || 'kargil_alpine_ridge');
+        return;
+      }
+      activeCalReport = evaluateTwinCalibrationTrace(activeCalTrace, activeCalParams);
+      updateTwinCalibrationDOM(activeCalReport);
+      if (statusEl) {
+        statusEl.textContent = `Twin re-evaluated across ${activeCalTrace.length} samples. RMSE: ${activeCalReport.rmseDb.toFixed(2)} dB | Bias: ${activeCalReport.meanBiasDb >= 0 ? '+' : ''}${activeCalReport.meanBiasDb.toFixed(2)} dB [${activeCalReport.verdict}].`;
+      }
+    });
+  }
+
+  if (btnAutoSolve && !btnAutoSolve.dataset.initialized) {
+    btnAutoSolve.dataset.initialized = 'true';
+    btnAutoSolve.addEventListener('click', () => {
+      if (!activeCalTrace) {
+        loadPresetTrace(presetSelect?.value || 'kargil_alpine_ridge');
+      }
+      if (!activeCalTrace || activeCalTrace.length === 0) return;
+
+      const autoRes = autoCalibrateTwinParameters(activeCalTrace, activeCalParams);
+      activeCalAutoResult = autoRes;
+      activeCalParams = autoRes.optimizedParams;
+      activeCalReport = autoRes.calibratedReport;
+      updateTwinCalibrationDOM(activeCalReport);
+
+      if (statusEl) {
+        statusEl.textContent = `Auto-calibrated in ${autoRes.durationMs.toFixed(1)} ms (${autoRes.iterations} iters, RMSE reduced by ${autoRes.rmseReductionDb.toFixed(2)} dB). Verdict: ${autoRes.calibratedReport.verdict}.`;
+      }
+    });
+  }
+
+  if (btnExport && !btnExport.dataset.initialized) {
+    btnExport.dataset.initialized = 'true';
+    btnExport.addEventListener('click', () => {
+      if (!activeCalTrace) {
+        loadPresetTrace(presetSelect?.value || 'kargil_alpine_ridge');
+      }
+      if (!activeCalTrace) return;
+
+      let resToExport = activeCalAutoResult;
+      if (!resToExport) {
+        resToExport = autoCalibrateTwinParameters(activeCalTrace, activeCalParams);
+        activeCalAutoResult = resToExport;
+        activeCalParams = resToExport.optimizedParams;
+        activeCalReport = resToExport.calibratedReport;
+        updateTwinCalibrationDOM(activeCalReport);
+      }
+
+      const md = formatCalibrationReportMarkdown(resToExport, activeCalTraceName);
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(md).then(() => {
+          if (copyStatusEl) {
+            copyStatusEl.style.display = 'inline';
+            setTimeout(() => { copyStatusEl.style.display = 'none'; }, 2500);
+          }
+        }).catch(() => {});
+      }
+    });
+  }
+
+  window.addEventListener('c2:cvd-mode-change', () => {
+    renderTwinCalibrationScope();
+  });
+
+  // Initial load with default preset
+  loadPresetTrace(presetSelect?.value || 'kargil_alpine_ridge');
+}
+
+window.renderTwinCalibrationScope = renderTwinCalibrationScope;
+window.initDigitalTwinCalibrationUI = initDigitalTwinCalibrationUI;
+
+/* ---------- Military GIS & Tactical Persistence Controller (V3-06) ---------- */
+let isMgrsGridEnabled = false;
+
+function isMgrsGridActive() {
+  return isMgrsGridEnabled;
+}
+
+function initMilitaryGisUI() {
+  const toggleMgrs = $('toggle-mgrs-grid');
+  const btnSaveJson = $('btn-scenario-save-json');
+  const fileInput = $('scenario-json-file-input');
+  const btnExportKml = $('btn-export-kml');
+  const btnExportCot = $('btn-export-cot-xml');
+  const statusEl = $('mission-gis-status');
+  const actionStatusEl = $('mission-gis-action-status');
+
+  const flashActionStatus = (text) => {
+    if (actionStatusEl) {
+      actionStatusEl.textContent = text;
+      actionStatusEl.style.display = 'inline';
+      setTimeout(() => { actionStatusEl.style.display = 'none'; }, 2500);
+    }
+  };
+
+  if (toggleMgrs && !toggleMgrs.dataset.initialized) {
+    toggleMgrs.dataset.initialized = 'true';
+    toggleMgrs.addEventListener('change', () => {
+      isMgrsGridEnabled = Boolean(toggleMgrs.checked);
+      drawRadar();
+      if (statusEl) {
+        statusEl.textContent = isMgrsGridEnabled
+          ? 'MGRS 10km Grid Active on 2D Radar · Standard WGS-84'
+          : 'MGRS Engine Ready · Standard WGS-84 Ellipsoid (Zone 43S, Ladakh Sector)';
+      }
+    });
+  }
+
+  const buildTacticalSnapshot = () => {
+    const frame = typeof latestTelemetry !== 'undefined' ? latestTelemetry : null;
+    const entities = [];
+
+    // ACN
+    const acn = frame?.acn_telemetry;
+    const acnGeo = cartesianToGeodetic(acn?.pos_x ?? 0, acn?.pos_y ?? 0);
+    entities.push({
+      id: 'ACN-1',
+      callsign: 'VIPER-01',
+      role: 'ACN',
+      latDeg: acnGeo.latDeg,
+      lonDeg: acnGeo.lonDeg,
+      altMslM: acn?.altitude_msl_m ?? 5000,
+      isTransmitting: true,
+    });
+
+    // Ground Nodes
+    const nodes = frame?.nodes_telemetry || [];
+    for (const n of nodes) {
+      const nGeo = cartesianToGeodetic(n.x_m ?? 0, n.y_m ?? 0);
+      let role = 'SOLDIER';
+      if (n.node_id === 1 || n.name?.includes('HQ') || n.name?.includes('Command')) role = 'MCP';
+      else if (n.name?.includes('Convoy') || n.node_id === 15) role = 'CONVOY';
+      entities.push({
+        id: n.node_id,
+        callsign: n.name || `NODE-${n.node_id}`,
+        role,
+        latDeg: nGeo.latDeg,
+        lonDeg: nGeo.lonDeg,
+        altMslM: (n.elevation_m ?? 3000) + (n.agl_m ?? 2.5),
+        isTransmitting: Boolean(n.is_transmitting),
+      });
+    }
+
+    // Jammer if enabled
+    if (frame?.jammer_enabled && Array.isArray(frame.jammer_pos_enu)) {
+      const jGeo = cartesianToGeodetic(frame.jammer_pos_enu[0], frame.jammer_pos_enu[1]);
+      entities.push({
+        id: 'JAMMER-1',
+        callsign: 'ADVERSARY-EW',
+        role: 'JAMMER',
+        latDeg: jGeo.latDeg,
+        lonDeg: jGeo.lonDeg,
+        altMslM: frame.jammer_pos_enu[2] ?? 3500,
+      });
+    }
+
+    // Links
+    const links = [];
+    for (const n of nodes) {
+      const nGeo = cartesianToGeodetic(n.x_m ?? 0, n.y_m ?? 0);
+      links.push({
+        fromId: 'ACN-1',
+        toId: n.node_id,
+        fromLat: acnGeo.latDeg,
+        fromLon: acnGeo.lonDeg,
+        fromAlt: acn?.altitude_msl_m ?? 5000,
+        toLat: nGeo.latDeg,
+        toLon: nGeo.lonDeg,
+        toAlt: (n.elevation_m ?? 3000) + (n.agl_m ?? 2.5),
+        snrDb: n.snr_db ?? 15.0,
+        status: (n.snr_db ?? 15.0) < -1.5 ? 'OUTAGE' : ((n.snr_db ?? 15.0) < 5.0 ? 'DEGRADED' : 'ACTIVE'),
+      });
+    }
+
+    return {
+      timestampIso: new Date().toISOString(),
+      missionTitle: 'Tactical X-Band Air-to-Ground Network',
+      entities,
+      links,
+    };
+  };
+
+  const triggerDownload = (content, filename, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  if (btnSaveJson && !btnSaveJson.dataset.initialized) {
+    btnSaveJson.dataset.initialized = 'true';
+    btnSaveJson.addEventListener('click', () => {
+      const frame = typeof latestTelemetry !== 'undefined' ? latestTelemetry : null;
+      const nodes = (frame?.nodes_telemetry || []).map((n, idx) => ({
+        id: n.node_id ?? idx + 1,
+        callsign: n.name || `NODE-${idx + 1}`,
+        xM: n.x_m ?? 0,
+        yM: n.y_m ?? 0,
+        aglM: n.agl_m ?? 2.5,
+        tacticalPriority: n.priority ?? 3,
+      }));
+
+      const waypoints = Array.isArray(frame?.flight_path)
+        ? frame.flight_path.map(wp => ({ xM: wp.x ?? wp[0] ?? 0, yM: wp.y ?? wp[1] ?? 0, altM: wp.alt ?? 5000 }))
+        : [];
+
+      const scenario = {
+        schemaVersion: 'xband-dt-scenario-v3',
+        title: 'Tactical Ladakh Sector Mission',
+        timestamp: new Date().toISOString(),
+        theater: {
+          biomeId: typeof activeBiomeId !== 'undefined' ? activeBiomeId : 'alpine_mountain',
+          centerLatDeg: GEODESY_ORIGIN_LAT_DEG,
+          centerLonDeg: GEODESY_ORIGIN_LON_DEG,
+        },
+        acn: {
+          callsign: 'VIPER-01',
+          cruiseAltMslM: frame?.acn_telemetry?.altitude_msl_m ?? 5000,
+          cruiseAirspeedMs: 50,
+          orbitPattern: $('fp-pattern-select')?.value || 'ellipse_orbit',
+          waypoints,
+        },
+        nodes,
+        obstacles: (mainTerrainEngine?.obstacles || []).map((o, idx) => ({
+          id: o.id || `obs-${idx}`,
+          name: o.name || `Obstacle ${idx + 1}`,
+          type: o.type || 'ridge',
+          points: o.footprint || [],
+          heightM: o.heightM || 50,
+        })),
+        rfConfig: {
+          carrier_freq_hz: 8.0e9,
+          traffic_scale: 1.0,
+        },
+      };
+
+      const jsonStr = serializeMissionScenarioJson(scenario);
+      triggerDownload(jsonStr, `xband-scenario-${Date.now()}.json`, 'application/json');
+      flashActionStatus('Scenario Saved!');
+      if (statusEl) {
+        statusEl.textContent = `Scenario saved (${nodes.length} nodes, ${waypoints.length} waypoints).`;
+      }
+    });
+  }
+
+  if (fileInput && !fileInput.dataset.initialized) {
+    fileInput.dataset.initialized = 'true';
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result;
+        if (typeof text !== 'string') return;
+        const res = parseMissionScenarioJson(text);
+        if (!res.ok || !res.scenario) {
+          if (statusEl) {
+            statusEl.textContent = `Scenario Load Failed: ${res.error}`;
+            statusEl.style.color = '#ef4444';
+          }
+          return;
+        }
+
+        flashActionStatus('Scenario Loaded!');
+        if (statusEl) {
+          statusEl.textContent = `Loaded "${res.scenario.title}" (${res.scenario.nodes.length} nodes, ${res.scenario.acn.waypoints.length} WPs).`;
+          statusEl.style.color = '#38bdf8';
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  if (btnExportKml && !btnExportKml.dataset.initialized) {
+    btnExportKml.dataset.initialized = 'true';
+    btnExportKml.addEventListener('click', () => {
+      const snap = buildTacticalSnapshot();
+      const kmlStr = exportMissionToKml(snap);
+      triggerDownload(kmlStr, `xband-tactical-${Date.now()}.kml`, 'application/vnd.google-earth.kml+xml');
+      flashActionStatus('KML Exported!');
+    });
+  }
+
+  if (btnExportCot && !btnExportCot.dataset.initialized) {
+    btnExportCot.dataset.initialized = 'true';
+    btnExportCot.addEventListener('click', () => {
+      const snap = buildTacticalSnapshot();
+      const cotStr = exportMissionToAtakCotXml(snap);
+      triggerDownload(cotStr, `xband-atak-cot-${Date.now()}.cot.xml`, 'application/xml');
+      flashActionStatus('CoT XML Exported!');
+    });
+  }
+}
+
+window.isMgrsGridActive = isMgrsGridActive;
+window.initMilitaryGisUI = initMilitaryGisUI;
+
 window.observeTelemetryTiming = observeTelemetryTiming;
 window.renderWorkerJitterProfiler = renderWorkerJitterProfiler;
 setTimeout(() => {
   initWorkerDossierExporter();
   renderWorkerJitterProfiler(null);
+  initDigitalTwinCalibrationUI();
+  initMilitaryGisUI();
 }, 200);
 
 /* ---------- Network Traffic Inventory Controller ---------- */
@@ -20730,6 +21337,16 @@ function drawRadar() {
 
     // Precision CAD Obstacle Link Slicer & Excalidraw Micro-Interactions (Tool #4)
     renderPrecisionCadObstacleOverlay(ctx, w, h);
+
+    // Cartographic Overlays: Dynamic Metric Scale Bar, True North Rose & optional MGRS grid (V3-06)
+    drawCartographicOverlays(ctx, {
+      width: w,
+      height: h,
+      metersPerPixel: 1.0 / (getRadarGeometry(w, h).scale || 1.0),
+      showMgrsGrid: Boolean(window.isMgrsGridActive && window.isMgrsGridActive()),
+      screenToWorld: (sx, sy) => screenToWorld(sx, sy, w, h),
+      worldToScreen: (wx, wy) => worldToScreen(wx, wy, w, h),
+    });
 
     // Note: Live geographic coordinates & terrain elevation HUD are rendered
     // via the interactive HTML overlay (#radar-cursor-hud) for native crispness and DMS hover.
