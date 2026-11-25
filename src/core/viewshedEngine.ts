@@ -13,7 +13,7 @@
 import { Position3D } from '../shared/types';
 import { RFConfig, EnvironmentConfig, NodeType } from './config';
 import { TerrainEngine, TerrainObstruction } from './terrain';
-import { QuadSectorAntennaEngine, AcnAttitudeState } from './antennaArray';
+import { QuadSectorAntennaEngine, AcnAttitudeState, worldLosToBodyFrame } from './antennaArray';
 import { LinkBudgetEngine, LinkStatus } from './linkBudget';
 import type { ACNTrajectory } from './trajectory';
 
@@ -364,16 +364,17 @@ export class PolarViewshedEngine {
       diffLossDb = 45.0;
     }
 
-    // 2. ACN Attitude and Sector Antenna Gain
+    // 2. ACN Attitude and Sector Antenna Gain (exact 3D NED->FRD body frame matching QuadSectorAntennaEngine)
     const attitude = attitudeOverride ?? this.antennaEngine.computeAcnAttitude(acnVel);
     const { headingDeg: acnHeadingDeg, pitchDeg: acnPitchDeg, bankDeg: acnBankDeg } = attitude;
 
-    const bodyAzimuthDeg = (((worldBearingDeg - acnHeadingDeg) % 360.0) + 360.0) % 360.0;
-    const worldElevationDeg = (Math.atan2(dz, horizDistM) * 180.0) / Math.PI;
-
-    const bodyAzRad = (bodyAzimuthDeg * Math.PI) / 180.0;
-    const elevationAngleDeg =
-      worldElevationDeg - acnBankDeg * Math.sin(bodyAzRad) - acnPitchDeg * Math.cos(bodyAzRad);
+    const bodyLos = worldLosToBodyFrame(dx, dy, dz, {
+      headingDeg: acnHeadingDeg,
+      pitchDeg: acnPitchDeg,
+      rollDeg: acnBankDeg,
+    });
+    const bodyAzimuthDeg = bodyLos.bodyAzimuthDeg;
+    const elevationAngleDeg = bodyLos.bodyElevationDeg;
 
     // Evaluate 4-sector antenna roll-off to find best active sector
     let minAttenDb = Number.POSITIVE_INFINITY;
@@ -401,9 +402,8 @@ export class PolarViewshedEngine {
       rf.cableLossDb +
       rf.implementationMarginDb;
 
-    // Standard soldier transmitter parameters: 30 dBm (1 W), 0 dBi antenna
-    const txPowerDbm = 30.0;
-    const txGainDbi = 0.0;
+    // Canonical soldier transmitter parameters from RFConfig (36.0 dBm, 3.0 dBi)
+    const { txPowerDbm, antennaGainDbi: txGainDbi } = rf.getTransmitterParams('soldier');
     const prxDbm = txPowerDbm + txGainDbi + rxGainDbi - totalLossDb;
 
     // Thermal noise & sky temperature coupling
@@ -694,18 +694,22 @@ export class PolarViewshedEngine {
           const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dM, env, candZ, acnPos[2]);
           const totalLossDb = fsplDb + diffLossDb + gasLossDb + rainLossDb + rf.cableLossDb + rf.implementationMarginDb;
 
-          // Quad-sector body-frame elevation & azimuth roll-off using acnVel heading
+          // Quad-sector body-frame elevation & azimuth roll-off aligned with QuadSectorAntennaEngine (90 deg az x 65 deg el, 16 dBi peak)
           const horizD = Math.max(Math.hypot(dx, dy), 1.0);
           const elevDeg = (Math.atan2(dz, horizD) * 180.0) / Math.PI; // negative below ACN
           const acnHeadingRad = Math.atan2(acnVel[0], acnVel[1]);
           const targetAzRad = Math.atan2(dx, dy);
           let bodyAzDeg = (((targetAzRad - acnHeadingRad) * 180.0) / Math.PI) % 360.0;
           if (bodyAzDeg < 0) bodyAzDeg += 360.0;
-          const nearestSectorCenter = Math.round(bodyAzDeg / 90.0) * 90.0;
-          const offAzDeg = Math.abs(bodyAzDeg - nearestSectorCenter);
-          const offElDeg = Math.abs(elevDeg - (-15.0)); // -15 deg sector downtilt
-          const theta3dB = 65.0; // Canonical ITU-R F.1336 sector 3 dB beamwidth matching QuadSectorAntennaEngine
-          const patternRolloffDb = Math.min(18.0, 12.0 * Math.pow(offAzDeg / theta3dB, 2) + 12.0 * Math.pow(offElDeg / theta3dB, 2));
+          const nearestSectorCenter = (Math.round(bodyAzDeg / 90.0) * 90.0) % 360.0;
+          const offAzDeg = QuadSectorAntennaEngine.wrapSignedDeg(bodyAzDeg - nearestSectorCenter);
+          const downtiltDeg = rf.acnSectorDowntiltDeg ?? -15.0;
+          const hpbwAzDeg = rf.acnSectorHpbwAzDeg ?? 90.0;
+          const hpbwElDeg = rf.acnSectorHpbwElDeg ?? 65.0;
+          const maxAttenDb = 25.0;
+          const azLossDb = Math.min(12.0 * Math.pow(offAzDeg / hpbwAzDeg, 2), maxAttenDb);
+          const elLossDb = Math.min(12.0 * Math.pow((elevDeg - downtiltDeg) / hpbwElDeg, 2), maxAttenDb);
+          const patternRolloffDb = Math.min(azLossDb + elLossDb, maxAttenDb);
           const effAcnGainDbi = rf.acnAntennaGainDbi - patternRolloffDb;
 
           // Sky noise temperature increase from atmospheric + rain attenuation

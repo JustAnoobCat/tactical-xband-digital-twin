@@ -14,7 +14,13 @@
  * All functions are 100% pure, deterministic, free of Math.random(), and execute in < 5 µs/call.
  */
 
-import { SPEED_OF_LIGHT } from './config';
+import { EnvironmentConfig, RFConfig, SPEED_OF_LIGHT } from './config';
+import { LinkBudgetEngine } from './linkBudget';
+import type { TerrainEngine } from './terrain';
+
+const SHARED_CONSTELLATION_LINK_ENGINE = new LinkBudgetEngine();
+const DEFAULT_CONSTELLATION_RF = new RFConfig();
+const DEFAULT_CONSTELLATION_ENV = new EnvironmentConfig();
 
 // ============================================================================
 // Types & Interfaces
@@ -696,24 +702,26 @@ export function evaluateHighAltAerodynamics(params: AerodynamicParams): Aerodyna
   // Crab angle: beta = asin(clamp(v_cross / V_TAS, -0.95, 0.95)) in degrees
   const tasSafe = Math.max(1.0, trueAirspeedMps);
   const crabRatio = Math.max(-0.95, Math.min(0.95, crosswindMps / tasSafe));
-  const crabAngleDeg = (Math.asin(crabRatio) * 180.0) / Math.PI;
+  const crabAngleRad = Math.asin(crabRatio);
+  const crabAngleDeg = (crabAngleRad * 180.0) / Math.PI;
 
-  // Ground speed vector
+  // Ground speed vector (exact wind triangle in compass NED-horizontal coordinates:
+  // heading 0 deg = North (+y), 90 deg = East (+x); windDirectionDeg is FROM which wind blows).
   const trackRad = (trackHeadingDeg * Math.PI) / 180.0;
-  const windRad = (windDirectionDeg * Math.PI) / 180.0; // blowing from windDirectionDeg
+  const windRad = (windDirectionDeg * Math.PI) / 180.0;
+  const crabbedHeadingRad = trackRad + crabAngleRad;
 
-  // Airspeed vector along track
-  const vtasX = trueAirspeedMps * Math.cos(trackRad);
-  const vtasY = trueAirspeedMps * Math.sin(trackRad);
+  // Airspeed vector projected along the crabbed heading
+  const vtasX = trueAirspeedMps * Math.sin(crabbedHeadingRad);
+  const vtasY = trueAirspeedMps * Math.cos(crabbedHeadingRad);
 
-  // Wind vector (wind blowing towards windDirectionDeg + 180)
-  const windBlowTowardsRad = windRad + Math.PI;
-  const vwindX = windSpeedMs * Math.cos(windBlowTowardsRad);
-  const vwindY = windSpeedMs * Math.sin(windBlowTowardsRad);
+  // Wind vector (blowing towards windDirectionDeg + 180 deg)
+  const vwindX = -windSpeedMs * Math.sin(windRad);
+  const vwindY = -windSpeedMs * Math.cos(windRad);
 
   const vgX = vtasX + vwindX;
   const vgY = vtasY + vwindY;
-  const groundSpeedMps = Math.sqrt(vgX * vgX + vgY * vgY);
+  const groundSpeedMps = Math.hypot(vgX, vgY);
 
   return {
     densityRatio: Number(densityRatio.toFixed(5)),
@@ -722,8 +730,8 @@ export function evaluateHighAltAerodynamics(params: AerodynamicParams): Aerodyna
     stallWarning,
     crosswindMps: Number(crosswindMps.toFixed(2)),
     headwindMps: Number(headwindMps.toFixed(2)),
-    crabAngleDeg: Number(crabAngleDeg.toFixed(2)),
-    groundSpeedMps: Number(groundSpeedMps.toFixed(2)),
+    crabAngleDeg,
+    groundSpeedMps,
   };
 }
 
@@ -814,6 +822,304 @@ export function createDefaultGroundConvoyStates(): Map<number, GroundConvoyState
   return map;
 }
 
+export interface ConstellationMultiAcnParams {
+  readonly acnStates: readonly ConstellationAcnState[];
+  readonly primaryAcnPos: [number, number, number];
+  readonly nodePositions: Map<number, [number, number, number]>;
+  readonly nodeDirectSnrMap: Map<number, number>;
+  readonly nodeHandoverStates: Map<number, NodeHandoverState>;
+  readonly handoverEventsTotal: number;
+  readonly terrain?: TerrainEngine;
+  readonly rfConfig?: RFConfig;
+  readonly envConfig?: EnvironmentConfig;
+}
+
+export interface ConstellationMultiAcnResult {
+  readonly secondaryAcns: ConstellationMobilityTelemetry['secondary_acns'];
+  readonly activeServingAcns: Record<number, string>;
+  readonly handoverEventsTotal: number;
+  readonly acnSnrByNode: Record<number, Record<string, number>>;
+}
+
+/**
+ * Evaluates secondary ACN A2A backhaul links and per-node multi-ACN candidate SNR + Event A3 handovers.
+ * When `terrain` is provided, each secondary ACN evaluates its own 3D ray diffraction/LOS against terrain
+ * rather than copying ACN-1's shadow penalty.
+ */
+export function evaluateConstellationMultiAcn(
+  params: ConstellationMultiAcnParams,
+  terrain?: TerrainEngine
+): ConstellationMultiAcnResult {
+  const {
+    acnStates,
+    primaryAcnPos,
+    nodePositions,
+    nodeDirectSnrMap,
+    nodeHandoverStates,
+  } = params;
+  const effTerrain = terrain ?? params.terrain;
+  const effRf = params.rfConfig ?? DEFAULT_CONSTELLATION_RF;
+  const effEnv = params.envConfig ?? DEFAULT_CONSTELLATION_ENV;
+  let handoverEventsTotal = params.handoverEventsTotal;
+
+  const secondaryAcns: ConstellationMobilityTelemetry['secondary_acns'] = [];
+  for (let k = 1; k < acnStates.length; k++) {
+    const acn = acnStates[k];
+    let peakTerrainElevM: number | undefined = undefined;
+    if (effTerrain) {
+      let maxElev = -Infinity;
+      const samples = 8;
+      for (let s = 1; s < samples; s++) {
+        const u = s / samples;
+        const sx = acn.position[0] + u * (primaryAcnPos[0] - acn.position[0]);
+        const sy = acn.position[1] + u * (primaryAcnPos[1] - acn.position[1]);
+        const elev = effTerrain.getElevation(sx, sy);
+        if (Number.isFinite(elev) && elev > maxElev) {
+          maxElev = elev;
+        }
+      }
+      if (Number.isFinite(maxElev)) {
+        peakTerrainElevM = maxElev;
+      }
+    }
+    const xLink = evaluateA2aCrosslink(
+      acn.position,
+      primaryAcnPos,
+      effRf.carrierFrequencyHz,
+      33.0,
+      15.0,
+      15.0,
+      50e6,
+      4.0,
+      150.0,
+      peakTerrainElevM
+    );
+    secondaryAcns.push({
+      id: acn.id,
+      name: acn.name,
+      pos_x: Number(acn.position[0].toFixed(1)),
+      pos_y: Number(acn.position[1].toFixed(1)),
+      altitude_msl_m: Number(acn.position[2].toFixed(1)),
+      heading_deg: acn.headingDeg,
+      backhaul_snr_db: Number(xLink.snrDb.toFixed(1)),
+      backhaul_capacity_mbps: xLink.capacityMbps,
+    });
+  }
+
+  const activeServingAcns: Record<number, string> = {};
+  const acnSnrByNode: Record<number, Record<string, number>> = {};
+
+  for (const [nodeId, directSnr] of nodeDirectSnrMap.entries()) {
+    let state = nodeHandoverStates.get(nodeId);
+    if (!state) {
+      state = { servingAcnId: 'ACN-1', timeToTriggerCount: 0, candidateAcnId: null };
+      nodeHandoverStates.set(nodeId, state);
+    }
+
+    const snrMap: Record<string, number> = { 'ACN-1': directSnr };
+
+    if (acnStates.length > 1) {
+      const npos = nodePositions.get(nodeId) || [0, 0, 0];
+      const d0x = primaryAcnPos[0] - npos[0];
+      const d0y = primaryAcnPos[1] - npos[1];
+      const d0z = primaryAcnPos[2] - npos[2];
+      const dist0 = Math.max(100.0, Math.sqrt(d0x * d0x + d0y * d0y + d0z * d0z));
+
+      for (let k = 1; k < acnStates.length; k++) {
+        const secAcn = acnStates[k];
+        const dx = secAcn.position[0] - npos[0];
+        const dy = secAcn.position[1] - npos[1];
+        const dz = secAcn.position[2] - npos[2];
+        const distSec = Math.max(1.0, Math.sqrt(dx * dx + dy * dy + dz * dz));
+
+        if (effTerrain) {
+          const stepIntervalM = Math.max(250.0, distSec / 24.0);
+          const obs = effTerrain.evaluateTerrainObstruction(
+            npos,
+            secAcn.position,
+            effRf,
+            effEnv,
+            stepIntervalM
+          );
+          const secLink = SHARED_CONSTELLATION_LINK_ENGINE.evaluateLink({
+            nodeType: 'soldier',
+            slantRangeM: distSec,
+            diffractionLossDb: obs.diffractionLossDb,
+            rf: effRf,
+            env: effEnv,
+            obstacleBlocked: obs.obstacleBlocked,
+            nodeAltM: npos[2],
+            acnAltM: secAcn.position[2],
+            crestRadiusM: obs.crestRadiusM,
+            curvatureLossDb: obs.curvatureLossDb,
+            txX: npos[0],
+            txY: npos[1],
+            rxX: secAcn.position[0],
+            rxY: secAcn.position[1],
+          });
+          snrMap[secAcn.id] = secLink.snrDb;
+        } else {
+          const deltaFspl = 20.0 * Math.log10(distSec / dist0);
+          snrMap[secAcn.id] = directSnr - deltaFspl;
+        }
+      }
+
+      const hoRes = stepEventA3Handover(state, snrMap);
+      nodeHandoverStates.set(nodeId, hoRes.state);
+      activeServingAcns[nodeId] = hoRes.servingAcnId;
+      if (hoRes.handoverTriggered) {
+        handoverEventsTotal++;
+      }
+    } else {
+      activeServingAcns[nodeId] = 'ACN-1';
+    }
+
+    acnSnrByNode[nodeId] = snrMap;
+  }
+
+  return {
+    secondaryAcns,
+    activeServingAcns,
+    handoverEventsTotal,
+    acnSnrByNode,
+  };
+}
+
+export interface ManetMeshRoutingParams {
+  readonly nodePositions: Map<number, [number, number, number]>;
+  readonly nodeDirectSnrMap: Map<number, number>;
+  readonly maxPeerRangeM?: number;
+  readonly maxHops?: number;
+  readonly gatewaySnrThresholdDb?: number;
+  readonly terrain?: TerrainEngine;
+  readonly rfConfig?: RFConfig;
+  readonly envConfig?: EnvironmentConfig;
+}
+
+export interface ManetMeshRoutingResult {
+  readonly manetRoutes: ConstellationMobilityTelemetry['manet_active_routes'];
+  readonly peerLinks: PeerLink[];
+  readonly manetMeanHops: number;
+  readonly manetMeanCapacity: number;
+}
+
+/**
+ * Evaluates multi-hop MANET peer links and Dijkstra routes from blocked ground nodes to gateways.
+ * When `terrain` is provided, candidate ground peer links are screened against terrain LOS/diffraction
+ * so routes cannot tunnel through blocking mountain ridges.
+ */
+export function evaluateManetMeshRouting(
+  params: ManetMeshRoutingParams,
+  terrain?: TerrainEngine
+): ManetMeshRoutingResult {
+  const {
+    nodePositions,
+    nodeDirectSnrMap,
+    maxPeerRangeM = 15000.0,
+    maxHops = 3,
+    gatewaySnrThresholdDb = 3.0,
+  } = params;
+  const effTerrain = terrain ?? params.terrain;
+  const effRf = params.rfConfig ?? DEFAULT_CONSTELLATION_RF;
+  const effEnv = params.envConfig ?? DEFAULT_CONSTELLATION_ENV;
+
+  const gateways: number[] = [];
+  const blockedNodes: number[] = [];
+
+  for (const [nodeId, snr] of nodeDirectSnrMap.entries()) {
+    if (snr >= gatewaySnrThresholdDb) {
+      gateways.push(nodeId);
+    } else {
+      blockedNodes.push(nodeId);
+    }
+  }
+
+  const peerLinks: PeerLink[] = [];
+  const allNodeIds = Array.from(nodePositions.keys());
+  for (let i = 0; i < allNodeIds.length; i++) {
+    for (let j = i + 1; j < allNodeIds.length; j++) {
+      const idA = allNodeIds[i];
+      const idB = allNodeIds[j];
+      const posA = nodePositions.get(idA)!;
+      const posB = nodePositions.get(idB)!;
+      const dx = posA[0] - posB[0];
+      const dy = posA[1] - posB[1];
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d <= maxPeerRangeM) {
+        if (effTerrain) {
+          const dz = posA[2] - posB[2];
+          const d3d = Math.max(1.0, Math.sqrt(dx * dx + dy * dy + dz * dz));
+          const stepIntervalM = Math.max(150.0, d / 24.0);
+          const obs = effTerrain.evaluateTerrainObstruction(posA, posB, effRf, effEnv, stepIntervalM);
+          const peerStatus = SHARED_CONSTELLATION_LINK_ENGINE.evaluateLink({
+            nodeType: 'soldier',
+            slantRangeM: d3d,
+            diffractionLossDb: obs.diffractionLossDb,
+            rf: effRf,
+            env: effEnv,
+            obstacleBlocked: obs.obstacleBlocked,
+            customRxGainDbi: effRf.soldierAntennaGainDbi,
+            nodeAltM: posA[2],
+            acnAltM: posB[2],
+            crestRadiusM: obs.crestRadiusM,
+            curvatureLossDb: obs.curvatureLossDb,
+            txX: posA[0],
+            txY: posA[1],
+            rxX: posB[0],
+            rxY: posB[1],
+          });
+          if (!obs.obstacleBlocked && !peerStatus.isOutage && peerStatus.bitrateMbps > 0.0) {
+            peerLinks.push({
+              fromId: idA,
+              toId: idB,
+              capacityMbps: peerStatus.bitrateMbps,
+              distanceM: d,
+            });
+          }
+        } else {
+          const cap = Math.max(1.0, 15.0 - (d / maxPeerRangeM) * 10.0);
+          peerLinks.push({ fromId: idA, toId: idB, capacityMbps: cap, distanceM: d });
+        }
+      }
+    }
+  }
+
+  const manetRoutes: ConstellationMobilityTelemetry['manet_active_routes'] = [];
+  let manetTotalHops = 0;
+  let manetTotalCapacity = 0;
+
+  for (const bNodeId of blockedNodes) {
+    const res = computeMultiHopManetRoute({
+      sourceNodeId: bNodeId,
+      gatewayNodeIds: gateways,
+      peerLinks,
+      maxHops,
+    });
+
+    if (res.route.length > 1) {
+      manetRoutes.push({
+        source_node_id: bNodeId,
+        gateway_node_id: res.route[res.route.length - 1],
+        hops: res.route,
+        e2e_capacity_mbps: res.e2eCapacityMbps,
+        e2e_latency_ms: res.e2eLatencyMs,
+      });
+      manetTotalHops += res.hopCount;
+      manetTotalCapacity += res.e2eCapacityMbps;
+    }
+  }
+
+  const manetMeanHops = manetRoutes.length > 0 ? Number((manetTotalHops / manetRoutes.length).toFixed(2)) : 0.0;
+  const manetMeanCapacity = manetRoutes.length > 0 ? Number((manetTotalCapacity / manetRoutes.length).toFixed(2)) : 0.0;
+
+  return {
+    manetRoutes,
+    peerLinks,
+    manetMeanHops,
+    manetMeanCapacity,
+  };
+}
+
 export interface ConstellationWorkerContext {
   acnConstellationCount: number;
   enableMultiHopManet: boolean;
@@ -834,6 +1140,9 @@ export interface ConstellationWorkerContext {
   uavEnduranceRemainingMin: number;
   handoverEventsTotal: number;
   dtSec: number;
+  terrain?: TerrainEngine;
+  rfConfig?: RFConfig;
+  envConfig?: EnvironmentConfig;
 }
 
 export interface ConstellationWorkerStepOutput {
@@ -869,9 +1178,10 @@ export function stepConstellationWorkerSystem(ctx: ConstellationWorkerContext): 
     groundConvoyStates,
     uavEnduranceRemainingMin,
     dtSec,
+    terrain,
+    rfConfig,
+    envConfig,
   } = ctx;
-
-  let handoverEventsTotal = ctx.handoverEventsTotal;
 
   // 1. Generate constellation ACN positions
   const acnStates = generateConstellationAcnPositions(
@@ -881,64 +1191,23 @@ export function stepConstellationWorkerSystem(ctx: ConstellationWorkerContext): 
     simTimeSec
   );
 
-  // 2. Secondary ACN A2A cross-link evaluations
-  const secondaryAcns: ConstellationMobilityTelemetry['secondary_acns'] = [];
-  for (let k = 1; k < acnStates.length; k++) {
-    const acn = acnStates[k];
-    const xLink = evaluateA2aCrosslink(acn.position, primaryAcnPos);
-    secondaryAcns.push({
-      id: acn.id,
-      name: acn.name,
-      pos_x: Number(acn.position[0].toFixed(1)),
-      pos_y: Number(acn.position[1].toFixed(1)),
-      altitude_msl_m: Number(acn.position[2].toFixed(1)),
-      heading_deg: acn.headingDeg,
-      backhaul_snr_db: Number(xLink.snrDb.toFixed(1)),
-      backhaul_capacity_mbps: xLink.capacityMbps,
-    });
-  }
-
-  // 3. Handover state machine per node
-  const activeServingAcns: Record<number, string> = {};
-  for (const [nodeId, directSnr] of nodeDirectSnrMap.entries()) {
-    let state = nodeHandoverStates.get(nodeId);
-    if (!state) {
-      state = { servingAcnId: 'ACN-1', timeToTriggerCount: 0, candidateAcnId: null };
-      nodeHandoverStates.set(nodeId, state);
-    }
-
-    if (acnStates.length > 1) {
-      // Synthesize candidate SNR based on relative distance to secondary ACNs
-      const npos = nodePositions.get(nodeId) || [0, 0, 0];
-      const snrMap: Record<string, number> = { 'ACN-1': directSnr };
-
-      for (let k = 1; k < acnStates.length; k++) {
-        const secAcn = acnStates[k];
-        const dx = secAcn.position[0] - npos[0];
-        const dy = secAcn.position[1] - npos[1];
-        const dz = secAcn.position[2] - npos[2];
-        const distSec = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-        const d0x = primaryAcnPos[0] - npos[0];
-        const d0y = primaryAcnPos[1] - npos[1];
-        const d0z = primaryAcnPos[2] - npos[2];
-        const dist0 = Math.max(100.0, Math.sqrt(d0x * d0x + d0y * d0y + d0z * d0z));
-
-        // Relative path loss delta
-        const deltaFspl = 20.0 * Math.log10(distSec / dist0);
-        snrMap[secAcn.id] = directSnr - deltaFspl;
-      }
-
-      const hoRes = stepEventA3Handover(state, snrMap);
-      nodeHandoverStates.set(nodeId, hoRes.state);
-      activeServingAcns[nodeId] = hoRes.servingAcnId;
-      if (hoRes.handoverTriggered) {
-        handoverEventsTotal++;
-      }
-    } else {
-      activeServingAcns[nodeId] = 'ACN-1';
-    }
-  }
+  // 2 & 3. Secondary ACN A2A cross-link evaluations & multi-ACN Event A3 handovers
+  const constellationEval = evaluateConstellationMultiAcn(
+    {
+      acnStates,
+      primaryAcnPos,
+      nodePositions,
+      nodeDirectSnrMap,
+      nodeHandoverStates,
+      handoverEventsTotal: ctx.handoverEventsTotal,
+      rfConfig,
+      envConfig,
+    },
+    terrain
+  );
+  const secondaryAcns = constellationEval.secondaryAcns;
+  const activeServingAcns = constellationEval.activeServingAcns;
+  const handoverEventsTotal = constellationEval.handoverEventsTotal;
 
   // 4. Ground Convoy Mobility Advance
   const convoyTelem: ConstellationMobilityTelemetry['ground_convoys'] = [];
@@ -961,67 +1230,24 @@ export function stepConstellationWorkerSystem(ctx: ConstellationWorkerContext): 
   }
 
   // 5. Multi-Hop MANET Routing
-  const manetRoutes: ConstellationMobilityTelemetry['manet_active_routes'] = [];
-  let manetTotalHops = 0;
-  let manetTotalCapacity = 0;
+  let manetRoutes: ConstellationMobilityTelemetry['manet_active_routes'] = [];
+  let manetMeanHops = 0.0;
+  let manetMeanCapacity = 0.0;
 
   if (enableMultiHopManet) {
-    // Identify gateway nodes (direct SNR >= 3.0 dB)
-    const gateways: number[] = [];
-    const blockedNodes: number[] = [];
-
-    for (const [nodeId, snr] of nodeDirectSnrMap.entries()) {
-      if (snr >= 3.0) {
-        gateways.push(nodeId);
-      } else {
-        blockedNodes.push(nodeId);
-      }
-    }
-
-    // Build peer links among ground nodes within 15 km
-    const peerLinks: PeerLink[] = [];
-    const allNodeIds = Array.from(nodePositions.keys());
-    for (let i = 0; i < allNodeIds.length; i++) {
-      for (let j = i + 1; j < allNodeIds.length; j++) {
-        const idA = allNodeIds[i];
-        const idB = allNodeIds[j];
-        const posA = nodePositions.get(idA)!;
-        const posB = nodePositions.get(idB)!;
-        const dx = posA[0] - posB[0];
-        const dy = posA[1] - posB[1];
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d <= 15000.0) {
-          // Link capacity based on distance
-          const cap = Math.max(1.0, 15.0 - (d / 15000.0) * 10.0);
-          peerLinks.push({ fromId: idA, toId: idB, capacityMbps: cap, distanceM: d });
-        }
-      }
-    }
-
-    for (const bNodeId of blockedNodes) {
-      const res = computeMultiHopManetRoute({
-        sourceNodeId: bNodeId,
-        gatewayNodeIds: gateways,
-        peerLinks,
-        maxHops: 3,
-      });
-
-      if (res.route.length > 1) {
-        manetRoutes.push({
-          source_node_id: bNodeId,
-          gateway_node_id: res.route[res.route.length - 1],
-          hops: res.route,
-          e2e_capacity_mbps: res.e2eCapacityMbps,
-          e2e_latency_ms: res.e2eLatencyMs,
-        });
-        manetTotalHops += res.hopCount;
-        manetTotalCapacity += res.e2eCapacityMbps;
-      }
-    }
+    const manetRes = evaluateManetMeshRouting(
+      {
+        nodePositions,
+        nodeDirectSnrMap,
+        rfConfig,
+        envConfig,
+      },
+      terrain
+    );
+    manetRoutes = manetRes.manetRoutes;
+    manetMeanHops = manetRes.manetMeanHops;
+    manetMeanCapacity = manetRes.manetMeanCapacity;
   }
-
-  const manetMeanHops = manetRoutes.length > 0 ? Number((manetTotalHops / manetRoutes.length).toFixed(2)) : 0.0;
-  const manetMeanCapacity = manetRoutes.length > 0 ? Number((manetTotalCapacity / manetRoutes.length).toFixed(2)) : 0.0;
 
   // 6. Aerodynamics, Endurance & CFIT
   const aero = evaluateHighAltAerodynamics({

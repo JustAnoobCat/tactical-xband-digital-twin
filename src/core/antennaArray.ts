@@ -132,12 +132,17 @@ export class QuadSectorAntennaEngine {
 
     const worldBearingDeg =
       horizDistM > 1e-3 ? ((Math.atan2(dx, dy) * 180.0) / Math.PI + 360.0) % 360.0 : 0.0;
-    const bodyAzimuthDeg = (worldBearingDeg - acnHeadingDeg + 360.0) % 360.0;
-    const worldElevationDeg = (Math.atan2(dz, Math.max(horizDistM, 1e-3)) * 180.0) / Math.PI;
-
-    const bodyAzRad = (bodyAzimuthDeg * Math.PI) / 180.0;
-    const elevationAngleDeg =
-      worldElevationDeg - acnBankDeg * Math.sin(bodyAzRad) - acnPitchDeg * Math.cos(bodyAzRad);
+    let bodyAzimuthDeg = (worldBearingDeg - acnHeadingDeg + 360.0) % 360.0;
+    let elevationAngleDeg = (Math.atan2(dz, Math.max(horizDistM, 1e-3)) * 180.0) / Math.PI;
+    if (horizDistM > 1e-3 || Math.abs(dz) > 1e-3) {
+      const bodyLos = worldLosToBodyFrame(dx, dy, dz, {
+        headingDeg: acnHeadingDeg,
+        pitchDeg: acnPitchDeg,
+        rollDeg: acnBankDeg,
+      });
+      bodyAzimuthDeg = bodyLos.bodyAzimuthDeg;
+      elevationAngleDeg = bodyLos.bodyElevationDeg;
+    }
 
     const sectorGains: [number, number, number, number] = [0, 0, 0, 0];
     const sectorLosses: [number, number, number, number] = [0, 0, 0, 0];
@@ -302,10 +307,16 @@ export function worldLosToBodyFrame(
   const E = losEast;
   const D = -losUp;
 
-  // Tait-Bryan Z-Y-X direction-cosine rotation: R = R_x(phi) * R_y(theta) * R_z(psi)
+  // Tait-Bryan Z-Y-X passive aerospace DCM: R = R_x(phi) * R_y(theta) * R_z(psi)
   const bodyForward = (cTheta * cPsi) * N + (cTheta * sPsi) * E - sTheta * D;
-  const bodyRight = (-cPhi * sPsi - sPhi * sTheta * cPsi) * N + (cPhi * cPsi - sPhi * sTheta * sPsi) * E - (sPhi * cTheta) * D;
-  const bodyDown = (-sPhi * sPsi + cPhi * sTheta * cPsi) * N + (sPhi * cPsi + cPhi * sTheta * sPsi) * E + (cPhi * cTheta) * D;
+  const bodyRight =
+    (sPhi * sTheta * cPsi - cPhi * sPsi) * N +
+    (sPhi * sTheta * sPsi + cPhi * cPsi) * E +
+    (sPhi * cTheta) * D;
+  const bodyDown =
+    (cPhi * sTheta * cPsi + sPhi * sPsi) * N +
+    (cPhi * sTheta * sPsi - sPhi * cPsi) * E +
+    (cPhi * cTheta) * D;
 
   const horizMagnitude = Math.hypot(bodyForward, bodyRight);
   let bodyAzimuthDeg = 0.0;

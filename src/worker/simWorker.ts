@@ -1216,6 +1216,9 @@ export class SimulationWorkerManager {
     this.jammerSectorInterferenceDbm = jammerRes.jammerSectorInterferenceDbm;
     const jammerInterferenceBySector = jammerRes.jammerInterferenceBySector;
 
+    const acnGroundElevM = this.terrainEngine.getElevation(acnPos[0], acnPos[1]);
+    const acnAltAglM = Math.max(1.5, acnPos[2] - (Number.isFinite(acnGroundElevM) ? acnGroundElevM : 0.0));
+
     // 1. Authoritative 50 Hz Physical Obstruction Evaluation for ALL nodes
     for (let i = 0; i < numNodes; i++) {
       const node = this.nodesTac[i];
@@ -1348,15 +1351,13 @@ export class SimulationWorkerManager {
       }
 
       if (this.enableBiomeEmPhysics) {
-        const acnGroundElevM = this.terrainEngine.getElevation(acnPos[0], acnPos[1]);
-        const acnAltAglM = Math.max(10.0, acnPos[2] - (Number.isFinite(acnGroundElevM) ? acnGroundElevM : 0.0));
         airframeOptions = {
           ...airframeOptions,
           biomeEmParams: {
             enableBiomeEmPhysics: true,
             biomeId: this.biomeId,
             txAltAglM: acnAltAglM,
-            rxAltAglM: node.aglM ?? 10.0,
+            rxAltAglM: node.aglM ?? 2.0,
             polarization: this.polarizationMode,
             relativeBankDeg: uavAttitude.rollDeg ?? 0.0,
             dustVisibilityKm: this.dustVisibilityKm,
@@ -1367,32 +1368,17 @@ export class SimulationWorkerManager {
         };
       }
 
-      const ls = this.linkEngine.evaluateLink(
-        node.nodeType,
-        slantM,
-        obstruction.diffractionLossDb,
-        this.rfConfig,
-        this.envConfig,
-        obstruction.obstacleBlocked,
-        customTxPowerDbm,
-        sectorEval,
-        node.position[2],
-        acnPos[2],
-        obstruction.crestRadiusM,
-        obstruction.curvatureLossDb,
-        nodeJammerInterferenceDbm,
-        doppler.radialVelocityMs,
-        doppler.dopplerShiftHz,
-        doppler.dopplerRateHzS,
-        undefined,
-        ricianFadingGainDb,
-        ricianKFactorDb,
-        ollaMarginDb,
-        cqiDecodeFailure,
-        undefined,
-        undefined,
-        airframeOptions
-      );
+      const ls = this.linkEngine.evaluateLink({
+        nodeType: node.nodeType, slantRangeM: slantM, diffractionLossDb: obstruction.diffractionLossDb,
+        rf: this.rfConfig, env: this.envConfig, obstacleBlocked: obstruction.obstacleBlocked,
+        customTxPowerDbm, sectorEval, nodeAltM: nz, acnAltM: acnPos[2],
+        crestRadiusM: obstruction.crestRadiusM, curvatureLossDb: obstruction.curvatureLossDb,
+        jammerInterferenceDbm: nodeJammerInterferenceDbm, radialVelocityMs: doppler.radialVelocityMs,
+        dopplerShiftHz: doppler.dopplerShiftHz, dopplerRateHzS: doppler.dopplerRateHzS,
+        fadingGainDb: ricianFadingGainDb, ricianKFactorDb, ollaMarginDb, cqiDecodeFailure,
+        airframeOptions, txX: nx, txY: ny, rxX: acnPos[0], rxY: acnPos[1],
+        biomeId: this.biomeId, txAltAglM: acnAltAglM, rxAltAglM: node.aglM ?? 2.0,
+      });
 
       if (ls.airframeShadowLossDb !== undefined) {
         sumShadowLossDb += ls.airframeShadowLossDb;
@@ -1583,24 +1569,16 @@ export class SimulationWorkerManager {
       });
       const hop2JammerInterferenceDbm = hop2Ew.effectiveJammerDbm;
 
-      const hop2Link = this.linkEngine.evaluateLink(
-        'mcp',
-        dHop2M,
-        hop2Obs.diffractionLossDb,
-        this.rfConfig,
-        this.envConfig,
-        hop2Obs.obstacleBlocked,
-        this.rfConfig.mcpTxPowerDbm,
-        hop2SectorEval,
-        relayPos[2],
-        acnPos[2],
-        hop2Obs.crestRadiusM,
-        hop2Obs.curvatureLossDb,
-        hop2JammerInterferenceDbm,
-        hop2Doppler.radialVelocityMs,
-        hop2Doppler.dopplerShiftHz,
-        hop2Doppler.dopplerRateHzS
-      );
+      const hop2Link = this.linkEngine.evaluateLink({
+        nodeType: 'mcp', slantRangeM: dHop2M, diffractionLossDb: hop2Obs.diffractionLossDb,
+        rf: this.rfConfig, env: this.envConfig, obstacleBlocked: hop2Obs.obstacleBlocked,
+        customTxPowerDbm: this.rfConfig.mcpTxPowerDbm, sectorEval: hop2SectorEval,
+        nodeAltM: relayPos[2], acnAltM: acnPos[2], crestRadiusM: hop2Obs.crestRadiusM,
+        curvatureLossDb: hop2Obs.curvatureLossDb, jammerInterferenceDbm: hop2JammerInterferenceDbm,
+        radialVelocityMs: hop2Doppler.radialVelocityMs, dopplerShiftHz: hop2Doppler.dopplerShiftHz,
+        dopplerRateHzS: hop2Doppler.dopplerRateHzS, txX: relayPos[0], txY: relayPos[1],
+        rxX: acnPos[0], rxY: acnPos[1], biomeId: this.biomeId, txAltAglM: acnAltAglM, rxAltAglM: 3.0,
+      });
 
       relayBackhaulSectorId = hop2SectorEval.activeSectorId;
       relayBackhaulSnrDb = hop2Link.snrDb;
@@ -1628,25 +1606,14 @@ export class SimulationWorkerManager {
             relayPos[2] - node.position[2]
           ));
 
-          const hop1Link = this.linkEngine.evaluateLink(
-            node.nodeType,
-            dHop1M,
-            hop1Obs.diffractionLossDb,
-            this.rfConfig,
-            this.envConfig,
-            hop1Obs.obstacleBlocked,
-            node.txPowerDbm,
-            undefined,
-            node.position[2],
-            relayPos[2],
-            hop1Obs.crestRadiusM,
-            hop1Obs.curvatureLossDb,
-            undefined,
-            0,
-            0,
-            0,
-            this.envConfig.relayAntennaGainDbi
-          );
+          const hop1Link = this.linkEngine.evaluateLink({
+            nodeType: node.nodeType, slantRangeM: dHop1M, diffractionLossDb: hop1Obs.diffractionLossDb,
+            rf: this.rfConfig, env: this.envConfig, obstacleBlocked: hop1Obs.obstacleBlocked,
+            customTxPowerDbm: node.txPowerDbm, nodeAltM: node.position[2], acnAltM: relayPos[2],
+            crestRadiusM: hop1Obs.crestRadiusM, curvatureLossDb: hop1Obs.curvatureLossDb,
+            customRxGainDbi: this.envConfig.relayAntennaGainDbi, txX: node.position[0], txY: node.position[1],
+            rxX: relayPos[0], rxY: relayPos[1], biomeId: this.biomeId, txAltAglM: 3.0, rxAltAglM: node.aglM ?? 2.0,
+          });
 
           const relayedLink = LinkBudgetEngine.computeDecodeAndForwardRelayLink(
             directLink,
@@ -1965,7 +1932,14 @@ export class SimulationWorkerManager {
       this.refreshObstructionState(acnPos, this.simTimeS);
     }
     const obstruction = this.obstructionResults.get(node.nodeId) ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
-    const linkStatus = this.linkStatuses.get(node.nodeId) ?? this.linkEngine.evaluateLink(node.nodeType, Math.hypot(acnPos[0] - node.position[0], acnPos[1] - node.position[1], acnPos[2] - node.position[2]), obstruction.diffractionLossDb, this.rfConfig, this.envConfig, obstruction.obstacleBlocked, node.txPowerDbm);
+    const linkStatus = this.linkStatuses.get(node.nodeId) ?? this.linkEngine.evaluateLink({
+      nodeType: node.nodeType,
+      slantRangeM: Math.hypot(acnPos[0] - node.position[0], acnPos[1] - node.position[1], acnPos[2] - node.position[2]),
+      diffractionLossDb: obstruction.diffractionLossDb, rf: this.rfConfig, env: this.envConfig,
+      obstacleBlocked: obstruction.obstacleBlocked, customTxPowerDbm: node.txPowerDbm,
+      nodeAltM: node.position[2], acnAltM: acnPos[2], txX: node.position[0], txY: node.position[1],
+      rxX: acnPos[0], rxY: acnPos[1], biomeId: this.biomeId, rxAltAglM: node.aglM ?? 2.0,
+    });
     const predState = this.predStates.get(node.nodeId) ?? this.lookaheadEngine.evaluatePredictiveState(node.position, this.simTimeS, obstruction, node.nodeId, this.antennaEngine, linkStatus);
     return { obstruction, linkStatus, predState };
   }
@@ -2086,6 +2060,9 @@ export class SimulationWorkerManager {
       nodePositions, nodeDirectSnrMap, nodeHandoverStates: this.nodeHandoverStates,
       groundConvoyStates: this.groundConvoyStates, uavEnduranceRemainingMin: this.uavEnduranceRemainingMin,
       handoverEventsTotal: this.handoverEventsTotal, dtSec: FRAME_DT,
+      terrain: this.terrainEngine,
+      rfConfig: this.rfConfig,
+      envConfig: this.envConfig,
     });
     this.uavEnduranceRemainingMin = stepOut.updatedEnduranceMin;
     this.handoverEventsTotal = stepOut.handoverEventsTotal;

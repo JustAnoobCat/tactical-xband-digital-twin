@@ -9,9 +9,10 @@
  */
 
 import { computeFsplDb, computeKnifeEdgeDiffractionLossDb } from './rfPropagationMath';
+import { EnvironmentConfig } from './config';
 import { LinkBudgetEngine, MODCOD_TABLE } from './linkBudget';
 import { computeAirframeShadowLossDb } from './antennaArray';
-import { computeTwoRayGroundReflectionDb, type BiomeId } from './biomePhysics';
+import { computeTwoRayGroundReflectionDb, THEATER_BIOMES, type BiomeId } from './biomePhysics';
 
 // ============================================================================
 // Types & Contracts
@@ -524,13 +525,19 @@ export function evaluateTwinCalibrationTrace(
       params.carrierFreqHz
     );
 
-    const rainLossDb =
+    const rainEnv =
       s.rainRateMmH && s.rainRateMmH > 0
+        ? new EnvironmentConfig({ rainRateMmH: s.rainRateMmH })
+        : null;
+    const freezingIsothermM = s.biomeId ? THEATER_BIOMES[s.biomeId]?.freezingIsothermM : undefined;
+    const rainLossDb =
+      rainEnv !== null
         ? LinkBudgetEngine.computeRainAttenuationDb(
             s.slantRangeM,
-            { rainRateMmh: s.rainRateMmH } as any,
+            rainEnv,
             s.rxAltM,
-            s.txAltM
+            s.txAltM,
+            freezingIsothermM
           ) * params.rainAttenScale
         : 0.0;
 

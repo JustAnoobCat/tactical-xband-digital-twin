@@ -49,8 +49,27 @@ export interface ScientificScopeFrameTelemetry {
   readonly total_sector_handovers?: number;
   readonly nodes_telemetry?: readonly ScientificScopeNodeTelemetry[];
   readonly selected_link_budget?: {
+    readonly node_id?: number;
+    readonly node_type?: string;
+    readonly slant_range_km?: number;
+    readonly tx_power_dbm?: number;
+    readonly tx_gain_dbi?: number;
+    readonly rx_gain_dbi?: number;
+    readonly fspl_db?: number;
     readonly gas_loss_db?: number;
     readonly rain_loss_db?: number;
+    readonly diffraction_loss_db?: number;
+    readonly cable_loss_db?: number;
+    readonly implementation_margin_db?: number;
+    readonly total_loss_db?: number;
+    readonly prx_dbm?: number;
+    readonly pnoise_dbm?: number;
+    readonly snr_db?: number;
+    readonly sinr_db?: number;
+    readonly sky_noise_increase_db?: number;
+    readonly sky_temperature_k?: number;
+    readonly crest_radius_m?: number;
+    readonly curvature_loss_db?: number;
   };
   readonly static_delay_ecdf_ms?: readonly number[];
   readonly reactive_delay_ecdf_ms?: readonly number[];
@@ -288,7 +307,12 @@ export function drawLinkWaterfallCanvas(
     g.fillStyle = palette.panelBg;
     g.fillRect(0, 0, w, h);
 
-    if (!node) {
+    const rawLb = frame?.selected_link_budget;
+    const lb = rawLb && (rawLb.node_id === undefined || !node || rawLb.node_id === node.node_id)
+      ? rawLb
+      : undefined;
+
+    if (!node && !lb) {
       g.fillStyle = palette.textMuted;
       g.font = '11px monospace';
       g.textAlign = 'center';
@@ -296,28 +320,58 @@ export function drawLinkWaterfallCanvas(
       return;
     }
 
-    // RF Link Budget values
-    const ptx = typeof node.tx_power_dbm === 'number' ? node.tx_power_dbm : 36.0;
-    const gtx = node.node_type === 'mcp' ? 24.0 : 0.0;
+    // Authoritative RF Link Budget values from frame.selected_link_budget (canonical fallback when absent)
+    const ptx = typeof lb?.tx_power_dbm === 'number'
+      ? lb.tx_power_dbm
+      : (typeof node?.tx_power_dbm === 'number' ? node.tx_power_dbm : 36.0);
+    const gtx = typeof lb?.tx_gain_dbi === 'number'
+      ? lb.tx_gain_dbi
+      : (node?.node_type === 'mcp' || lb?.node_type === 'mcp' ? 20.0 : 3.0);
     const eirp = ptx + gtx;
-    const slantKm = typeof node.slant_range_km === 'number' && node.slant_range_km > 0 ? node.slant_range_km : 25.0;
-    const fspl = 20 * Math.log10(slantKm * 1000) + 20 * Math.log10(8e9) - 147.55;
-    const agas = frame?.selected_link_budget?.gas_loss_db ?? (0.012 * slantKm);
-    const arain = frame?.selected_link_budget?.rain_loss_db ?? 0.0;
-    const ldiff = typeof node.diffraction_loss_db === 'number' ? node.diffraction_loss_db : 0.0;
-    const rCrest = typeof node.crest_radius_m === 'number' ? node.crest_radius_m : 2000.0;
-    const tCrest = typeof node.curvature_loss_db === 'number' ? node.curvature_loss_db : 0.0;
-    const rollOff = typeof node.pattern_rolloff_db === 'number' ? node.pattern_rolloff_db : 0.0;
-    const gacnNet = Math.max(0, 15.0 - rollOff);
-    const prx = eirp - fspl - agas - arain - ldiff + gacnNet;
-    const dnsky = typeof node.sky_noise_db === 'number' ? node.sky_noise_db : 0.0;
-    const tsky = typeof node.sky_temp_k === 'number' ? node.sky_temp_k : 0.0;
-    const pnoise = -110.0 + dnsky; // -114 dBm thermal (1MHz) + 4dB NF + ΔN_sky
-    const tauTa = typeof node.timing_advance_us === 'number' ? node.timing_advance_us : ((2.0 * slantKm * 1000 / 299792458.0) * 1e6);
+    const slantKm = typeof lb?.slant_range_km === 'number' && lb.slant_range_km > 0
+      ? lb.slant_range_km
+      : (typeof node?.slant_range_km === 'number' && node.slant_range_km > 0 ? node.slant_range_km : 25.0);
+    const fspl = typeof lb?.fspl_db === 'number'
+      ? lb.fspl_db
+      : (20 * Math.log10(slantKm * 1000) + 20 * Math.log10(8e9) - 147.55);
+    const agas = typeof lb?.gas_loss_db === 'number' ? lb.gas_loss_db : (0.012 * slantKm);
+    const arain = typeof lb?.rain_loss_db === 'number' ? lb.rain_loss_db : 0.0;
+    const ldiff = typeof lb?.diffraction_loss_db === 'number'
+      ? lb.diffraction_loss_db
+      : (typeof node?.diffraction_loss_db === 'number' ? node.diffraction_loss_db : 0.0);
+    const lcableMargin =
+      typeof lb?.cable_loss_db === 'number' && typeof lb?.implementation_margin_db === 'number'
+        ? lb.cable_loss_db + lb.implementation_margin_db
+        : 4.0;
+    const rCrest = typeof lb?.crest_radius_m === 'number'
+      ? lb.crest_radius_m
+      : (typeof node?.crest_radius_m === 'number' ? node.crest_radius_m : 2000.0);
+    const tCrest = typeof lb?.curvature_loss_db === 'number'
+      ? lb.curvature_loss_db
+      : (typeof node?.curvature_loss_db === 'number' ? node.curvature_loss_db : 0.0);
+    const rollOff = typeof node?.pattern_rolloff_db === 'number' ? node.pattern_rolloff_db : 0.0;
+    const gacnNet = typeof lb?.rx_gain_dbi === 'number' ? lb.rx_gain_dbi : Math.max(0, 16.0 - rollOff);
+    const prx = typeof lb?.prx_dbm === 'number'
+      ? lb.prx_dbm
+      : (eirp - fspl - agas - arain - ldiff - lcableMargin + gacnNet);
+    const dnsky = typeof lb?.sky_noise_increase_db === 'number'
+      ? lb.sky_noise_increase_db
+      : (typeof node?.sky_noise_db === 'number' ? node.sky_noise_db : 0.0);
+    const tsky = typeof lb?.sky_temperature_k === 'number'
+      ? lb.sky_temperature_k
+      : (typeof node?.sky_temp_k === 'number' ? node.sky_temp_k : 0.0);
+    const pnoise = typeof lb?.pnoise_dbm === 'number'
+      ? lb.pnoise_dbm
+      : (-108.975 + dnsky);
+    const tauTa = typeof node?.timing_advance_us === 'number'
+      ? node.timing_advance_us
+      : ((2.0 * slantKm * 1000 / 299792458.0) * 1e6);
 
     // Update Tabular Readout if callback provided
     if (setTextFn) {
-      setTextFn('wf-target-node-badge', `Node ${node.node_id} (${node.name || 'Terminal'})`);
+      const targetNodeId = node?.node_id ?? lb?.node_id ?? selectedNodeId;
+      const targetName = node?.name || 'Terminal';
+      setTextFn('wf-target-node-badge', `Node ${targetNodeId} (${targetName})`);
       setTextFn('wf-eirp-readout', `${eirp.toFixed(1)} dBm`);
       setTextFn('wf-fspl-readout', `-${fspl.toFixed(1)} dB`);
       setTextFn('wf-atm-readout', `-${(agas + arain).toFixed(2)} dB`);
@@ -327,13 +381,13 @@ export function drawLinkWaterfallCanvas(
       setTextFn('wf-pnoise-readout', `${pnoise.toFixed(1)} dBm`);
       setTextFn('wf-sky-sub', `T_sky: ${tsky.toFixed(1)} K · +ΔN_sky: ${dnsky.toFixed(2)} dB`);
       setTextFn('wf-ta-readout', `${tauTa.toFixed(1)} μs`);
-      const fd = typeof node.doppler_shift_hz === 'number' ? node.doppler_shift_hz : 0.0;
-      const fddot = typeof node.doppler_rate_hz_s === 'number' ? node.doppler_rate_hz_s : 0.0;
+      const fd = typeof node?.doppler_shift_hz === 'number' ? node.doppler_shift_hz : 0.0;
+      const fddot = typeof node?.doppler_rate_hz_s === 'number' ? node.doppler_rate_hz_s : 0.0;
       setTextFn('wf-doppler-readout', `${fd >= 0 ? '+' : ''}${fd.toFixed(1)} Hz`);
       setTextFn('wf-doppler-sub', `(${fddot >= 0 ? '+' : ''}${fddot.toFixed(2)} Hz/s)`);
-      const ricianK = typeof node.rician_k_db === 'number' ? `${node.rician_k_db.toFixed(1)} dB` : '— dB';
-      const ricianFading = typeof node.rician_fading_db === 'number' ? `${node.rician_fading_db >= 0 ? '+' : ''}${node.rician_fading_db.toFixed(1)} dB` : '— dB';
-      const ollaMargin = typeof node.olla_margin_db === 'number' ? `${node.olla_margin_db.toFixed(1)} dB` : '0.0 dB';
+      const ricianK = typeof node?.rician_k_db === 'number' ? `${node.rician_k_db.toFixed(1)} dB` : '— dB';
+      const ricianFading = typeof node?.rician_fading_db === 'number' ? `${node.rician_fading_db >= 0 ? '+' : ''}${node.rician_fading_db.toFixed(1)} dB` : '— dB';
+      const ollaMargin = typeof node?.olla_margin_db === 'number' ? `${node.olla_margin_db.toFixed(1)} dB` : '0.0 dB';
       setTextFn('wf-rician-readout', `3GPP Rician K-Factor: ${ricianK} (Fading: ${ricianFading} | OLLA: ${ollaMargin})`);
     }
 
@@ -345,6 +399,7 @@ export function drawLinkWaterfallCanvas(
       { label: '-A_gas', delta: -agas, cum: eirp - fspl - agas, col: palette.degraded },
       { label: '-A_rain', delta: -arain, cum: eirp - fspl - agas - arain, col: palette.relay },
       { label: '-L_diff', delta: -ldiff, cum: eirp - fspl - agas - arain - ldiff, col: palette.outage },
+      { label: '-L_sys', delta: -lcableMargin, cum: eirp - fspl - agas - arain - ldiff - lcableMargin, col: palette.degraded },
       { label: '+G_acn', delta: gacnNet, cum: prx, col: palette.accent },
       { label: 'P_rx', delta: prx, cum: prx, col: prx >= pnoise ? palette.optimal : palette.outage }
     ];

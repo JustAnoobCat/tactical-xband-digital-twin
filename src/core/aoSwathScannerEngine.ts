@@ -17,8 +17,8 @@
  */
 
 import type { Position3D } from '../shared/types';
-import { SPEED_OF_LIGHT } from './config';
-import { MODCOD_TABLE } from './linkBudget';
+import { EnvironmentConfig, RFConfig, SPEED_OF_LIGHT } from './config';
+import { LinkBudgetEngine } from './linkBudget';
 import { ACN_SECTOR_LABELS } from './antennaArray';
 import {
   SPEED_OF_LIGHT_M_S,
@@ -29,7 +29,6 @@ import {
   DEFAULT_R_EFF_M,
   computeEarthBulgeM,
   computeKnifeEdgeDiffractionLossDb,
-  computeFsplDb,
   computeBearingDeg,
   computeSlantAndHorizDistance,
 } from './rfPropagationMath';
@@ -43,17 +42,26 @@ export {
   DEFAULT_R_EFF_M,
 };
 
-// Standard Tactical Link Budget Constants (8 GHz ACN-Ground)
+const DEFAULT_AO_RF_CONFIG = new RFConfig();
+const DEFAULT_AO_ENV_CONFIG = new EnvironmentConfig();
+const AO_LINK_ENGINE = new LinkBudgetEngine();
+
+// Canonical Tactical Uplink Constants from RFConfig (8.0 GHz Soldier-to-ACN)
 export const AO_LINK_BUDGET = {
-  txPowerDbm: 43.0, // 20 W ACN PA
-  txGainDbi: 18.0, // Peak horn / sector array gain
-  rxGainDbi: 3.0, // Ground terminal monopole / patch gain
-  noisePowerDbm: -104.0, // Receiver thermal noise floor + NF
-  gasLossBaselineDb: 1.2, // Atmospheric absorption baseline
-  specificGasLossDbPerKm: 0.012, // ITU-R P.676 absorption at 8.0 GHz
+  txPowerDbm: DEFAULT_AO_RF_CONFIG.soldierTxPowerDbm, // 36.0 dBm (4 W manpack PA)
+  txGainDbi: DEFAULT_AO_RF_CONFIG.soldierAntennaGainDbi, // 3.0 dBi ground terminal whip
+  rxGainDbi: DEFAULT_AO_RF_CONFIG.acnAntennaGainDbi, // 16.0 dBi ACN quad-sector array
+  cableAndMarginDb:
+    DEFAULT_AO_RF_CONFIG.cableLossDb + DEFAULT_AO_RF_CONFIG.implementationMarginDb, // 4.0 dB
+  noisePowerDbm: LinkBudgetEngine.computeThermalNoiseFloorDbm(
+    DEFAULT_AO_RF_CONFIG.channelBandwidthHz,
+    DEFAULT_AO_RF_CONFIG.acnNoiseFigureDb
+  ).pNoiseDbm, // ~ -108.975 dBm (1 MHz, 5 dB NF, 290 K)
+  gasLossBaselineDb: 0.0, // Altitude-integrated ITU-R P.676 computed dynamically in LinkBudgetEngine
+  specificGasLossDbPerKm: 0.012, // Sea-level reference specific attenuation (dB/km)
   maxRollOffDb: 25.0, // Maximum antenna off-boresight attenuation
-  hpbwAzDeg: 90.0, // Sector half-power beamwidth
-  channelBandwidthHz: 1.0e6, // 1.0 MHz shared channel
+  hpbwAzDeg: DEFAULT_AO_RF_CONFIG.acnSectorHpbwAzDeg, // 90.0 deg sector half-power beamwidth
+  channelBandwidthHz: DEFAULT_AO_RF_CONFIG.channelBandwidthHz, // 1.0 MHz shared channel
 };
 
 export type AoZoneClass = 'HIGH_RATE_LOS' | 'MARGINAL_DIFFRACTED' | 'DEAD_ZONE_OUTAGE';
@@ -155,8 +163,12 @@ export function evaluateAoSwathAnalysis(
   acnPosEnu: { x?: number; y?: number; z?: number; xM?: number; yM?: number; zM?: number } | [number, number, number] | readonly [number, number, number],
   acnHeadingDeg: number,
   getElevationAt: (x: number, y: number) => number,
-  gridResolution: number = 8
+  gridResolution: number = 8,
+  rfConfig?: RFConfig,
+  envConfig?: EnvironmentConfig
 ): AoSwathAnalysisReport {
+  const effRf = rfConfig ?? DEFAULT_AO_RF_CONFIG;
+  const effEnv = envConfig ?? DEFAULT_AO_ENV_CONFIG;
   // 1. Swath Bounding Box & Dimensions
   const minX = Math.min(x1, x2);
   const maxX = Math.max(x1, x2);
@@ -249,7 +261,6 @@ export function evaluateAoSwathAnalysis(
       const dy = yAcn - yc;
       const dz = zAcn - zAnt;
       const { horizDistM: dHorizM, slantDistM: d3dM } = computeSlantAndHorizDistance(dx, dy, dz);
-      const d3dKm = d3dM / 1000.0;
 
       // 16-Step Curved Earth Ray-Marching
       let maxNu = -999.0;
@@ -280,9 +291,12 @@ export function evaluateAoSwathAnalysis(
         }
       }
 
-      const diffLossDb = isRayBlocked
-        ? computeP526DiffractionDb(maxNu)
-        : (maxNu > -0.78 ? computeP526DiffractionDb(maxNu) : 0.0);
+      const diffLossDb = Math.max(
+        0.0,
+        isRayBlocked
+          ? computeP526DiffractionDb(maxNu)
+          : (maxNu > -0.78 ? computeP526DiffractionDb(maxNu) : 0.0)
+      );
       const isLineOfSight = !isRayBlocked;
 
       // Quad-Sector ACN Identification & Roll-Off Loss
@@ -298,32 +312,29 @@ export function evaluateAoSwathAnalysis(
       const azRatio = offBoresightDeg / AO_LINK_BUDGET.hpbwAzDeg;
       const rollOffLossDb = Math.min(12.0 * azRatio * azRatio, AO_LINK_BUDGET.maxRollOffDb);
 
-      // 8 GHz Link Budget Calculation
-      const fsplDb = computeFsplDb(d3dM, DEFAULT_X_BAND_FREQ_HZ, SPEED_OF_LIGHT_M_S);
-      const gasLossDb = AO_LINK_BUDGET.gasLossBaselineDb + AO_LINK_BUDGET.specificGasLossDbPerKm * d3dKm;
-
-      const sinrDb =
-        AO_LINK_BUDGET.txPowerDbm +
-        AO_LINK_BUDGET.txGainDbi -
-        rollOffLossDb +
-        AO_LINK_BUDGET.rxGainDbi -
-        fsplDb -
-        gasLossDb -
-        diffLossDb -
-        AO_LINK_BUDGET.noisePowerDbm;
+      // Canonical 8.0 GHz Link Budget Calculation via LinkBudgetEngine
+      const linkStatus = AO_LINK_ENGINE.evaluateLink({
+        nodeType: 'soldier',
+        slantRangeM: Math.max(1.0, d3dM),
+        diffractionLossDb: diffLossDb,
+        rf: effRf,
+        env: effEnv,
+        obstacleBlocked: false,
+        nodeAltM: zAnt,
+        acnAltM: zAcn,
+        customRxGainDbi: effRf.acnAntennaGainDbi - rollOffLossDb,
+        txX: xc,
+        txY: yc,
+        rxX: xAcn,
+        rxY: yAcn,
+      });
+      const sinrDb = linkStatus.sinrDb ?? linkStatus.snrDb;
 
       sumSinr += sinrDb;
       if (sinrDb < minSinr) minSinr = sinrDb;
       if (sinrDb > maxSinr) maxSinr = sinrDb;
 
-      // DVB-S2X MODCOD Selection
-      let selectedModcodName = 'LINK_OUTAGE';
-      for (const entry of MODCOD_TABLE) {
-        if (sinrDb >= entry.minSnrDb) {
-          selectedModcodName = entry.name;
-          break;
-        }
-      }
+      const selectedModcodName = linkStatus.modcodName;
 
       // Zone Classification
       let zoneClass: AoZoneClass;

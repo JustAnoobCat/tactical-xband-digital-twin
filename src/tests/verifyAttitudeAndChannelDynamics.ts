@@ -139,30 +139,30 @@ console.log('\n[AAD-T2] Verifying 3D World->Body Orthogonal Tait-Bryan Transform
   close(resWestLevel.bodyElevationDeg, -45.0, 1e-4, 'West GCS at equal range must have elevation = -45° in level flight');
 
   // Now execute a RIGHT BANK (+30° roll, starboard wing drops, port wing rises):
-  // The belly antenna tilts toward starboard/East.
-  // Port/West GCS rises toward 0° body elevation (toward fuselage shadow):
+  // Canopy (+up) tilts starboard/East; belly (+down) tilts port/West.
+  // Port/West GCS sits deeper below the belly (-45° -> -75°), while Starboard/East GCS rises toward wing plane (-45° -> -15°):
   const resWestBank = worldLosToBodyFrame(-1000, 0, -1000, { yawDeg: 0, pitchDeg: 0, rollDeg: 30.0 });
-  close(resWestBank.bodyElevationDeg, -15.0, 1e-4, 'West GCS elevation rises from -45° to -15° under +30° right bank');
+  close(resWestBank.bodyElevationDeg, -75.0, 1e-4, 'West GCS elevation drops from -45° to -75° under +30° right bank');
   assert.ok(
-    resWestBank.bodyElevationDeg > resWestLevel.bodyElevationDeg,
-    'Right bank must tilt belly away from port/west GCS, increasing body elevation toward positive values'
-  );
-
-  // Steep right bank (+50° roll):
-  // West GCS crosses wing plane into positive body elevation (fuselage masked!):
-  const resWestMasked = worldLosToBodyFrame(-1000, 0, -1000, { yawDeg: 0, pitchDeg: 0, rollDeg: 50.0 });
-  assert.ok(
-    resWestMasked.bodyElevationDeg > 0.0,
-    `West GCS under steep +50° bank must enter positive body elevation (got ${resWestMasked.bodyElevationDeg.toFixed(2)}°)`
+    resWestBank.bodyElevationDeg < -45.0,
+    'West GCS sits deeper below belly (completely unobstructed)'
   );
 
   // Starboard/East GCS (+1000, 0, 0 relative to UAV):
-  // Under right bank (+30° roll), starboard wing dips toward ground, belly looks directly toward East:
+  // Under right bank (+30° roll), starboard wing dips toward ground, bringing East GCS closer to wing plane (-15°):
   const resEastBank = worldLosToBodyFrame(1000, 0, -1000, { yawDeg: 0, pitchDeg: 0, rollDeg: 30.0 });
-  close(resEastBank.bodyElevationDeg, -75.0, 1e-4, 'East GCS under +30° right bank drops to -75° (deep below belly)');
+  close(resEastBank.bodyElevationDeg, -15.0, 1e-4, 'East GCS elevation rises from -45° to -15° under +30° right bank');
   assert.ok(
-    resEastBank.bodyElevationDeg < -45.0,
-    'East GCS sits deeper below belly (completely unobstructed)'
+    resEastBank.bodyElevationDeg > resWestLevel.bodyElevationDeg,
+    'Right bank must tilt starboard wing toward East GCS, increasing body elevation toward positive values'
+  );
+
+  // Steep right bank (+50° roll):
+  // East/starboard GCS crosses wing plane into positive body elevation (fuselage masked!):
+  const resEastMasked = worldLosToBodyFrame(1000, 0, -1000, { yawDeg: 0, pitchDeg: 0, rollDeg: 50.0 });
+  assert.ok(
+    resEastMasked.bodyElevationDeg > 0.0,
+    `East GCS under steep +50° bank must enter positive body elevation (got ${resEastMasked.bodyElevationDeg.toFixed(2)}°)`
   );
 
   // 3. Zero-length or non-finite inputs:
@@ -219,69 +219,41 @@ console.log('\n[AAD-T3] Verifying Airframe Shadowing & End-to-End LinkBudget Int
 
   // Test Case A: Level flight, ACN directly above GCS:
   const slantM = 10000.0;
-  const lsLevel = engine.evaluateLink(
-    'soldier',
-    slantM,
-    0.0,
+  const lsLevel = engine.evaluateLink({
+    nodeType: 'soldier',
+    slantRangeM: slantM,
+    diffractionLossDb: 0.0,
     rf,
     env,
-    false,
-    undefined,
-    undefined,
-    3000.0,
-    5000.0,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    {
+    obstacleBlocked: false,
+    nodeAltM: 3000.0,
+    acnAltM: 5000.0,
+    airframeOptions: {
       enableAirframeShadowing: true,
       uavAttitude: { yawDeg: 0, pitchDeg: 0, rollDeg: 0 },
       losVectorEnu: [0, 0, -2000.0],
       antennaMount: 'belly',
-    }
-  );
+    },
+  });
   close(lsLevel.airframeShadowLossDb ?? 0.0, 0.0, 1e-6, 'Level flight above GCS must yield 0 dB airframe shadow loss');
 
-  // Test Case B: Steep 40° bank away from GCS (bank right, GCS on port/west side):
-  const lsBank = engine.evaluateLink(
-    'soldier',
-    slantM,
-    0.0,
+  // Test Case B: Steep 40° right bank with GCS on inside (starboard/East) side:
+  const lsBank = engine.evaluateLink({
+    nodeType: 'soldier',
+    slantRangeM: slantM,
+    diffractionLossDb: 0.0,
     rf,
     env,
-    false,
-    undefined,
-    undefined,
-    3000.0,
-    5000.0,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    {
+    obstacleBlocked: false,
+    nodeAltM: 3000.0,
+    acnAltM: 5000.0,
+    airframeOptions: {
       enableAirframeShadowing: true,
       uavAttitude: { yawDeg: 0, pitchDeg: 0, rollDeg: 40.0 },
-      losVectorEnu: [-4000.0, 0, -2000.0],
+      losVectorEnu: [4000.0, 0, -2000.0],
       antennaMount: 'belly',
-    }
-  );
+    },
+  });
   assert.ok(
     (lsBank.airframeShadowLossDb ?? 0.0) > 8.0,
     `Steep 40° bank away from GCS must induce > 8.0 dB airframe shadowing (got ${lsBank.airframeShadowLossDb} dB)`

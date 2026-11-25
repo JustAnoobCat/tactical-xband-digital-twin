@@ -144,6 +144,41 @@ export interface AirframeChannelOptions {
   readonly biomeEmParams?: BiomeEmParameters;
 }
 
+export interface EvaluateLinkOptions {
+  readonly nodeType: NodeType | string;
+  readonly slantRangeM: number;
+  readonly diffractionLossDb?: number;
+  readonly rf: RFConfig;
+  readonly env: EnvironmentConfig;
+  readonly obstacleBlocked?: boolean;
+  readonly customTxPowerDbm?: number;
+  readonly sectorEval?: AcnSectorEvaluation & { jammerInterferenceDbm?: number };
+  readonly nodeAltM?: number;
+  readonly acnAltM?: number;
+  readonly crestRadiusM?: number;
+  readonly curvatureLossDb?: number;
+  readonly jammerInterferenceDbm?: number;
+  readonly radialVelocityMs?: number;
+  readonly dopplerShiftHz?: number;
+  readonly dopplerRateHzS?: number;
+  readonly customRxGainDbi?: number;
+  readonly fadingGainDb?: number;
+  readonly ricianKFactorDb?: number;
+  readonly ollaMarginDb?: number;
+  readonly cqiDecodeFailure?: boolean;
+  readonly profile?: { distancesM: ArrayLike<number>; elevationsM: ArrayLike<number> };
+  readonly diffractionModel?: 'deygout-multiedge' | 'bullington' | 'single-edge';
+  readonly airframeOptions?: AirframeChannelOptions;
+  readonly biomeEmParams?: BiomeEmParameters;
+  readonly txX?: number;
+  readonly txY?: number;
+  readonly rxX?: number;
+  readonly rxY?: number;
+  readonly biomeId?: BiomeId;
+  readonly txAltAglM?: number;
+  readonly rxAltAglM?: number;
+}
+
 export class LinkBudgetEngine {
   /**
    * First-principles 8.0 GHz 3D Kinematic Doppler frequency shift (f_d) and analytical
@@ -312,7 +347,7 @@ export class LinkBudgetEngine {
    * ITU-R P.838-3 / P.839-4 Hydrometeor Rain Attenuation for 8.0 GHz (Horizontal polarization).
    * k_H = 0.00411, alpha_H = 1.390
    * gamma_R = k_H * (rainRate ^ alpha_H) dB/km
-   * Freezing ceiling h_R = 4800.0 m MSL (34.5°N Ladakh).
+   * Freezing ceiling h_R defaults to 4800.0 m MSL (or biome-specific freezingIsothermM).
    *
    * Exact fallback: If nodeAltM === undefined || acnAltM === undefined,
    * returns legacy formula without altitude partitioning.
@@ -321,7 +356,8 @@ export class LinkBudgetEngine {
     slantRangeM: number,
     env: EnvironmentConfig,
     nodeAltM?: number,
-    acnAltM?: number
+    acnAltM?: number,
+    freezingIsothermM: number = 4800.0
   ): number {
     const rainRate = env.rainRateMmH ?? 0.0;
     if (rainRate <= 0.0 || slantRangeM <= 0.0) {
@@ -338,7 +374,7 @@ export class LinkBudgetEngine {
 
     const z1 = Math.min(nodeAltM, acnAltM);
     const z2 = Math.max(nodeAltM, acnAltM);
-    const hR = 4800.0; // Freezing ceiling in meters MSL
+    const hR = Number.isFinite(freezingIsothermM) ? freezingIsothermM : 4800.0; // Freezing ceiling in meters MSL
 
     let fLiquid: number;
     if (z1 >= hR) {
@@ -455,13 +491,14 @@ export class LinkBudgetEngine {
    * Predicts physical RF link performance, received power, net SNR,
    * adaptive MODCOD scheme, and net achievable bitrate.
    */
+  public evaluateLink(options: EvaluateLinkOptions): LinkStatus;
   public evaluateLink(
     nodeType: NodeType | string,
     slantRangeM: number,
     diffractionLossDb: number,
     rf: RFConfig,
     env: EnvironmentConfig,
-    obstacleBlocked: boolean = false,
+    obstacleBlocked?: boolean,
     customTxPowerDbm?: number,
     sectorEval?: AcnSectorEvaluation & { jammerInterferenceDbm?: number },
     nodeAltM?: number,
@@ -481,52 +518,71 @@ export class LinkBudgetEngine {
     diffractionModel?: 'deygout-multiedge' | 'bullington' | 'single-edge',
     airframeOptions?: AirframeChannelOptions,
     biomeEmParams?: BiomeEmParameters
+  ): LinkStatus;
+  public evaluateLink(
+    nodeTypeOrOptions: NodeType | string | EvaluateLinkOptions,
+    slantRangeMArg?: number,
+    diffractionLossDbArg?: number,
+    rfArg?: RFConfig,
+    envArg?: EnvironmentConfig,
+    obstacleBlockedArg: boolean = false,
+    customTxPowerDbmArg?: number,
+    sectorEvalArg?: AcnSectorEvaluation & { jammerInterferenceDbm?: number },
+    nodeAltMArg?: number,
+    acnAltMArg?: number,
+    crestRadiusMArg?: number,
+    curvatureLossDbArg?: number,
+    jammerInterferenceDbmArg?: number,
+    radialVelocityMsArg?: number,
+    dopplerShiftHzArg?: number,
+    dopplerRateHzSArg?: number,
+    customRxGainDbiArg?: number,
+    fadingGainDbArg?: number,
+    ricianKFactorDbArg?: number,
+    ollaMarginDbArg?: number,
+    cqiDecodeFailureArg?: boolean,
+    profileArg?: { distancesM: ArrayLike<number>; elevationsM: ArrayLike<number> },
+    diffractionModelArg?: 'deygout-multiedge' | 'bullington' | 'single-edge',
+    airframeOptionsArg?: AirframeChannelOptions,
+    biomeEmParamsArg?: BiomeEmParameters
   ): LinkStatus {
-    // Ergonomic normalization if caller omitted profile / diffractionModel
-    let effAirframeOptions = airframeOptions;
-    let effProfile = profile;
-    let effDiffractionModel = diffractionModel;
-    let effBiomeEmParams = biomeEmParams ?? effAirframeOptions?.biomeEmParams;
+    const isOpts = typeof nodeTypeOrOptions === 'object' && nodeTypeOrOptions !== null;
+    const opts = isOpts ? (nodeTypeOrOptions as EvaluateLinkOptions) : undefined;
 
-    if (
-      effProfile &&
-      (
-        'enableAirframeShadowing' in (effProfile as any) ||
-        'correlatedFadingParams' in (effProfile as any) ||
-        'uavAttitude' in (effProfile as any) ||
-        'antennaMount' in (effProfile as any) ||
-        'enableBiomeEmPhysics' in (effProfile as any) ||
-        'biomeId' in (effProfile as any)
-      )
-    ) {
-      if ('enableBiomeEmPhysics' in (effProfile as any) || 'biomeId' in (effProfile as any)) {
-        effBiomeEmParams = effProfile as any;
-      } else {
-        effAirframeOptions = effProfile as any;
-      }
-      effProfile = undefined;
-    } else if (
-      effDiffractionModel &&
-      typeof effDiffractionModel === 'object' &&
-      (
-        'enableAirframeShadowing' in (effDiffractionModel as any) ||
-        'correlatedFadingParams' in (effDiffractionModel as any) ||
-        'uavAttitude' in (effDiffractionModel as any) ||
-        'antennaMount' in (effDiffractionModel as any) ||
-        'enableBiomeEmPhysics' in (effDiffractionModel as any) ||
-        'biomeId' in (effDiffractionModel as any)
-      )
-    ) {
-      if ('enableBiomeEmPhysics' in (effDiffractionModel as any) || 'biomeId' in (effDiffractionModel as any)) {
-        effBiomeEmParams = effDiffractionModel as any;
-      } else {
-        effAirframeOptions = effDiffractionModel as any;
-      }
-      effDiffractionModel = undefined;
-    }
-    if (!effBiomeEmParams && effAirframeOptions?.biomeEmParams) {
-      effBiomeEmParams = effAirframeOptions.biomeEmParams;
-    }
+    const nodeType = opts ? opts.nodeType : (nodeTypeOrOptions as NodeType | string);
+    const slantRangeM = opts ? opts.slantRangeM : slantRangeMArg!;
+    const diffractionLossDb = opts ? (opts.diffractionLossDb ?? 0.0) : (diffractionLossDbArg ?? 0.0);
+    const rf = opts ? opts.rf : rfArg!;
+    const env = opts ? opts.env : envArg!;
+    const obstacleBlocked = opts ? (opts.obstacleBlocked ?? false) : obstacleBlockedArg;
+    const customTxPowerDbm = opts ? opts.customTxPowerDbm : customTxPowerDbmArg;
+    const sectorEval = opts ? opts.sectorEval : sectorEvalArg;
+    const nodeAltM = opts ? opts.nodeAltM : nodeAltMArg;
+    const acnAltM = opts ? opts.acnAltM : acnAltMArg;
+    const crestRadiusM = opts ? opts.crestRadiusM : crestRadiusMArg;
+    const curvatureLossDb = opts ? opts.curvatureLossDb : curvatureLossDbArg;
+    const jammerInterferenceDbm = opts ? opts.jammerInterferenceDbm : jammerInterferenceDbmArg;
+    const radialVelocityMs = opts ? opts.radialVelocityMs : radialVelocityMsArg;
+    const dopplerShiftHz = opts ? opts.dopplerShiftHz : dopplerShiftHzArg;
+    const dopplerRateHzS = opts ? opts.dopplerRateHzS : dopplerRateHzSArg;
+    const customRxGainDbi = opts ? opts.customRxGainDbi : customRxGainDbiArg;
+    const fadingGainDb = opts ? opts.fadingGainDb : fadingGainDbArg;
+    const ricianKFactorDb = opts ? opts.ricianKFactorDb : ricianKFactorDbArg;
+    const ollaMarginDb = opts ? opts.ollaMarginDb : ollaMarginDbArg;
+    const cqiDecodeFailure = opts ? opts.cqiDecodeFailure : cqiDecodeFailureArg;
+    const effProfile = opts ? opts.profile : profileArg;
+    const effDiffractionModel = opts ? opts.diffractionModel : diffractionModelArg;
+    const effAirframeOptions = opts ? opts.airframeOptions : airframeOptionsArg;
+    const effBiomeEmParams = opts
+      ? (opts.biomeEmParams ?? effAirframeOptions?.biomeEmParams)
+      : (biomeEmParamsArg ?? effAirframeOptions?.biomeEmParams);
+    const optTxX = opts?.txX;
+    const optTxY = opts?.txY;
+    const optRxX = opts?.rxX;
+    const optRxY = opts?.rxY;
+    const optBiomeId = opts?.biomeId;
+    const optTxAltAglM = opts?.txAltAglM;
+    const optRxAltAglM = opts?.rxAltAglM;
 
     let effDiffractionLossDb = diffractionLossDb;
     let secondaryEdges: number | undefined = undefined;
@@ -549,9 +605,14 @@ export class LinkBudgetEngine {
       secondaryEdges = diffResult.secondaryEdgeCount;
     }
 
+    const resolvedBiomeId = optBiomeId ?? effBiomeEmParams?.biomeId;
+    const freezingIsothermM = resolvedBiomeId
+      ? (THEATER_BIOMES[resolvedBiomeId]?.freezingIsothermM ?? 4800.0)
+      : 4800.0;
+
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
-    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, env, nodeAltM, acnAltM);
+    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, env, nodeAltM, acnAltM, freezingIsothermM);
 
     // Biome-adaptive EM physics (Two-ray ground reflection, vegetation, dust, polarization, weather cells)
     let twoRayDeltaDb: number | undefined = undefined;
@@ -562,30 +623,49 @@ export class LinkBudgetEngine {
     let effRainLossDb = rainLossDb;
 
     if (effBiomeEmParams?.enableBiomeEmPhysics) {
-      const bId = effBiomeEmParams.biomeId ?? 'alpine_mountain';
+      const bId = resolvedBiomeId ?? 'alpine_mountain';
       const bDef = THEATER_BIOMES[bId] ?? THEATER_BIOMES.alpine_mountain;
+      const hasCoords =
+        optTxX !== undefined && Number.isFinite(optTxX) &&
+        optTxY !== undefined && Number.isFinite(optTxY) &&
+        optRxX !== undefined && Number.isFinite(optRxX) &&
+        optRxY !== undefined && Number.isFinite(optRxY);
 
       // Dynamic advecting weather cells
       if (effBiomeEmParams.weatherCells && effBiomeEmParams.weatherCells.length > 0) {
         const cellRes = evaluateAdvectingWeatherCellsRainMmH(
-          0.0,
-          0.0,
-          slantRangeM,
-          0.0,
+          hasCoords ? optTxX! : 0.0,
+          hasCoords ? optTxY! : 0.0,
+          hasCoords ? optRxX! : slantRangeM,
+          hasCoords ? optRxY! : 0.0,
           effBiomeEmParams.weatherCells,
           effBiomeEmParams.simTimeSec ?? 0.0
         );
         weatherCellRainMmH = cellRes.pathAvgRainMmH;
         if (weatherCellRainMmH > 0.0) {
           const cellEnv = new EnvironmentConfig({ ...env, rainRateMmH: (env.rainRateMmH || 0.0) + weatherCellRainMmH });
-          effRainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, cellEnv, nodeAltM, acnAltM);
+          effRainLossDb = LinkBudgetEngine.computeRainAttenuationDb(
+            slantRangeM,
+            cellEnv,
+            nodeAltM,
+            acnAltM,
+            bDef.freezingIsothermM ?? freezingIsothermM
+          );
         }
       }
 
       // 1. Two-ray ground reflection
-      const txAlt = effBiomeEmParams.txAltAglM ?? (acnAltM !== undefined ? acnAltM : 1000.0);
-      const rxAlt = effBiomeEmParams.rxAltAglM ?? (nodeAltM !== undefined ? nodeAltM : 10.0);
-      const horizDist = effBiomeEmParams.horizontalDistM ?? Math.max(1.0, Math.sqrt(Math.max(0.0, slantRangeM * slantRangeM - Math.pow(txAlt - rxAlt, 2))));
+      const defaultTxAglM =
+        acnAltM !== undefined && nodeAltM !== undefined
+          ? Math.max(1.5, acnAltM - nodeAltM)
+          : (acnAltM !== undefined ? Math.max(1.5, acnAltM) : 1000.0);
+      const txAlt = optTxAltAglM ?? effBiomeEmParams.txAltAglM ?? defaultTxAglM;
+      const rxAlt = optRxAltAglM ?? effBiomeEmParams.rxAltAglM ?? 2.0;
+      const horizDist = effBiomeEmParams.horizontalDistM ?? (
+        hasCoords
+          ? Math.max(1.0, Math.hypot(optRxX! - optTxX!, optRxY! - optTxY!))
+          : Math.max(1.0, Math.sqrt(Math.max(0.0, slantRangeM * slantRangeM - Math.pow(txAlt - rxAlt, 2))))
+      );
       const isLosClear = !obstacleBlocked && effDiffractionLossDb <= 0.1;
       const pol = effBiomeEmParams.polarization ?? 'RHCP';
 
@@ -801,7 +881,7 @@ export class LinkBudgetEngine {
       dustStormLossDb,
       polarizationLossDb,
       weatherCellRainMmH,
-      biomeId: effBiomeEmParams?.enableBiomeEmPhysics ? effBiomeEmParams.biomeId : undefined,
+      biomeId: effBiomeEmParams?.enableBiomeEmPhysics ? (resolvedBiomeId ?? effBiomeEmParams.biomeId) : optBiomeId,
     };
   }
 

@@ -9,7 +9,8 @@
  * 4. Excalidraw Obstacle Authoring Ergonomics (Shape modes, ITU-R material profiles, Undo/Redo stack, inventory list)
  */
 
-import { MODCOD_TABLE } from '../core/linkBudget';
+import { EnvironmentConfig, RFConfig } from '../core/config';
+import { LinkBudgetEngine, MODCOD_TABLE } from '../core/linkBudget';
 import type { Obstacle } from '../core/obstacles';
 
 export const EFFECTIVE_EARTH_RADIUS_M = (4.0 / 3.0) * 6371000.0; // 8,494,666.67 m
@@ -17,13 +18,22 @@ export const X_BAND_CARRIER_FREQ_HZ = 8.0e9; // 8.0 GHz
 export const SPEED_OF_LIGHT_M_S = 299792458.0;
 export const X_BAND_WAVELENGTH_M = SPEED_OF_LIGHT_M_S / X_BAND_CARRIER_FREQ_HZ; // ~0.03747 m (~0.0375 m)
 
-// Default System Link Budget Parameters for 8 GHz X-Band ACN-Ground Link
+const DEFAULT_ANALYSIS_RF_CONFIG = new RFConfig();
+const DEFAULT_ANALYSIS_ENV_CONFIG = new EnvironmentConfig();
+const ANALYSIS_LINK_ENGINE = new LinkBudgetEngine();
+
+// Canonical System Link Budget Parameters for 8 GHz X-Band Soldier-to-ACN Uplink
 export const LINK_BUDGET_CONFIG = {
-  txPowerDbm: 43.0, // 20 W
-  txGainDbi: 18.0, // Sector / directional horn
-  rxGainDbi: 3.0, // Terminal monopole / patch
-  noisePowerDbm: -104.0, // 20 MHz thermal noise floor + NF
-  gasRainLossMarginDb: 1.2, // Atmospheric absorption baseline
+  txPowerDbm: DEFAULT_ANALYSIS_RF_CONFIG.soldierTxPowerDbm, // 36.0 dBm (4 W soldier manpack)
+  txGainDbi: DEFAULT_ANALYSIS_RF_CONFIG.soldierAntennaGainDbi, // 3.0 dBi omni whip
+  rxGainDbi: DEFAULT_ANALYSIS_RF_CONFIG.acnAntennaGainDbi, // 16.0 dBi ACN quad-sector array
+  cableAndMarginDb:
+    DEFAULT_ANALYSIS_RF_CONFIG.cableLossDb + DEFAULT_ANALYSIS_RF_CONFIG.implementationMarginDb, // 4.0 dB
+  noisePowerDbm: LinkBudgetEngine.computeThermalNoiseFloorDbm(
+    DEFAULT_ANALYSIS_RF_CONFIG.channelBandwidthHz,
+    DEFAULT_ANALYSIS_RF_CONFIG.acnNoiseFigureDb
+  ).pNoiseDbm, // ~ -108.975 dBm (1 MHz, 5 dB NF, 290 K)
+  gasRainLossMarginDb: 0.0, // Altitude-integrated ITU-R P.676 computed dynamically in LinkBudgetEngine
 };
 
 // -----------------------------------------------------------------------------
@@ -165,27 +175,28 @@ export function computeTransectRfMetrics(
     });
   }
 
-  const p526DiffractionLossDb = computeP526DiffractionLossDb(maxNu);
+  const p526DiffractionLossDb = Math.max(0.0, computeP526DiffractionLossDb(maxNu));
 
-  // Slant range FSPL calculation
-  const slantM = Math.hypot(totalDistM, zEnd - zStart);
-  const fsplDb = 20.0 * Math.log10(Math.max(1.0, slantM)) + 20.0 * Math.log10(X_BAND_CARRIER_FREQ_HZ) - 147.55;
-  const estSnrDb =
-    LINK_BUDGET_CONFIG.txPowerDbm +
-    LINK_BUDGET_CONFIG.txGainDbi +
-    LINK_BUDGET_CONFIG.rxGainDbi -
-    fsplDb -
-    p526DiffractionLossDb -
-    LINK_BUDGET_CONFIG.gasRainLossMarginDb -
-    LINK_BUDGET_CONFIG.noisePowerDbm;
-
+  // Canonical 8.0 GHz link budget via LinkBudgetEngine (ITU-R P.676 + P.526 + RFConfig)
+  const slantM = Math.max(1.0, Math.hypot(totalDistM, zEnd - zStart));
+  const linkStatus = ANALYSIS_LINK_ENGINE.evaluateLink({
+    nodeType: 'soldier',
+    slantRangeM: slantM,
+    diffractionLossDb: p526DiffractionLossDb,
+    rf: DEFAULT_ANALYSIS_RF_CONFIG,
+    env: DEFAULT_ANALYSIS_ENV_CONFIG,
+    obstacleBlocked: false,
+    nodeAltM: Math.min(zStart, zEnd),
+    acnAltM: Math.max(zStart, zEnd),
+  });
+  const estSnrDb = linkStatus.snrDb;
   const estModcod = lookupModcodFromSnr(estSnrDb);
 
   return {
     minF1ClearanceM: Number.isFinite(minClearanceM) ? minClearanceM : 0,
     minF1ClearancePct: Number.isFinite(minClearancePct) ? minClearancePct : 100,
     dominantCrestDistM,
-    p526DiffractionLossDb: Math.max(0.0, p526DiffractionLossDb),
+    p526DiffractionLossDb,
     estSnrDb,
     estModcod,
     points,
@@ -257,17 +268,22 @@ export function evaluateVirtualTerminalLink(
     }
   }
 
-  const diffLossDb = computeP526DiffractionLossDb(maxNu);
-  const fsplDb = 20.0 * Math.log10(Math.max(1.0, slantM)) + 20.0 * Math.log10(X_BAND_CARRIER_FREQ_HZ) - 147.55;
-  const sinrDb =
-    LINK_BUDGET_CONFIG.txPowerDbm +
-    LINK_BUDGET_CONFIG.txGainDbi +
-    LINK_BUDGET_CONFIG.rxGainDbi -
-    fsplDb -
-    diffLossDb -
-    LINK_BUDGET_CONFIG.gasRainLossMarginDb -
-    LINK_BUDGET_CONFIG.noisePowerDbm;
-
+  const diffLossDb = Math.max(0.0, computeP526DiffractionLossDb(maxNu));
+  const linkStatus = ANALYSIS_LINK_ENGINE.evaluateLink({
+    nodeType: 'soldier',
+    slantRangeM: Math.max(1.0, slantM),
+    diffractionLossDb: diffLossDb,
+    rf: DEFAULT_ANALYSIS_RF_CONFIG,
+    env: DEFAULT_ANALYSIS_ENV_CONFIG,
+    obstacleBlocked: false,
+    nodeAltM: probeAltM,
+    acnAltM: acnPos[2],
+    txX: probeX,
+    txY: probeY,
+    rxX: acnPos[0],
+    rxY: acnPos[1],
+  });
+  const sinrDb = linkStatus.sinrDb ?? linkStatus.snrDb;
   const modcod = lookupModcodFromSnr(sinrDb);
 
   return {
@@ -278,7 +294,7 @@ export function evaluateVirtualTerminalLink(
     slantRangeKm,
     elevationDeg,
     isLos,
-    diffLossDb: Math.max(0.0, diffLossDb),
+    diffLossDb,
     sinrDb,
     modcod,
   };

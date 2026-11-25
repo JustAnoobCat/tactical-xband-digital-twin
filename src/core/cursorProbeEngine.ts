@@ -10,8 +10,8 @@
  * Specification: docs/specs/SPEC-PRECISION-CURSOR-RF-PROBE-AND-UNIT-SPAWNER-TOOL2.md
  */
 
-import { SPEED_OF_LIGHT } from './config';
-import { MODCOD_TABLE } from './linkBudget';
+import { EnvironmentConfig, RFConfig, SPEED_OF_LIGHT } from './config';
+import { LinkBudgetEngine } from './linkBudget';
 import { ACN_SECTOR_LABELS } from './antennaArray';
 import {
   SPEED_OF_LIGHT_M_S,
@@ -22,7 +22,6 @@ import {
   DEFAULT_R_EFF_M,
   computeEarthBulgeM,
   computeKnifeEdgeDiffractionLossDb,
-  computeFsplDb,
   computeBearingDeg,
   computeSlantAndHorizDistance,
 } from './rfPropagationMath';
@@ -36,17 +35,26 @@ export {
   DEFAULT_R_EFF_M,
 };
 
-// Standard Tactical Link Budget Constants (8 GHz ACN-Ground)
+const DEFAULT_PROBE_RF_CONFIG = new RFConfig();
+const DEFAULT_PROBE_ENV_CONFIG = new EnvironmentConfig();
+const PROBE_LINK_ENGINE = new LinkBudgetEngine();
+
+// Canonical Tactical Uplink Constants from RFConfig (8.0 GHz Soldier-to-ACN)
 export const PROBE_LINK_BUDGET = {
-  txPowerDbm: 43.0, // 20 W ACN PA
-  txGainDbi: 18.0, // Peak horn / sector array gain
-  rxGainDbi: 3.0, // Ground terminal monopole / patch gain
-  noisePowerDbm: -104.0, // Receiver thermal noise floor + NF
-  gasLossBaselineDb: 1.2, // Atmospheric absorption baseline
-  specificGasLossDbPerKm: 0.012, // ITU-R P.676 absorption at 8.0 GHz
+  txPowerDbm: DEFAULT_PROBE_RF_CONFIG.soldierTxPowerDbm, // 36.0 dBm (4 W manpack PA)
+  txGainDbi: DEFAULT_PROBE_RF_CONFIG.soldierAntennaGainDbi, // 3.0 dBi terminal whip
+  rxGainDbi: DEFAULT_PROBE_RF_CONFIG.acnAntennaGainDbi, // 16.0 dBi ACN quad-sector array
+  cableAndMarginDb:
+    DEFAULT_PROBE_RF_CONFIG.cableLossDb + DEFAULT_PROBE_RF_CONFIG.implementationMarginDb, // 4.0 dB
+  noisePowerDbm: LinkBudgetEngine.computeThermalNoiseFloorDbm(
+    DEFAULT_PROBE_RF_CONFIG.channelBandwidthHz,
+    DEFAULT_PROBE_RF_CONFIG.acnNoiseFigureDb
+  ).pNoiseDbm, // ~ -108.975 dBm (1 MHz, 5 dB NF, 290 K)
+  gasLossBaselineDb: 0.0, // Altitude-integrated ITU-R P.676 computed dynamically in LinkBudgetEngine
+  specificGasLossDbPerKm: 0.012, // Sea-level reference specific attenuation (dB/km)
   maxRollOffDb: 25.0, // Maximum antenna off-boresight attenuation
-  hpbwAzDeg: 90.0, // Sector half-power beamwidth
-  channelBandwidthHz: 1.0e6, // 1.0 MHz shared channel
+  hpbwAzDeg: DEFAULT_PROBE_RF_CONFIG.acnSectorHpbwAzDeg, // 90.0 deg sector half-power beamwidth
+  channelBandwidthHz: DEFAULT_PROBE_RF_CONFIG.channelBandwidthHz, // 1.0 MHz shared channel
 };
 
 export interface BlockingRidgePeak {
@@ -183,6 +191,8 @@ export function evaluateCursorRfProbe(
   acnHeadingDeg: number,
   getElevationAt: (x: number, y: number) => number,
   pinnedRef?: PinnedProbeReference | CursorProbeAnalysis | null,
+  rfConfig?: RFConfig,
+  envConfig?: EnvironmentConfig,
 ): CursorProbeAnalysis {
   // 1. Resolve probe position and antenna height
   const xP = Array.isArray(probePosEnu)
@@ -295,33 +305,32 @@ export function evaluateCursorRfProbe(
   const azRatio = offBoresightDeg / PROBE_LINK_BUDGET.hpbwAzDeg;
   const rollOffLossDb = Math.min(12.0 * azRatio * azRatio, PROBE_LINK_BUDGET.maxRollOffDb);
 
-  // 6. 8.0 GHz Link Budget Calculation
-  const fsplDb = computeFsplDb(d3dM, DEFAULT_X_BAND_FREQ_HZ, SPEED_OF_LIGHT_M_S);
-  const gasLossDb = PROBE_LINK_BUDGET.gasLossBaselineDb + PROBE_LINK_BUDGET.specificGasLossDbPerKm * d3dKm;
-  const diffLossDb = isLos ? 0.0 : computeP526DiffractionDb(maxNu);
+  // 6. Canonical 8.0 GHz Link Budget Calculation via LinkBudgetEngine
+  const effRf = rfConfig ?? DEFAULT_PROBE_RF_CONFIG;
+  const effEnv = envConfig ?? DEFAULT_PROBE_ENV_CONFIG;
+  const diffLossDb = isLos ? 0.0 : Math.max(0.0, computeP526DiffractionDb(maxNu));
+  const linkStatus = PROBE_LINK_ENGINE.evaluateLink({
+    nodeType: 'soldier',
+    slantRangeM: Math.max(1.0, d3dM),
+    diffractionLossDb: diffLossDb,
+    rf: effRf,
+    env: effEnv,
+    obstacleBlocked: false,
+    nodeAltM: zAnt,
+    acnAltM: zAcn,
+    customRxGainDbi: effRf.acnAntennaGainDbi - rollOffLossDb,
+    txX: xP,
+    txY: yP,
+    rxX: xAcn,
+    rxY: yAcn,
+  });
 
-  const estSinrDb =
-    PROBE_LINK_BUDGET.txPowerDbm +
-    PROBE_LINK_BUDGET.txGainDbi -
-    rollOffLossDb +
-    PROBE_LINK_BUDGET.rxGainDbi -
-    fsplDb -
-    gasLossDb -
-    diffLossDb -
-    PROBE_LINK_BUDGET.noisePowerDbm;
-
-  // DVB-S2X MODCOD Selection
-  let selectedModcod = { name: 'LINK_OUTAGE', spectralEfficiencyBpsHz: 0.0 };
-  for (const entry of MODCOD_TABLE) {
-    if (estSinrDb >= entry.minSnrDb) {
-      selectedModcod = entry;
-      break;
-    }
-  }
-
-  const modcodName = selectedModcod.name;
-  const spectralEfficiencyBpsHz = selectedModcod.spectralEfficiencyBpsHz;
-  const estBitrateMbps = (spectralEfficiencyBpsHz * PROBE_LINK_BUDGET.channelBandwidthHz) / 1.0e6;
+  const fsplDb = linkStatus.fsplDb;
+  const gasLossDb = linkStatus.gasLossDb;
+  const estSinrDb = linkStatus.sinrDb ?? linkStatus.snrDb;
+  const modcodName = linkStatus.modcodName;
+  const spectralEfficiencyBpsHz = linkStatus.spectralEfficiency;
+  const estBitrateMbps = linkStatus.bitrateMbps;
 
   // 7. 16-Azimuth 360° Polar Horizon Mask Skyline Ring
   const horizonMask16: HorizonMaskAzimuthBin[] = [];
