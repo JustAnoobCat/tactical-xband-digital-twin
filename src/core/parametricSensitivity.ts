@@ -17,8 +17,11 @@ import { LinkBudgetEngine } from './linkBudget';
 
 export type SensitivityAxis = 'traffic_load' | 'dem_error' | 'cqi_delay';
 
+export type SensitivityModelKind = 'analytical_saturation_envelope';
+
 export interface SensitivityCurvePoint {
   readonly x: number;
+  readonly modelKind: SensitivityModelKind;
   readonly staticGoodputMbps: number;
   readonly staticDropRatePct: number;
   readonly reactiveGoodputMbps: number;
@@ -29,6 +32,8 @@ export interface SensitivityCurvePoint {
 
 export interface SensitivityAxisConfig {
   readonly id: SensitivityAxis;
+  readonly modelKind: SensitivityModelKind;
+  readonly modelDescription: string;
   readonly title: string;
   readonly xLabel: string;
   readonly unit: string;
@@ -174,6 +179,7 @@ export function evaluatePhysicsSensitivityPoint(
 
   return Object.freeze({
     x,
+    modelKind: 'analytical_saturation_envelope' as const,
     staticGoodputMbps: boundGoodput(statRes.goodputMbps),
     staticDropRatePct: boundDrop(statRes.dropPct),
     reactiveGoodputMbps: boundGoodput(reactRes.goodputMbps),
@@ -186,6 +192,7 @@ export function evaluatePhysicsSensitivityPoint(
 /**
  * Generates a full physics-derived sensitivity sweep configuration for the specified axis
  * and optional live RF/environment configuration.
+ * Note: Produces a closed-form analytical saturation envelope (not live discrete-event scheduler output).
  */
 export function computeParametricSensitivityCurve(
   axis: SensitivityAxis,
@@ -201,6 +208,8 @@ export function computeParametricSensitivityCurve(
   );
   return Object.freeze({
     id: axis,
+    modelKind: 'analytical_saturation_envelope' as const,
+    modelDescription: 'Closed-form analytical RF/queueing saturation envelope (not live discrete-event scheduler output)',
     title: meta.title,
     xLabel: meta.xLabel,
     unit: meta.unit,

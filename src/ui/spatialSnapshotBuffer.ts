@@ -10,7 +10,7 @@
  * - Sequence gap / discontinuity detection.
  * - High-speed binary search lookup by simulation timestamp and O(1) direct ring lookup by frame index.
  * - Selection stability: historical selected frame is preserved under influx until evicted.
- * - Total memory footprint at maximum capacity (3,000 frames, 128 nodes) strictly < 6.5 MB.
+ * - Total memory footprint at maximum capacity (3,000 frames, 128 nodes) strictly < 7.0 MB (6,849,000 B with Uint16 nodeIds).
  */
 
 import { NodeTerrainState } from '../core/trajectory';
@@ -72,7 +72,7 @@ export interface ReadonlySpatialExportColumns {
   readonly selModcodCode: Readonly<Uint8Array>;
   readonly selIsOutage: Readonly<Uint8Array>;
   readonly nodeCounts: Readonly<Uint8Array>;
-  readonly nodeIds: Readonly<Uint8Array>;
+  readonly nodeIds: Readonly<Uint16Array>;
   readonly nodeFlags: Readonly<Uint8Array>;
   readonly nodeSnrDb: Readonly<Int16Array>;
   readonly getModcodName: (code: number) => string;
@@ -152,7 +152,7 @@ export class SpatialSnapshotBuffer {
   private readonly selModcodCode: Uint8Array;
 
   // Ground Nodes Matrix Columns (Length N * M = capacity * maxActiveGroundNodes)
-  private readonly nodeIds: Uint8Array;
+  private readonly nodeIds: Uint16Array;
   private readonly nodeFlags: Uint8Array;
   private readonly nodeAglM: Int16Array;
   private readonly nodeSnrDb: Int16Array;
@@ -209,7 +209,7 @@ export class SpatialSnapshotBuffer {
 
     // Allocate ground node matrix columns (3,000 * 128 = 384,000 slots)
     const nodeSlots = capacity * maxActiveGroundNodes;
-    this.nodeIds = new Uint8Array(nodeSlots);
+    this.nodeIds = new Uint16Array(nodeSlots);
     this.nodeFlags = new Uint8Array(nodeSlots);
     this.nodeAglM = new Int16Array(nodeSlots);
     this.nodeSnrDb = new Int16Array(nodeSlots);
@@ -299,7 +299,7 @@ export class SpatialSnapshotBuffer {
    * Appends an authoritative spatial frame snapshot into columnar typed arrays.
    * Returns true if appended, false if rejected (duplicate or non-monotonic frameIndex).
    */
-  public append(snapshot: SpatialFrameSnapshot): boolean {
+  public append(snapshot: SpatialFrameSnapshot, selectedNodeId?: number): boolean {
     if (!snapshot || typeof snapshot.frameIndex !== 'number') {
       return false;
     }
@@ -349,6 +349,25 @@ export class SpatialSnapshotBuffer {
     this.acnCoverageRadiusKm[idx] = snapshot.acn.coverageRadiusKm;
     this.acnIsTerrainClamped[idx] = snapshot.acn.isTerrainClamped ? 1 : 0;
 
+    const snapWithSel = snapshot as SpatialFrameSnapshot & {
+      selectedNodeId?: number;
+      selected_node_id?: number;
+    };
+    const lbWithSel = snapshot.selectedLinkBudget as (SpatialLinkBudgetSnapshot & {
+      nodeId?: number;
+      node_id?: number;
+    }) | null | undefined;
+    const rawSelNodeId =
+      selectedNodeId ??
+      snapWithSel.selectedNodeId ??
+      snapWithSel.selected_node_id ??
+      lbWithSel?.nodeId ??
+      lbWithSel?.node_id;
+    const resolvedSelNodeId =
+      typeof rawSelNodeId === 'number' && Number.isInteger(rawSelNodeId) && rawSelNodeId >= 0 && rawSelNodeId <= 32767
+        ? rawSelNodeId
+        : -1;
+
     // Selected link budget HUD scalars
     if (snapshot.selectedLinkBudget) {
       const lb = snapshot.selectedLinkBudget;
@@ -363,12 +382,12 @@ export class SpatialSnapshotBuffer {
       this.selBitrateMbps[idx] = lb.bitrateMbps;
       this.selIsOutage[idx] = lb.isOutage ? 1 : 0;
       this.selModcodCode[idx] = this.getOrCreateModcodCode(lb.modcodName);
-      this.selNodeId[idx] = -1;
+      this.selNodeId[idx] = resolvedSelNodeId;
     } else {
       this.hasSelectedLinkBudget[idx] = 0;
       this.selGasLossDb[idx] = 0.0;
       this.selRainLossDb[idx] = 0.0;
-      this.selNodeId[idx] = -1;
+      this.selNodeId[idx] = resolvedSelNodeId;
     }
 
     // Write ground nodes matrix
@@ -380,7 +399,7 @@ export class SpatialSnapshotBuffer {
     for (let j = 0; j < numNodes; j++) {
       const n = nodes[j];
       const slot = baseSlot + j;
-      this.nodeIds[slot] = n.nodeId & 0xff;
+      this.nodeIds[slot] = n.nodeId & 0xffff;
       this.nodePosX[slot] = n.posX;
       this.nodePosY[slot] = n.posY;
       this.nodePosZ[slot] = Math.max(-32768, Math.min(32767, Math.round(n.posZ * 2))); // 0.5m scale
@@ -411,11 +430,11 @@ export class SpatialSnapshotBuffer {
    * Ingests a batch of spatial frame snapshots.
    * Returns the count of successfully appended snapshots.
    */
-  public ingestBatch(snapshots: readonly SpatialFrameSnapshot[]): number {
+  public ingestBatch(snapshots: readonly SpatialFrameSnapshot[], selectedNodeId?: number): number {
     if (!Array.isArray(snapshots) || snapshots.length === 0) return 0;
     let appended = 0;
     for (let i = 0; i < snapshots.length; i++) {
-      if (this.append(snapshots[i])) {
+      if (this.append(snapshots[i], selectedNodeId)) {
         appended++;
       }
     }

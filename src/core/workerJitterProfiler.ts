@@ -144,16 +144,24 @@ export function evaluateWorkerRealTimeProfile(
   const rawHeadroom = (1.0 - p95Ms / REAL_TIME_BUDGET_MS) * 100.0;
   const headroomPct = Math.min(100.0, Math.max(0.0, rawHeadroom));
 
-  // RFC 3550 Smoothed Inter-Frame Pacing Jitter:
-  // D_k = |dt_k - 20.0|, J_k = J_{k-1} + (D_k - J_{k-1}) / 16.0
-  const pacingDeltas = interFrameDeltasMs && interFrameDeltasMs.length > 0
+  // RFC 3550 Smoothed Jitter:
+  // - With explicit inter-frame pacing deltas: D_k = |dt_k - 20.0|
+  // - Fallback when interFrameDeltasMs is omitted/empty: consecutive step-execution delta |step[i] - step[i-1]|
+  const pacingDeltas = interFrameDeltasMs
     ? interFrameDeltasMs.filter(Number.isFinite)
-    : validSamples;
+    : [];
 
   let rfc3550JitterMs = 0.0;
-  for (const dt of pacingDeltas) {
-    const D = Math.abs(dt - REAL_TIME_BUDGET_MS);
-    rfc3550JitterMs += (D - rfc3550JitterMs) / RFC3550_SMOOTHING_FACTOR;
+  if (pacingDeltas.length > 0) {
+    for (const dt of pacingDeltas) {
+      const D = Math.abs(dt - REAL_TIME_BUDGET_MS);
+      rfc3550JitterMs += (D - rfc3550JitterMs) / RFC3550_SMOOTHING_FACTOR;
+    }
+  } else if (validSamples.length >= 2) {
+    for (let i = 1; i < validSamples.length; i++) {
+      const D = Math.abs(validSamples[i] - validSamples[i - 1]);
+      rfc3550JitterMs += (D - rfc3550JitterMs) / RFC3550_SMOOTHING_FACTOR;
+    }
   }
 
   // 8-Bin Latency Histogram & Overrun Tracking
@@ -305,7 +313,7 @@ export function generateExperimentDossierMarkdown(snapshot: ExperimentDossierSna
 | Parameter | Value | Standard / Mathematical Model |
 |---|---|---|
 | **Carrier Frequency** | 8.0 GHz (X-Band) | ITU-R P.526-15 Multi-Knife-Edge Diffraction |
-| **Topography & Elevation** | SRTM 1-arcsecond DEM | Ladakh Alpine Complex Relief |
+| **Topography & Elevation** | 512x512 AWS Terrarium Ladakh DEM (~360 m x 434 m/px; native SRTM1/SRTM3 .hgt import supported) | Ladakh Alpine Complex Relief |
 | **DEM Lookahead Uncertainty** | $\\sigma_{\\text{DEM}} = ${demErrorM.toFixed(1)}\\text{ m}$ | Zero-Mean Gaussian Perturbation |
 | **Traffic Multiplier** | ${trafficScale.toFixed(2)}$\\times | 3GPP TS 23.501 5QI Multi-Bearer Traffic |
 | **Atmospheric Refractivity Factor** | $K = ${earthRadiusFactorK.toFixed(3)}$ | ITU-R P.834-9 Effective Earth Radius ($4/3$ Standard) |

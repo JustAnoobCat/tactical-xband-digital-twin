@@ -37,6 +37,7 @@ import {
   DEFAULT_TRUE_EARTH_RADIUS_M,
 } from './rfPropagationMath';
 import { LinkBudgetEngine, MODCOD_TABLE } from './linkBudget';
+import { ACNFlightConfig, EnvironmentConfig, RFConfig } from './config';
 import { computeAirframeShadowLossDb } from './antennaArray';
 import {
   evaluateDelayedCqiAmc,
@@ -568,6 +569,21 @@ export function evaluateAblationFlightSegment(
   let harqSlot = createHarqProcessSlot(1);
   const snrHistory: number[] = [];
 
+  // Canonical cruise speed and baseline X-band RF parameters (36 dBm + 3 dBi + 16 dBi - 5 dB, 5 MHz, 5 dB NF)
+  const flightConfig = new ACNFlightConfig();
+  const rfConfig = new RFConfig({ channelBandwidthHz: 5e6 });
+  const envConfig = new EnvironmentConfig();
+  const cruiseSpeedMps = flightConfig.loiterSpeedMps;
+  const radialVelocityMs = cruiseSpeedMps * (130.0 / 160.0);
+  const { pNoiseDbm } = LinkBudgetEngine.computeThermalNoiseFloorDbm(
+    rfConfig.channelBandwidthHz,
+    rfConfig.acnNoiseFigureDb,
+    envConfig.atmosphericTemperatureK,
+    rfConfig.boltzmannConstant
+  );
+  const canonicalLinkPowerDbm =
+    rfConfig.soldierTxPowerDbm + rfConfig.soldierAntennaGainDbi + rfConfig.acnAntennaGainDbi - 5.0;
+
   for (let k = 0; k < numFrames; k++) {
     const t = k * 0.02; // 50 Hz -> 20 ms
     const dSlant = 36000.0 + 80.0 * k; // 36.0 km to ~40.8 km
@@ -582,7 +598,7 @@ export function evaluateAblationFlightSegment(
     const deygoutRes = computeDeygoutMultiEdgeDiffraction(
       distancesM,
       elevationsM,
-      DEFAULT_X_BAND_WAVELENGTH_M
+      rfConfig.wavelengthM
     );
     const multiedgeLossDb = deygoutRes.totalLossDb;
     const singleEdgeLossDb = Math.max(0.0, deygoutRes.primaryLossDb);
@@ -594,24 +610,21 @@ export function evaluateAblationFlightSegment(
     const bodyElDeg = geomElDeg + rollDeg;
     const shadowLossDb = computeAirframeShadowLossDb(bodyAzDeg, bodyElDeg, 'belly');
 
-    // 8.0 GHz Doppler kinematics & Rician-Jakes fading
+    // 8.0 GHz Doppler kinematics & Rician-Jakes fading at canonical cruise speed
     const fadingRes = computeCorrelatedRicianJakesFading({
       simTimeS: t,
       seed,
-      carrierFreqHz: DEFAULT_X_BAND_FREQ_HZ,
-      relativeSpeedMps: 160.0,
-      radialVelocityMs: 130.0,
+      carrierFreqHz: rfConfig.carrierFrequencyHz,
+      relativeSpeedMps: cruiseSpeedMps,
+      radialVelocityMs,
       ricianKFactorDb: 6.0,
     });
     const fadingGainDb = fadingRes.fadingGainDb;
 
-    // Nominal free-space link budget
-    const fsplDb = computeFsplDb(dSlant, DEFAULT_X_BAND_FREQ_HZ);
+    // Nominal free-space link budget using canonical RFConfig baseline parameters
+    const fsplDb = computeFsplDb(dSlant, rfConfig.carrierFrequencyHz);
     const gasLossDb = 0.012 * (dSlant / 1000.0);
-    const pTxDbm = 43.0;
-    const gAntennaDbi = 32.0;
-    const noiseFloorDbm = -98.0;
-    const freeSpaceSnrDb = pTxDbm + gAntennaDbi - fsplDb - gasLossDb - noiseFloorDbm;
+    const freeSpaceSnrDb = canonicalLinkPowerDbm - fsplDb - gasLossDb - pNoiseDbm;
 
     // Determine actual physical SNR
     let actualSnrDb: number;
@@ -673,26 +686,27 @@ export function evaluateAblationFlightSegment(
         taResidualErrorM: 15.0,
       });
 
-      const reqSnrDb = amc.selectedModcod ? amc.selectedModcod.minSnrDb : 0.0;
-      const harqStep = stepHarqProcess(harqSlot, {
-        currentTimeMs: k * 20.0,
-        slantRangeM: dSlant,
-        actualSnrDb,
-        requiredSnrDb: reqSnrDb,
-        combiningMode: 'chase',
-        frameIndex: k,
-        seed,
-      });
-      harqSlot = harqStep.nextSlot;
-
-      // Closed-loop OLLA step
-      const isAck = harqStep.event === 'ACK';
-      ollaOffsetDb = stepOllaOffsetDb(ollaOffsetDb, isAck);
-
-      if (amc.isLinkOutage || tdma.slotCollisionOutage) {
+      const isOutageFrame = amc.isLinkOutage || tdma.slotCollisionOutage;
+      if (isOutageFrame) {
         outageCount++;
         sumBler += 1.0;
       } else {
+        const reqSnrDb = amc.selectedModcod ? amc.selectedModcod.minSnrDb : 0.0;
+        const harqStep = stepHarqProcess(harqSlot, {
+          currentTimeMs: k * 20.0,
+          slantRangeM: dSlant,
+          actualSnrDb,
+          requiredSnrDb: reqSnrDb,
+          combiningMode: 'chase',
+          frameIndex: k,
+          seed,
+        });
+        harqSlot = harqStep.nextSlot;
+
+        // Closed-loop OLLA step only on non-outage frames
+        const isAck = harqStep.event === 'ACK';
+        ollaOffsetDb = stepOllaOffsetDb(ollaOffsetDb, isAck);
+
         sumBler += harqStep.bler;
         const eff = amc.selectedModcod ? amc.selectedModcod.spectralEfficiencyBpsHz : 0.0;
         sumGoodput += eff * (1.0 - harqStep.bler) * tdma.frameDataEfficiency;
@@ -911,7 +925,7 @@ export function formatPublicationLatexAblationTable(result: PhysicsRealismAblati
 
   return `\\begin{table}[t]
 \\centering
-\\caption{Tactical X-Band Air-to-Ground Relay Network: Physics-Realism Ablation Study ($N = ${n}$, Base Seed: ${baseSeed})}
+\\caption{Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark ($N = ${n}$ paired seeds, Base Seed: ${baseSeed})}
 \\label{tab:physics_ablation_ladakh}
 \\begin{tabular}{lcccc}
 \\toprule
@@ -923,7 +937,7 @@ ${rows}
 \\vspace{1ex}
 \\begin{minipage}{\\columnwidth}
 \\footnotesize
-\\textit{Note:} Values denote sample mean $\\pm$ 95\\% Student-$t$ confidence interval across $N = ${n}$ independent Monte Carlo flight seeds (base seed = ${baseSeed}).
+\\textit{Note:} Values denote sample mean $\\pm$ 95\\% Student-$t$ confidence interval across $N = ${n}$ paired synthetic link-layer benchmark seeds (base seed = ${baseSeed}; distinct from full-DEM digital twin runs).
 Welch's two-sample $t$-test confirms that idealized models significantly overestimate effective goodput compared to the full realistic stack ($\\Delta = +${comp1.meanDifference.toFixed(3)}, t = ${comp1.tStatistic.toFixed(2)}, \\text{df} = ${comp1.degreesOfFreedom.toFixed(1)}, p = ${comp1.pValue.toExponential(2)}, d = ${comp1.cohensD.toFixed(2)}$).
 Closed-loop OLLA and HARQ Chase Combining significantly suppresses residual BLER against uncompensated delayed CQI ($\\Delta = +${comp2.meanDifference.toFixed(3)}, t = ${comp2.tStatistic.toFixed(2)}, \\text{df} = ${comp2.degreesOfFreedom.toFixed(1)}, p = ${comp2.pValue.toExponential(2)}, d = ${comp2.cohensD.toFixed(2)}$).
 Cascaded multi-edge diffraction and airframe bank shadowing reduce mean received SNR by ${comp3.meanDifference.toFixed(2)}~dB ($t = ${comp3.tStatistic.toFixed(2)}, p = ${comp3.pValue.toExponential(2)}, d = ${comp3.cohensD.toFixed(2)}$).
@@ -1017,8 +1031,8 @@ Overall ITU-R & Geodetic Cross-Validation Verdict: ${ituAnchors.allPassed ? 'ALL
 
 ---
 
-### 2. Multi-Seed Physics-Realism Ablation Study (N = ${result.numSeeds} Seeds)
-Evaluation executed across ${result.numSeeds} independent pseudo-random seeds (base seed = ${result.baseSeed}, ${result.numFramesPerRun} frames per run) over identical Ladakh flight trajectories:
+### 2. Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark ($N=${result.numSeeds} paired seeds)
+Evaluation executed across ${result.numSeeds} paired synthetic link-layer seeds (base seed = ${result.baseSeed}, ${result.numFramesPerRun} frames per run) over a controlled synthetic double-ridge benchmark segment (distinct from full-DEM digital twin flight runs):
 
 | Configuration | Goodput Factor (95% CI) | Residual BLER (95% CI) | Outage Ratio (95% CI) | Mean SNR [dB] (95% CI) |
 | :--- | :---: | :---: | :---: | :---: |

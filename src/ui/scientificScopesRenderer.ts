@@ -731,12 +731,12 @@ export function drawSensitivitySweepScope(
       g.fillText(`${lvl}M`, padL - 6, y);
     }
 
-    // Y-Axis Label
+    // Y-Axis Label (explicitly labeled as analytical envelope, not live scheduler output)
     g.textAlign = 'left';
     g.textBaseline = 'bottom';
     g.fillStyle = palette.textSecondary;
     g.font = '10px var(--hi-mono, monospace)';
-    g.fillText('Goodput (Mbps)', padL, padT - 8);
+    g.fillText('Goodput (Mbps) — Analytical Saturation Envelope', padL, padT - 8);
 
     // Domain X ticks & grid lines
     g.textAlign = 'center';
@@ -864,7 +864,7 @@ export function drawSensitivitySweepScope(
     g.font = '10px var(--hi-mono, monospace)';
     g.textAlign = 'center';
     g.textBaseline = 'bottom';
-    g.fillText(`LIVE: ${activeVal.toFixed(1)}${axisCfg.unit}`, cursorX, padT - 6);
+    g.fillText(`MODEL: ${activeVal.toFixed(1)}${axisCfg.unit}`, cursorX, padT - 6);
     g.restore();
 
     // Update Live Telemetry Overlay in DOM if readout element provided

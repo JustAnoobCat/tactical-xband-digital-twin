@@ -1210,16 +1210,16 @@ console.log('\n[TL-T10] Verifying Memory Benchmark at Maximum Capacity...');
   assert.ok(mem16 < mem64, 'Memory scales monotonically with node count');
   assert.ok(mem64 < mem128, 'Memory scales monotonically with node count');
 
-  // 2. Strict < 6.5 MB assertions at 128 nodes
-  const maxAllowedBytesDecimal = 6.5 * 1_000_000; // 6,500,000 bytes
-  const maxAllowedBytesBinary = 6.5 * 1024 * 1024; // 6,815,744 bytes
+  // 2. Strict < 7.0 MB assertions at 128 nodes (with Uint16 nodeIds)
+  const maxAllowedBytesDecimal = 7.0 * 1_000_000; // 7,000,000 bytes
+  const maxAllowedBytesBinary = 7.0 * 1024 * 1024; // 7,340,032 bytes
   assert.ok(
     mem128 < maxAllowedBytesDecimal,
-    `Memory at 128 nodes (${mem128} bytes) must be strictly < 6.5 MB decimal (${maxAllowedBytesDecimal} bytes)`
+    `Memory at 128 nodes (${mem128} bytes) must be strictly < 7.0 MB decimal (${maxAllowedBytesDecimal} bytes)`
   );
   assert.ok(
     mem128 < maxAllowedBytesBinary,
-    `Memory at 128 nodes (${mem128} bytes) must be strictly < 6.5 MB binary (${maxAllowedBytesBinary} bytes)`
+    `Memory at 128 nodes (${mem128} bytes) must be strictly < 7.0 MB binary (${maxAllowedBytesBinary} bytes)`
   );
 
   // 3. Functional verification of 128-node storage and on-demand reconstruction

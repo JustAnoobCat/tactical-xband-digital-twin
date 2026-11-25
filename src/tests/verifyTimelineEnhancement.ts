@@ -151,14 +151,14 @@ import { SpatialSnapshotBuffer } from '../ui/spatialSnapshotBuffer';
 import { NodeTerrainState } from '../core/trajectory';
 import type { SpatialFrameSnapshot } from '../shared/workerProtocol';
 
-console.log('[TL-ENH-M1] Verifying SpatialSnapshotBuffer memory ceiling (< 6,500,000 bytes at 128 nodes)...');
+console.log('[TL-ENH-M1] Verifying SpatialSnapshotBuffer memory ceiling (< 7,000,000 bytes at 128 nodes)...');
 {
   const buf128 = new SpatialSnapshotBuffer(3000, 128);
   const totalBytes = buf128.getTotalByteLength();
   console.log(`     Memory at 128 nodes: ${totalBytes.toLocaleString()} bytes (${(totalBytes / 1024 / 1024).toFixed(3)} MB)`);
-  assert.equal(totalBytes, 6465000, 'SpatialSnapshotBuffer with Float32 gas & rain loss must equal exactly 6,465,000 bytes');
-  assert.ok(totalBytes < 6500000, 'Must be strictly < 6,500,000 bytes (decimal limit)');
-  console.log('  -> PASS: TL-ENH-M1 verified (6,465,000 B < 6,500,000 B).');
+  assert.equal(totalBytes, 6849000, 'SpatialSnapshotBuffer with Float32 gas & rain loss and Uint16 nodeIds must equal exactly 6,849,000 bytes');
+  assert.ok(totalBytes < 7000000, 'Must be strictly < 7,000,000 bytes (decimal limit)');
+  console.log('  -> PASS: TL-ENH-M1 verified (6,849,000 B < 7,000,000 B).');
 }
 
 console.log('\n[TL-ENH-B5] Verifying reconstructed gasLossDb and rainLossDb match worker outputs within ±1e-4 dB...');

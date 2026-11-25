@@ -6,7 +6,7 @@
  *
  * Executes:
  * 1. verifyAllItuReferenceAnchors() for analytical ITU-R and WGS-84 cross-validation.
- * 2. runPhysicsRealismAblation(30, 20261122) for 30-seed Monte Carlo physics ablation.
+ * 2. runPhysicsRealismAblation(30, 20261122) for the Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark (N=30 paired seeds).
  * 3. Writes benchmark_results/scientific_ablation_n30.csv via formatAblationCsv.
  * 4. Idempotently inserts/updates delimited section in benchmark_results/BENCHMARK_DOSSIER.md:
  *    <!-- BEGIN_WP11_SCIENTIFIC_VALIDATION --> ... <!-- END_WP11_SCIENTIFIC_VALIDATION -->
@@ -52,7 +52,7 @@ export function generateScientificDossierFiles(): {
   }
   console.log('  ITU-R validation passed: P.525, P.526-15, P.676-13, P.838-3, WGS-84 Vincenty.');
 
-  console.log(`[SCIENTIFIC DOSSIER] Executing N = ${numSeeds} physics-realism ablation (baseSeed = ${baseSeed})...`);
+  console.log(`[SCIENTIFIC DOSSIER] Executing Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark (N=${numSeeds} paired seeds, baseSeed=${baseSeed})...`);
   const ablationResult = runPhysicsRealismAblation(numSeeds, baseSeed);
   console.log(`  Ablation executed across 4 configurations in ${ablationResult.durationMs} ms.`);
 

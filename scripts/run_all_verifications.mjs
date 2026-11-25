@@ -180,7 +180,12 @@ REGISTERED_SUITES.push(
   { id: 'verify:world-tile-layer', name: 'World Tile Layer & MapLibre Geo Transparency', command: process.execPath, args: [viteNodeBin, 'src/tests/worldTileLayer.test.ts'], category: 'ui' },
   { id: 'verify:probe-signal-heatmap', name: 'Probe RF Signal Propagation Heat Map', command: process.execPath, args: [viteNodeBin, 'src/tests/probeSignalHeatmap.test.ts'], category: 'rf' },
   { id: 'verify:toolbox-precision', name: 'Toolbox Precision CAD / GIS / RF Suite & DEM Presets', command: process.execPath, args: [viteNodeBin, 'src/tests/toolboxPrecisionSuite.test.ts'], category: 'ui' },
-  { id: 'verify:workspace-tiles', name: 'Workspace Tiles Manager State & Telemetry Formatting', command: process.execPath, args: [viteNodeBin, 'src/tests/workspaceTilesManager.test.ts'], category: 'ui' }
+  { id: 'verify:workspace-tiles', name: 'Workspace Tiles Manager State & Telemetry Formatting', command: process.execPath, args: [viteNodeBin, 'src/tests/workspaceTilesManager.test.ts'], category: 'ui' },
+  { id: 'verify:remed01-live-contracts', name: 'REMED-01 Live Contracts & Worker IPC', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed01LiveContracts.ts'], category: 'remediation' },
+  { id: 'verify:remed02-multi-biome-3d', name: 'REMED-02 Multi-Biome Geodesy & 3D Geometry', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed02MultiBiomeAnd3d.ts'], category: 'remediation' },
+  { id: 'verify:remed03-physics-unification', name: 'REMED-03 RF Propagation, DCM & Calibration Unification', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed03PhysicsUnification.ts'], category: 'remediation' },
+  { id: 'verify:remed04-mac-qos-telemetry', name: 'REMED-04 MAC Fairness, 5QI SLA & PDU Dissector', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed04MacQosTelemetry.ts'], category: 'remediation' },
+  { id: 'verify:remed05-metrics-perf', name: 'REMED-05 Timeline Performance, Metrics & Scientific Transparency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed05MetricsAndPerf.ts'], category: 'remediation' }
 );
 
 // -----------------------------------------------------------------------------

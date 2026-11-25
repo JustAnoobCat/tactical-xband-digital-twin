@@ -774,12 +774,29 @@ class BenchmarkSuiteOrchestrator:
         ax.set_ylim(0, max(max(static_rates + [25.0]) * 1.2, 35.0))
         ax.legend(loc="upper left", framealpha=0.9, edgecolor="#2c384a")
 
+        total_s_drops = sum(
+            1 for r in self.static_packet_registry.values()
+            if r.outcome in ("DROPPED_DEADLINE_EXPIRED", "DROPPED_BUFFER_OVERFLOW", "DROPPED_SEVERED_LINK")
+        )
+        total_s_deliv = sum(1 for r in self.static_packet_registry.values() if r.outcome == "DELIVERED")
+        overall_static_drop_pct = (total_s_drops / max(total_s_drops + total_s_deliv, 1)) * 100.0
+
+        total_t_drops = sum(
+            1 for r in self.tac_packet_registry.values()
+            if r.outcome in ("DROPPED_DEADLINE_EXPIRED", "DROPPED_BUFFER_OVERFLOW", "DROPPED_SEVERED_LINK")
+        )
+        total_t_deliv = sum(1 for r in self.tac_packet_registry.values() if r.outcome == "DELIVERED")
+        overall_tac_drop_pct = (total_t_drops / max(total_t_drops + total_t_deliv, 1)) * 100.0
+
+        pre_static_drop_pct = static_rates[1] if len(static_rates) > 1 else overall_static_drop_pct
+        pre_tac_drop_pct = tac_rates[1] if len(tac_rates) > 1 else overall_tac_drop_pct
+
         ax.text(
             0.55, 0.76,
             "Kinematic Look-Ahead Result:\n"
-            "Tac-TAD evacuates backlogged queues\n"
-            "prior to shadow entry, slashing drop\n"
-            "rates from ~30% down to near-zero.",
+            f"Pre-occlusion drop rate: {pre_static_drop_pct:.1f}% (Static)\n"
+            f"vs. {pre_tac_drop_pct:.1f}% (Tac-TAD); overall\n"
+            f"measured drops: {overall_static_drop_pct:.1f}% -> {overall_tac_drop_pct:.1f}%.",
             transform=ax.transAxes,
             bbox=dict(boxstyle="square,pad=0.4", facecolor="#121820", edgecolor="#00e676", alpha=0.9),
             fontsize=8.0,

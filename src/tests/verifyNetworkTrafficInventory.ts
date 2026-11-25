@@ -105,7 +105,7 @@ function runNetworkTrafficInventoryVerification(): void {
     assert.ok(ulNode4 !== undefined, 'Node 4 uplink flow must exist');
     assert.equal(ulNode4?.fromName, 'Node 4 (S4)');
     assert.equal(ulNode4?.toId, 'ACN');
-    assert.equal(ulNode4?.toName, 'ACN Relay (FL500)');
+    assert.equal(ulNode4?.toName, 'ACN Relay (FL164)');
     assert.equal(ulNode4?.direction, 'Uplink');
     assert.equal(ulNode4?.dataSentBytes, 500000);
     assert.equal(ulNode4?.dataReceivedBytes, 500000);
@@ -140,7 +140,7 @@ function runNetworkTrafficInventoryVerification(): void {
     const dlFlow = flows.find(f => f.direction === 'Downlink');
     assert.ok(dlFlow !== undefined, 'Downlink broadcast flow must exist');
     assert.equal(dlFlow?.fromId, 'ACN');
-    assert.equal(dlFlow?.fromName, 'ACN Relay (FL500)');
+    assert.equal(dlFlow?.fromName, 'ACN Relay (FL164)');
     assert.equal(dlFlow?.toId, 'BROADCAST');
     assert.ok(dlFlow?.toName.includes('Ground Terminals'));
     assert.equal(dlFlow?.linkStatus, 'CONNECTED');

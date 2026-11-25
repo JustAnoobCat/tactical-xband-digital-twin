@@ -115,7 +115,7 @@ export class NetworkPerformanceHistory {
         nodeId: node.node_id,
         snrDb: isValidLink(node) ? node.snr_db as number : null,
         rateMbps: rateBps / 1e6,
-        transferredMb: (this.cumulativeTransferredBytes.get(node.node_id) ?? 0) / 1e6,
+        transferredMb: ((this.cumulativeTransferredBytes.get(node.node_id) ?? 0) * 8) / 1e6,
         linkValid: isValidLink(node),
       };
     });

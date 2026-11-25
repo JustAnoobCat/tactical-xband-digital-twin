@@ -11,7 +11,8 @@
 
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import { TacticalEntityManager } from '../ui/threeSceneManager';
 import {
@@ -224,7 +225,7 @@ console.log('\n[PSS-T2] Verifying Parametric Sensitivity Monotonicity Across Str
 // =================================================================================================
 console.log('\n[PSS-T3] Verifying DOM Controls, Spec Persistence & Toolbar Nomenclature...');
 {
-  const rootDir = resolve(__dirname, '../..');
+  const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
   const specPath = resolve(rootDir, 'docs/specs/SPEC-3D-VOLUMETRIC-BEAMS-AND-SENSITIVITY-SWEEP.md');
   const readmePath = resolve(rootDir, 'README.md');
   const htmlPath = resolve(rootDir, 'index.html');

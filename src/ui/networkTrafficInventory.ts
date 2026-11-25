@@ -12,6 +12,9 @@
  */
 
 import { classifyLinkCommunicationStatus, LinkCommunicationStatus } from '../core/linkStatusClassifier';
+import { DEFAULT_ACN_FLIGHT_CONFIG, DEFAULT_RF_CONFIG } from '../core/config';
+import { LinkBudgetEngine } from '../core/linkBudget';
+import { T_FRAME_S } from '../core/scheduler';
 import { getNodeRole } from './nodeInventory';
 
 export interface TrafficNodeTelemetry {
@@ -48,6 +51,8 @@ export interface DownlinkSubframeTelemetry {
   readonly ctrl_duration_ms?: number;
   readonly dl_duration_ms?: number;
   readonly broadcast_active?: boolean;
+  readonly superframe_duration_ms?: number;
+  readonly dl_spectral_efficiency_bps_hz?: number;
 }
 
 export interface NetworkTrafficFrame {
@@ -56,6 +61,10 @@ export interface NetworkTrafficFrame {
   readonly nodes: readonly TrafficNodeTelemetry[];
   readonly downlinkTelemetry?: DownlinkSubframeTelemetry | null;
   readonly schedulerMode?: string;
+  readonly acnAltitudeM?: number;
+  readonly rfChannelBandwidthHz?: number;
+  readonly superframeDurationMs?: number;
+  readonly downlinkSpectralEfficiencyBpsHz?: number;
 }
 
 export interface TrafficFlowRecord {
@@ -124,6 +133,72 @@ interface NodeAccumulator {
 const finite = (val: unknown): val is number =>
   typeof val === 'number' && Number.isFinite(val);
 
+export function formatAcnRelayLabel(acnAltitudeM?: number): string {
+  const altM = finite(acnAltitudeM) && acnAltitudeM > 0 ? acnAltitudeM : DEFAULT_ACN_FLIGHT_CONFIG.altitudeMslM;
+  const flightLevel = Math.round((altM * 3.28084) / 100);
+  return `ACN Relay (FL${flightLevel})`;
+}
+
+function resolveDownlinkBroadcastPhy(
+  frame: NetworkTrafficFrame,
+  validLinks: readonly TrafficNodeTelemetry[]
+): {
+  dlDurationMs: number;
+  superframeDurationMs: number;
+  dlDutyFraction: number;
+  rfBandwidthHz: number;
+  spectralEfficiencyBpsHz: number;
+  dlRateMbps: number;
+} {
+  const rfBandwidthHz = finite(frame.rfChannelBandwidthHz) && frame.rfChannelBandwidthHz > 0
+    ? frame.rfChannelBandwidthHz
+    : DEFAULT_RF_CONFIG.channelBandwidthHz;
+
+  const superframeDurationMs = finite(frame.superframeDurationMs) && frame.superframeDurationMs > 0
+    ? frame.superframeDurationMs
+    : finite(frame.downlinkTelemetry?.superframe_duration_ms) && frame.downlinkTelemetry!.superframe_duration_ms! > 0
+      ? frame.downlinkTelemetry!.superframe_duration_ms!
+      : T_FRAME_S * 1000.0;
+
+  const dlDurationMs = finite(frame.downlinkTelemetry?.dl_duration_ms)
+    ? Math.max(0, frame.downlinkTelemetry!.dl_duration_ms!)
+    : 3.0;
+  const dlDutyFraction = Math.min(1.0, Math.max(0.0, dlDurationMs / superframeDurationMs));
+
+  let spectralEfficiencyBpsHz = 0.0;
+  if (finite(frame.downlinkSpectralEfficiencyBpsHz) && frame.downlinkSpectralEfficiencyBpsHz >= 0) {
+    spectralEfficiencyBpsHz = frame.downlinkSpectralEfficiencyBpsHz;
+  } else if (
+    finite(frame.downlinkTelemetry?.dl_spectral_efficiency_bps_hz) &&
+    frame.downlinkTelemetry!.dl_spectral_efficiency_bps_hz! >= 0
+  ) {
+    spectralEfficiencyBpsHz = frame.downlinkTelemetry!.dl_spectral_efficiency_bps_hz!;
+  } else if (validLinks.length > 0) {
+    const validSnrs = validLinks
+      .map(n => n.snr_db)
+      .filter((snr): snr is number => finite(snr));
+    if (validSnrs.length > 0) {
+      const minBroadcastSnrDb = Math.min(...validSnrs);
+      spectralEfficiencyBpsHz = LinkBudgetEngine.selectModCod(minBroadcastSnrDb).spectralEfficiencyBpsHz;
+    } else {
+      spectralEfficiencyBpsHz = 1.49;
+    }
+  }
+
+  const dlRateMbps = validLinks.length > 0
+    ? (rfBandwidthHz * spectralEfficiencyBpsHz * dlDutyFraction) / 1e6
+    : 0.0;
+
+  return {
+    dlDurationMs,
+    superframeDurationMs,
+    dlDutyFraction,
+    rfBandwidthHz,
+    spectralEfficiencyBpsHz,
+    dlRateMbps,
+  };
+}
+
 /**
  * Authoritative tracker maintaining mathematically consistent counters across simulation frames.
  */
@@ -186,12 +261,14 @@ export class NetworkTrafficTracker {
     // Track downlink broadcast bytes if downlink telemetry is active
     const dl = frame.downlinkTelemetry;
     if (dl && dl.broadcast_active !== false) {
-      const dlMs = dl.dl_duration_ms ?? 3.0;
-      // Approximate 20 ms superframe portion dedicated to downlink broadcast
-      // Standard 10 MHz X-band downlink channel: ~15 Mbps nominal broadcast capacity
-      const nominalDlBps = 15e6;
-      const dlSec = dlMs / 1000.0;
-      this.cumulativeDlBroadcastBytes += Math.floor((nominalDlBps * dlSec) / 8);
+      const validLinks = frame.nodes.filter(n => {
+        const s = classifyLinkCommunicationStatus(n).status;
+        return s === 'CONNECTED' || s === 'DEGRADED';
+      });
+      const dlPhy = resolveDownlinkBroadcastPhy(frame, validLinks);
+      const instantaneousDlBps = dlPhy.rfBandwidthHz * dlPhy.spectralEfficiencyBpsHz;
+      const dlSec = dlPhy.dlDurationMs / 1000.0;
+      this.cumulativeDlBroadcastBytes += Math.floor((instantaneousDlBps * dlSec) / 8);
     }
 
     for (const node of frame.nodes) {
@@ -260,6 +337,7 @@ export class NetworkTrafficTracker {
    */
   public getFlowRecords(frame: NetworkTrafficFrame): TrafficFlowRecord[] {
     const records: TrafficFlowRecord[] = [];
+    const acnLabel = formatAcnRelayLabel(frame.acnAltitudeM);
 
     // 1. Uplink Flows: Each registered ground node -> ACN Relay
     for (const node of frame.nodes) {
@@ -280,7 +358,7 @@ export class NetworkTrafficTracker {
         fromId: node.node_id,
         fromName: `Node ${node.node_id} (${callsign})`,
         toId: 'ACN',
-        toName: 'ACN Relay (FL500)',
+        toName: acnLabel,
         direction: 'Uplink',
         dataSentBytes: acc.cumulativeSentBytes,
         dataReceivedBytes: acc.cumulativeDeliveredBytes,
@@ -307,14 +385,14 @@ export class NetworkTrafficTracker {
         ? validLinks.reduce((sum, n) => sum + (n.snr_db ?? 0), 0) / validLinks.length
         : null;
 
-      // Downlink throughput during broadcast phase
-      const dlDurationMs = frame.downlinkTelemetry?.dl_duration_ms ?? 3.0;
-      const dlRateMbps = validLinks.length > 0 ? (15.0 * (dlDurationMs / 20.0)) : 0.0;
+      // Downlink throughput derived from active RF bandwidth, MODCOD spectral efficiency, and DL duty fraction
+      const dlPhy = resolveDownlinkBroadcastPhy(frame, validLinks);
+      const dlRateMbps = dlPhy.dlRateMbps;
 
       records.push({
         id: 'flow-dl-broadcast',
         fromId: 'ACN',
-        fromName: 'ACN Relay (FL500)',
+        fromName: acnLabel,
         toId: 'BROADCAST',
         toName: `Ground Terminals (${validLinks.length}/${frame.nodes.length} in LOS)`,
         direction: 'Downlink',
@@ -353,8 +431,12 @@ export class NetworkTrafficTracker {
       : (tx && finite(tx.current_rate_bps) ? Math.max(0, tx.current_rate_bps / 1e6) : 0);
 
     const isCommsAvailable = commStatus.status === 'CONNECTED' || commStatus.status === 'DEGRADED';
-    const dlDurationMs = frame.downlinkTelemetry?.dl_duration_ms ?? 3.0;
-    const downloadRateMbps = isCommsAvailable ? Number((15.0 * (dlDurationMs / 20.0)).toFixed(2)) : 0.0;
+    const validLinks = frame.nodes.filter(n => {
+      const s = classifyLinkCommunicationStatus(n).status;
+      return s === 'CONNECTED' || s === 'DEGRADED';
+    });
+    const dlPhy = resolveDownlinkBroadcastPhy(frame, validLinks);
+    const downloadRateMbps = isCommsAvailable ? Number(dlPhy.dlRateMbps.toFixed(2)) : 0.0;
 
     const availabilityPct = acc.totalFramesSeen > 0
       ? Number(((acc.framesWithComms / acc.totalFramesSeen) * 100).toFixed(1))

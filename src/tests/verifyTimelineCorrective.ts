@@ -1492,11 +1492,11 @@ registerTest('TC-CORR-17', 'Multi-cadence 10ms, 20ms & 40ms frame loops conserve
 });
 
 // ----------------------------------------------------------------------------
-// TC-CORR-18 (REV15 TC-CORR-14b): Zero-Alloc Columnar CSV Parity & 6,465,000 B Invariant
+// TC-CORR-18 (REV15 TC-CORR-14b): Zero-Alloc Columnar CSV Parity & 6,849,000 B Invariant
 // ----------------------------------------------------------------------------
 registerTest('TC-CORR-18', 'generateSpatialFramesCsv streams zero-alloc columnar data bit-identically to get(i) across dense, wrapped, sparse & null frames (14b)', async () => {
   const fullCapBuf = new SpatialSnapshotBuffer(3000, 128);
-  assert(fullCapBuf.getTotalByteLength() === 6465000, `SpatialSnapshotBuffer(3000, 128) byte length must be 6,465,000 B, got ${fullCapBuf.getTotalByteLength()}`);
+  assert(fullCapBuf.getTotalByteLength() === 6849000, `SpatialSnapshotBuffer(3000, 128) byte length must be 6,849,000 B, got ${fullCapBuf.getTotalByteLength()}`);
   assert(typeof (fullCapBuf as unknown as { getReadonlyExportColumns?: unknown }).getReadonlyExportColumns === 'function', 'getReadonlyExportColumns() must exist on SpatialSnapshotBuffer');
 
   // 1. Wrapped ring buffer (capacity=8, 13 frames) with sparse, out-of-order, >nodeCount nodeIds, null altitudes & mixed MODCODs

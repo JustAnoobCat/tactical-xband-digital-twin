@@ -80,6 +80,20 @@ export class SimulationTimelineRenderer {
   private boundOnMouseLeave: ((e: MouseEvent) => void) | null = null;
   private boundOnWheel: ((e: WheelEvent) => void) | null = null;
 
+  // Event Scanner Cache State (avoids full-history rescans on hover/pan/zoom/redraw)
+  private cachedEvents: readonly TimelineEventMarker[] = [];
+  private cachedEventsKey: {
+    spatialBuffer: SpatialSnapshotBuffer;
+    epochStore: SuperframeEpochStore;
+    spatialLastIngestedFrameIndex: number;
+    spatialCount: number;
+    epochCount: number;
+    epochEvictionCount: number;
+    newestEpochEndTimeS: number;
+  } | null = null;
+  private eventScanCount: number = 0;
+  private eventCacheHitCount: number = 0;
+
   constructor(options: SimulationTimelineRendererOptions) {
     this.options = options;
     this.canvas = options.canvas;
@@ -526,12 +540,63 @@ export class SimulationTimelineRenderer {
     ctx.restore();
   }
 
-  private renderEventMarkers(ctx: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number): void {
-    if (!this.spatialBuffer || !this.epochStore) return;
-    const events = scanTimelineEvents({
+  /**
+   * Read-only diagnostic counters for timeline event cache efficiency.
+   */
+  public getEventScanDiagnostics(): {
+    readonly scanCount: number;
+    readonly cacheHitCount: number;
+    readonly cachedEventCount: number;
+  } {
+    return {
+      scanCount: this.eventScanCount,
+      cacheHitCount: this.eventCacheHitCount,
+      cachedEventCount: this.cachedEvents.length,
+    };
+  }
+
+  private getCachedTimelineEvents(): readonly TimelineEventMarker[] {
+    const spatialLastIngestedFrameIndex = this.spatialBuffer.lastIngestedFrameIndex;
+    const spatialCount = this.spatialBuffer.count;
+    const epochCount = this.epochStore.count;
+    const epochEvictionCount = this.epochStore.evictionCount;
+    const newestEpochEndTimeS = this.epochStore.newestRecord?.endTimeS ?? -1;
+
+    const k = this.cachedEventsKey;
+    if (
+      k !== null &&
+      k.spatialBuffer === this.spatialBuffer &&
+      k.epochStore === this.epochStore &&
+      k.spatialLastIngestedFrameIndex === spatialLastIngestedFrameIndex &&
+      k.spatialCount === spatialCount &&
+      k.epochCount === epochCount &&
+      k.epochEvictionCount === epochEvictionCount &&
+      k.newestEpochEndTimeS === newestEpochEndTimeS
+    ) {
+      this.eventCacheHitCount++;
+      return this.cachedEvents;
+    }
+
+    this.cachedEvents = scanTimelineEvents({
       spatialBuffer: this.spatialBuffer,
       epochStore: this.epochStore,
     });
+    this.cachedEventsKey = {
+      spatialBuffer: this.spatialBuffer,
+      epochStore: this.epochStore,
+      spatialLastIngestedFrameIndex,
+      spatialCount,
+      epochCount,
+      epochEvictionCount,
+      newestEpochEndTimeS,
+    };
+    this.eventScanCount++;
+    return this.cachedEvents;
+  }
+
+  private renderEventMarkers(ctx: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number): void {
+    if (!this.spatialBuffer || !this.epochStore) return;
+    const events = this.getCachedTimelineEvents();
     if (events.length === 0) return;
 
     ctx.save();

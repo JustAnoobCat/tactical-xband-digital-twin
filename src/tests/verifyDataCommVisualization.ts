@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   calculateTransferEtaSeconds,
   calculateTransferRateBps,
@@ -2062,7 +2063,8 @@ console.log('\n[48/49] Verifying historical snapshots continue to render correct
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n[49/49] Verifying map legend layout CSS eliminates horizontal scrollbars & wraps responsively...');
 {
-  const indexPath = path.resolve(__dirname, '../../index.html');
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const indexPath = path.resolve(currentDir, '../../index.html');
   const indexHtml = fs.readFileSync(indexPath, 'utf-8');
 
   // Extract .map-legend CSS block

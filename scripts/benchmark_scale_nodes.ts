@@ -30,6 +30,7 @@ import os from 'node:os';
 import { SimulationWorkerManager } from '../src/worker/simWorker';
 import { NodeLifecycleManager } from '../src/worker/nodeLifecycleManager';
 import { computeNearestRankPercentile } from '../src/core/rollingGoodput';
+import { DEFAULT_RF_CONFIG } from '../src/core/config';
 
 // -----------------------------------------------------------------------------
 // CLI Argument Parsing
@@ -396,8 +397,8 @@ async function runBenchmark(): Promise<void> {
       jit_warmup_ticks: JIT_WARMUP_TICKS,
       real_time_budget_ms: 20.0,
       discrete_dt_s: 0.020,
-      rf_carrier_frequency_ghz: 9.6,
-      rf_channel_bandwidth_mhz: 1.0,
+      rf_carrier_frequency_ghz: DEFAULT_RF_CONFIG.carrierFrequencyHz / 1e9,
+      rf_channel_bandwidth_mhz: DEFAULT_RF_CONFIG.channelBandwidthHz / 1e6,
       node_placement: 'canonical_16_plus_deterministic_m1b_grid',
       node_agl_m: 2.0,
       seed: BENCHMARK_SEED,
