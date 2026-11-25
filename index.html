@@ -1085,6 +1085,14 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
       <!-- Mode 1: Map & DEM -->
       <div class="tb-mode-pane" id="tb-pane-dem" data-tb-pane="dem">
+        <div class="tb-group-card">
+          <div class="tb-group-head"><span>DEM Quick-Switch</span><span class="tb-head-tag">No Upload</span></div>
+          <div id="tb-dem-quick-switch" class="tb-dem-presets" role="group" aria-label="Quick-switch DEM presets">
+            <button type="button" class="tb-dem-preset-btn is-active" data-dem-preset="ladakh" aria-pressed="true" onclick="applyDemQuickPreset('ladakh')"><strong>Ladakh Alpine</strong><span>34.5°N · Real SRTM</span></button>
+            <button type="button" class="tb-dem-preset-btn" data-dem-preset="kargil" aria-pressed="false" onclick="applyDemQuickPreset('kargil')"><strong>Kargil Corridor</strong><span>Ridge Occlusion</span></button>
+            <button type="button" class="tb-dem-preset-btn" data-dem-preset="arid_desert" aria-pressed="false" onclick="applyDemQuickPreset('arid_desert')"><strong>Thar Desert</strong><span>27.0°N · Arid Dunes</span></button>
+          </div>
+        </div>
         <div class="tb-action-bar">
           <button id="terrain-fit-btn" class="primary" type="button" title="Fit active DEM bounds">Fit DEM</button>
           <button id="terrain-fit-network-btn" type="button" title="Fit active ACN and ground terminals">Fit Network</button>
@@ -4600,6 +4608,7 @@ import {
   renderSlopeOrRidgeBackdropCanvas,
   renderTransectProfileCanvas,
   renderViewshedCanvas,
+  renderProbeHeatmapCanvas,
   transectCanvasXToSampleIndex,
 } from './src/ui/terrainToolboxCharts.ts';
 import { DiagnosticsTracker } from './src/ui/workbench/diagnosticsTelemetry.ts';
@@ -4673,6 +4682,7 @@ import {
   geodeticToUnwrappedEnu,
 } from './src/ui/worldTileLayer.ts';
 import { createRadarNodeMarkerLayer } from './src/ui/radarNodeMarkerLayer.ts';
+import { createToolboxPrecisionUi, createToolboxRuntimeBridge, computeBarrierWallRotationDeg } from './src/ui/toolboxPrecisionSuite.ts';
 
 const $ = id => (id === 'profile-canvas' ? (document.getElementById('terrain-canvas') || document.getElementById('profile-canvas')) : document.getElementById(id));
 const workbenchShell = initWorkbenchShell();
@@ -4753,7 +4763,7 @@ function getRadar2dRenderer() {
       getMapLayerRegistry: () => mapLayerRegistry,
       getContextualMapContext: () => getContextualMapContext(),
       getSelectedNodeId: () => selectedNodeId,
-      getToolboxState: () => getTerrainToolboxController().getState(),
+      getToolboxState: () => ({ ...getTerrainToolboxController().getState(), activeMode: tbActiveMode, toolMode: terrainToolMode, transectWaypoints: tbTransectWaypoints, transectResult: tbTransectResult, hoveredSampleIdx: tbHoveredSampleIdx, rubberBandPoint: tbRubberBandPoint, rulerMetrics: tbRulerMetrics, rulerEvaluation: tbRulerEvaluation, rulerPreviewMetrics: tbRulerPreviewMetrics, rulerPreviewEval: tbRulerPreviewEval, showRulerTicks: tbShowRulerTicks, activeSnap: tbActiveSnap, probeSite: tbProbeSite, cursorProbeLive: tbCursorProbeLive, probePinnedP1: tbProbePinnedP1, viewshedResult: tbViewshedResult, viewshedCanvas: tbViewshedCanvas, probeHeatmapConfig: tbProbeHeatmapConfig, cursorWorldPos: isMouseInsideRadar ? { xM: mouseWorldX, yM: mouseWorldY } : null, aoSwathBox: tbAoSwathBox, aoSwathReport: tbAoSwathReport, bridgeResult: tbBridgeResult, terrainRegions, terrainRegionDraft, selectedRegionId: tbSelectedRegionId, obsDrawingAnchor: tbObsDrawingAnchor, obsRubberBandPoint: tbObsRubberBandPoint, obsSelectedId: tbObsSelectedId, cadObstacleReport: getDashboardAndAuthoringController().getCadObstacleReport() ?? tbCadObstacleReport, obstacles: obstacleEditor?.draft || [] }),
       getObstacleEditor: () => obstacleEditor,
       isMgrsGridActive: () => isMgrsGridActive(),
       onSelectNode: (id) => handleNodeSelection(id),
@@ -6240,6 +6250,7 @@ let tbProbePinnedP1 = null;
 let tbCursorProbeLive = null;
 let tbViewshedResult = null;
 let tbViewshedCanvas = null;
+let tbProbeHeatmapConfig = { enabled: true, mode: 'signal', palette: 'rf_spectrum', opacity: 0.72, showContours: true };
 let tbViewshedNeedsMapLibreSync = false;
 let tbOrbitResult = null;
 let tbSweepResult = null;
@@ -9351,7 +9362,11 @@ function applyMapLibreLayerState() {
     'maplibre-transect-markers-circle',
     'maplibre-transect-markers-label',
   ].forEach((id) => setMapLibreLayerVisibility(id, visMeas));
-  setMapLibreLayerVisibility('maplibre-probe-viewshed-layer', visMeas && Boolean(tbViewshedResult?.isSiteWithinCoverage));
+  const showProbeLayer = visMeas && Boolean(tbViewshedResult?.isSiteWithinCoverage) && Boolean(tbProbeHeatmapConfig.enabled) && (tbActiveMode === 'probe' || tbActiveMode === 'dem' || terrainToolMode === 'probe');
+  setMapLibreLayerVisibility('maplibre-probe-viewshed-layer', showProbeLayer);
+  if (mapLibreInstance?.getLayer('maplibre-probe-viewshed-layer')) {
+    mapLibreInstance.setPaintProperty('maplibre-probe-viewshed-layer', 'raster-opacity', tbProbeHeatmapConfig.opacity);
+  }
   setMapLibreLayerVisibility('maplibre-bridge-heatmap-layer', visMeas && Boolean(tbBridgeResult?.valid));
 }
 
@@ -9959,7 +9974,7 @@ function initializeMapLibre() {
     registerTacticalMapLibreImages(mapLibreInstance);
 
     // 1. Engineering Overlays
-    mapLibreInstance.addLayer({ id: 'maplibre-probe-viewshed-layer', type: 'raster', source: 'maplibre-probe-viewshed', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.85, 'raster-resampling': 'nearest' } });
+    mapLibreInstance.addLayer({ id: 'maplibre-probe-viewshed-layer', type: 'raster', source: 'maplibre-probe-viewshed', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.72, 'raster-resampling': 'linear' } });
     mapLibreInstance.addLayer({ id: 'maplibre-bridge-heatmap-layer', type: 'raster', source: 'maplibre-bridge-heatmap', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.85, 'raster-resampling': 'nearest' } });
     mapLibreInstance.addLayer({ id: 'maplibre-coverage-fill', type: 'fill', source: 'maplibre-coverage', paint: { 'fill-color': HIGHLAND_THEME.signal.amber, 'fill-opacity': 0.08 } });
     mapLibreInstance.addLayer({ id: 'maplibre-coverage-line', type: 'line', source: 'maplibre-coverage', paint: { 'line-color': HIGHLAND_THEME.signal.amber, 'line-width': 1.5, 'line-dasharray': [4, 4], 'line-opacity': 0.45 } });
@@ -10183,7 +10198,7 @@ function initializeMapLibre() {
           updateToolboxTransectHoverUi();
           updateMapLibreToolSources();
         }
-      } else if (tbActiveMode === 'probe' || terrainToolMode === 'probe') {
+      } else if (terrainToolMode === 'probe' || (tbActiveMode === 'probe' && !tbProbeSite)) {
         const mastM = Math.max(1, Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2));
         const simCtx = buildToolboxSimContext();
         const acnPos = simCtx.acnPositionMslM || [0, 0, 5000];
@@ -11265,35 +11280,22 @@ function recomputeTransect(isPreview = false) {
     setText('tb-transect-fresnel', `${rf.minF1ClearanceM.toFixed(1)} m (${Math.round(rf.minF1ClearancePct)}%)`);
     setText('tb-transect-diffraction', `${rf.p526DiffractionLossDb.toFixed(1)} dB`);
     setText('tb-transect-snr', `${rf.estSnrDb.toFixed(1)} dB / ${rf.estModcod}`);
-
-    // Compute CAD Precision Geodetic Ruler Metrics & Blocking Crest
-    const wpA = tbTransectWaypoints[0];
-    const wpB = tbTransectWaypoints[1];
-    const demA = sampleDemSafe(ctx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
-    const demB = sampleDemSafe(ctx.terrainEngine, wpB.xM, wpB.yM).elevationM || 3500;
-
-    tbRulerMetrics = computeGeodeticRulerMetrics(
-      { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
-      { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM },
-    );
-
-    tbRulerEvaluation = evaluateRulerProfileAndBlockingPeak(
-      { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
-      { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM },
-      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
-      { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3 },
-    );
-
-    setText('tb-transect-azimuth', `${tbRulerMetrics.azimuthDeg.toFixed(1)}° ${tbRulerMetrics.cardinalOctant} / ${tbRulerMetrics.backAzimuthDeg.toFixed(1)}°`);
-    setText('tb-transect-vert-angle', `${tbRulerMetrics.verticalAngleDeg >= 0 ? '+' : ''}${tbRulerMetrics.verticalAngleDeg.toFixed(1)}° / ${tbRulerMetrics.gradePct >= 0 ? '+' : ''}${tbRulerMetrics.gradePct.toFixed(1)}%`);
-
-    if (!tbRulerEvaluation.isLineOfSightClear && tbRulerEvaluation.blockingPeak) {
-      const bp = tbRulerEvaluation.blockingPeak;
-      const bpGeo = cartesianToGeodetic(bp.xM, bp.yM);
-      setText('tb-transect-blocking-peak', `Peak @ (${bpGeo.latDeg.toFixed(3)}°, ${bpGeo.lonDeg.toFixed(3)}°) · ${Math.round(bp.zMslM)} m (+${Math.round(bp.intrusionM)} m)`);
-    } else {
-      setText('tb-transect-blocking-peak', `Clear LoS (Min Clr: ${Math.round(tbRulerEvaluation.minClearanceM)} m)`);
-    }
+  } else {
+    setText('tb-transect-fresnel', '-- m (100%)'); setText('tb-transect-diffraction', '-- dB'); setText('tb-transect-snr', '-- dB / --');
+  }
+  const wpA = tbTransectWaypoints[tbTransectWaypoints.length - 2];
+  const wpB = tbTransectWaypoints[tbTransectWaypoints.length - 1];
+  const demA = sampleDemSafe(ctx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
+  const demB = sampleDemSafe(ctx.terrainEngine, wpB.xM, wpB.yM).elevationM || 3500;
+  tbRulerMetrics = computeGeodeticRulerMetrics({ xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM }, { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM });
+  tbRulerEvaluation = evaluateRulerProfileAndBlockingPeak({ xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM }, { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM }, (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500, { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3 });
+  setText('tb-transect-azimuth', `${tbRulerMetrics.azimuthDeg.toFixed(1)}° ${tbRulerMetrics.cardinalOctant} / ${tbRulerMetrics.backAzimuthDeg.toFixed(1)}°`);
+  setText('tb-transect-vert-angle', `${tbRulerMetrics.verticalAngleDeg >= 0 ? '+' : ''}${tbRulerMetrics.verticalAngleDeg.toFixed(1)}° / ${tbRulerMetrics.gradePct >= 0 ? '+' : ''}${tbRulerMetrics.gradePct.toFixed(1)}%`);
+  if (!tbRulerEvaluation.isLineOfSightClear && tbRulerEvaluation.blockingPeak) {
+    const bp = tbRulerEvaluation.blockingPeak; const bpGeo = cartesianToGeodetic(bp.xM, bp.yM);
+    setText('tb-transect-blocking-peak', `Peak @ (${bpGeo.latDeg.toFixed(3)}°, ${bpGeo.lonDeg.toFixed(3)}°) · ${Math.round(bp.zMslM)} m (+${Math.round(bp.intrusionM)} m)`);
+  } else {
+    setText('tb-transect-blocking-peak', `Clear LoS (Min Clr: ${Math.round(tbRulerEvaluation.minClearanceM)} m)`);
   }
 
   renderMode1Provenance();
@@ -11306,31 +11308,16 @@ function recomputeRubberBandPreview(cursorPt) {
   const ctx = buildToolboxSimContext();
   const kFactor = parseFloat($('tb-transect-k')?.value || String(4 / 3));
   const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
-  tbTransectResult = evaluateTransect(ctx, buildTransectWaypointInputs(previewWps), {
-    kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3,
-    includeObstacles: false,
-    nodeType,
-    sampleCount: 64,
-  });
-
-  const wpA = tbTransectWaypoints[0];
+  tbTransectResult = evaluateTransect(ctx, buildTransectWaypointInputs(previewWps), { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3, includeObstacles: false, nodeType, sampleCount: 64 });
+  const wpA = tbTransectWaypoints[tbTransectWaypoints.length - 1];
   const txMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-tx-mast')?.value || '10') || 10));
   const rxMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-rx-mast')?.value || '2') || 2));
   const demA = sampleDemSafe(ctx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
   const demB = sampleDemSafe(ctx.terrainEngine, cursorPt.x, cursorPt.y).elevationM || 3500;
-
-  tbRulerPreviewMetrics = computeGeodeticRulerMetrics(
-    { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
-    { xM: cursorPt.x, yM: cursorPt.y, groundElevationM: demB, mastHeightM: rxMastM },
-  );
-
-  tbRulerPreviewEval = evaluateRulerProfileAndBlockingPeak(
-    { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
-    { xM: cursorPt.x, yM: cursorPt.y, groundElevationM: demB, mastHeightM: rxMastM },
-    (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
-    { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3 },
-  );
-
+  tbRulerPreviewMetrics = computeGeodeticRulerMetrics({ xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM }, { xM: cursorPt.x, yM: cursorPt.y, groundElevationM: demB, mastHeightM: rxMastM });
+  tbRulerPreviewEval = evaluateRulerProfileAndBlockingPeak({ xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM }, { xM: cursorPt.x, yM: cursorPt.y, groundElevationM: demB, mastHeightM: rxMastM }, (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500, { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3 });
+  setText('tb-transect-azimuth', `${tbRulerPreviewMetrics.azimuthDeg.toFixed(1)}° ${tbRulerPreviewMetrics.cardinalOctant} / ${tbRulerPreviewMetrics.backAzimuthDeg.toFixed(1)}°`);
+  setText('tb-transect-vert-angle', `${tbRulerPreviewMetrics.verticalAngleDeg >= 0 ? '+' : ''}${tbRulerPreviewMetrics.verticalAngleDeg.toFixed(1)}° / ${tbRulerPreviewMetrics.gradePct >= 0 ? '+' : ''}${tbRulerPreviewMetrics.gradePct.toFixed(1)}%`);
   renderToolboxDrawer();
 }
 
@@ -11372,13 +11359,14 @@ function updateProbeUiReadouts(analysis) {
     setText('tb-probe-horizon-mask', '--° / --%');
     setText('tb-probe-sector-bore', '--');
     setText('tb-probe-delta-pin', '--');
+    toolboxPrecisionUi?.sync({ cursorProbeLive: null });
     return;
   }
   setText('tb-probe-acn-range', `${analysis.d3dKm.toFixed(2)} km`);
   setText('tb-probe-acn-el', `${analysis.elToAcnDeg >= 0 ? '+' : ''}${analysis.elToAcnDeg.toFixed(1)}°`);
   setText('tb-probe-acn-los', analysis.isLos ? 'CLEAR (LoS)' : 'SHADOWED');
   setText('tb-probe-acn-sinr', `${analysis.estSinrDb.toFixed(1)} dB`);
-  setText('tb-probe-acn-modcod', `${analysis.modcodName} (${analysis.estBitrateMbps.toFixed(2)} Mbps)`);
+  setText('tb-probe-acn-modcod', `${analysis.modcodName.replace(/^LINK_/, '')} (${analysis.estBitrateMbps.toFixed(2)} Mbps)`);
   setText('tb-probe-horizon-mask', `${analysis.horizonMaskAngleDeg.toFixed(1)}° / ${analysis.skyOpennessPct.toFixed(0)}%`);
   setText('tb-probe-sector-bore', `S${analysis.activeSectorId} (${analysis.offBoresightDeg.toFixed(1)}° off)`);
   if (analysis.deltaVsPin) {
@@ -11389,6 +11377,7 @@ function updateProbeUiReadouts(analysis) {
   } else {
     setText('tb-probe-delta-pin', 'Click to Pin [P1]');
   }
+  toolboxPrecisionUi?.sync({ cursorProbeLive: analysis });
 }
 
 function recomputeProbeAnalysis() {
@@ -11401,6 +11390,7 @@ function recomputeProbeAnalysis() {
   const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
 
   if (tbProbeSite) {
+    const unitKind = $('tb-probe-unit-select')?.value === 'mcp' ? 'mcp' : 'soldier';
     tbViewshedResult = computeSiteProbeViewshed(ctx, {
       xM: tbProbeSite.xM,
       yM: tbProbeSite.yM,
@@ -11409,8 +11399,9 @@ function recomputeProbeAnalysis() {
       targetMode,
       targetAglM: 2.0,
       includeObstacles,
+      txPowerDbm: unitKind === 'mcp' ? 40 : 30,
     });
-    tbViewshedCanvas = renderViewshedCanvas(tbViewshedResult, tbViewshedCanvas ?? undefined, 256);
+    tbViewshedCanvas = renderProbeHeatmapCanvas(tbViewshedResult, tbViewshedCanvas ?? undefined, 320, tbProbeHeatmapConfig);
     tbViewshedNeedsMapLibreSync = true;
     tbOrbitResult = computeOrbitPersistence(ctx, tbProbeSite.xM, tbProbeSite.yM, aglM, includeObstacles, nodeType);
 
@@ -11459,6 +11450,13 @@ function recomputeProbeAnalysis() {
   updateMapLibreToolSources();
   applyMapLibreLayerState();
   if (terrainMapMode !== 'maplibre') drawRadar();
+}
+
+function updateProbeHeatmapConfig(patch) {
+  tbProbeHeatmapConfig = { ...tbProbeHeatmapConfig, ...(patch || {}) };
+  if (tbViewshedResult?.isSiteWithinCoverage) { tbViewshedCanvas = renderProbeHeatmapCanvas(tbViewshedResult, tbViewshedCanvas ?? undefined, 320, tbProbeHeatmapConfig); tbViewshedNeedsMapLibreSync = true; }
+  toolboxPrecisionUi?.sync({ viewshedResult: tbViewshedResult, probeHeatmapConfig: tbProbeHeatmapConfig });
+  if (terrainMapMode === 'maplibre' && mapLibreInitialized) { updateMapLibreToolSources(); applyMapLibreLayerState(); } else { drawRadar(); }
 }
 
 function recomputeRegionZonal() {
@@ -11650,6 +11648,8 @@ function refreshToolboxActionGates() {
   if (deploySquadBtn) deploySquadBtn.disabled = !canNode || !tbAoSwathReport?.squadDeployCoords;
   const spawnSummitBtn = $('btn-region-spawn-summit-relay');
   if (spawnSummitBtn) spawnSummitBtn.disabled = !canNode || !tbAoSwathReport?.summitPeak;
+  const finishPolyBtn = $('tb-transect-finish-btn');
+  if (finishPolyBtn) finishPolyBtn.disabled = !(terrainToolMode === 'transect-poly' && tbTransectWaypoints.length >= 2);
 }
 
 function renderToolboxDrawer() {
@@ -11810,23 +11810,18 @@ function renderToolboxDrawer() {
 
   drawer.classList.toggle('is-collapsed', !hasBody);
   refreshToolboxActionGates();
+  toolboxPrecisionUi?.sync({ transectWaypoints: tbTransectWaypoints, rubberBandPoint: tbRubberBandPoint, rulerMetrics: tbRulerMetrics, rulerPreviewMetrics: tbRulerPreviewMetrics, rulerEvaluation: tbRulerEvaluation, rulerPreviewEval: tbRulerPreviewEval, cursorProbeLive: tbCursorProbeLive, viewshedResult: tbViewshedResult, probeHeatmapConfig: tbProbeHeatmapConfig, aoSwathReport: tbAoSwathReport, selectedObstacleHeightM: (obstacleEditor?.draft || []).find(o => o.id === tbObsSelectedId || o.id === obstacleEditor?.selectedId)?.heightM ?? null, groundNodes: latestTelemetry?.nodes_telemetry });
 }
 window.renderToolboxDrawer = renderToolboxDrawer;
 
-function addToolboxNodeAt(xM, yM, aglM, callsign) {
+function addToolboxNodeAt(xM, yM, aglM, callsign, role = 'soldier') {
   const ctx = buildToolboxSimContext();
   if (!canAddNodeFromToolbox(ctx.groundNodes.length, ctx.spatialLocked, ctx.isHistoricalInspecting)) {
     setTerrainToolStatus(`Cannot add node (locked, historical, or at ${MAX_ACTIVE_GROUND_NODES} node limit).`);
     return;
   }
-  sendCommand(buildNodeAddCommand({
-    xM,
-    yM,
-    aglM,
-    role: 'soldier',
-    callsign,
-  }));
-  setTerrainToolStatus(`Dispatched NODE_ADD at (${Math.round(xM)}, ${Math.round(yM)}) m, AGL ${aglM.toFixed(1)} m.`);
+  sendCommand(buildNodeAddCommand({ xM, yM, aglM, role: role === 'mcp' ? 'mcp' : 'soldier', callsign }));
+  setTerrainToolStatus(`Deployed ${callsign} at (${Math.round(xM)}, ${Math.round(yM)}) m, AGL ${aglM.toFixed(1)} m.`);
 }
 
 function applyTransectAsAcnWaypoints() {
@@ -11873,17 +11868,21 @@ function handleToolboxMapClick(point) {
       setTerrainToolStatus('Aiming Point B on map (Shift: 15° snap, 15px magnetic snap).');
     } else {
       let clickPt = point;
-      if (tbRubberBandPoint) {
-        clickPt = tbRubberBandPoint;
-      } else if (tbActiveSnap) {
+      if (tbActiveSnap) {
         const geo = cartesianToGeodetic(tbActiveSnap.xM, tbActiveSnap.yM);
         clickPt = { x: tbActiveSnap.xM, y: tbActiveSnap.yM, lng: geo.lonDeg, lat: geo.latDeg };
+      } else if (isShiftKeyDown && tbTransectWaypoints.length === 1) {
+        const wpA = tbTransectWaypoints[0];
+        const [sX, sY] = snapPointToAngleIncrement(wpA.xM, wpA.yM, point.x, point.y, 15);
+        const geo = cartesianToGeodetic(sX, sY);
+        clickPt = { x: sX, y: sY, lng: geo.lonDeg, lat: geo.latDeg };
       }
       tbTransectWaypoints.push({ xM: clickPt.x, yM: clickPt.y, lng: clickPt.lng, lat: clickPt.lat });
       tbRubberBandPoint = null;
       tbActiveSnap = null;
       terrainToolMode = 'idle';
       recomputeTransect(false);
+      updateStepGuideBanner();
       setTerrainToolStatus(`Transect A→B locked (${terrainDistanceText(tbTransectResult?.totalHorizontalM ?? 0)}).`);
     }
     refreshTerrainToolbox();
@@ -12135,6 +12134,7 @@ function refreshTerrainToolbox() {
   if (probeBtn) probeBtn.classList.toggle('active', terrainToolMode === 'probe');
   if (obsBtn) obsBtn.classList.toggle('active', terrainToolMode === 'obstacle-place');
 
+  window.terrainToolMode = terrainToolMode;
   getTerrainToolboxController().refreshTerrainToolbox();
 }
 window.refreshTerrainToolbox = refreshTerrainToolbox;
@@ -12143,18 +12143,17 @@ function updateStepGuideBanner() {
   const banner = $('tb-step-guide-banner');
   if (banner) {
     if (tbActiveMode === 'transect') {
-      banner.textContent = tbTransectWaypoints.length === 0 ? 'Click A → B on map' : (tbTransectWaypoints.length === 1 ? 'Click Point B to lock' : 'Profile locked · Click to re-measure');
+      banner.textContent = tbTransectWaypoints.length === 0 ? 'Click A → B on map to measure distance and Line-of-Sight.' : (tbTransectWaypoints.length === 1 ? 'Point A placed · Click Point B to lock measurement.' : 'Measurement locked · Drag A or B on map to adjust.');
     } else if (tbActiveMode === 'probe') {
-      banner.textContent = 'Click any spot to probe';
+      banner.textContent = 'Click any spot to probe 8 GHz signal quality to aircraft.';
     } else if (tbActiveMode === 'region') {
-      banner.textContent = 'Click corners · Dbl-click to finish';
+      banner.textContent = 'Pick a quick scan size below, or Click corners · Dbl-click to finish.';
     } else if (tbActiveMode === 'obstacle') {
-      banner.textContent = 'Click map to drop barrier';
+      banner.textContent = 'Click map to drop barrier, or select a ground node to block its link.';
     } else {
-      banner.textContent = 'Select tool to begin';
+      banner.textContent = 'Switch terrain presets, change map shading, or pan and zoom freely.';
     }
   }
-  getTerrainToolboxController().updateStepGuideBanner();
 }
 window.updateStepGuideBanner = updateStepGuideBanner;
 
@@ -12198,7 +12197,7 @@ function setTerrainToolboxExpanded(expanded) {
     toolboxPanel?.classList.remove('is-collapsed');
     toolboxToggleBtn?.classList.add('active');
     toolboxToggleBtn?.setAttribute('aria-expanded', 'true');
-    updateStepGuideBanner();
+    setTbMode(tbActiveMode || 'dem', false);
     renderMode1Provenance();
     renderToolboxDrawer();
   } else {
@@ -12270,6 +12269,7 @@ const setTbMode = (mode, autoArm = true) => {
   } else if (mode === 'obstacle') {
     terrainToolMode = 'obstacle-place';
     if (!autoArm) terrainToolMode = 'idle';
+    recomputeCadObstacleAnalysis();
   } else {
     terrainToolMode = 'idle';
   }
@@ -12281,6 +12281,7 @@ const setTbMode = (mode, autoArm = true) => {
     updateMapLibreOverlay();
   }
   getTerrainToolboxController().setTbMode(mode, autoArm);
+  updateStepGuideBanner();
 };
 window.setTbMode = setTbMode;
 
@@ -12430,15 +12431,25 @@ function setupTerrainToolbox() {
   btnToggleRulerTicks?.addEventListener('click', () => {
     tbShowRulerTicks = !tbShowRulerTicks;
     btnToggleRulerTicks.setAttribute('aria-pressed', String(tbShowRulerTicks));
-    btnToggleRulerTicks.textContent = tbShowRulerTicks ? '[SCALE] Show Scale Divisions: ON' : '[SCALE] Show Scale Divisions: OFF';
+    btnToggleRulerTicks.textContent = tbShowRulerTicks ? 'Show Scale Divisions: ON' : 'Show Scale Divisions: OFF';
     // ITU-T2: tbShowRulerTicks gates kilometer scale division ticks along ruler shaft
+    const dHorizM = tbRulerMetrics?.horizontalDistanceM ?? 0;
     if (tbShowRulerTicks && dHorizM > 500) { /* ruler shaft tick division gate */ }
     if (terrainMapMode !== 'maplibre') drawRadar();
     else updateMapLibreOverlay();
   });
 
   getTerrainToolboxController().initDom();
+  toolboxPrecisionUi = createToolboxPrecisionUi(createToolboxRuntimeBridge({
+    cancelTerrainTool, setTbMode, setStatus: setTerrainToolStatus, refreshTerrainToolbox, finishTransectPolyline, clearTerrainMeasurement, finishTerrainRegion, recomputeTransect, recomputeProbeAnalysis, recomputeRegionZonal, runBridgeFinder, drawRadar, markRadarDirty, updateMapLibreToolSources, updateMapLibreOverlay, applyObstacleHistoryChange, syncObstacleFieldMirror, refreshObstacleEditor, renderObstacleInventoryList, recomputeCadObstacleAnalysis, sendCommand, addNodeAt: addToolboxNodeAt,
+    getTerrainEngine: () => mainTerrainEngine, getLatestTelemetry: () => latestTelemetry, getTerrainMapMode: () => terrainMapMode, getObstacleEditor: () => obstacleEditor, getObstacleHistory: () => tbObstacleHistory, getObsSelectedId: () => tbObsSelectedId, setObsSelectedId: (id) => { tbObsSelectedId = id; }, getCadObstacleReport: () => getDashboardAndAuthoringController().getCadObstacleReport(), getPan: () => ({ x: panOffsetX_m, y: panOffsetY_m }), setPanAndRange: (x, y, r) => { panOffsetX_m = x; panOffsetY_m = y; setRadarRange(r); },
+    setBackdropMode: (m) => { tbBackdropMode = m; markRadarDirty(); drawRadar(); }, setLayerVisibility: (id, v) => { mapLayerRegistry.setLayerVisibility(id, v); applyMapLayersToAllRenderers(); }, setToolMode: (m) => { terrainToolMode = m; }, setMeasureMode: (m) => { tbActiveMode = 'transect'; terrainToolMode = m; tbTransectWaypoints = []; tbTransectResult = null; tbRulerMetrics = null; tbRulerEvaluation = null; tbRubberBandPoint = null; refreshTerrainToolbox(); renderToolboxDrawer(); drawRadar(); }, getTransectWaypoints: () => tbTransectWaypoints, setTransectWaypoints: (w) => { tbTransectWaypoints = w; }, getRulerEvaluation: () => tbRulerEvaluation,
+    getProbeSite: () => tbProbeSite, setProbeSite: (s) => { tbProbeSite = s; }, updateProbeHeatmapConfig, clearProbe: () => { tbProbeSite = null; tbCursorProbeLive = null; tbProbePinnedP1 = null; tbViewshedResult = null; tbViewshedCanvas = null; tbViewshedNeedsMapLibreSync = true; tbOrbitResult = null; tbSweepResult = null; updateProbeUiReadouts(null); renderToolboxDrawer(); refreshTerrainToolbox(); }, startRegionDraw: () => { tbActiveMode = 'region'; terrainToolMode = 'region'; terrainRegionDraft = []; refreshTerrainToolbox(); }, setAoSwathBox: (b) => { tbAoSwathBox = b; }, getAoSwathReport: () => tbAoSwathReport, clearBridge: () => { tbBridgeA = null; tbBridgeB = null; tbBridgeResult = null; renderToolboxDrawer(); drawRadar(); },
+    handleRegionListAction: (act, id, val) => { const idx = terrainRegions.findIndex(r => r.id === id); if (idx < 0) return; if (act === 'delete') { terrainRegions.splice(idx, 1); if (tbSelectedRegionId === id) tbSelectedRegionId = terrainRegions[0]?.id ?? null; } else if (act === 'select') { tbSelectedRegionId = id; } else if (act === 'visibility') { terrainRegions[idx].visible = Boolean(val); } else if (act === 'color') { terrainRegions[idx].color = String(val); } recomputeRegionZonal(); refreshTerrainToolbox(); drawRadar(); }, getWorkspaceSnapshot: () => ({ activeMode: tbActiveMode, toolMode: terrainToolMode, stageViewMode, radarRangeM: currentRadarRangeM, backdropMode: tbBackdropMode, transectWaypoints: tbTransectWaypoints, transectResult: tbTransectResult, rulerMetrics: tbRulerMetrics, rulerEvaluation: tbRulerEvaluation, probeSite: tbProbeSite, cursorProbeLive: tbCursorProbeLive, viewshedResult: tbViewshedResult, aoSwathBox: tbAoSwathBox, aoSwathReport: tbAoSwathReport }), openToolboxInspector: (m) => { setTerrainToolboxExpanded(true); setTbMode(m, false); }, applyDemQuickPreset: (id) => window.applyDemQuickPreset?.(id),
+  }));
+  toolboxPrecisionUi.mount();
 }
+let toolboxPrecisionUi = null;
 setupTerrainToolbox();
 
 window.centerMapOnACN = function() {
@@ -12630,49 +12641,36 @@ window.onConstellationConfigChange = function(key, val) {
 /* ====================================================================
    MULTI-BIOME THEATER & BIOME-ADAPTIVE RF PHYSICS CONTROLS (V3-01)
    ==================================================================== */
+window.syncDemQuickPresetButtons = function(sectorVal) {
+  const norm = (sectorVal === 'alpine_mountain' ? 'ladakh' : sectorVal);
+  document.querySelectorAll('#tb-dem-quick-switch .tb-dem-preset-btn[data-dem-preset]').forEach(btn => {
+    const active = btn.getAttribute('data-dem-preset') === norm;
+    btn.classList.toggle('is-active', active); btn.setAttribute('aria-pressed', String(active));
+  });
+};
+window.applyDemQuickPreset = function(presetId) {
+  const sel = $('dem-sector-select'); if (sel) sel.value = presetId;
+  window.onDemSectorChange(presetId);
+  const labels = { ladakh: 'Ladakh Alpine', kargil: 'Kargil Corridor', arid_desert: 'Thar Desert' };
+  setTerrainToolStatus(`Active DEM switched to ${labels[presetId] || presetId}.`);
+};
 window.onDemSectorChange = function(sectorVal) {
-  if (sectorVal === 'synthetic') {
-    sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' });
-  } else if (sectorVal === 'ladakh' || sectorVal === 'alpine_mountain') {
-    sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' });
-  } else if (sectorVal === 'kargil') {
-    sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' });
-  } else {
-    sendCommand({ type: 'SET_BIOME', biomeId: sectorVal });
-  }
-  radarNeedsRender = true;
+  if (sectorVal === 'synthetic') { sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' }); }
+  else if (sectorVal === 'ladakh' || sectorVal === 'alpine_mountain') { sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' }); }
+  else if (sectorVal === 'kargil') { sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' }); }
+  else { sendCommand({ type: 'SET_BIOME', biomeId: sectorVal }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' }); }
+  window.syncDemQuickPresetButtons?.(sectorVal); radarNeedsRender = true;
 };
-
 window.onBiomeEmToggleChange = function(enabled) {
-  const isEnabled = Boolean(enabled);
-  sendCommand({
-    type: 'CONFIG_UPDATE',
-    params: {
-      enableBiomeEmPhysics: isEnabled,
-    },
-  });
-  radarNeedsRender = true;
+  sendCommand({ type: 'CONFIG_UPDATE', params: { enableBiomeEmPhysics: Boolean(enabled) } }); radarNeedsRender = true;
 };
-
 window.onBiomePolChange = function(pol) {
-  sendCommand({
-    type: 'CONFIG_UPDATE',
-    params: {
-      polarizationMode: pol,
-    },
-  });
-  radarNeedsRender = true;
+  sendCommand({ type: 'CONFIG_UPDATE', params: { polarizationMode: pol } }); radarNeedsRender = true;
 };
-
 window.onBiomeDustVisChange = function(visKm) {
   const val = parseFloat(visKm);
   if (Number.isFinite(val)) {
-    sendCommand({
-      type: 'CONFIG_UPDATE',
-      params: {
-        dustVisibilityKm: Math.max(0.02, Math.min(50.0, val)),
-      },
-    });
+    sendCommand({ type: 'CONFIG_UPDATE', params: { dustVisibilityKm: Math.max(0.02, Math.min(50.0, val)) } });
     radarNeedsRender = true;
   }
 };
@@ -16290,6 +16288,8 @@ radarCanvas.addEventListener('mouseleave', () => {
     const tip = $('map-node-tooltip'); if (tip) tip.style.display = 'none';
   }
   updateRadarCursorReadout(0, 0, false);
+  if (tbProbeSite && tbProbePinnedP1 && terrainToolMode === 'probe') { tbCursorProbeLive = tbProbePinnedP1; updateProbeUiReadouts(tbProbePinnedP1); }
+  if (tbActiveMode === 'probe' && tbProbeSite && tbViewshedResult) drawRadar();
 });
 
 window.addEventListener('keydown', (e) => {
@@ -16431,7 +16431,7 @@ window.addEventListener('mousemove', (e) => {
         const newCx = (fixedPt.x + movingPt.x) * 0.5;
         const newCy = (fixedPt.y + movingPt.y) * 0.5;
         const newLen = Math.max(20, Math.hypot(movingPt.x - fixedPt.x, movingPt.y - fixedPt.y));
-        const newRotDeg = (Math.atan2(movingPt.x - fixedPt.x, movingPt.y - fixedPt.y) * 180 / Math.PI + 360) % 360;
+        const newRotDeg = computeBarrierWallRotationDeg(fixedPt, movingPt);
 
         targetObs.xM = newCx;
         targetObs.yM = newCy;
@@ -16537,7 +16537,7 @@ window.addEventListener('mousemove', (e) => {
         tbHoveredSampleIdx = nearestIdx;
         updateToolboxTransectHoverUi();
       }
-    } else if (tbActiveMode === 'probe' || terrainToolMode === 'probe') {
+    } else if (terrainToolMode === 'probe' || (tbActiveMode === 'probe' && !tbProbeSite)) {
       const mastM = Math.max(1, Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2));
       const simCtx = buildToolboxSimContext();
       const acnPos = simCtx.acnPositionMslM || [0, 0, 5000];
@@ -16556,6 +16556,8 @@ window.addEventListener('mousemove', (e) => {
         tbProbePinnedP1
       );
       updateProbeUiReadouts(tbCursorProbeLive);
+      drawRadar();
+    } else if (tbActiveMode === 'probe' && tbProbeSite && tbViewshedResult?.isSiteWithinCoverage && tbProbeHeatmapConfig.enabled) {
       drawRadar();
     } else if (tbActiveMode === 'region' || terrainToolMode === 'region') {
       const cornerHit = findAoSwathCornerHit(px, py, w, h);
@@ -16722,7 +16724,7 @@ const finishRadarDrag = (e) => {
     if (dist >= 30.0) {
       const cx = (pA.x + pB.x) * 0.5;
       const cy = (pA.y + pB.y) * 0.5;
-      const rotDeg = (Math.atan2(pB.x - pA.x, pB.y - pA.y) * 180.0 / Math.PI + 360.0) % 360.0;
+      const rotDeg = computeBarrierWallRotationDeg(pA, pB);
       obstacleEditor.create('cuboid', cx, cy);
       obstacleEditor.updateSelected({
         widthM: shapeMode === 'block' ? 100 : 35,

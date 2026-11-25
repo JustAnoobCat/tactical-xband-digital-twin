@@ -475,6 +475,260 @@ export function encodeViewshedRgba(
   return rgba;
 }
 
+export type ProbeHeatmapLayerMode = 'signal' | 'viewshed';
+export type ProbeHeatmapPalette = 'rf_spectrum' | 'thermal' | 'viridis';
+
+export interface ProbeHeatmapEncodeOptions {
+  readonly mode?: ProbeHeatmapLayerMode;
+  readonly palette?: ProbeHeatmapPalette;
+  readonly showContours?: boolean;
+}
+
+export interface ProbeSignalSample {
+  readonly distM: number;
+  readonly azDeg: number;
+  readonly sinrDb: number;
+  readonly rssiDbm: number;
+  readonly status: number;
+  readonly modcodTier: '64-QAM' | '16-QAM' | 'QPSK' | 'OUTAGE';
+}
+
+const HEATMAP_STOPS: Readonly<Record<ProbeHeatmapPalette, ReadonlyArray<readonly [number, readonly [number, number, number]]>>> = {
+  rf_spectrum: [
+    [0.0, [95, 22, 38]],     // -15 dB deep shadow / outage
+    [0.33, [215, 68, 62]],   //   0 dB outage / QPSK threshold
+    [0.52, [238, 178, 56]],  //  +8 dB marginal QPSK
+    [0.72, [48, 196, 134]],  // +17 dB good 16-QAM
+    [1.0, [56, 218, 245]],   // +30 dB peak 64-QAM
+  ],
+  thermal: [
+    [0.0, [24, 16, 62]],
+    [0.28, [120, 28, 114]],
+    [0.55, [218, 72, 56]],
+    [0.80, [248, 176, 48]],
+    [1.0, [252, 246, 178]],
+  ],
+  viridis: [
+    [0.0, [68, 1, 84]],
+    [0.25, [59, 82, 139]],
+    [0.50, [33, 145, 140]],
+    [0.75, [94, 201, 98]],
+    [1.0, [253, 231, 37]],
+  ],
+};
+
+function samplePaletteRgb(
+  palette: ProbeHeatmapPalette,
+  tRaw: number,
+): [number, number, number] {
+  const stops = HEATMAP_STOPS[palette] ?? HEATMAP_STOPS.rf_spectrum;
+  const t = Math.max(0, Math.min(1, tRaw));
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [t0, c0] = stops[i];
+    const [t1, c1] = stops[i + 1];
+    if (t <= t1 || i === stops.length - 2) {
+      const f = t1 > t0 ? Math.max(0, Math.min(1, (t - t0) / (t1 - t0))) : 0;
+      return lerpRgb(c0, c1, f);
+    }
+  }
+  const last = stops[stops.length - 1][1];
+  return [last[0], last[1], last[2]];
+}
+
+function samplePolarBilinear(
+  grid: Float32Array,
+  nAzimuths: number,
+  nRings: number,
+  azFloat: number,
+  rFloat: number,
+): number {
+  const az0 = ((Math.floor(azFloat) % nAzimuths) + nAzimuths) % nAzimuths;
+  const az1 = (az0 + 1) % nAzimuths;
+  const fa = azFloat - Math.floor(azFloat);
+
+  const rClamped = Math.max(0, Math.min(nRings - 1, rFloat));
+  const r0 = Math.floor(rClamped);
+  const r1 = Math.min(nRings - 1, r0 + 1);
+  const fr = rClamped - r0;
+
+  const v00 = grid[az0 * nRings + r0];
+  const v10 = grid[az1 * nRings + r0];
+  const v01 = grid[az0 * nRings + r1];
+  const v11 = grid[az1 * nRings + r1];
+
+  if (!Number.isFinite(v00) || !Number.isFinite(v10) || !Number.isFinite(v01) || !Number.isFinite(v11)) {
+    const fallback = Number.isFinite(v00) ? v00 : Number.isFinite(v01) ? v01 : Number.isFinite(v10) ? v10 : v11;
+    return Number.isFinite(fallback) ? fallback : Number.NaN;
+  }
+  const top = v00 + (v10 - v00) * fa;
+  const bot = v01 + (v11 - v01) * fa;
+  return top + (bot - top) * fr;
+}
+
+/**
+ * Samples interpolated RF signal strength (SINR dB, RSSI dBm, MODCOD tier) at any world (xM, yM)
+ * inside a computed SiteProbeViewshedResult propagation circle.
+ */
+export function sampleProbeSignalAtWorldPoint(
+  viewshed: SiteProbeViewshedResult | null | undefined,
+  xM: number,
+  yM: number,
+): ProbeSignalSample | null {
+  if (!viewshed || !viewshed.isSiteWithinCoverage || viewshed.nRings <= 0 || viewshed.nAzimuths <= 0) {
+    return null;
+  }
+  const dx = xM - viewshed.siteXM;
+  const dy = yM - viewshed.siteYM;
+  const distM = Math.hypot(dx, dy);
+  if (distM > viewshed.radiusM) return null;
+
+  const azDeg = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  const azStepDeg = 360 / viewshed.nAzimuths;
+  const azFloat = azDeg / azStepDeg;
+  const rFloat = Math.max(0, distM / viewshed.stepM - 1);
+  const azIdx = Math.floor(azFloat) % viewshed.nAzimuths;
+  const rIdx = Math.min(viewshed.nRings - 1, Math.max(0, Math.floor(distM / viewshed.stepM)));
+  const status = viewshed.statusGrid[azIdx * viewshed.nRings + rIdx] ?? 0;
+  if (status === 0) return null;
+
+  const hasSinr = viewshed.sinrGrid && viewshed.sinrGrid.length === viewshed.nAzimuths * viewshed.nRings;
+  const hasRssi = viewshed.rssiGridDbm && viewshed.rssiGridDbm.length === viewshed.nAzimuths * viewshed.nRings;
+  const sinrDb = hasSinr
+    ? samplePolarBilinear(viewshed.sinrGrid, viewshed.nAzimuths, viewshed.nRings, azFloat, rFloat)
+    : status === 1 ? 16 : status === 2 ? 4 : -10;
+  const rssiDbm = hasRssi
+    ? samplePolarBilinear(viewshed.rssiGridDbm, viewshed.nAzimuths, viewshed.nRings, azFloat, rFloat)
+    : sinrDb - 101;
+  if (!Number.isFinite(sinrDb)) return null;
+
+  const modcodTier: ProbeSignalSample['modcodTier'] =
+    sinrDb >= 18 ? '64-QAM' : sinrDb >= 10 ? '16-QAM' : sinrDb >= 0 ? 'QPSK' : 'OUTAGE';
+
+  return { distM, azDeg, sinrDb, rssiDbm, status, modcodTier };
+}
+
+/**
+ * Rasterizes Mode 3 continuous RF Signal Propagation Heat Map (or discrete LoS Viewshed)
+ * into a smooth bilinear-interpolated RGBA buffer with optional iso-dB contour lines.
+ */
+export function encodeProbeSignalHeatmapRgba(
+  viewshed: SiteProbeViewshedResult,
+  size: number = 320,
+  opts: ProbeHeatmapEncodeOptions = {},
+): Uint8ClampedArray {
+  const mode: ProbeHeatmapLayerMode = opts.mode ?? 'signal';
+  const palette: ProbeHeatmapPalette = opts.palette ?? 'rf_spectrum';
+  const showContours = opts.showContours !== false;
+
+  if (mode === 'viewshed' || !viewshed.sinrGrid || viewshed.sinrGrid.length !== viewshed.nAzimuths * viewshed.nRings) {
+    return encodeViewshedRgba(viewshed, size);
+  }
+
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  if (!viewshed.isSiteWithinCoverage || viewshed.nRings <= 0 || viewshed.nAzimuths <= 0) {
+    return rgba;
+  }
+
+  const half = (size - 1) * 0.5;
+  const azStepDeg = 360 / viewshed.nAzimuths;
+  const sinrField = showContours ? new Float32Array(size * size) : null;
+  if (sinrField) sinrField.fill(Number.NaN);
+
+  const SINR_MIN = -15.0;
+  const SINR_MAX = 30.0;
+  const SINR_SPAN = SINR_MAX - SINR_MIN;
+
+  for (let y = 0; y < size; y++) {
+    const ny = (half - y) / Math.max(1, half);
+    for (let x = 0; x < size; x++) {
+      const nx = (x - half) / Math.max(1, half);
+      const rNorm = Math.hypot(nx, ny);
+      const p = (y * size + x) * 4;
+      if (rNorm > 1.0) {
+        rgba[p + 3] = 0;
+        continue;
+      }
+
+      const distM = rNorm * viewshed.radiusM;
+      const azDeg = ((Math.atan2(nx, ny) * 180) / Math.PI + 360) % 360;
+      const azFloat = azDeg / azStepDeg;
+      const rFloat = Math.max(0, distM / viewshed.stepM - 1);
+      const sinrDb = samplePolarBilinear(viewshed.sinrGrid, viewshed.nAzimuths, viewshed.nRings, azFloat, rFloat);
+
+      if (!Number.isFinite(sinrDb)) {
+        rgba[p + 3] = 0;
+        continue;
+      }
+
+      if (sinrField) sinrField[y * size + x] = sinrDb;
+
+      const t = (sinrDb - SINR_MIN) / SINR_SPAN;
+      const rgb = samplePaletteRgb(palette, t);
+      const edgeFade = rNorm > 0.94 ? Math.max(0, (1.0 - rNorm) / 0.06) : 1.0;
+      // Slightly higher opacity for strong signal & clear ridge shadows, soft feather at outer rim
+      const baseAlpha = sinrDb < 0 ? 158 : 192;
+
+      rgba[p] = rgb[0];
+      rgba[p + 1] = rgb[1];
+      rgba[p + 2] = rgb[2];
+      rgba[p + 3] = Math.round(baseAlpha * edgeFade);
+    }
+  }
+
+  // Subtle crisp iso-dB contour lines at 0 dB (Outage boundary), +10 dB (16-QAM), +18 dB (64-QAM)
+  if (sinrField) {
+    const levels = [0.0, 10.0, 18.0];
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        const idx = y * size + x;
+        const v = sinrField[idx];
+        if (!Number.isFinite(v)) continue;
+        const vr = sinrField[idx + 1];
+        const vd = sinrField[idx + size];
+        if (!Number.isFinite(vr) || !Number.isFinite(vd)) continue;
+
+        let hitLevel = -1;
+        for (let li = 0; li < levels.length; li++) {
+          const lv = levels[li];
+          if ((v < lv && (vr >= lv || vd >= lv)) || (v >= lv && (vr < lv || vd < lv))) {
+            hitLevel = li;
+            break;
+          }
+        }
+        if (hitLevel >= 0) {
+          const p = idx * 4;
+          if (rgba[p + 3] > 20) {
+            const blend = hitLevel === 0 ? 0.55 : 0.42;
+            rgba[p] = Math.round(rgba[p] * (1 - blend) + 245 * blend);
+            rgba[p + 1] = Math.round(rgba[p + 1] * (1 - blend) + 250 * blend);
+            rgba[p + 2] = Math.round(rgba[p + 2] * (1 - blend) + 255 * blend);
+            rgba[p + 3] = Math.min(235, rgba[p + 3] + 35);
+          }
+        }
+      }
+    }
+  }
+
+  return rgba;
+}
+
+export function renderProbeHeatmapCanvas(
+  viewshed: SiteProbeViewshedResult,
+  targetCanvas?: HTMLCanvasElement,
+  size: number = 320,
+  opts: ProbeHeatmapEncodeOptions = {},
+): HTMLCanvasElement {
+  const canvas = targetCanvas ?? document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return canvas;
+  const img = ctx.createImageData(size, size);
+  img.data.set(encodeProbeSignalHeatmapRgba(viewshed, size, opts));
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
 export function renderViewshedCanvas(
   viewshed: SiteProbeViewshedResult,
   targetCanvas?: HTMLCanvasElement,

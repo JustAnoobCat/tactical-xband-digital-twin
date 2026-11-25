@@ -836,11 +836,9 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
             ? `r=${Math.round(obs.radiusM || 50)}m, h=${Math.round(obs.heightM)}m`
             : `${Math.round(obs.widthM)}×${Math.round(obs.depthM)}m, h=${Math.round(obs.heightM)}m`;
         return `
-        <div class="tb-obs-row" data-obs-id="${escapeHtml(obs.id)}" style="${
-          isSel ? 'border-color:var(--hi-amber,#ffab00);background:rgba(255,171,0,0.12);' : ''
-        };cursor:pointer;">
-          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${escapeHtml(obs.id)}">
-            <strong>#${idx + 1}</strong> ${escapeHtml(shapeLabel)} <span style="opacity:0.65;">(${escapeHtml(dimText)})</span>
+        <div class="tb-obs-row${isSel ? ' is-selected' : ''}" data-obs-id="${escapeHtml(obs.id)}">
+          <span class="tb-obs-row-label" title="${escapeHtml(obs.id)}">
+            <strong>#${idx + 1}</strong> ${escapeHtml(shapeLabel)} <span class="tb-obs-row-dim">${escapeHtml(dimText)}</span>
           </span>
           <button type="button" class="tb-obs-delete-btn" data-obs-id="${escapeHtml(obs.id)}" aria-label="Delete obstacle ${escapeHtml(obs.id)}">×</button>
         </div>
@@ -870,7 +868,7 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
         if (tbObsSelectedId === id) tbObsSelectedId = null;
         applyObstacleHistoryChange(next);
         recomputeCadObstacleAnalysis();
-        setText('terrain-toolbox-status', `Obstacle ${id} removed.`);
+        setText('terrain-toolbox-status', `Barrier ${id} removed.`);
       });
     });
   }
@@ -884,19 +882,86 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
     deps.onRedrawRadar?.();
   }
 
+  function normalizeNodesForBarrierAnalysis(rawNodes: readonly any[]): Array<{
+    nodeId: number;
+    xM: number;
+    yM: number;
+    zMslM?: number;
+    groundElevM?: number;
+    aglM?: number;
+  }> {
+    const out: Array<{
+      nodeId: number;
+      xM: number;
+      yM: number;
+      zMslM?: number;
+      groundElevM?: number;
+      aglM?: number;
+    }> = [];
+    for (const n of rawNodes || []) {
+      if (!n) continue;
+      const nodeId = Number(n.nodeId ?? n.node_id);
+      const xM = Number(n.xM ?? n.x_m ?? n.position?.[0]);
+      const yM = Number(n.yM ?? n.y_m ?? n.position?.[1]);
+      if (!Number.isFinite(nodeId) || !Number.isFinite(xM) || !Number.isFinite(yM)) continue;
+      const zRaw = Number(n.zMslM ?? n.position?.[2]);
+      const gRaw = Number(n.groundElevM ?? n.terrain_elevation_msl_m);
+      const aglRaw = Number(n.aglM ?? n.agl_m ?? 2);
+      out.push({
+        nodeId,
+        xM,
+        yM,
+        ...(Number.isFinite(zRaw) ? { zMslM: zRaw } : {}),
+        ...(Number.isFinite(gRaw) ? { groundElevM: gRaw } : {}),
+        aglM: Number.isFinite(aglRaw) ? aglRaw : 2,
+      });
+    }
+    return out;
+  }
+
+  function syncObstacleTargetNodeSelect(rawNodes: readonly any[]): void {
+    const sel = $('tb-obs-target-node-select') as HTMLSelectElement | null;
+    if (!sel) return;
+    const prev = sel.value;
+    const items = (rawNodes || [])
+      .filter((n: any) => n && Number.isFinite(Number(n.node_id ?? n.nodeId)))
+      .map((n: any) => {
+        const id = Number(n.node_id ?? n.nodeId);
+        const role = (n.node_type === 'mcp' || n.nodeType === 'mcp') ? 'MCP' : 'Soldier';
+        const snr = Number(n.snr_db ?? n.snrDb);
+        const tag = Number.isFinite(snr) ? `${snr.toFixed(1)} dB` : (n.terrain_is_los === false ? 'Blocked' : 'Active');
+        return { value: String(id), label: `S${id} · ${role} (${tag})` };
+      });
+    if (items.length === 0) return;
+    const sig = items.map((i) => `${i.value}:${i.label}`).join('|');
+    if (sel.dataset.nodeSig === sig) return;
+    sel.dataset.nodeSig = sig;
+    sel.innerHTML =
+      `<option value="none">Pick a ground node…</option>` +
+      items.map((i) => `<option value="${escapeHtml(i.value)}">${escapeHtml(i.label)}</option>`).join('');
+    if (prev && items.some((i) => i.value === prev)) {
+      sel.value = prev;
+    } else if (items.length > 0 && prev === 'none') {
+      sel.value = items[0].value;
+    }
+  }
+
   function recomputeCadObstacleAnalysis(): void {
     const obstacleEditor = deps.getObstacleEditor();
     const tel = deps.getLatestTelemetry();
-    const nodes = tel?.nodes_telemetry || [];
+    const rawNodes = tel?.nodes_telemetry || [];
+    syncObstacleTargetNodeSelect(rawNodes);
+    const nodes = normalizeNodesForBarrierAnalysis(rawNodes);
     const acn = tel?.acn_telemetry || {};
     const acnPos = {
-      x: acn.pos_x ?? 0,
-      y: acn.pos_y ?? 0,
-      z: acn.altitude_msl_m ?? 5000,
+      x: Number.isFinite(Number(acn.pos_x)) ? Number(acn.pos_x) : 0,
+      y: Number.isFinite(Number(acn.pos_y)) ? Number(acn.pos_y) : 0,
+      z: Number.isFinite(Number(acn.altitude_msl_m)) ? Number(acn.altitude_msl_m) : 5000,
     };
 
     const getElevation = (x: number, y: number) => {
-      return sampleDemSafe(deps.getMainTerrainEngine(), x, y).elevationM || 3500;
+      const e = sampleDemSafe(deps.getMainTerrainEngine(), x, y).elevationM;
+      return Number.isFinite(e) ? e : 3500;
     };
 
     const draft = obstacleEditor?.draft || [];
@@ -928,29 +993,37 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
     const autoHeightBtn = $('btn-obs-auto-height') as HTMLButtonElement | null;
 
     if (rep) {
+      const lenM = Number.isFinite(rep.lengthM) ? Math.round(rep.lengthM) : 0;
+      const azStr = Number.isFinite(rep.strikeAzimuthDeg) ? rep.strikeAzimuthDeg.toFixed(0) : '0';
+      const crestM = Number.isFinite(rep.midTopElevM) ? Math.round(rep.midTopElevM) : 0;
+      const hM = Number.isFinite(rep.wallHeightM) ? Math.round(rep.wallHeightM) : 0;
+      const minHM = Number.isFinite(rep.maxRequiredHeightToSliceAllM) ? Math.round(rep.maxRequiredHeightToSliceAllM) : 120;
+      const autoHM = Number.isFinite(rep.recommendedAutoHeightM) ? Math.round(rep.recommendedAutoHeightM) : 120;
+
       if (metricsEl) {
-        metricsEl.textContent = `${Math.round(rep.lengthM)} m @ ${rep.strikeAzimuthDeg.toFixed(1)}° | Crest ${Math.round(rep.midTopElevM)} m MSL (H=${Math.round(rep.wallHeightM)}m)`;
+        const lenLabel = lenM >= 1000 ? `${(lenM / 1000).toFixed(2)} km` : `${lenM} m`;
+        metricsEl.textContent = `${lenLabel} · ${azStr}° · Height ${hM} m (Crest ${crestM} m)`;
       }
       if (sliceEl) {
         if (rep.intersections.length === 0) {
-          sliceEl.textContent = 'Intersected: 0 | Clear Airspace (No Links Crossed)';
+          sliceEl.textContent = 'No links crossed (clear airspace)';
         } else {
-          sliceEl.textContent = `Intersected: ${rep.intersections.length} | Slicing ${rep.slicedNodeIds.length} / Overflying ${rep.overflyingNodeIds.length} (Min H: ${Math.round(rep.maxRequiredHeightToSliceAllM)} m)`;
+          sliceEl.textContent = `Crosses ${rep.intersections.length} link${rep.intersections.length === 1 ? '' : 's'} · ${rep.slicedNodeIds.length} blocked, ${rep.overflyingNodeIds.length} clear (Need ${minHM} m)`;
         }
       }
       if (autoHeightBtn) {
         autoHeightBtn.disabled = rep.intersections.length === 0;
         autoHeightBtn.textContent =
           rep.intersections.length > 0
-            ? `[AUTO] Auto-Size Height to Slice (${Math.round(rep.recommendedAutoHeightM)} m)`
-            : '[AUTO] Auto-Size Height to Slice Links';
+            ? `Auto-Size Height to Block (${autoHM} m)`
+            : 'Auto-Size Height to Block Links';
       }
     } else {
-      if (metricsEl) metricsEl.textContent = '-- m @ --° | Crest -- m MSL';
-      if (sliceEl) sliceEl.textContent = 'Intersected: -- | Slicing 0 / Overflying 0';
+      if (metricsEl) metricsEl.textContent = 'No barrier selected';
+      if (sliceEl) sliceEl.textContent = 'Draw on map or block a node link below';
       if (autoHeightBtn) {
         autoHeightBtn.disabled = true;
-        autoHeightBtn.textContent = '[AUTO] Auto-Size Height to Slice Links';
+        autoHeightBtn.textContent = 'Auto-Size Height to Block Links';
       }
     }
   }
@@ -1773,6 +1846,7 @@ Predictive Tac-TAD ($\\Phi_{\\text{evac}} \\ge 1.0$) & ${tacGp} & ${tacUt} & ${t
 
     // 3D Obstacle methods
     getObstacleEndpoints,
+    getCadObstacleReport: () => tbCadObstacleReport,
     renderObstacleInventoryList,
     applyObstacleHistoryChange,
     recomputeCadObstacleAnalysis,

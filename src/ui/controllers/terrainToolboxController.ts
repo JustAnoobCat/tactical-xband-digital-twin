@@ -302,20 +302,20 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
     if (!banner) return;
     if (activeMode === 'transect') {
       if (transectWaypoints.length === 0) {
-        banner.textContent = 'Click A -> B on map';
+        banner.textContent = 'Click A → B on map to measure distance and Line-of-Sight.';
       } else if (transectWaypoints.length === 1) {
-        banner.textContent = 'Click Point B to lock';
+        banner.textContent = 'Point A placed · Click Point B to lock measurement.';
       } else {
-        banner.textContent = 'Profile locked · Click to re-measure';
+        banner.textContent = 'Measurement locked · Drag A or B on map to adjust.';
       }
     } else if (activeMode === 'probe') {
-      banner.textContent = 'Click any spot to probe';
+      banner.textContent = 'Click any spot to probe 8 GHz signal quality to aircraft.';
     } else if (activeMode === 'region') {
-      banner.textContent = 'Click corners · Dbl-click to finish';
+      banner.textContent = 'Pick a quick scan size below, or Click corners · Dbl-click to finish.';
     } else if (activeMode === 'obstacle') {
-      banner.textContent = 'Click map to drop barrier';
+      banner.textContent = 'Click map to drop barrier, or select a ground node to block its link.';
     } else {
-      banner.textContent = 'Select tool to begin';
+      banner.textContent = 'Switch terrain presets, change map shading, or pan and zoom freely.';
     }
   };
 
@@ -710,7 +710,12 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
   };
 
   const refreshTerrainToolbox = () => {
-    const isPicking = toolMode !== 'idle';
+    const authoritativeMode =
+      win && typeof (win as any).terrainToolMode === 'string'
+        ? ((win as any).terrainToolMode as TerrainToolMode)
+        : toolMode;
+    toolMode = authoritativeMode;
+    const isPicking = authoritativeMode !== 'idle';
     const tbStack = $('terrain-toolbox-stack');
     const container = $('radar-container');
     const terrainToolbox = $('terrain-toolbox');
@@ -726,10 +731,10 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
     const probeBtn = $('tb-probe-pick-btn');
     const obsBtn = $('tb-obs-place-btn');
 
-    if (twoPtBtn) twoPtBtn.classList.toggle('active', toolMode === 'transect-2pt' || toolMode === 'measure');
-    if (regionBtn) regionBtn.classList.toggle('active', toolMode === 'region');
-    if (probeBtn) probeBtn.classList.toggle('active', toolMode === 'probe');
-    if (obsBtn) obsBtn.classList.toggle('active', toolMode === 'obstacle-place');
+    if (twoPtBtn) twoPtBtn.classList.toggle('active', authoritativeMode === 'transect-2pt' || authoritativeMode === 'measure');
+    if (regionBtn) regionBtn.classList.toggle('active', authoritativeMode === 'region');
+    if (probeBtn) probeBtn.classList.toggle('active', authoritativeMode === 'probe');
+    if (obsBtn) obsBtn.classList.toggle('active', authoritativeMode === 'obstacle-place');
   };
 
   const setExpanded = (expanded: boolean) => {

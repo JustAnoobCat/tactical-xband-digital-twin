@@ -47,6 +47,12 @@ import {
   type RadarMarkerProjection,
   type RadarNodeMarkerLayer,
 } from '../radarNodeMarkerLayer';
+import {
+  renderAutoCadRulerOverlay,
+  renderCadBarrierOverlay,
+  renderQgisAoSwathOverlay,
+  renderRfFieldProbeOverlay,
+} from '../toolboxPrecisionSuite';
 
 // ============================================================================
 // Types & Interfaces
@@ -350,47 +356,8 @@ export function renderPrecisionCadObstacleOverlay(
   viewport: RadarViewport,
   projectFn?: (xM: number, yM: number) => RadarPoint2D
 ): void {
-  const isObsActive = tbState?.activeMode === 'obstacle' || tbState?.toolMode === 'obstacle-place';
-  if (!isObsActive && !tbState?.obsDrawingAnchor && !tbState?.cadObstacleReport) return;
-
   const project = projectFn || ((xM: number, yM: number) => worldEnuToRadarCanvas(xM, yM, viewport));
-  ctx.save();
-
-  // 1. Rubber-band line while drawing
-  if (tbState?.obsDrawingAnchor && tbState?.obsRubberBandPoint) {
-    const pA = project(tbState.obsDrawingAnchor.x, tbState.obsDrawingAnchor.y);
-    const pB = project(tbState.obsRubberBandPoint.x, tbState.obsRubberBandPoint.y);
-    if (pA && pB) {
-      ctx.strokeStyle = '#00e5ff';
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([6, 4]);
-      ctx.beginPath();
-      ctx.moveTo(pA.x, pA.y);
-      ctx.lineTo(pB.x, pB.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = '#00e5ff';
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(pA.x, pA.y, 6, 0, TAU);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(pB.x, pB.y, 6, 0, TAU);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.font = `bold 9px ${MONO}`;
-      ctx.fillStyle = '#00e5ff';
-      ctx.fillText('[V1]', pA.x + 8, pA.y - 6);
-      ctx.fillText('[V2]', pB.x + 8, pB.y - 6);
-    }
-  }
-
-  ctx.restore();
+  renderCadBarrierOverlay(ctx, w, h, tbState, viewport, project);
 }
 
 export function renderGeodeticRulerOverlay(
@@ -401,49 +368,8 @@ export function renderGeodeticRulerOverlay(
   viewport: RadarViewport,
   projectFn?: (xM: number, yM: number) => RadarPoint2D
 ): void {
-  const waypoints = tbState?.transectWaypoints || [];
-  if (waypoints.length === 0 && !tbState?.rubberBandPoint) return;
-
   const project = projectFn || ((xM: number, yM: number) => worldEnuToRadarCanvas(xM, yM, viewport));
-  ctx.save();
-
-  const p1 = waypoints[0] ? project(waypoints[0].xM, waypoints[0].yM) : null;
-  const p2 = waypoints[1]
-    ? project(waypoints[1].xM, waypoints[1].yM)
-    : (tbState?.rubberBandPoint ? project(tbState.rubberBandPoint.x, tbState.rubberBandPoint.y) : null);
-
-  if (p1 && p2) {
-    const isLocked = waypoints.length >= 2;
-    ctx.strokeStyle = isLocked ? '#38bdf8' : 'rgba(56, 189, 248, 0.7)';
-    ctx.lineWidth = isLocked ? 2.5 : 1.8;
-    if (!isLocked) ctx.setLineDash([6, 4]);
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Endpoint badges
-    ctx.fillStyle = '#38bdf8';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(p1.x, p1.y, 5, 0, TAU);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(p2.x, p2.y, 5, 0, TAU);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.font = `bold 9px ${MONO}`;
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillText('A', p1.x + 8, p1.y - 6);
-    ctx.fillText('B', p2.x + 8, p2.y - 6);
-  }
-
-  ctx.restore();
+  renderAutoCadRulerOverlay(ctx, w, h, tbState, viewport, project);
 }
 
 export function renderPrecisionCursorProbeOverlay(
@@ -454,37 +380,8 @@ export function renderPrecisionCursorProbeOverlay(
   viewport: RadarViewport,
   projectFn?: (xM: number, yM: number) => RadarPoint2D
 ): void {
-  const probeSite = tbState?.probeSite;
-  if (!probeSite) return;
-
   const project = projectFn || ((xM: number, yM: number) => worldEnuToRadarCanvas(xM, yM, viewport));
-  const sp = project(probeSite.xM, probeSite.yM);
-  if (!sp) return;
-
-  ctx.save();
-  ctx.strokeStyle = '#a855f7';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 3]);
-
-  // Concentric probe rings
-  ctx.beginPath();
-  ctx.arc(sp.x, sp.y, 18, 0, TAU);
-  ctx.arc(sp.x, sp.y, 36, 0, TAU);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Crosshair
-  ctx.beginPath();
-  ctx.moveTo(sp.x - 10, sp.y);
-  ctx.lineTo(sp.x + 10, sp.y);
-  ctx.moveTo(sp.x, sp.y - 10);
-  ctx.lineTo(sp.x, sp.y + 10);
-  ctx.stroke();
-
-  ctx.font = `bold 10px ${MONO}`;
-  ctx.fillStyle = '#a855f7';
-  ctx.fillText('[P1] PROBE', sp.x + 14, sp.y - 14);
-  ctx.restore();
+  renderRfFieldProbeOverlay(ctx, w, h, tbState, viewport, project);
 }
 
 export function renderPrecisionAoSwathOverlay(
@@ -495,52 +392,8 @@ export function renderPrecisionAoSwathOverlay(
   viewport: RadarViewport,
   projectFn?: (xM: number, yM: number) => RadarPoint2D
 ): void {
-  const box = tbState?.aoSwathBox;
-  if (!box || tbState?.activeMode !== 'region') return;
-
   const project = projectFn || ((xM: number, yM: number) => worldEnuToRadarCanvas(xM, yM, viewport));
-  const minX = Math.min(box.x1, box.x2);
-  const maxX = Math.max(box.x1, box.x2);
-  const minY = Math.min(box.y1, box.y2);
-  const maxY = Math.max(box.y1, box.y2);
-
-  const pNW = project(minX, maxY);
-  const pNE = project(maxX, maxY);
-  const pSE = project(maxX, minY);
-  const pSW = project(minX, minY);
-
-  if (!pNW || !pNE || !pSE || !pSW) return;
-
-  ctx.save();
-  ctx.strokeStyle = '#f59e0b';
-  ctx.lineWidth = 2.0;
-  ctx.fillStyle = 'rgba(245, 158, 11, 0.08)';
-
-  ctx.beginPath();
-  ctx.moveTo(pNW.x, pNW.y);
-  ctx.lineTo(pNE.x, pNE.y);
-  ctx.lineTo(pSE.x, pSE.y);
-  ctx.lineTo(pSW.x, pSW.y);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  // Corner handles
-  const corners = [pNW, pNE, pSE, pSW];
-  ctx.fillStyle = '#f59e0b';
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 1.2;
-  for (const c of corners) {
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, 4, 0, TAU);
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  ctx.font = `bold 10px ${MONO}`;
-  ctx.fillStyle = '#f59e0b';
-  ctx.fillText('AO SWATH', pNW.x + 6, pNW.y + 14);
-  ctx.restore();
+  renderQgisAoSwathOverlay(ctx, w, h, tbState, viewport, project);
 }
 
 // ============================================================================
@@ -685,6 +538,34 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
           ctx.fillText('LADAKH AO', cx - 24, cy + 17);
           ctx.restore();
         }
+      }
+    }
+
+    // 2b. Probe RF Signal Propagation Heat Map Overlay (draped over DEM relief, under links/nodes/HUD)
+    const rawTbState = deps.getToolboxState() || {};
+    const vsRes = rawTbState.viewshedResult;
+    const vsCanvas = rawTbState.viewshedCanvas;
+    const hmCfg = rawTbState.probeHeatmapConfig;
+    const hmEnabled = hmCfg ? hmCfg.enabled !== false : true;
+    const showProbeHm =
+      rawTbState.activeMode === 'probe' ||
+      rawTbState.activeMode === 'dem' ||
+      rawTbState.toolMode === 'probe';
+    if (showProbeHm && hmEnabled && vsCanvas && vsRes?.isSiteWithinCoverage && Number.isFinite(vsRes.radiusM)) {
+      const r = vsRes.radiusM;
+      const nw = worldToScreen(vsRes.siteXM - r, vsRes.siteYM + r, w, h);
+      const se = worldToScreen(vsRes.siteXM + r, vsRes.siteYM - r, w, h);
+      const drawW = se.x - nw.x;
+      const drawH = se.y - nw.y;
+      if (drawW > 4 && drawH > 4) {
+        const opacity = Number.isFinite(hmCfg?.opacity)
+          ? Math.max(0.15, Math.min(0.95, Number(hmCfg.opacity)))
+          : 0.72;
+        ctx.save();
+        ctx.imageSmoothingEnabled = hmCfg?.mode !== 'viewshed';
+        ctx.globalAlpha = opacity;
+        ctx.drawImage(vsCanvas, nw.x, nw.y, drawW, drawH);
+        ctx.restore();
       }
     }
 
@@ -845,12 +726,12 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       ctx.restore();
     }
 
-    // 8. Precision Tool Overlays
-    const tbState = deps.getToolboxState();
+    // 8. Precision Tool Overlays (AutoCAD Ruler, RF Field Probe, QGIS AO Swath, CAD 3D Barriers)
+    const tbState = { ...rawTbState, acnPosWorld };
+    renderPrecisionCadObstacleOverlay(ctx, w, h, tbState, vp, (xM, yM) => worldToScreen(xM, yM, w, h));
+    renderPrecisionAoSwathOverlay(ctx, w, h, tbState, vp, (xM, yM) => worldToScreen(xM, yM, w, h));
     renderGeodeticRulerOverlay(ctx, w, h, tbState, vp, (xM, yM) => worldToScreen(xM, yM, w, h));
     renderPrecisionCursorProbeOverlay(ctx, w, h, tbState, vp, (xM, yM) => worldToScreen(xM, yM, w, h));
-    renderPrecisionAoSwathOverlay(ctx, w, h, tbState, vp, (xM, yM) => worldToScreen(xM, yM, w, h));
-    renderPrecisionCadObstacleOverlay(ctx, w, h, tbState, vp, (xM, yM) => worldToScreen(xM, yM, w, h));
   };
 
   const radarLinkHit = (px: number, py: number, radiusPx = 6): number | null => {

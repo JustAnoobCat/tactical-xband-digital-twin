@@ -197,15 +197,15 @@ export function renderCursorHudHtml(readout: RadarCursorReadoutResult): string {
     <span style="display:inline-flex;align-items:center;gap:6px;">
       <span style="width:6px;height:6px;border-radius:50%;background:${HIGHLAND_THEME.signal.amber};box-shadow:0 0 6px ${HIGHLAND_THEME.signal.amber};"></span>
       <span style="color:${HIGHLAND_THEME.signal.amber};font-weight:600;letter-spacing:0.02em;">${readout.latDecimal}, ${readout.lonDecimal}</span>
-      <small style="color:${HIGHLAND_THEME.text.muted};font-size:10px;margin-left:2px;">(${readout.dmsFull})</small>
+      <small class="radar-cursor-dms" style="color:${HIGHLAND_THEME.text.muted};font-size:10px;margin-left:2px;">(${readout.dmsFull})</small>
     </span>
     <span style="color:var(--hi-line-strong, #2e3440);user-select:none;">|</span>
     <span style="display:inline-flex;align-items:center;gap:4px;">
       <span style="color:${HIGHLAND_THEME.text.muted};font-size:10.5px;">Terrain MSL:</span>
       <span style="${elevStyle}">${elevText}</span>
     </span>
-    <span style="color:var(--hi-line-strong, #2e3440);user-select:none;">|</span>
-    <span style="color:${HIGHLAND_THEME.text.faint};font-size:10.5px;">${readout.localCoordsFormatted}</span>
+    <span class="radar-cursor-local-sep" style="color:var(--hi-line-strong, #2e3440);user-select:none;">|</span>
+    <span class="radar-cursor-local" style="color:${HIGHLAND_THEME.text.faint};font-size:10.5px;">${readout.localCoordsFormatted}</span>
   `.trim();
 }
 

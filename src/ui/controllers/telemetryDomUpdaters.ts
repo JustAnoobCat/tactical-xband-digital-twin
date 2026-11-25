@@ -24,6 +24,8 @@ import { classifyLinkCommunicationStatus, LinkStatusTelemetryInput } from '../..
 
 export interface BiomeTelemetryState {
   readonly biome_id?: string;
+  readonly terrain_mode?: string;
+  readonly frame?: { readonly terrain_mode?: string; readonly biome_id?: string };
   readonly biome_em_enabled?: boolean;
   readonly polarization_mode?: string;
   readonly mean_two_ray_gain_db?: number;
@@ -359,16 +361,29 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
 
     const sectorSelect = $('dem-sector-select') as HTMLSelectElement | null;
     if (sectorSelect && doc.activeElement !== sectorSelect) {
-      const curBiome = msg.biome_id || 'alpine_mountain';
+      const curBiome = msg.biome_id || msg.frame?.biome_id || 'alpine_mountain';
+      const curTerrainMode = msg.terrain_mode || msg.frame?.terrain_mode;
       if (curBiome === 'alpine_mountain') {
-        if (sectorSelect.value !== 'ladakh' && sectorSelect.value !== 'alpine_mountain') {
-          sectorSelect.value = 'ladakh';
+        if (curTerrainMode === 'synthetic') {
+          if (sectorSelect.value !== 'kargil' && sectorSelect.value !== 'synthetic') {
+            sectorSelect.value = 'kargil';
+          }
+        } else if (curTerrainMode === 'real' || !curTerrainMode) {
+          if (sectorSelect.value !== 'ladakh' && sectorSelect.value !== 'alpine_mountain') {
+            sectorSelect.value = 'ladakh';
+          }
         }
       } else {
         if (sectorSelect.value !== curBiome) {
           sectorSelect.value = curBiome;
         }
       }
+      const normPreset = sectorSelect.value === 'alpine_mountain' ? 'ladakh' : sectorSelect.value;
+      doc.querySelectorAll('#tb-dem-quick-switch .tb-dem-preset-btn[data-dem-preset]').forEach((btn) => {
+        const active = btn.getAttribute('data-dem-preset') === normPreset;
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-pressed', String(active));
+      });
     }
 
     const toggleEm = $('toggle-biome-em') as HTMLInputElement | null;

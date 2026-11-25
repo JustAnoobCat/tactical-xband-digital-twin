@@ -1342,7 +1342,7 @@ body.is-historical-mode .historical-mode-banner {
   bottom: 12px;
   left: 60px;
   z-index: 22;
-  max-width: calc(100% - 210px);
+  max-width: calc(100% - 340px);
   padding: 5px 10px;
   background: rgba(13, 16, 22, 0.92);
   border: 1px solid var(--lo-line-strong);
@@ -1357,7 +1357,13 @@ body.is-historical-mode .historical-mode-banner {
 }
 
 .radar-stage[data-map-renderer="maplibre"] .radar-cursor-hud {
-  max-width: calc(100% - 266px);
+  max-width: calc(100% - 360px);
+}
+
+.radar-cursor-hud .radar-cursor-dms,
+.radar-cursor-hud .radar-cursor-local-sep,
+.radar-cursor-hud .radar-cursor-local {
+  display: none;
 }
 
 .radar-cursor-hud.is-idle {
@@ -3086,10 +3092,10 @@ details.c2-card[open] > summary {
 }
 
 /* ==========================================================================
- * 13. REDESIGNED INTUITIVE TERRAIN TOOLBOX (3-STEP PROGRESSIVE WORKFLOW)
+ * 13. REDESIGNED INTUITIVE TERRAIN TOOLBOX (CLEAN, SELF-EXPLANATORY WORKFLOW)
  * ========================================================================== */
 #terrain-toolbox.terrain-toolbox-viewport {
-  padding: 14px 16px 28px;
+  padding: 12px 14px 24px;
   gap: 10px;
   background: var(--lo-bg);
   color: var(--lo-text);
@@ -3100,8 +3106,8 @@ details.c2-card[open] > summary {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
-  background: var(--lo-card);
+  padding: 8px 12px;
+  background: var(--lo-surface);
   border: 1px solid var(--lo-line);
   border-radius: var(--r-md);
 }
@@ -3118,8 +3124,11 @@ details.c2-card[open] > summary {
   font-family: var(--lo-sans);
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--lo-text-bright);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #terrain-toolbox .tb-view-header-actions {
@@ -3129,15 +3138,10 @@ details.c2-card[open] > summary {
   flex-shrink: 0;
 }
 
-#terrain-toolbox .tb-badge {
-  padding: 2px 7px;
-  background: var(--lo-accent-soft);
-  border: 1px solid var(--lo-accent-border);
-  border-radius: var(--r-xs);
-  font-family: var(--lo-mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--lo-accent-bright);
+/* Remove redundant static "TOOLS" badge & duplicate close button */
+#terrain-toolbox .tb-badge,
+#terrain-toolbox #terrain-toolbox-close-btn {
+  display: none;
 }
 
 #terrain-toolbox .tb-btn-exit {
@@ -3148,24 +3152,30 @@ details.c2-card[open] > summary {
   font-family: var(--lo-sans);
   font-size: 11.5px;
   font-weight: 500;
-  color: var(--lo-text);
+  color: var(--lo-text-bright);
 }
 
 #terrain-toolbox .tb-btn-exit:hover {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.5);
   color: #ffffff;
 }
 
+/* Calm, friendly 1-line plain-English contextual guide */
 #terrain-toolbox #tb-step-guide-banner {
-  padding: 9px 12px;
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px solid var(--lo-accent-border);
-  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: rgba(56, 189, 248, 0.05);
+  border: none;
+  border-left: 3px solid var(--lo-accent);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
   font-family: var(--lo-sans);
   font-size: 12px;
-  font-weight: 500;
-  color: var(--lo-text-bright);
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--lo-text);
   box-shadow: none;
 }
 
@@ -3180,44 +3190,81 @@ details.c2-card[open] > summary {
   flex: 1;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 3px;
-  padding: 3px;
-  background: var(--lo-void);
+  gap: 4px;
+  padding: 4px;
+  background: var(--lo-surface);
   border: 1px solid var(--lo-line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
   margin: 0;
 }
 
 #terrain-toolbox .tb-mode-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 4px;
+  min-height: 48px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--lo-text-dim);
+  text-align: center;
+  transition: background-color 140ms var(--ease-out), border-color 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+
+#terrain-toolbox .tb-tab-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 5px;
-  min-height: 28px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-xs);
-  text-align: center;
+  opacity: 0.78;
 }
 
 #terrain-toolbox .tb-mode-tab:hover {
-  background: var(--lo-control);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--lo-text-bright);
+}
+
+#terrain-toolbox .tb-mode-tab:hover .tb-tab-icon,
+#terrain-toolbox .tb-mode-tab.active .tb-tab-icon {
+  opacity: 1;
 }
 
 #terrain-toolbox .tb-mode-tab.active {
-  background: var(--lo-accent-soft);
-  border-color: var(--lo-accent-border);
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.48);
+  color: var(--lo-accent-bright);
+}
+
+#terrain-toolbox .tb-mode-tab[data-tb-mode="probe"].active {
+  background: rgba(168, 85, 247, 0.16);
+  border-color: rgba(192, 132, 252, 0.5);
+  color: #e9d5ff;
+}
+
+#terrain-toolbox .tb-mode-tab[data-tb-mode="region"].active {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fef3c7;
+}
+
+#terrain-toolbox .tb-mode-tab[data-tb-mode="obstacle"].active {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(52, 211, 153, 0.5);
+  color: #d1fae5;
 }
 
 #terrain-toolbox .tb-tool-title {
   font-family: var(--lo-sans);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
-  color: var(--lo-text-dim);
+  line-height: 1.15;
+  color: inherit;
+  white-space: normal;
 }
 
 #terrain-toolbox .tb-mode-tab.active .tb-tool-title {
-  color: var(--lo-accent-bright);
   font-weight: 600;
 }
 
@@ -3227,6 +3274,15 @@ details.c2-card[open] > summary {
   gap: 10px;
 }
 
+#terrain-toolbox .tb-mode-pane[hidden] {
+  display: none;
+}
+
+/* Hide noisy empty region message when no custom polygons are saved */
+#terrain-toolbox-regions:has(.terrain-toolbox-status) {
+  display: none;
+}
+
 .tb-action-bar {
   display: flex;
   align-items: center;
@@ -3234,20 +3290,26 @@ details.c2-card[open] > summary {
   flex-wrap: wrap;
 }
 
-.tb-action-bar .primary {
-  flex: 1 1 auto;
-  min-height: 30px;
+.tb-action-bar button {
+  min-height: 31px;
   font-size: 12px;
 }
 
+.tb-action-bar .primary {
+  flex: 1 1 130px;
+  min-height: 32px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .tb-group-card {
-  background: rgba(9, 11, 16, 0.5);
-  border: 1px solid var(--lo-line-faint);
-  border-radius: var(--r-sm);
-  padding: 10px 12px;
+  background: var(--lo-card);
+  border: 1px solid var(--lo-line);
+  border-radius: var(--r-md);
+  padding: 11px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 
 .tb-group-head {
@@ -3260,14 +3322,83 @@ details.c2-card[open] > summary {
   font-family: var(--lo-sans);
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
   color: var(--lo-text-bright);
 }
 
-.tb-mini-toggle {
-  min-height: 22px;
-  padding: 2px 8px;
-  font-family: var(--lo-mono);
+.tb-head-tag {
+  font-family: var(--lo-sans);
   font-size: 10.5px;
+  font-weight: 500;
+  color: var(--lo-text-muted);
+}
+
+/* Tool 0: DEM Quick-Switch Preset Menu */
+.tb-dem-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tb-dem-preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  min-height: 52px;
+  padding: 8px 10px;
+  background: rgba(9, 11, 16, 0.65);
+  border: 1px solid var(--lo-line);
+  border-radius: var(--r-sm);
+  text-align: left;
+  white-space: normal;
+  transition: background-color 140ms var(--ease-out), border-color 140ms var(--ease-out);
+}
+
+.tb-dem-preset-btn strong {
+  font-family: var(--lo-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lo-text-bright);
+  line-height: 1.2;
+}
+
+.tb-dem-preset-btn span {
+  font-family: var(--lo-sans);
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--lo-text-muted);
+  line-height: 1.2;
+}
+
+.tb-dem-preset-btn:hover {
+  background: var(--lo-control);
+  border-color: var(--lo-line-strong);
+}
+
+.tb-dem-preset-btn.is-active,
+.tb-dem-preset-btn[aria-pressed="true"] {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.58);
+}
+
+.tb-dem-preset-btn.is-active strong,
+.tb-dem-preset-btn[aria-pressed="true"] strong {
+  color: var(--lo-accent-bright);
+}
+
+.tb-dem-preset-btn.is-active span,
+.tb-dem-preset-btn[aria-pressed="true"] span {
+  color: #bae6fd;
+}
+
+.tb-mini-toggle {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  font-weight: 500;
   color: var(--lo-text-dim);
 }
 
@@ -3277,26 +3408,42 @@ details.c2-card[open] > summary {
   color: var(--lo-accent-bright);
 }
 
+/* Clean Hairline Properties Matrix */
 .tb-metric-tiles {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 0;
+  background: rgba(9, 11, 16, 0.58);
+  border: 1px solid var(--lo-line-faint);
+  border-radius: var(--r-sm);
+  overflow: hidden;
 }
 
 .tb-metric-tile {
-  padding: 7px 9px;
-  background: var(--lo-card);
-  border: 1px solid var(--lo-line-faint);
-  border-radius: var(--r-xs);
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--lo-line-faint);
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
 
+.tb-metric-tile:nth-child(even):not(.tb-span-2) {
+  border-left: 1px solid var(--lo-line-faint);
+}
+
+.tb-metric-tile:last-child,
+.tb-metric-tile:nth-last-child(2):nth-child(odd) {
+  border-bottom: none;
+}
+
 .tb-metric-tile span {
   font-family: var(--lo-sans);
   font-size: 10.5px;
+  font-weight: 500;
   color: var(--lo-text-muted);
 }
 
@@ -3328,6 +3475,8 @@ details.c2-card[open] > summary {
 
 .tb-followup-row button {
   flex: 1 1 auto;
+  min-height: 30px;
+  font-size: 11.5px;
 }
 
 .tb-inline-controls {
@@ -3341,15 +3490,691 @@ details.c2-card[open] > summary {
   flex: 1 1 120px;
 }
 
+/* ============================================================================
+   TOOLBOX INSTRUMENT CARDS (CLEAN HERO READOUTS & INTERACTIVE CONTROLS)
+   ============================================================================ */
+.tb-cad-seg {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: rgba(9, 11, 16, 0.72);
+  border: 1px solid var(--lo-line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  flex: 1 1 180px;
+}
+
+.tb-cad-seg-btn {
+  min-height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-right: 1px solid var(--lo-line-faint);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--lo-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--lo-text-dim);
+}
+
+.tb-cad-seg-btn:last-child {
+  border-right: none;
+}
+
+.tb-cad-seg-btn.is-active {
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--lo-accent-bright);
+  font-weight: 600;
+}
+
+#tb-pane-dem #tb-backdrop-mode {
+  display: none;
+}
+
+.tb-instrument-card {
+  background: var(--lo-surface);
+  border: 1px solid var(--lo-line);
+  border-radius: var(--r-md);
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.tb-instrument-autocad {
+  border-top: 2px solid #38bdf8;
+}
+
+.tb-instrument-rf {
+  border-top: 2px solid #c084fc;
+}
+
+.tb-instrument-qgis {
+  border-top: 2px solid #f59e0b;
+}
+
+.tb-instrument-sketchup {
+  border-top: 2px solid #34d399;
+}
+
+.tb-instrument-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tb-instrument-title {
+  font-family: var(--lo-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lo-text-bright);
+}
+
+.tb-cad-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tb-verdict-tag {
+  font-family: var(--lo-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--lo-line);
+  color: var(--lo-text-dim);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tb-verdict-tag[data-tone="clear"] {
+  border-color: rgba(52, 211, 153, 0.5);
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.tb-verdict-tag[data-tone="blocked"] {
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.tb-cad-flag {
+  font-family: var(--lo-sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--lo-line);
+  color: var(--lo-text-muted);
+}
+
+.tb-cad-flag.is-on {
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.tb-cad-unit-btn {
+  min-height: 22px;
+  padding: 0 7px;
+  font-family: var(--lo-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--lo-text-bright);
+  background: var(--lo-control);
+  border: 1px solid var(--lo-line-strong);
+  border-radius: var(--r-xs);
+}
+
+/* Tool 1: Scannable 3-Column Hero Readout + Compact CAD Vector Footer */
+.tb-hero-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  background: rgba(7, 9, 14, 0.72);
+  border: 1px solid var(--lo-line-faint);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.tb-hero-stat {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: 1px solid var(--lo-line-faint);
+}
+
+.tb-hero-stat:last-child {
+  border-right: none;
+}
+
+.tb-hero-stat span {
+  font-family: var(--lo-sans);
+  font-size: 10.5px;
+  color: var(--lo-text-muted);
+}
+
+.tb-hero-stat strong {
+  font-family: var(--lo-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0f2fe;
+}
+
+.tb-cad-substrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  color: var(--lo-text-muted);
+}
+
+.tb-cad-substrip strong {
+  font-family: var(--lo-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lo-text);
+  margin-left: 3px;
+}
+
+/* Tool 2: Plain-English Signal Quality Gauge */
+.tb-rf-status {
+  font-family: var(--lo-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--lo-text-dim);
+}
+
+.tb-rf-status[data-tone="clear"] {
+  color: #34d399;
+}
+
+.tb-rf-status[data-tone="marginal"] {
+  color: #fbbf24;
+}
+
+.tb-rf-status[data-tone="shadowed"] {
+  color: #f87171;
+}
+
+.tb-rf-bar-track {
+  position: relative;
+  height: 11px;
+  background: rgba(7, 9, 14, 0.85);
+  border: 1px solid var(--lo-line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.tb-rf-bar-fill {
+  height: 100%;
+  transition: width 180ms var(--ease-out), background-color 180ms var(--ease-out);
+  background: #fbbf24;
+}
+
+.tb-rf-bar-fill[data-tone="clear"] {
+  background: linear-gradient(90deg, #0ea5e9 0%, #34d399 100%);
+}
+
+.tb-rf-bar-fill[data-tone="shadowed"] {
+  background: #ef4444;
+}
+
+.tb-rf-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.tb-rf-scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--lo-sans);
+  font-size: 10px;
+  color: var(--lo-text-muted);
+}
+
+/* Tool 2b: RF Signal Propagation Heat Map Overlay Controls & Calibrated Legend */
+.tb-probe-hm-card {
+  gap: 8px;
+}
+
+.tb-probe-hm-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--lo-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--lo-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tb-probe-hm-toggle input {
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.tb-probe-hm-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.tb-probe-hm-controls.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.tb-probe-hm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.tb-probe-hm-seg {
+  display: inline-flex;
+  border: 1px solid var(--lo-line);
+  border-radius: 5px;
+  overflow: hidden;
+  background: rgba(7, 9, 14, 0.72);
+  flex: 1 1 auto;
+  min-width: 146px;
+}
+
+.tb-probe-hm-seg-btn {
+  flex: 1 1 50%;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--lo-text-muted);
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.tb-probe-hm-seg-btn + .tb-probe-hm-seg-btn {
+  border-left: 1px solid var(--lo-line);
+}
+
+.tb-probe-hm-seg-btn.is-active {
+  background: rgba(56, 189, 248, 0.18);
+  color: var(--lo-text-bright);
+  font-weight: 600;
+}
+
+#tb-probe-heatmap-card .tb-probe-hm-select {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 118px;
+  max-width: 144px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 22px 0 8px;
+  border: 1px solid var(--lo-line);
+  border-radius: 5px;
+  background-color: rgba(7, 9, 14, 0.85);
+  color: var(--lo-text-bright);
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tb-probe-hm-slider-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  font-family: var(--lo-sans);
+  font-size: 10.5px;
+  color: var(--lo-text-muted);
+}
+
+.tb-probe-hm-slider-wrap input[type="range"] {
+  flex: 1;
+  min-width: 60px;
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.tb-probe-hm-val {
+  min-width: 30px;
+  text-align: right;
+  font-family: var(--lo-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--lo-text-bright);
+}
+
+.tb-probe-hm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--lo-sans);
+  font-size: 10.5px;
+  color: var(--lo-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tb-probe-hm-check input {
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.tb-probe-hm-ramp {
+  height: 9px;
+  border-radius: 3px;
+  border: 1px solid var(--lo-line);
+  background: linear-gradient(90deg, #641432 0%, #c82832 22%, #ea7820 42%, #f4c430 62%, #22c55e 80%, #10d8c8 100%);
+}
+
+.tb-probe-hm-ramp[data-palette="thermal"] {
+  background: linear-gradient(90deg, #100826 0%, #5a1268 25%, #b62858 50%, #ed6925 74%, #f8bc26 90%, #fcffa4 100%);
+}
+
+.tb-probe-hm-ramp[data-palette="viridis"] {
+  background: linear-gradient(90deg, #440154 0%, #3b528b 28%, #21918c 55%, #5ec962 80%, #fde725 100%);
+}
+
+.tb-probe-hm-ramp[data-mode="viewshed"] {
+  background: linear-gradient(
+    90deg,
+    #34d399 0%, #34d399 25%,
+    #fbbf24 25%, #fbbf24 50%,
+    #ef4444 50%, #ef4444 75%,
+    #f97316 75%, #f97316 100%
+  );
+}
+
+.tb-probe-hm-scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--lo-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 9.5px;
+  color: var(--lo-text-muted);
+}
+
+.tb-probe-hm-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--lo-line);
+}
+
+.tb-probe-hm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tb-probe-hm-stat-lbl {
+  font-family: var(--lo-sans);
+  font-size: 9.5px;
+  color: var(--lo-text-muted);
+}
+
+.tb-probe-hm-stat-val {
+  font-family: var(--lo-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lo-text-bright);
+}
+
+/* Tool 3: Area Quick Scan Presets & Stacked Coverage Bar */
+.tb-ao-presets {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.tb-ao-preset-btn {
+  min-height: 24px;
+  padding: 0 8px;
+  font-family: var(--lo-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--r-xs);
+}
+
+.tb-ao-preset-btn:hover,
+.tb-ao-preset-btn.is-active {
+  background: rgba(245, 158, 11, 0.24);
+  border-color: rgba(251, 191, 36, 0.72);
+  color: #fef3c7;
+  font-weight: 600;
+}
+
+.tb-qgis-stack {
+  display: flex;
+  height: 10px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(7, 9, 14, 0.85);
+  border: 1px solid var(--lo-line);
+}
+
+.tb-qgis-seg {
+  height: 100%;
+  transition: width 180ms var(--ease-out);
+}
+
+.tb-qgis-seg.is-clear {
+  background: #10b981;
+}
+
+.tb-qgis-seg.is-marginal {
+  background: #f59e0b;
+}
+
+.tb-qgis-seg.is-dead {
+  background: #ef4444;
+}
+
+.tb-qgis-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  color: var(--lo-text-dim);
+}
+
+.tb-qgis-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tb-qgis-legend strong {
+  font-family: var(--lo-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--lo-text-bright);
+}
+
+.tb-qgis-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.tb-qgis-legend i.is-clear {
+  background: #10b981;
+}
+
+.tb-qgis-legend i.is-marginal {
+  background: #f59e0b;
+}
+
+.tb-qgis-legend i.is-dead {
+  background: #ef4444;
+}
+
+/* Tool 4: Barrier Builder Tray & Inventory Rows */
+.tb-su-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tb-su-tile,
+.tb-su-mat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 8px;
+  background: rgba(7, 9, 14, 0.72);
+  border: 1px solid var(--lo-line);
+  border-radius: var(--r-sm);
+  font-family: var(--lo-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--lo-text-dim);
+}
+
+.tb-su-tile:hover,
+.tb-su-mat:hover {
+  background: var(--lo-control);
+  color: var(--lo-text-bright);
+}
+
+.tb-su-tile.is-active,
+.tb-su-mat.is-active {
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.6);
+  color: var(--lo-text-bright);
+  font-weight: 600;
+}
+
+.tb-su-mat i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.tb-su-mat i.mat-granite {
+  background: #38bdf8;
+}
+
+.tb-su-mat i.mat-concrete {
+  background: #f59e0b;
+}
+
+.tb-su-mat i.mat-foliage {
+  background: #34d399;
+}
+
+.tb-su-extrude {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.tb-su-extrude > span {
+  font-family: var(--lo-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--lo-text-dim);
+}
+
+.tb-su-heights {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.tb-su-hbtn {
+  min-height: 26px;
+  padding: 0 8px;
+  font-family: var(--lo-mono);
+  font-size: 11px;
+  color: var(--lo-text-dim);
+  background: rgba(7, 9, 14, 0.72);
+  border: 1px solid var(--lo-line);
+  border-radius: var(--r-xs);
+}
+
+.tb-su-hbtn.is-active,
+.tb-su-hbtn:hover {
+  color: #a7f3d0;
+  border-color: rgba(52, 211, 153, 0.6);
+  background: rgba(52, 211, 153, 0.16);
+}
+
+.tb-obs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(9, 11, 16, 0.6);
+  border: 1px solid var(--lo-line-faint);
+  border-radius: var(--r-sm);
+  font-family: var(--lo-sans);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.tb-obs-row.is-selected {
+  border-color: rgba(52, 211, 153, 0.65);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.tb-obs-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.tb-obs-row-dim {
+  font-family: var(--lo-mono);
+  font-size: 10.5px;
+  color: var(--lo-text-muted);
+  margin-left: 4px;
+}
+
+#tb-pane-obstacle > .tb-group-card:has(#tb-obs-shape-select) {
+  display: none;
+}
+
 .tb-check-chip {
   cursor: pointer;
   gap: 6px;
 }
 
 .tb-advanced {
-  background: rgba(9, 11, 16, 0.5);
-  border: 1px solid var(--lo-line-faint);
-  border-radius: var(--r-sm);
+  background: var(--lo-card);
+  border: 1px solid var(--lo-line);
+  border-radius: var(--r-md);
   padding: 8px 12px;
 }
 
@@ -3360,8 +4185,8 @@ details.c2-card[open] > summary {
   align-items: center;
   justify-content: space-between;
   font-family: var(--lo-sans);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11.5px;
+  font-weight: 600;
   color: var(--lo-text-dim);
 }
 
@@ -3846,4 +4671,508 @@ details.c2-card[open] > summary {
     transition: none;
   }
 }
+
+/* ==========================================================================
+   WORKSPACE TILES — Concurrent Multi-Tool Side-by-Side Radar Overlay
+   ========================================================================== */
+
+.btn-workspace-tiles-toggle,
+.tb-btn-tiles {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-workspace-tiles-toggle.active,
+.tb-btn-tiles.active {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #e0f2fe;
+}
+
+.workspace-tiles-overlay {
+  position: absolute;
+  left: 56px;
+  right: 12px;
+  bottom: 44px;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  max-height: calc(100% - 104px);
+}
+
+.workspace-tiles-overlay[hidden] {
+  display: none;
+}
+
+.workspace-tiles-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: nowrap;
+  padding: 4px 7px;
+  background: rgba(9, 12, 18, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.ws-bar-left,
+.ws-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.ws-bar-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  padding-right: 5px;
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.ws-bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: nowrap;
+}
+
+.ws-bar-tool-btn {
+  height: 23px;
+  padding: 0 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.6);
+  color: #94a3b8;
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.ws-bar-tool-btn:hover {
+  color: #f1f5f9;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+.ws-bar-tool-btn.is-open.is-dem {
+  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.55);
+  color: #f1f5f9;
+}
+
+.ws-bar-tool-btn.is-open.is-transect {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #bae6fd;
+}
+
+.ws-bar-tool-btn.is-open.is-probe {
+  background: rgba(167, 139, 250, 0.16);
+  border-color: rgba(167, 139, 250, 0.55);
+  color: #ede9fe;
+}
+
+.ws-bar-tool-btn.is-open.is-region {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #fef3c7;
+}
+
+.ws-bar-tool-btn.is-open.is-obstacle {
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.55);
+  color: #d1fae5;
+}
+
+.ws-bar-seg {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 4px;
+  padding: 1px;
+  gap: 1px;
+}
+
+.ws-bar-seg-btn {
+  height: 22px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #94a3b8;
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ws-bar-seg-btn:hover {
+  color: #e2e8f0;
+}
+
+.ws-bar-seg-btn.is-active {
+  background: rgba(56, 189, 248, 0.2);
+  color: #e0f2fe;
+  font-weight: 600;
+}
+
+.ws-bar-close {
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.72);
+  color: #e2e8f0;
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ws-bar-close:hover {
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fecaca;
+}
+
+.workspace-tiles-grid {
+  display: grid;
+  gap: 8px;
+  align-items: end;
+  pointer-events: none;
+}
+
+.workspace-tiles-overlay[data-ws-layout="grid"] .workspace-tiles-grid {
+  max-width: 680px;
+  margin-left: auto;
+  width: 100%;
+  align-items: stretch;
+}
+
+.ws-tile {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 13, 20, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-top-width: 2px;
+  border-radius: 6px;
+  overflow: hidden;
+  min-width: 0;
+  transition: border-color 150ms ease;
+}
+
+.ws-tile.is-dem { border-top-color: #94a3b8; }
+.ws-tile.is-transect { border-top-color: #38bdf8; }
+.ws-tile.is-probe { border-top-color: #a78bfa; }
+.ws-tile.is-region { border-top-color: #f59e0b; }
+.ws-tile.is-obstacle { border-top-color: #34d399; }
+
+.ws-tile[data-active-tool="true"] {
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.ws-tile.is-transect[data-active-tool="true"] { border-top-color: #38bdf8; }
+.ws-tile.is-probe[data-active-tool="true"] { border-top-color: #a78bfa; }
+.ws-tile.is-region[data-active-tool="true"] { border-top-color: #f59e0b; }
+.ws-tile.is-obstacle[data-active-tool="true"] { border-top-color: #34d399; }
+
+.ws-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  background: rgba(15, 20, 30, 0.92);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  min-width: 0;
+}
+
+.ws-tile-title-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  padding: 2px 3px;
+  margin: 0;
+  color: #f1f5f9;
+  font-family: var(--lo-sans);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-tile-title-btn:hover {
+  color: #ffffff;
+}
+
+.ws-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: #94a3b8;
+}
+
+.ws-tile.is-transect .ws-tile-icon { color: #38bdf8; }
+.ws-tile.is-probe .ws-tile-icon { color: #a78bfa; }
+.ws-tile.is-region .ws-tile-icon { color: #f59e0b; }
+.ws-tile.is-obstacle .ws-tile-icon { color: #34d399; }
+
+.ws-tile-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-tile-status {
+  font-family: var(--lo-mono);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-tile-status.is-clear { color: #34d399; }
+.ws-tile-status.is-marginal { color: #fbbf24; }
+.ws-tile-status.is-blocked { color: #f87171; }
+.ws-tile-status.is-neutral { color: #94a3b8; }
+
+.ws-tile-controls {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.ws-tile-icon-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #94a3b8;
+  font-family: var(--lo-sans);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ws-tile-icon-btn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.14);
+  color: #f8fafc;
+}
+
+.ws-tile-icon-btn.is-close:hover {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.ws-tile-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.ws-tile[data-collapsed="true"] .ws-tile-body {
+  display: none;
+}
+
+.ws-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px 8px;
+}
+
+.ws-tile-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ws-tile-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ws-tile-hero-label {
+  font-family: var(--lo-sans);
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.ws-tile-hero-value {
+  font-family: var(--lo-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-tile-hero-value.is-clear { color: #34d399; }
+.ws-tile-hero-value.is-marginal { color: #fbbf24; }
+.ws-tile-hero-value.is-blocked { color: #f87171; }
+
+.ws-tile-meter {
+  height: 4px;
+  width: 100%;
+  background: rgba(148, 163, 184, 0.16);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ws-tile-meter-fill {
+  height: 100%;
+  background: #38bdf8;
+  transition: width 160ms ease;
+}
+
+.ws-tile-meter-fill.is-clear { background: #34d399; }
+.ws-tile-meter-fill.is-marginal { background: #f59e0b; }
+.ws-tile-meter-fill.is-blocked { background: #ef4444; }
+
+.ws-tile-covbar {
+  display: flex;
+  height: 4px;
+  width: 100%;
+  background: rgba(148, 163, 184, 0.16);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ws-cov-clear { background: #22c55e; height: 100%; }
+.ws-cov-weak { background: #f59e0b; height: 100%; }
+.ws-cov-blocked { background: #ef4444; height: 100%; }
+
+.ws-tile-grid-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.ws-tile-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ws-tile-k {
+  font-family: var(--lo-sans);
+  font-size: 10px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-tile-v {
+  font-family: var(--lo-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-tile-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.ws-tile-act {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  font-family: var(--lo-sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-tile-act:hover {
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #ffffff;
+}
+
+.ws-tile-act.is-primary {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #e0f2fe;
+  font-weight: 600;
+}
+
+.ws-tile.is-probe .ws-tile-act.is-primary {
+  background: rgba(167, 139, 250, 0.18);
+  border-color: rgba(167, 139, 250, 0.48);
+  color: #ede9fe;
+}
+
+.ws-tile.is-region .ws-tile-act.is-primary {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.48);
+  color: #fef3c7;
+}
+
+.ws-tile.is-obstacle .ws-tile-act.is-primary {
+  background: rgba(52, 211, 153, 0.18);
+  border-color: rgba(52, 211, 153, 0.48);
+  color: #d1fae5;
+}
+
 

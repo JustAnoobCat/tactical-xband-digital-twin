@@ -9,6 +9,7 @@
 
 import { ACNFlightConfig, EnvironmentConfig, MAX_ACN_WAYPOINTS, RFConfig } from '../core/config';
 import { cartesianToGeodetic } from '../core/geodesy';
+import { computeKnifeEdgeDiffractionLossDb } from '../core/rfPropagationMath';
 import { LinkBudgetEngine, MODCOD_TABLE, type LinkStatus } from '../core/linkBudget';
 import { buildLinkProfile, type LinkProfile, type LinkProfileSample } from '../core/linkProfile';
 import {
@@ -1289,6 +1290,7 @@ export interface SiteProbeInput {
   readonly targetMode: 'acn_alt' | 'ground_agl';
   readonly targetAglM?: number;
   readonly includeObstacles: boolean;
+  readonly txPowerDbm?: number;
 }
 
 export interface HorizonMaskBin {
@@ -1297,6 +1299,16 @@ export interface HorizonMaskBin {
   readonly horizonDistM: number;
   readonly peakMslM: number;
   readonly isCoverageComplete: boolean;
+}
+
+export interface ProbeSignalSummary {
+  readonly minSinrDb: number | null;
+  readonly maxSinrDb: number | null;
+  readonly meanSinrDb: number | null;
+  readonly usableCoveragePct: number;
+  readonly strongCoveragePct: number;
+  readonly marginalCoveragePct: number;
+  readonly outageCoveragePct: number;
 }
 
 export interface SiteProbeViewshedResult {
@@ -1312,7 +1324,11 @@ export interface SiteProbeViewshedResult {
   readonly nAzimuths: number;
   readonly nRings: number;
   readonly targetMode: 'acn_alt' | 'ground_agl';
+  readonly txPowerDbm: number;
   readonly statusGrid: Uint8Array;
+  readonly sinrGrid: Float32Array;
+  readonly rssiGridDbm: Float32Array;
+  readonly signalSummary: ProbeSignalSummary;
   readonly horizonMask: readonly HorizonMaskBin[];
   readonly acnAzimuthDeg: number | null;
   readonly acnElevationDeg: number | null;
@@ -1390,6 +1406,11 @@ export function computeSiteProbeViewshed(
   const stepM = Math.min(150, Math.max(100, radiusM / 200));
   const nRings = Math.max(1, Math.round(radiusM / stepM));
   const statusGrid = new Uint8Array(nAzimuths * nRings);
+  const sinrGrid = new Float32Array(nAzimuths * nRings);
+  const rssiGridDbm = new Float32Array(nAzimuths * nRings);
+  sinrGrid.fill(Number.NaN);
+  rssiGridDbm.fill(Number.NaN);
+  const txPowerDbm = Number.isFinite(input.txPowerDbm) ? (input.txPowerDbm as number) : 30.0;
   const horizonMask: HorizonMaskBin[] = [];
 
   const siteDem = sampleDemSafe(ctx.terrainEngine, input.xM, input.yM);
@@ -1434,7 +1455,19 @@ export function computeSiteProbeViewshed(
       nAzimuths,
       nRings,
       targetMode: input.targetMode,
+      txPowerDbm,
       statusGrid,
+      sinrGrid,
+      rssiGridDbm,
+      signalSummary: {
+        minSinrDb: null,
+        maxSinrDb: null,
+        meanSinrDb: null,
+        usableCoveragePct: 0,
+        strongCoveragePct: 0,
+        marginalCoveragePct: 0,
+        outageCoveragePct: 0,
+      },
       horizonMask,
       acnAzimuthDeg: null,
       acnElevationDeg: null,
@@ -1448,6 +1481,10 @@ export function computeSiteProbeViewshed(
 
   const rEff = ctx.envConfig.effectiveEarthRadiusM;
   const wavelength = ctx.rfConfig.wavelengthM;
+  const fsplConstDb = 20 * Math.log10((4 * Math.PI) / Math.max(wavelength, 1e-6));
+  // Calibrated 8 GHz X-band link budget (matching cursorProbeEngine: txPower + 22 dBi total gain, -101 dBm thermal noise floor)
+  const linkGainBudgetDbm = txPowerDbm + 22.0;
+  const noiseFloorDbm = -101.0;
   const acnAlt = ctx.acnPositionMslM?.[2] ?? 5000;
   const targetAglM = input.targetAglM ?? 2.0;
   const obstacles = input.includeObstacles ? ctx.terrainEngine.obstacleField.all : [];
@@ -1463,6 +1500,13 @@ export function computeSiteProbeViewshed(
   });
 
   const counts = [0, 0, 0, 0, 0];
+  let validSigCount = 0;
+  let sinrSum = 0;
+  let minSinrDb = Number.POSITIVE_INFINITY;
+  let maxSinrDb = Number.NEGATIVE_INFINITY;
+  let strongCount = 0;
+  let marginalCount = 0;
+  let outageCount = 0;
   const crestD = new Float64Array(32);
   const crestH = new Float64Array(32);
 
@@ -1497,9 +1541,10 @@ export function computeSiteProbeViewshed(
       const dh = (rIdx + 1) * stepM;
       const tx = input.xM + dh * ux;
       const ty = input.yM + dh * uy;
+      const cellIdx = azIdx * nRings + rIdx;
 
       if (rayLostCov) {
-        statusGrid[azIdx * nRings + rIdx] = 0;
+        statusGrid[cellIdx] = 0;
         counts[0]++;
         continue;
       }
@@ -1508,22 +1553,33 @@ export function computeSiteProbeViewshed(
       if (!tgtDem.isWithinCoverage) {
         rayCovComplete = false;
         rayLostCov = true;
-        statusGrid[azIdx * nRings + rIdx] = 0;
+        statusGrid[cellIdx] = 0;
         counts[0]++;
         continue;
       }
 
       const zTgt = input.targetMode === 'acn_alt' ? acnAlt : tgtDem.elevationM + targetAglM;
+      const dz = zTgt - observerMslM;
+      const d3D = Math.hypot(dh, dz);
       let cellStatus: ViewshedCellStatus = 1;
+      let diffLossDb = 0;
+      let obsLossDb = 0;
 
       if (stackLen > 0) {
-        const dz = zTgt - observerMslM;
-        const d3D = Math.hypot(dh, dz);
         const gamma = d3D / dh;
         const mTgt = dz / dh - dh / (2 * rEff);
 
         if (mTgt <= maxSlope) {
           cellStatus = 3;
+          // O(1) ITU-R P.526 diffraction loss from dominant blocking horizon crest
+          const d1 = Math.max(1, gamma * horizonDistM);
+          const d2 = Math.max(1, gamma * (dh - horizonDistM));
+          const bulge = (d1 * d2) / (2 * rEff);
+          const hLos = observerMslM + (horizonDistM / dh) * dz;
+          const intrusionM = peakMslM + bulge - hLos;
+          const r1 = Math.sqrt((wavelength * d1 * d2) / Math.max(d3D, 1));
+          const nu = r1 > 0 ? Math.SQRT2 * (intrusionM / r1) : 6.0;
+          diffLossDb = computeKnifeEdgeDiffractionLossDb(Math.min(40.0, Math.max(0.0, nu)));
         } else {
           let minRatio = Number.POSITIVE_INFINITY;
           for (let ci = 0; ci < stackLen; ci++) {
@@ -1539,9 +1595,17 @@ export function computeSiteProbeViewshed(
             const ratio = r1 > 0 ? hClear / r1 : hClear >= 0 ? 1 : -1;
             if (ratio < minRatio) minRatio = ratio;
           }
-          if (minRatio <= 0) cellStatus = 3;
-          else if (minRatio < 0.6) cellStatus = 2;
-          else cellStatus = 1;
+          if (minRatio <= 0) {
+            cellStatus = 3;
+            const nu = Math.min(40.0, -Math.SQRT2 * minRatio);
+            diffLossDb = computeKnifeEdgeDiffractionLossDb(nu);
+          } else if (minRatio < 0.6) {
+            cellStatus = 2;
+            const nu = -Math.SQRT2 * minRatio;
+            diffLossDb = nu > -0.78 ? computeKnifeEdgeDiffractionLossDb(nu) : 0;
+          } else {
+            cellStatus = 1;
+          }
         }
       }
 
@@ -1550,17 +1614,37 @@ export function computeSiteProbeViewshed(
           obsPos,
           [tx, ty, zTgt],
           (x, y, fraction) => {
-            const d3D = Math.hypot(dh, zTgt - observerMslM);
             const d1 = d3D * fraction;
             const d2 = d3D - d1;
             return ctx.terrainEngine.getElevation(x, y) + TerrainEngine.computeEarthBulge(d1, d2, rEff);
           },
         );
-        if (hits.length > 0) cellStatus = 4;
+        if (hits.length > 0) {
+          cellStatus = 4;
+          for (let hi = 0; hi < hits.length; hi++) {
+            const penM = Number.isFinite(hits[hi].penetrationM) ? Math.max(0, hits[hi].penetrationM) : 10;
+            obsLossDb += 22.0 + Math.min(28.0, penM * 0.35);
+          }
+        }
       }
 
-      statusGrid[azIdx * nRings + rIdx] = cellStatus;
+      const fsplDb = 20 * Math.log10(Math.max(d3D, 50.0)) + fsplConstDb;
+      const gasLossDb = 0.25 + 0.015 * (d3D * 0.001);
+      const rssiDbm = linkGainBudgetDbm - fsplDb - gasLossDb - diffLossDb - obsLossDb;
+      const sinrDb = rssiDbm - noiseFloorDbm;
+
+      statusGrid[cellIdx] = cellStatus;
+      rssiGridDbm[cellIdx] = rssiDbm;
+      sinrGrid[cellIdx] = sinrDb;
       counts[cellStatus]++;
+
+      validSigCount++;
+      sinrSum += sinrDb;
+      if (sinrDb < minSinrDb) minSinrDb = sinrDb;
+      if (sinrDb > maxSinrDb) maxSinrDb = sinrDb;
+      if (sinrDb >= 10.0) strongCount++;
+      else if (sinrDb >= 0.0) marginalCount++;
+      else outageCount++;
 
       // Update horizon mask and upper convex crest stack with (dh, tgtDem.elevationM)
       const mk = (tgtDem.elevationM - observerMslM) / dh - dh / (2 * rEff);
@@ -1610,6 +1694,7 @@ export function computeSiteProbeViewshed(
   }
 
   const totalCells = Math.max(1, nAzimuths * nRings);
+  const sigDenom = Math.max(1, validSigCount);
   return {
     siteXM: input.xM,
     siteYM: input.yM,
@@ -1623,7 +1708,19 @@ export function computeSiteProbeViewshed(
     nAzimuths,
     nRings,
     targetMode: input.targetMode,
+    txPowerDbm,
     statusGrid,
+    sinrGrid,
+    rssiGridDbm,
+    signalSummary: {
+      minSinrDb: validSigCount > 0 ? minSinrDb : null,
+      maxSinrDb: validSigCount > 0 ? maxSinrDb : null,
+      meanSinrDb: validSigCount > 0 ? sinrSum / validSigCount : null,
+      usableCoveragePct: validSigCount > 0 ? ((strongCount + marginalCount) / sigDenom) * 100 : 0,
+      strongCoveragePct: validSigCount > 0 ? (strongCount / sigDenom) * 100 : 0,
+      marginalCoveragePct: validSigCount > 0 ? (marginalCount / sigDenom) * 100 : 0,
+      outageCoveragePct: validSigCount > 0 ? (outageCount / sigDenom) * 100 : 0,
+    },
     horizonMask,
     acnAzimuthDeg,
     acnElevationDeg,

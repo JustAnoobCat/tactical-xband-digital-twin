@@ -235,17 +235,17 @@ export function drawCartographicOverlays(
   ctx.fillText('N', roseX, roseY - roseR - 3);
 
   // ==========================================================================
-  // 3. Dynamic Metric Scale Bar (Bottom-Center)
+  // 3. Dynamic Metric Scale Bar (Bottom-Right, left of Layers button)
   // ==========================================================================
   const scaleStep = computeNiceScaleBarLengthM(mpp, 120);
   const barW = scaleStep.barWidthPx;
   const barH = 5;
-  const barX = Math.round(w / 2 - barW / 2);
+  const padX = 14;
+  const padY = 16;
+  const barX = Math.max(24, Math.round(w - 146 - barW - padX));
   const barY = h - 22;
 
   // Backdrop pill
-  const padX = 14;
-  const padY = 16;
   ctx.fillStyle = 'rgba(8, 10, 13, 0.85)';
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
   ctx.lineWidth = 1;
