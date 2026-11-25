@@ -2,7 +2,7 @@ import {
   MAX_OBSTACLES, MAX_OBSTACLE_DIMENSION_M, MAX_OBSTACLE_HEIGHT_M, MIN_OBSTACLE_DIMENSION_M,
   OBSTACLE_WORLD_LIMIT_M, Obstacle, normalizeObstacle,
 } from '../core/obstacles';
-import { GROUND_NODE_IDS } from '../core/config';
+import { MAX_ACTIVE_GROUND_NODES } from '../shared/constants';
 
 export type ObstacleMapMode = 'navigate' | 'select' | 'place';
 export interface ObstructionSnapshot {
@@ -40,12 +40,14 @@ const PREDICTION_STATES = new Set([
 ]);
 
 function isValidObstructionSnapshot(value: unknown): value is readonly ObstructionSnapshot[] {
-  if (!Array.isArray(value) || value.length !== GROUND_NODE_IDS.length) return false;
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_ACTIVE_GROUND_NODES) return false;
   const seenIds = new Set<number>();
   const entriesValid = value.every((entry: unknown) => {
     if (!entry || typeof entry !== 'object') return false;
     const item = entry as Record<string, unknown>;
-    if (!Number.isInteger(item.node_id) || !GROUND_NODE_IDS.includes(item.node_id as number) ||
+    if (!Number.isInteger(item.node_id) ||
+        (item.node_id as number) < 0 ||
+        (item.node_id as number) >= MAX_ACTIVE_GROUND_NODES ||
         seenIds.has(item.node_id as number) ||
         typeof item.terrain_is_los !== 'boolean' || typeof item.obstacle_blocked !== 'boolean' ||
         !Array.isArray(item.obstacle_intersections) || typeof item.link_outage !== 'boolean' ||
@@ -66,7 +68,7 @@ function isValidObstructionSnapshot(value: unknown): value is readonly Obstructi
     if (intersectionsValid) seenIds.add(item.node_id as number);
     return intersectionsValid;
   });
-  return entriesValid && seenIds.size === GROUND_NODE_IDS.length;
+  return entriesValid && seenIds.size === value.length;
 }
 
 /** Shared spatial hit priority; node targets win, then the active spatial tool, then map pan. */

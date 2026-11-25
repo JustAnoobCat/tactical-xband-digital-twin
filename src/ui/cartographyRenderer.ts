@@ -12,7 +12,14 @@
 
 import { getLatticeCanvasPalette, type CanvasCvdMode } from './canvasTheme';
 import { geodeticToMgrs } from '../core/militaryGisEngine';
-import { cartesianToGeodetic } from '../core/geodesy';
+import {
+  cartesianToGeodetic,
+  GEODESY_ORIGIN_LAT_DEG,
+  METERS_PER_DEG_LAT,
+  METERS_PER_DEG_LON,
+} from '../core/geodesy';
+import { THEATER_BIOMES, type BiomeId } from '../core/biomePhysics';
+import { BIOME_DEM_METADATA } from '../core/terrain';
 
 const MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 
@@ -29,8 +36,49 @@ export interface CartographicOverlayParams {
   readonly metersPerPixel: number;
   readonly showMgrsGrid?: boolean;
   readonly cvdMode?: CanvasCvdMode;
+  readonly biomeId?: BiomeId;
+  readonly originLatDeg?: number;
+  readonly originLonDeg?: number;
   readonly screenToWorld?: (sx: number, sy: number) => { x: number; y: number };
   readonly worldToScreen?: (wx: number, wy: number) => { x: number; y: number };
+}
+
+function projectCartographicToGeodetic(
+  xM: number,
+  yM: number,
+  biomeId?: BiomeId,
+  originLatDeg?: number,
+  originLonDeg?: number,
+): { latDeg: number; lonDeg: number } {
+  const biomeDef = biomeId ? THEATER_BIOMES[biomeId] : undefined;
+  const biomeMeta = biomeId ? BIOME_DEM_METADATA[biomeId] : undefined;
+  const hasCustomOrigin = Number.isFinite(originLatDeg) && Number.isFinite(originLonDeg);
+
+  if (!biomeDef && !hasCustomOrigin) {
+    return cartesianToGeodetic(xM, yM);
+  }
+
+  const centerLat = hasCustomOrigin ? (originLatDeg as number) : biomeDef!.centerLatDeg;
+  const centerLon = hasCustomOrigin ? (originLonDeg as number) : biomeDef!.centerLonDeg;
+
+  if (
+    Math.abs(centerLat - GEODESY_ORIGIN_LAT_DEG) < 1e-6 &&
+    Math.abs(centerLon - 76.5) < 1e-6 &&
+    (!biomeId || biomeId === 'alpine_mountain')
+  ) {
+    return cartesianToGeodetic(xM, yM);
+  }
+
+  const mPerDegLat = biomeMeta?.halfHeightM ?? METERS_PER_DEG_LAT;
+  const mPerDegLon =
+    biomeMeta?.halfWidthM ??
+    (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
+      Math.cos((centerLat * Math.PI) / 180.0);
+
+  return {
+    latDeg: centerLat + yM / mPerDegLat,
+    lonDeg: centerLon + xM / mPerDegLon,
+  };
 }
 
 /** Predefined 1-2-5 cartographic metric steps in metres. */
@@ -97,6 +145,9 @@ export function drawCartographicOverlays(
     metersPerPixel: mpp,
     showMgrsGrid = false,
     cvdMode,
+    biomeId,
+    originLatDeg,
+    originLonDeg,
     screenToWorld,
     worldToScreen,
   } = params;
@@ -146,7 +197,7 @@ export function drawCartographicOverlays(
 
         // Sample geodetic coordinate to format MGRS tag
         try {
-          const geo = cartesianToGeodetic(gx, maxY);
+          const geo = projectCartographicToGeodetic(gx, maxY, biomeId, originLatDeg, originLonDeg);
           const mgrs = geodeticToMgrs(geo.latDeg, geo.lonDeg, 2);
           ctx.fillText(mgrs.slice(0, 6), scr.x + 3, 24);
         } catch {
@@ -165,7 +216,7 @@ export function drawCartographicOverlays(
         ctx.stroke();
 
         try {
-          const geo = cartesianToGeodetic(minX, gy);
+          const geo = projectCartographicToGeodetic(minX, gy, biomeId, originLatDeg, originLonDeg);
           const mgrs = geodeticToMgrs(geo.latDeg, geo.lonDeg, 2);
           ctx.fillText(mgrs.slice(0, 6), 8, scr.y + 3);
         } catch {

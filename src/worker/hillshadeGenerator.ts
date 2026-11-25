@@ -43,6 +43,56 @@ export interface CachedHillshadeEntry {
 }
 
 /**
+ * Computes dark-mode tactical hypsometric base RGB across the full 0 m – 6,500 m
+ * elevation range: bathymetry/coastal blue-teal at 0 m, lowland desert/plains/jungle
+ * relief from 5 m to 2,800 m, and alpine steel/granite/snow from 2,800 m to 6,500 m.
+ */
+export function computeHillshadeHypsometricRgb(z: number): [number, number, number] {
+  if (z <= 0.0) {
+    // Sea surface / bathymetry: deep coastal blue-teal
+    const tOcean = Math.max(0.0, Math.min(1.0, (z + 500.0) / 500.0));
+    return [7 + tOcean * 3, 18 + tOcean * 8, 30 + tOcean * 14];
+  }
+  if (z < 5.0) {
+    // Littoral shoreline transition (0 - 5 m)
+    const t = z / 5.0;
+    return [12 + t * 10, 30 + t * 6, 44 - t * 10];
+  }
+  if (z < 400.0) {
+    // Coastal plains, arid desert dunes, and river basins (5 - 400 m)
+    const t = (z - 5.0) / 395.0;
+    return [22 + t * 24, 36 + t * 14, 34 + t * 4];
+  }
+  if (z < 1500.0) {
+    // Dissected jungle hills & upland plateaus (400 - 1,500 m)
+    const t = (z - 400.0) / 1100.0;
+    return [46 - t * 14, 50 - t * 8, 38 + t * 6];
+  }
+  if (z < 2800.0) {
+    // Sub-alpine transition into high-mountain valleys (1,500 - 2,800 m)
+    const t = (z - 1500.0) / 1300.0;
+    return [32 - t * 18, 42 - t * 23, 44 - t * 16];
+  }
+
+  // Alpine Ladakh & Himalayan massifs (2,800 - 6,500 m)
+  const tElev = Math.max(0.0, Math.min(1.0, (z - 2800.0) / 3000.0));
+  if (tElev < 0.18) {
+    const t = tElev / 0.18;
+    return [14 + t * 6, 19 + t * 7, 28 + t * 8];
+  }
+  if (tElev < 0.55) {
+    const t = (tElev - 0.18) / 0.37;
+    return [20 + t * 18, 26 + t * 22, 36 + t * 28];
+  }
+  if (tElev < 0.85) {
+    const t = (tElev - 0.55) / 0.30;
+    return [38 + t * 24, 48 + t * 28, 64 + t * 34];
+  }
+  const tSnow = Math.max(0.0, Math.min(1.0, (z - 5350.0) / 1150.0));
+  return [62 + tSnow * 25, 76 + tSnow * 28, 98 + tSnow * 32];
+}
+
+/**
  * Dedicated hillshade generator encapsulating relief computation and caching.
  */
 export class HillshadeGenerator {
@@ -261,29 +311,10 @@ export class HillshadeGenerator {
         const dot = (nx * lx + ny * ly + nz * lz) / lenN;
         const shade = Math.max(0.22, Math.min(1.0, 0.44 + 0.56 * dot));
 
-        // Dark-mode tactical military color grading based on altitude
-        const tElev = Math.max(0.0, Math.min(1.0, (z - 2800.0) / 3000.0));
+        // Dark-mode full-range (0 m - 6,500 m) tactical hypsometric color grading
+        const [rBase, gBase, bBase] = computeHillshadeHypsometricRgb(z);
 
-        let rBase: number, gBase: number, bBase: number;
-        if (tElev < 0.18) {
-          // Low valleys: deep charcoal slate
-          const t = tElev / 0.18;
-          rBase = 14 + t * 6;  gBase = 19 + t * 7;  bBase = 28 + t * 8;
-        } else if (tElev < 0.55) {
-          // Mid-elevation slopes & ridges: tactical steel
-          const t = (tElev - 0.18) / 0.37;
-          rBase = 20 + t * 18; gBase = 26 + t * 22; bBase = 36 + t * 28;
-        } else if (tElev < 0.85) {
-          // High alpine massifs: dark granite
-          const t = (tElev - 0.55) / 0.30;
-          rBase = 38 + t * 24; gBase = 48 + t * 28; bBase = 64 + t * 34;
-        } else {
-          // Summit crests (Zanskar, Nun-Kun): subtle frosted peaks
-          const t = (tElev - 0.85) / 0.15;
-          rBase = 62 + t * 25; gBase = 76 + t * 28; bBase = 98 + t * 32;
-        }
-
-        const red = Math.min(255, Math.max(10, Math.floor(rBase * shade)));
+        const red = Math.min(255, Math.max(7, Math.floor(rBase * shade)));
         const green = Math.min(255, Math.max(14, Math.floor(gBase * shade)));
         const blue = Math.min(255, Math.max(20, Math.floor(bBase * shade)));
 

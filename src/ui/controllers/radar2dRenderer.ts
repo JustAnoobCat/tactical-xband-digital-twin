@@ -26,6 +26,7 @@
 import { createLabelPlacer, CanvasLabelPlacer } from '../canvasLabelPlacer';
 import { getLatticeCanvasPalette } from '../canvasTheme';
 import { drawCartographicOverlays } from '../cartographyRenderer';
+import type { BiomeId } from '../../core/biomePhysics';
 import { HIGHLAND_THEME } from '../workbench/chartTheme';
 import {
   computeTerrainScreenBounds,
@@ -602,11 +603,17 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
     activeLabelPlacer.reserveRect(8, Math.max(0, h - 38), 256, 30);
 
     // 4. Cartographic Overlays (Scale bar, True North, optional MGRS grid)
+    const activeBoundsForCarto = deps.getActiveTerrainBounds() as any;
+    const activeTelForCarto = deps.getLatestTelemetry();
+    const activeBiomeIdForCarto = (activeTelForCarto?.biome_id ?? activeBoundsForCarto?.biomeId) as BiomeId | undefined;
     drawCartographicOverlays(ctx, {
       width: w,
       height: h,
       metersPerPixel: 1.0 / (geometry.scale || 1.0),
       showMgrsGrid: deps.isMgrsGridActive(),
+      biomeId: activeBiomeIdForCarto,
+      originLatDeg: activeBoundsForCarto?.centerLatDeg,
+      originLonDeg: activeBoundsForCarto?.centerLonDeg,
       screenToWorld: (sx, sy) => {
         const pt = screenToWorld(sx, sy, w, h);
         return { x: pt.xM, y: pt.yM };

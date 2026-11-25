@@ -6,6 +6,7 @@
  */
 
 import type { TelemetryFrame } from '../../shared/workerProtocol';
+import { NodeTerrainState } from '../../core/trajectory';
 
 export interface BufferCountsSnapshot {
   readonly spatialCount: number;
@@ -120,10 +121,10 @@ export class DiagnosticsTracker {
     let rec = 0;
     for (let i = 0; i < nodes.length; i++) {
       const st = nodes[i].state_name;
-      if (st === 'CLEAR_LOS') clear++;
-      else if (st === 'PRE_OCCLUSION_WARNING') pre++;
-      else if (st === 'HARD_SHADOW_CUTOFF') shadow++;
-      else if (st === 'RECOVERING_EMERGENCE') rec++;
+      if (st === NodeTerrainState.NORMAL_LOS) clear++;
+      else if (st === NodeTerrainState.PRE_OCCLUSION_FLUSH) pre++;
+      else if (st === NodeTerrainState.HARD_SHADOW_CUTOFF || st === 'OCCLUDED_SHADOW') shadow++;
+      else if (st === NodeTerrainState.RE_EMERGENCE_BURST) rec++;
     }
     setEl(
       ids.lookaheadSummaryId,

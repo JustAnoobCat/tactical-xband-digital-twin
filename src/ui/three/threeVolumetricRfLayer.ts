@@ -17,6 +17,8 @@
 import * as THREE from 'three';
 import { simToThreeCoords, VolumetricRfOptions, VolumetricRfState } from './threeTypes';
 import { CanvasCvdMode } from '../canvasTheme';
+import type { NodeTelemetryItem, TelemetryFrame } from '../../shared/workerProtocol';
+import { MAX_ACTIVE_GROUND_NODES } from '../../shared/constants';
 import {
   computeFresnelEllipsoidTransform,
   computeQuadSectorLobeTransforms,
@@ -24,6 +26,7 @@ import {
   resolveFresnelStatusColor,
   DEFAULT_FRESNEL_CLEARANCE_FRACTION,
   DEFAULT_FRESNEL_VISUAL_SCALE,
+  type Vector3Tuple,
 } from './threeVolumetricRfMath';
 
 export const MAX_PREALLOCATED_ELLIPSOIDS = 16;
@@ -65,7 +68,7 @@ export class ThreeVolumetricRfLayer {
   // Pre-allocated Mesh Pools
   private readonly ellipsoidMeshes: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>[] = [];
   private readonly sectorLobeMeshes: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>[] = [];
-  private jammerDomeMesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+  private jammerDomeMesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null;
   private readonly weatherCellMeshes: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>[] = [];
 
   // Scratch objects for zero-allocation per-frame transform updates
@@ -75,6 +78,14 @@ export class ThreeVolumetricRfLayer {
   private readonly scratchMatrix = new THREE.Matrix4();
   private readonly scratchAcnSim = new THREE.Vector3();
   private readonly scratchNodeSim = new THREE.Vector3();
+  private readonly scratchWeatherList: Array<{
+    id: string | number;
+    centerWorld: Vector3Tuple;
+    radiusM: number;
+    heightM?: number;
+    rainRateMmH?: number;
+    active?: boolean;
+  }> = [];
 
   // Active counts for metrics
   private activeEllipsoidCount: number = 0;
@@ -119,20 +130,9 @@ export class ThreeVolumetricRfLayer {
     this.sharedCylinderGeo = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 24);
     this.sharedCylinderGeo.translate(0, 0.5, 0);
 
-    // 2. Pre-allocate 16 Link Fresnel Ellipsoids
+    // 2. Pre-allocate 16 Link Fresnel Ellipsoids (grows on demand up to MAX_ACTIVE_GROUND_NODES)
     for (let i = 0; i < MAX_PREALLOCATED_ELLIPSOIDS; i++) {
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0x22c55e,
-        transparent: true,
-        opacity: 0.22,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.Mesh(this.sharedSphereGeo, mat);
-      mesh.name = `fresnelEllipsoid_${i}`;
-      mesh.visible = false;
-      this.ellipsoidMeshes.push(mesh);
-      this.fresnelGroup.add(mesh);
+      this.allocateEllipsoidMesh(i);
     }
 
     // 3. Pre-allocate 4 Quad-Sector Lobes (S0, S1, S2, S3)
@@ -166,19 +166,40 @@ export class ThreeVolumetricRfLayer {
 
     // 5. Pre-allocate 4 Convective Weather Cell Cylinders
     for (let w = 0; w < MAX_PREALLOCATED_WEATHER_CELLS; w++) {
-      const wMat = new THREE.MeshBasicMaterial({
-        color: 0x06b6d4,
-        transparent: true,
-        opacity: 0.15,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.Mesh(this.sharedCylinderGeo, wMat);
-      mesh.name = `weatherCellCylinder_${w}`;
-      mesh.visible = false;
-      this.weatherCellMeshes.push(mesh);
-      this.volumeGroup.add(mesh);
+      this.allocateWeatherCellMesh(w);
     }
+  }
+
+  private allocateEllipsoidMesh(index: number): THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> {
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x22c55e,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(this.sharedSphereGeo, mat);
+    mesh.name = `fresnelEllipsoid_${index}`;
+    mesh.visible = false;
+    this.ellipsoidMeshes.push(mesh);
+    this.fresnelGroup.add(mesh);
+    return mesh;
+  }
+
+  private allocateWeatherCellMesh(index: number): THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial> {
+    const wMat = new THREE.MeshBasicMaterial({
+      color: 0x06b6d4,
+      transparent: true,
+      opacity: 0.15,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(this.sharedCylinderGeo, wMat);
+    mesh.name = `weatherCellCylinder_${index}`;
+    mesh.visible = false;
+    this.weatherCellMeshes.push(mesh);
+    this.volumeGroup.add(mesh);
+    return mesh;
   }
 
   public setOptions(options: Partial<VolumetricRfOptions>): void {
@@ -190,7 +211,7 @@ export class ThreeVolumetricRfLayer {
       for (const m of this.sectorLobeMeshes) m.visible = false;
     }
     if (this.options.showThreatVolumes === false) {
-      this.jammerDomeMesh.visible = false;
+      if (this.jammerDomeMesh) this.jammerDomeMesh.visible = false;
       for (const m of this.weatherCellMeshes) m.visible = false;
     }
   }
@@ -212,9 +233,9 @@ export class ThreeVolumetricRfLayer {
 
   /**
    * Updates all volumetric RF geometries in-place based on frame telemetry.
-   * Allocates ZERO new Three.js geometries or materials.
+   * Allocates ZERO new Three.js geometries or materials in steady state.
    */
-  public update(frame: any, context?: VolumetricRfUpdateContext): void {
+  public update(frame: TelemetryFrame | null | undefined, context?: VolumetricRfUpdateContext): void {
     if (!frame) return;
 
     // Reset active metrics
@@ -222,55 +243,51 @@ export class ThreeVolumetricRfLayer {
     this.activeLobeCount = 0;
     this.activeThreatVolumeCount = 0;
 
-    // 1. Extract authoritative ACN position
-    let acnX = 0;
-    let acnY = 0;
-    let acnZ = 5000;
-
-    if (frame.acn && Number.isFinite(frame.acn.x) && Number.isFinite(frame.acn.y)) {
-      acnX = frame.acn.x;
-      acnY = frame.acn.y;
-      acnZ = Number.isFinite(frame.acn.z) ? frame.acn.z : 5000;
-    } else if (Array.isArray(frame.acn_pos_enu) && frame.acn_pos_enu.length >= 3) {
-      acnX = frame.acn_pos_enu[0];
-      acnY = frame.acn_pos_enu[1];
-      acnZ = frame.acn_pos_enu[2];
-    } else if (Number.isFinite(frame.acn_x_m) && Number.isFinite(frame.acn_y_m)) {
-      acnX = frame.acn_x_m;
-      acnY = frame.acn_y_m;
-      acnZ = Number.isFinite(frame.acn_z_m) ? frame.acn_z_m : 5000;
-    }
+    // 1. Extract authoritative ACN position from canonical TelemetryFrame.acn_telemetry
+    const acnTel = frame.acn_telemetry;
+    const acnX = acnTel && Number.isFinite(acnTel.pos_x) ? acnTel.pos_x : 0;
+    const acnY = acnTel && Number.isFinite(acnTel.pos_y) ? acnTel.pos_y : 0;
+    const acnZ = acnTel && Number.isFinite(acnTel.pos_z) ? acnTel.pos_z : 5000;
 
     this.scratchAcnSim.set(acnX, acnY, acnZ);
     // Sim coordinates (X, Y, Z_msl) to Three root coordinates (X, Y_msl, -Y)
     const acnRootPos = simToThreeCoords(this.scratchAcnSim.x, this.scratchAcnSim.y, this.scratchAcnSim.z);
 
-    // 2. Update 3D Fresnel Ellipsoids
+    // 2. Update 3D Fresnel Ellipsoids (pre-allocated 16, grows on demand up to MAX_ACTIVE_GROUND_NODES)
     const showFresnel = this.options.showFresnel ?? true;
-    const nodes = Array.isArray(frame.nodes_telemetry) ? frame.nodes_telemetry : [];
+    const nodes: readonly NodeTelemetryItem[] = Array.isArray(frame.nodes_telemetry) ? frame.nodes_telemetry : [];
+    const targetEllipsoidCount = showFresnel ? Math.min(nodes.length, MAX_ACTIVE_GROUND_NODES) : 0;
 
-    for (let i = 0; i < MAX_PREALLOCATED_ELLIPSOIDS; i++) {
+    while (this.ellipsoidMeshes.length < targetEllipsoidCount) {
+      this.allocateEllipsoidMesh(this.ellipsoidMeshes.length);
+    }
+
+    for (let i = 0; i < this.ellipsoidMeshes.length; i++) {
       const mesh = this.ellipsoidMeshes[i];
-      if (!showFresnel || i >= nodes.length) {
+      if (!showFresnel || i >= targetEllipsoidCount) {
         mesh.visible = false;
         continue;
       }
 
       const node = nodes[i];
-      if (!node || node.is_mapped === false) {
+      if (
+        !node ||
+        node.is_coverage_complete === false ||
+        !Number.isFinite(node.x_m) ||
+        !Number.isFinite(node.y_m) ||
+        !Number.isFinite(node.z_m)
+      ) {
         mesh.visible = false;
         continue;
       }
 
-      const nx = Number.isFinite(node.x_m) ? node.x_m : 0;
-      const ny = Number.isFinite(node.y_m) ? node.y_m : 0;
-      const nz = Number.isFinite(node.z_m) ? node.z_m : 0;
-      this.scratchNodeSim.set(nx, ny, nz);
+      this.scratchNodeSim.set(node.x_m, node.y_m, node.z_m);
       const nodeRootPos = simToThreeCoords(this.scratchNodeSim.x, this.scratchNodeSim.y, this.scratchNodeSim.z);
 
-      const slantRangeM = Number.isFinite(node.slant_range_m) && node.slant_range_m > 0
-        ? node.slant_range_m
-        : nodeRootPos.distanceTo(acnRootPos);
+      const slantRangeM =
+        Number.isFinite(node.slant_range_km) && node.slant_range_km > 0
+          ? node.slant_range_km * 1000.0
+          : nodeRootPos.distanceTo(acnRootPos);
 
       const transform = computeFresnelEllipsoidTransform({
         txWorld: [acnRootPos.x, acnRootPos.y, acnRootPos.z],
@@ -295,12 +312,13 @@ export class ThreeVolumetricRfLayer {
       this.scratchMatrix.makeBasis(this.scratchVecA, this.scratchVecB, this.scratchVecC);
       mesh.quaternion.setFromRotationMatrix(this.scratchMatrix);
 
-      // Color mapping
+      // Color mapping strictly from canonical NodeTelemetryItem fields
       const isSelected = context?.selectedNodeId === node.node_id;
-      const isOutage = node.link_status === 'OUTAGE' || (Number.isFinite(node.sinr_db) && node.sinr_db < 0);
-      const clearanceRatio = Number.isFinite(node.fresnel_clearance_ratio)
-        ? node.fresnel_clearance_ratio
-        : (isOutage ? 0.0 : 1.0);
+      const isOutage = Boolean(node.link_outage);
+      const clearanceRatio =
+        Number.isFinite(node.fresnel_clearance_m) && transform.physicalMidpointRadiusM > 0
+          ? node.fresnel_clearance_m / transform.physicalMidpointRadiusM
+          : (isOutage ? 0.0 : 1.0);
 
       const colorRes = resolveFresnelStatusColor(isOutage, clearanceRatio, isSelected, context?.cvdMode);
       mesh.material.color.setHex(colorRes.hex);
@@ -314,16 +332,37 @@ export class ThreeVolumetricRfLayer {
     if (!showLobes) {
       for (const m of this.sectorLobeMeshes) m.visible = false;
     } else {
-      const headingDeg = Number.isFinite(frame.acn_heading_deg)
-        ? frame.acn_heading_deg
-        : (Number.isFinite(frame.heading_deg) ? frame.heading_deg : 0.0);
-      const pitchDeg = Number.isFinite(frame.acn_pitch_deg)
-        ? frame.acn_pitch_deg
-        : (Number.isFinite(frame.uav_pitch_deg) ? frame.uav_pitch_deg : 0.0);
-      const rollDeg = Number.isFinite(frame.acn_bank_deg)
-        ? frame.acn_bank_deg
-        : (Number.isFinite(frame.uav_roll_deg) ? frame.uav_roll_deg : 0.0);
-      const activeSectorId = typeof frame.active_sector_id === 'number' ? frame.active_sector_id : 0;
+      const headingDeg =
+        typeof frame.acn_heading_deg === 'number' && Number.isFinite(frame.acn_heading_deg)
+          ? frame.acn_heading_deg
+          : typeof acnTel?.heading_deg === 'number' && Number.isFinite(acnTel.heading_deg)
+            ? acnTel.heading_deg
+            : acnTel && Number.isFinite(acnTel.heading_rad)
+              ? (((90.0 - (acnTel.heading_rad * 180.0) / Math.PI) % 360.0) + 360.0) % 360.0
+              : 0.0;
+      const pitchDeg =
+        typeof acnTel?.pitch_deg === 'number' && Number.isFinite(acnTel.pitch_deg)
+          ? acnTel.pitch_deg
+          : typeof frame.hifi_telemetry?.uav_pitch_deg === 'number' && Number.isFinite(frame.hifi_telemetry.uav_pitch_deg)
+            ? frame.hifi_telemetry.uav_pitch_deg
+            : 0.0;
+      const rollDeg =
+        typeof frame.acn_bank_deg === 'number' && Number.isFinite(frame.acn_bank_deg)
+          ? frame.acn_bank_deg
+          : typeof acnTel?.bank_deg === 'number' && Number.isFinite(acnTel.bank_deg)
+            ? acnTel.bank_deg
+            : typeof frame.hifi_telemetry?.uav_roll_deg === 'number' && Number.isFinite(frame.hifi_telemetry.uav_roll_deg)
+              ? frame.hifi_telemetry.uav_roll_deg
+              : 0.0;
+
+      const targetNodeId = context?.selectedNodeId ?? frame.selected_node_id;
+      let activeSectorId = 0;
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i]?.node_id === targetNodeId && typeof nodes[i].active_sector_id === 'number') {
+          activeSectorId = nodes[i].active_sector_id!;
+          break;
+        }
+      }
 
       const lobeResult = computeQuadSectorLobeTransforms({
         acnWorld: [acnRootPos.x, acnRootPos.y, acnRootPos.z],
@@ -355,77 +394,77 @@ export class ThreeVolumetricRfLayer {
     // 4. Update 3D Threat & Weather Volumes
     const showVolumes = this.options.showThreatVolumes ?? true;
     if (!showVolumes) {
-      this.jammerDomeMesh.visible = false;
+      if (this.jammerDomeMesh) this.jammerDomeMesh.visible = false;
       for (const m of this.weatherCellMeshes) m.visible = false;
     } else {
-      // EW Jammer
-      let jammerCenterRoot: [number, number, number] | null = null;
+      // EW Jammer from canonical TelemetryFrame fields
+      let jammerCenterRoot: Vector3Tuple | null = null;
       let jammerActive = false;
-      let jammerRangeM = 15000;
+      let jammerPowerDbm: number | undefined;
 
-      if (frame.jammer_telemetry && Array.isArray(frame.jammer_telemetry.posEnu)) {
-        const p = frame.jammer_telemetry.posEnu;
-        const jRoot = simToThreeCoords(p[0], p[1], p[2] ?? 0);
-        jammerCenterRoot = [jRoot.x, jRoot.y, jRoot.z];
-        jammerActive = Boolean(frame.jammer_telemetry.active ?? true);
-        if (Number.isFinite(frame.jammer_telemetry.rangeM)) jammerRangeM = frame.jammer_telemetry.rangeM;
-      } else if (frame.threats && Array.isArray(frame.threats.jammerPosEnu)) {
-        const p = frame.threats.jammerPosEnu;
-        const jRoot = simToThreeCoords(p[0], p[1], p[2] ?? 0);
-        jammerCenterRoot = [jRoot.x, jRoot.y, jRoot.z];
-        jammerActive = true;
+      if (frame.jammer_enabled && Array.isArray(frame.jammer_pos_enu) && frame.jammer_pos_enu.length >= 2) {
+        const p = frame.jammer_pos_enu;
+        if (Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+          const jRoot = simToThreeCoords(p[0], p[1], Number.isFinite(p[2]) ? p[2] : 0);
+          jammerCenterRoot = [jRoot.x, jRoot.y, jRoot.z];
+          jammerActive = true;
+          jammerPowerDbm = typeof frame.jammer_eirp_dbm === 'number' && Number.isFinite(frame.jammer_eirp_dbm)
+            ? frame.jammer_eirp_dbm
+            : undefined;
+        }
       }
 
-      // Weather cells
-      const weatherList: Array<{
-        id: string | number;
-        centerWorld: [number, number, number];
-        radiusM: number;
-        heightM?: number;
-        rainRateMmH?: number;
-        active?: boolean;
-      }> = [];
-
-      if (Array.isArray(frame.weather_cells)) {
-        for (const wc of frame.weather_cells) {
-          if (Array.isArray(wc.posEnu) && wc.posEnu.length >= 2) {
-            const wRoot = simToThreeCoords(wc.posEnu[0], wc.posEnu[1], wc.posEnu[2] ?? 0);
-            weatherList.push({
-              id: wc.id ?? weatherList.length,
-              centerWorld: [wRoot.x, wRoot.y, wRoot.z],
-              radiusM: wc.radius_m ?? 5000,
-              heightM: wc.height_m ?? 6000,
-              rainRateMmH: wc.rain_rate_mm_h ?? 10,
-              active: wc.active ?? true,
-            });
-          }
+      // Weather cells from canonical TelemetryFrame.weather_cells
+      this.scratchWeatherList.length = 0;
+      if (Array.isArray(frame.weather_cells) && frame.weather_cells.length > 0) {
+        const cellCount = Math.min(frame.weather_cells.length, MAX_ACTIVE_GROUND_NODES);
+        for (let i = 0; i < cellCount; i++) {
+          const wc = frame.weather_cells[i];
+          if (!wc || !Number.isFinite(wc.center_x_m) || !Number.isFinite(wc.center_y_m)) continue;
+          const wRoot = simToThreeCoords(wc.center_x_m, wc.center_y_m, 0);
+          this.scratchWeatherList.push({
+            id: wc.id,
+            centerWorld: [wRoot.x, wRoot.y, wRoot.z],
+            radiusM: Number.isFinite(wc.radius_m) && wc.radius_m > 0 ? wc.radius_m : 5000,
+            heightM: 6000,
+            rainRateMmH: Number.isFinite(wc.peak_rain_mmh) ? wc.peak_rain_mmh : 0,
+            active: true,
+          });
         }
       }
 
       const threatData = computeThreatAndWeatherVolumes({
-        jammer: jammerCenterRoot ? { active: jammerActive, centerWorld: jammerCenterRoot, rangeM: jammerRangeM } : undefined,
-        weatherCells: weatherList,
+        jammer: jammerCenterRoot
+          ? { active: jammerActive, centerWorld: jammerCenterRoot, powerDbm: jammerPowerDbm }
+          : undefined,
+        weatherCells: this.scratchWeatherList,
       });
 
-      if (threatData.jammerDome && threatData.jammerDome.active) {
-        this.jammerDomeMesh.position.set(
-          threatData.jammerDome.centerWorld[0],
-          threatData.jammerDome.centerWorld[1],
-          threatData.jammerDome.centerWorld[2]
-        );
-        this.jammerDomeMesh.scale.set(
-          threatData.jammerDome.radiusWorld,
-          threatData.jammerDome.heightWorld,
-          threatData.jammerDome.radiusWorld
-        );
-        this.jammerDomeMesh.material.opacity = threatData.jammerDome.opacity;
-        this.jammerDomeMesh.visible = true;
-        this.activeThreatVolumeCount++;
-      } else {
-        this.jammerDomeMesh.visible = false;
+      if (this.jammerDomeMesh) {
+        if (threatData.jammerDome && threatData.jammerDome.active) {
+          this.jammerDomeMesh.position.set(
+            threatData.jammerDome.centerWorld[0],
+            threatData.jammerDome.centerWorld[1],
+            threatData.jammerDome.centerWorld[2]
+          );
+          this.jammerDomeMesh.scale.set(
+            threatData.jammerDome.radiusWorld,
+            threatData.jammerDome.heightWorld,
+            threatData.jammerDome.radiusWorld
+          );
+          this.jammerDomeMesh.material.opacity = threatData.jammerDome.opacity;
+          this.jammerDomeMesh.visible = true;
+          this.activeThreatVolumeCount++;
+        } else {
+          this.jammerDomeMesh.visible = false;
+        }
       }
 
-      for (let w = 0; w < MAX_PREALLOCATED_WEATHER_CELLS; w++) {
+      while (this.weatherCellMeshes.length < threatData.weatherCells.length) {
+        this.allocateWeatherCellMesh(this.weatherCellMeshes.length);
+      }
+
+      for (let w = 0; w < this.weatherCellMeshes.length; w++) {
         const mesh = this.weatherCellMeshes[w];
         if (w < threatData.weatherCells.length && threatData.weatherCells[w].active) {
           const wc = threatData.weatherCells[w];
@@ -464,7 +503,7 @@ export class ThreeVolumetricRfLayer {
 
     if (this.jammerDomeMesh) {
       this.jammerDomeMesh.material.dispose();
-      (this.jammerDomeMesh as any) = null;
+      this.jammerDomeMesh = null;
     }
 
     for (const m of this.weatherCellMeshes) {

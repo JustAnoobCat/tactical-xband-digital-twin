@@ -7,6 +7,7 @@
  */
 
 import type { LinkProfile, LinkProfileSample } from '../../core/linkProfile';
+import { NodeTerrainState } from '../../core/trajectory';
 import type { Point2D } from '../../shared/types';
 import { HIGHLAND_THEME } from './chartTheme';
 import type { RadarLabelPlacer } from './radarLabelLayout';
@@ -53,7 +54,7 @@ export interface SignalQualityNodeDatum {
   readonly screenX: number;
   readonly screenY: number;
   readonly snrDb: number | null;
-  readonly stateName: string | null | undefined;
+  readonly stateName: NodeTerrainState | string | null | undefined;
   readonly isOutage: boolean;
   readonly isBlocked: boolean;
   readonly isSelected: boolean;
@@ -524,9 +525,13 @@ export function renderRadarSignalQualityRings(
   ctx.save();
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
-    const isCritical = n.isOutage || n.isBlocked || n.stateName === 'HARD_SHADOW_CUTOFF';
-    const isPreOcclusion = n.stateName === 'PRE_OCCLUSION_WARNING';
-    const isRecovering = n.stateName === 'RECOVERING_EMERGENCE';
+    const isCritical =
+      n.isOutage ||
+      n.isBlocked ||
+      n.stateName === NodeTerrainState.HARD_SHADOW_CUTOFF ||
+      n.stateName === 'OCCLUDED_SHADOW';
+    const isPreOcclusion = n.stateName === NodeTerrainState.PRE_OCCLUSION_FLUSH;
+    const isRecovering = n.stateName === NodeTerrainState.RE_EMERGENCE_BURST;
 
     const radius = n.isSelected ? 17 : 13;
     const effectiveAlpha = isCritical ? Math.max(n.alpha, 0.92) : n.alpha;

@@ -26,6 +26,7 @@ import {
 import { ThreeSceneManager } from '../ui/three/sceneManager';
 import { MAP_LINK_STYLES } from '../ui/mapLinkStyles';
 import { LinkCommunicationStatus } from '../core/linkStatusClassifier';
+import { MCP_ID } from '../shared/constants';
 
 // Mock DOM container and WebGL setup for headless Node testing
 function setupMockDomEnvironment(): {
@@ -234,7 +235,7 @@ function generateMockTelemetryFrame(overrides?: Partial<any>): any {
   // 16 tactical nodes realistically dispersed in Ladakh
   const nodes = [];
   for (let i = 0; i < 16; i++) {
-    const isMcp = i === 0;
+    const isMcp = i === MCP_ID;
     nodes.push({
       node_id: i,
       name: isMcp ? 'MCP' : `S${i}`,
@@ -483,8 +484,8 @@ function runThreeEntitiesVerification(): void {
       assert.strictEqual(item.group.position.y, nodeData.y_m, `Node ${i} Y must match telemetry`);
       assert.strictEqual(item.group.position.z, nodeData.z_m, `Node ${i} Z must match terrain MSL + AGL`);
 
-      if (i === 0) {
-        assert.strictEqual(item.isMcp, true, 'Node 0 must be flagged as MCP');
+      if (i === MCP_ID) {
+        assert.strictEqual(item.isMcp, true, `Node ${MCP_ID} must be flagged as MCP`);
         assert.strictEqual(nodeData.agl_m, 10.0, 'MCP AGL must be 10.0m');
       } else {
         assert.strictEqual(item.isMcp, false, `Node ${i} must be a soldier terminal`);
@@ -492,7 +493,7 @@ function runThreeEntitiesVerification(): void {
       }
     }
 
-    console.log('  16 terminals verified: MCP (Node 0) and Soldiers (Nodes 1-15) positioned with authoritative AGL.');
+    console.log(`  16 terminals verified: MCP (Node ${MCP_ID}) and Soldiers (Nodes 0-14) positioned with authoritative AGL.`);
   }
 
   // --------------------------------------------------------------------------
@@ -975,7 +976,7 @@ function runThreeEntitiesVerification(): void {
     assert.strictEqual(solGeo.parameters.height, 2.0, 'Soldier mast height must be authentic 2.0m (1x physical scale)');
     assert.strictEqual(solGeo.parameters.radius, 0.6, 'Soldier base radius must be authentic 0.6m (1x physical scale)');
 
-    const mcpItem = em.getNodeItem(0)!;
+    const mcpItem = em.getNodeItem(MCP_ID)!;
     assert.strictEqual(mcpItem.isMcp, true);
     const mcpDishGeo = mcpItem.markerMesh.geometry as THREE.SphereGeometry;
     assert.strictEqual(mcpDishGeo.parameters.radius, 1.2, 'MCP dish radius must be authentic 1.2m (1x physical scale)');
@@ -1003,7 +1004,7 @@ function runThreeEntitiesVerification(): void {
         `Soldier marker width must be exactly 18 px at ${dist}m, got ${measuredPxX}`
       );
 
-      const mcpSprite = em.getNodeItem(0)!.markerSprite;
+      const mcpSprite = em.getNodeItem(MCP_ID)!.markerSprite;
       const mcpPxY = (mcpSprite.scale.y * vH) / (2.0 * tanHalfFov);
       assert.ok(
         Math.abs(mcpPxY - 24.0) < 1e-4,
@@ -1149,9 +1150,9 @@ function runThreeEntitiesVerification(): void {
       'Selected node label must be visible at overview distance'
     );
 
-    // MCP (Node 0) must display label
+    // MCP (Node 15) must display label
     assert.strictEqual(
-      em.getNodeItem(0)!.callsignSprite.visible,
+      em.getNodeItem(MCP_ID)!.callsignSprite.visible,
       true,
       'MCP label must be visible at overview distance'
     );
@@ -1184,11 +1185,11 @@ function runThreeEntitiesVerification(): void {
     // 6b. Terrain Occlusion of Elevated Markers (3 Cases: Crest below marker, Crest above both, Crest off-axis)
     {
       const testFrame = generateMockTelemetryFrame();
-      testFrame.nodes_telemetry[0].x_m = 0;
-      testFrame.nodes_telemetry[0].y_m = 0;
-      testFrame.nodes_telemetry[0].terrain_elevation_msl_m = 3500.0;
-      testFrame.nodes_telemetry[0].z_m = 3510.0;
-      testFrame.nodes_telemetry[0].is_coverage_complete = true;
+      testFrame.nodes_telemetry[MCP_ID].x_m = 0;
+      testFrame.nodes_telemetry[MCP_ID].y_m = 0;
+      testFrame.nodes_telemetry[MCP_ID].terrain_elevation_msl_m = 3500.0;
+      testFrame.nodes_telemetry[MCP_ID].z_m = 3510.0;
+      testFrame.nodes_telemetry[MCP_ID].is_coverage_complete = true;
       em.updateFromTelemetry(testFrame);
 
       // Camera at (0, 3700, 10000) looking at (0, 3500, 0)
@@ -1211,17 +1212,17 @@ function runThreeEntitiesVerification(): void {
       em.updateLOD(camera, vW, vH, ridge1);
 
       assert.strictEqual(
-        em.isNodeContactOccluded(0),
+        em.isNodeContactOccluded(MCP_ID),
         true,
         'Case 1: Ridge crest below elevated marker ray but above contact ray must occlude node contact'
       );
       assert.strictEqual(
-        em.getNodeItem(0)!.markerSprite.visible,
+        em.getNodeItem(MCP_ID)!.markerSprite.visible,
         false,
         'Case 1: Occluded node marker sprite must be hidden'
       );
       assert.strictEqual(
-        em.getNodeItem(0)!.selectionReticle.visible,
+        em.getNodeItem(MCP_ID)!.selectionReticle.visible,
         false,
         'Case 1: Occluded node selection reticle must be hidden'
       );
@@ -1236,12 +1237,12 @@ function runThreeEntitiesVerification(): void {
       em.updateLOD(camera, vW, vH, ridge2);
 
       assert.strictEqual(
-        em.isNodeContactOccluded(0),
+        em.isNodeContactOccluded(MCP_ID),
         true,
         'Case 2: Ridge crest above both rays must occlude node contact'
       );
       assert.strictEqual(
-        em.getNodeItem(0)!.markerSprite.visible,
+        em.getNodeItem(MCP_ID)!.markerSprite.visible,
         false,
         'Case 2: Occluded node marker sprite must be hidden'
       );
@@ -1255,12 +1256,12 @@ function runThreeEntitiesVerification(): void {
       em.updateLOD(camera, vW, vH, ridge3);
 
       assert.strictEqual(
-        em.isNodeContactOccluded(0),
+        em.isNodeContactOccluded(MCP_ID),
         false,
         'Case 3: Off-axis ridge crest must NOT occlude node contact'
       );
       assert.strictEqual(
-        em.getNodeItem(0)!.markerSprite.visible,
+        em.getNodeItem(MCP_ID)!.markerSprite.visible,
         true,
         'Case 3: Unoccluded node marker sprite must be visible'
       );

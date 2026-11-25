@@ -90,8 +90,8 @@ console.log('[2/8] Verifying edit eligibility under spatial lock, history mode, 
   assert.equal(acnRes.canEdit, false);
   assert.ok(acnRes.reason?.includes('ACN altitude is configured separately'));
 
-  // Out of range node ID
-  const invalidNodeRes = checkAglEditEligibility({ spatialLocked: false, isHistorical: false, nodeId: 16 });
+  // Out of range node ID (>= MAX_ACTIVE_GROUND_NODES)
+  const invalidNodeRes = checkAglEditEligibility({ spatialLocked: false, isHistorical: false, nodeId: 128 });
   assert.equal(invalidNodeRes.canEdit, false);
 
   console.log('  -> PASS: Spatial lock, historical mode, and node isolation rules strictly enforced.');

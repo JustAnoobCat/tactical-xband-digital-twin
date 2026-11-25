@@ -427,15 +427,42 @@ export interface AiNodeRecoveryRecommendation {
 }
 
 /**
- * Derives MODCOD name and bitrate from SINR using standard DVB-S2X / 3GPP Rel-17 table.
+ * Resolves a ground node's absolute MSL altitude cleanly across all biomes (0 m coastal
+ * through 5,000+ m alpine): uses explicit pos[2] whenever it is at or above terrain,
+ * falling back to groundElevM + defaultAglM only when pos[2] is unset or sub-terrain.
  */
-function getModcodFromSinr(sinrDb: number): { modcodName: string; bitrateMbps: number } {
+function resolveGroundNodeMslAltitude(
+  pos: Position3D,
+  groundElevM: number,
+  defaultAglM: number = 2.0
+): number {
+  const z = pos[2];
+  if (!Number.isFinite(groundElevM)) {
+    return Number.isFinite(z) ? z : defaultAglM;
+  }
+  if (Number.isFinite(z) && z >= groundElevM - 0.5) {
+    return z;
+  }
+  return groundElevM + defaultAglM;
+}
+
+/**
+ * Derives MODCOD name and bitrate from SINR using standard DVB-S2X / 3GPP Rel-17 table.
+ * Defaults to RFConfig canonical 5.0 MHz channel bandwidth when omitted.
+ */
+export function getModcodFromSinr(
+  sinrDb: number,
+  channelBandwidthHz: number = 5.0e6
+): { modcodName: string; bitrateMbps: number } {
+  const bwMhz = Number.isFinite(channelBandwidthHz) && channelBandwidthHz > 0
+    ? channelBandwidthHz / 1.0e6
+    : 5.0;
   for (let i = 0; i < MODCOD_TABLE.length; i++) {
     const entry = MODCOD_TABLE[i];
     if (sinrDb >= entry.minSnrDb) {
       return {
         modcodName: entry.name,
-        bitrateMbps: entry.spectralEfficiencyBpsHz * 1.0, // 1.0 MHz channel bandwidth
+        bitrateMbps: entry.spectralEfficiencyBpsHz * bwMhz,
       };
     }
   }
@@ -487,7 +514,7 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
 
   // 1. Early-exit if current link is already optimal
   if (!currentIsOutage && currentSinrDb >= 8.0) {
-    const { modcodName, bitrateMbps } = getModcodFromSinr(currentSinrDb);
+    const { modcodName, bitrateMbps } = getModcodFromSinr(currentSinrDb, rf.channelBandwidthHz);
     const maxAllowedSlopeDeg = getMaxPassableSlopeDeg(nodeType);
     return {
       nodeId,
@@ -860,7 +887,7 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
     };
   }
 
-  const { modcodName, bitrateMbps } = getModcodFromSinr(bestCandidate.candSinrDb);
+  const { modcodName, bitrateMbps } = getModcodFromSinr(bestCandidate.candSinrDb, rf.channelBandwidthHz);
 
   const walkabilityTag = `[WALKABLE: Max Slope ${bestCandidate.maxStepSlopeDeg.toFixed(1)}° ≤ ${bestCandidate.maxAllowedSlopeDeg.toFixed(0)}°${bestCandidate.detouredAroundObstacle ? ' · Detoured Around Barrier' : ''}]`;
   const defiladeTag = bestCandidate.isEwDefiladeSpot
@@ -1040,7 +1067,8 @@ export function evaluateAiBuddyRelayRescue(
   },
   allSquadNodes: readonly SquadNodeForBuddyEval[],
   getElevationAt: (x: number, y: number) => number,
-  rfFreqHz: number = DEFAULT_AI_RF_FREQ_HZ
+  rfFreqHz: number = DEFAULT_AI_RF_FREQ_HZ,
+  channelBandwidthHz: number = 5.0e6
 ): AiBuddyRelayResult {
   const currentDirectRate = targetNode.isOutage ? 0.0 : (targetNode.directBitrateMbps ?? 0.0);
   let bestHarmonicRate = currentDirectRate;
@@ -1056,7 +1084,7 @@ export function evaluateAiBuddyRelayRescue(
   const targetX = targetNode.position[0];
   const targetY = targetNode.position[1];
   const targetElev = getElevationAt(targetX, targetY);
-  const targetZ = targetNode.position[2] < 500.0 ? targetElev + 2.0 : targetNode.position[2];
+  const targetZ = resolveGroundNodeMslAltitude(targetNode.position, targetElev, 2.0);
 
   for (let i = 0; i < allSquadNodes.length; i++) {
     const squadmate = allSquadNodes[i];
@@ -1072,7 +1100,7 @@ export function evaluateAiBuddyRelayRescue(
     if (distHorizM < 50.0 || distHorizM > 4500.0) continue;
 
     const squadElev = getElevationAt(sx, sy);
-    const sz = squadmate.position[2] < 500.0 ? squadElev + 2.0 : squadmate.position[2];
+    const sz = resolveGroundNodeMslAltitude(squadmate.position, squadElev, 2.0);
 
     // Peer-to-peer 8.0 GHz terrestrial link: 30 dBm TX power (Soldier radio), 3 dBi TX/RX antennas
     const peerLink = evaluateFastLinkSinr(
@@ -1087,7 +1115,7 @@ export function evaluateAiBuddyRelayRescue(
     );
 
     if (peerLink.sinrDb < -2.85) continue; // Peer link in outage
-    const { bitrateMbps: peerRateMbps } = getModcodFromSinr(peerLink.sinrDb);
+    const { bitrateMbps: peerRateMbps } = getModcodFromSinr(peerLink.sinrDb, channelBandwidthHz);
     if (peerRateMbps <= 0.0) continue;
 
     // Decode-and-Forward harmonic capacity: (R_1 * R_2) / (R_1 + R_2)
@@ -1160,7 +1188,7 @@ export function computeEwDefiladeShieldDb(
   }
 
   const siteElev = getElevationAt(sitePos[0], sitePos[1]);
-  const siteZ = sitePos[2] < 500.0 ? siteElev + 2.0 : sitePos[2];
+  const siteZ = resolveGroundNodeMslAltitude(sitePos, siteElev, 2.0);
   const jammerGroundZ = getElevationAt(jammerPos[0], jammerPos[1]);
   const jammerZ = Math.max(jammerPos[2], jammerGroundZ + 5.0);
   const dz = jammerZ - siteZ;
@@ -1232,7 +1260,7 @@ export function computeAiSkyShepherdUavOffset(
   const pinnedX = pinnedNodePos[0];
   const pinnedY = pinnedNodePos[1];
   const pinnedElev = getElevationAt(pinnedX, pinnedY);
-  const pinnedZ = pinnedNodePos[2] < 500.0 ? pinnedElev + 2.0 : pinnedNodePos[2];
+  const pinnedZ = resolveGroundNodeMslAltitude(pinnedNodePos, pinnedElev, 2.0);
 
   const dxPinned = pinnedX - currentAcnCenter[0];
   const dyPinned = pinnedY - currentAcnCenter[1];
@@ -1393,7 +1421,7 @@ export function predictNodeBlackoutCountdown(
   }
 
   const nodeElev = getElevationAt(nodePos[0], nodePos[1]);
-  const nodeZ = nodePos[2] < 500.0 ? nodeElev + 2.0 : nodePos[2];
+  const nodeZ = resolveGroundNodeMslAltitude(nodePos, nodeElev, 2.0);
   const checkTimesS = [3.0, 6.0, 9.0, 12.0, 15.0];
 
   let firstOutageS: number | null = null;

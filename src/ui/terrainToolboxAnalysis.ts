@@ -8,11 +8,18 @@
  */
 
 import { ACNFlightConfig, EnvironmentConfig, MAX_ACN_WAYPOINTS, RFConfig } from '../core/config';
-import { cartesianToGeodetic } from '../core/geodesy';
+import {
+  cartesianToGeodetic,
+  GEODESY_ORIGIN_LAT_DEG,
+  METERS_PER_DEG_LAT,
+  METERS_PER_DEG_LON,
+} from '../core/geodesy';
+import type { BiomeId } from '../core/biomePhysics';
 import { computeKnifeEdgeDiffractionLossDb } from '../core/rfPropagationMath';
 import { LinkBudgetEngine, MODCOD_TABLE, type LinkStatus } from '../core/linkBudget';
 import { buildLinkProfile, type LinkProfile, type LinkProfileSample } from '../core/linkProfile';
 import {
+  BIOME_DEM_METADATA,
   DEFAULT_GRID_SIZE,
   TerrainEngine,
   type Position3D,
@@ -422,6 +429,62 @@ export function computeSlopeAndRidgeGrid(engine: TerrainEngine): SlopeAndRidgeGr
   return { width, height, bounds, slopeDeg, ridgeTpiM, maxSlopeDeg, maxAbsTpiM };
 }
 
+export type GeodeticOriginInput =
+  | TerrainEngine
+  | BiomeId
+  | {
+      readonly centerLatDeg: number;
+      readonly centerLonDeg: number;
+      readonly halfWidthM?: number;
+      readonly halfHeightM?: number;
+    };
+
+function projectToolboxToGeodetic(
+  origin: GeodeticOriginInput | null | undefined,
+  xM: number,
+  yM: number,
+): { readonly latDeg: number; readonly lonDeg: number } {
+  if (!origin) {
+    return cartesianToGeodetic(xM, yM);
+  }
+  if (typeof origin === 'string') {
+    if (origin === 'alpine_mountain') {
+      return cartesianToGeodetic(xM, yM);
+    }
+    const meta = BIOME_DEM_METADATA[origin];
+    if (meta) {
+      return {
+        latDeg: meta.centerLatDeg + yM / meta.halfHeightM,
+        lonDeg: meta.centerLonDeg + xM / meta.halfWidthM,
+      };
+    }
+    return cartesianToGeodetic(xM, yM);
+  }
+  if (typeof (origin as TerrainEngine).worldToLatLon === 'function') {
+    return (origin as TerrainEngine).worldToLatLon(xM, yM);
+  }
+  const obj = origin as {
+    readonly centerLatDeg: number;
+    readonly centerLonDeg: number;
+    readonly halfWidthM?: number;
+    readonly halfHeightM?: number;
+  };
+  if (Number.isFinite(obj.centerLatDeg) && Number.isFinite(obj.centerLonDeg)) {
+    const mLat = Number.isFinite(obj.halfHeightM) && (obj.halfHeightM as number) > 0
+      ? (obj.halfHeightM as number)
+      : METERS_PER_DEG_LAT;
+    const mLon = Number.isFinite(obj.halfWidthM) && (obj.halfWidthM as number) > 0
+      ? (obj.halfWidthM as number)
+      : (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
+          Math.cos((obj.centerLatDeg * Math.PI) / 180.0);
+    return {
+      latDeg: obj.centerLatDeg + yM / mLat,
+      lonDeg: obj.centerLonDeg + xM / mLon,
+    };
+  }
+  return cartesianToGeodetic(xM, yM);
+}
+
 function computeSpecularPoint(
   segmentIndex: number,
   samples: readonly LinkProfileSample[],
@@ -433,6 +496,7 @@ function computeSpecularPoint(
   zB: number,
   wavelengthM: number,
   d3D: number,
+  terrainEngine?: TerrainEngine | null,
 ): SpecularReflectionPoint | null {
   const n = samples.length;
   if (n < 3 || d3D <= 0) return null;
@@ -502,7 +566,7 @@ function computeSpecularPoint(
   const frac = s.horizontalGroundDistanceM / totalHoriz;
   const xM = startX + frac * (endX - startX);
   const yM = startY + frac * (endY - startY);
-  const geo = cartesianToGeodetic(xM, yM);
+  const geo = projectToolboxToGeodetic(terrainEngine, xM, yM);
 
   const dA = s.horizontalGroundDistanceM;
   const dB = totalHoriz - dA;
@@ -717,7 +781,7 @@ export function evaluateTransect(
         const along = profile.samples.length > 1 ? i / (profile.samples.length - 1) : 0;
         const xM = start.xM + along * dx;
         const yM = start.yM + along * dy;
-        const geo = cartesianToGeodetic(xM, yM);
+        const geo = projectToolboxToGeodetic(ctx.terrainEngine, xM, yM);
 
         const d1M = ps.slantDistanceM;
         const d2M = d3D - d1M;
@@ -937,6 +1001,7 @@ export function evaluateTransect(
             end.antennaMslM,
             ctx.rfConfig.wavelengthM,
             d3D,
+            ctx.terrainEngine,
           )
         : null;
 
@@ -1183,7 +1248,7 @@ export function analyzeRegionZonal(
                 false,
               );
               if (!bestRelayCoord || st.snrDb > bestRelayCoord.snrDb) {
-                const geo = cartesianToGeodetic(xM, yM);
+                const geo = projectToolboxToGeodetic(ctx.terrainEngine, xM, yM);
                 bestRelayCoord = {
                   xM,
                   yM,
@@ -1271,9 +1336,10 @@ export function analyzeRegionZonal(
 export function exportRegionGeoJson(
   region: ToolboxRegionInput,
   stats: RegionZonalStats,
+  geodeticOrigin?: GeodeticOriginInput,
 ): string {
   const ring = region.points.map((p) => {
-    const geo = cartesianToGeodetic(p.x, p.y);
+    const geo = projectToolboxToGeodetic(geodeticOrigin, p.x, p.y);
     return [geo.lonDeg, geo.latDeg];
   });
   if (ring.length >= 3) ring.push(ring[0]);
@@ -1493,7 +1559,7 @@ export function computeSiteProbeViewshed(
   const horizonMask: HorizonMaskBin[] = [];
 
   const siteDem = sampleDemSafe(ctx.terrainEngine, input.xM, input.yM);
-  const siteGeo = cartesianToGeodetic(input.xM, input.yM);
+  const siteGeo = projectToolboxToGeodetic(ctx.terrainEngine, input.xM, input.yM);
   const observerMslM = siteDem.isWithinCoverage ? siteDem.elevationM + input.observerAglM : Number.NaN;
 
   let acnAzimuthDeg: number | null = null;
@@ -2325,7 +2391,7 @@ export function findJointRelayBridge(
         validCandidateCount++;
         if (bottleneckSnrDb > bestScore) {
           bestScore = bottleneckSnrDb;
-          const geo = cartesianToGeodetic(xM, yM);
+          const geo = projectToolboxToGeodetic(ctx.terrainEngine, xM, yM);
           optimalBridge = {
             xM,
             yM,

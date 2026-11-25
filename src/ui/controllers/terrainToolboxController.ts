@@ -648,7 +648,9 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
       $('tb-export-geojson-btn')?.addEventListener('click', () => {
         const activeRegion = terrainRegions.find(r => r.id === selectedRegionId) || terrainRegions[terrainRegions.length - 1] || null;
         if (!activeRegion || !zonalStats) return;
-        const payload = exportRegionGeoJson(activeRegion, zonalStats);
+        const te = deps.getTerrainEngine();
+        const geoOrigin = te ?? deps.getTelemetry()?.biome_id;
+        const payload = exportRegionGeoJson(activeRegion, zonalStats, geoOrigin);
         if ((win as any)?.downloadTextBlob) {
           (win as any).downloadTextBlob('terrain-region-zonal.geojson', payload, 'application/geo+json;charset=utf-8');
         } else if (doc) {
@@ -897,7 +899,10 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
     }
 
     if (toolMode === 'probe') {
-      const geo = cartesianToGeodetic(pt.x, pt.y);
+      const te = deps.getTerrainEngine();
+      const geo = typeof te?.worldToLatLon === 'function'
+        ? te.worldToLatLon(pt.x, pt.y)
+        : cartesianToGeodetic(pt.x, pt.y);
       probeSite = { xM: pt.x, yM: pt.y, lng: geo.lonDeg, lat: geo.latDeg };
       toolMode = 'idle';
       recomputeProbeAnalysis();

@@ -371,7 +371,7 @@ for (const malformedSnapshot of [
   [],
   duplicateSnapshot,
   unexpectedSnapshot,
-  acceptedSnapshot.slice(1),
+  withNode4Patch({ node_id: -1 }),
   withNode4Patch({ bitrate_bps: 'fast' }),
   withNode4Patch({ predicted_state: 'UNKNOWN_STATE' }),
   withNode4Patch({ obstacle_intersections: [{ obstacleId: snapshotObstacleId, entryFraction: 0.8, exitFraction: 0.2, penetrationM: 2 }] }),

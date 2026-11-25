@@ -22,6 +22,7 @@ import {
 } from '../../core/linkStatusClassifier';
 import { MAP_LINK_STYLES } from '../mapLinkStyles';
 import { HIGHLAND_THEME } from '../workbench/chartTheme';
+import { MAX_ACTIVE_GROUND_NODES, MCP_ID } from '../../shared/constants';
 
 /**
  * Assumed physical dimensions for tactical equipment (strictly 1x scale).
@@ -451,16 +452,17 @@ export class TacticalEntityManager {
   private readonly scratchVec2A = new THREE.Vector2();
   private readonly scratchVec2B = new THREE.Vector2();
 
-  // Contact point terrain occlusion cache
+  // Contact point terrain occlusion cache (indexed by nodeId up to MAX_ACTIVE_GROUND_NODES)
   private readonly lastOcclusionCameraPosition = new THREE.Vector3();
   private readonly lastOcclusionCameraQuaternion = new THREE.Quaternion();
-  private readonly nodeContactOccluded: boolean[] = new Array(16).fill(false);
+  private readonly nodeContactOccluded: boolean[] = new Array(MAX_ACTIVE_GROUND_NODES).fill(false);
   private occlusionTerrainMeshRef: THREE.Mesh | null = null;
   private occlusionTelemetryVersion: number = 0;
   private lastEvaluatedTelemetryVersion: number = -1;
   private readonly occlusionRaycaster = new THREE.Raycaster();
+  private readonly activeNodeIdsScratch: Set<number> = new Set();
 
-  // Pre-allocated storage for zero-allocation label decluttering
+  // Pre-allocated storage for zero-allocation label decluttering (starts at 17, grows lazily up to MAX_ACTIVE_GROUND_NODES + 1)
   private readonly declutterCandidates: {
     sprite: THREE.Sprite | null;
     priority: number;
@@ -493,6 +495,8 @@ export class TacticalEntityManager {
   // Pre-allocated 60 FPS 3D Packet Flow Pulses & Line distance cache
   public readonly linkPulseMeshes: THREE.Mesh[] = [];
   public readonly linkPulseGroup: THREE.Group;
+  private pulseSharedGeo!: THREE.SphereGeometry;
+  private relayHopSharedMat!: THREE.LineBasicMaterial;
   private readonly prevLinkEndpoints: Map<number, Float32Array> = new Map();
   private prevJammerEndpoints: Float32Array | null = null;
 
@@ -559,8 +563,10 @@ export class TacticalEntityManager {
 
     this.callsignTextures.set('ACN', createCallsignTexture('ACN', HIGHLAND_THEME.signal.amber));
     this.callsignTextures.set('MCP', createCallsignTexture('MCP', HIGHLAND_THEME.signal.amberDeep));
-    for (let i = 1; i < 16; i++) {
-      this.callsignTextures.set(`S${i}`, createCallsignTexture(`S${i}`, HIGHLAND_THEME.signal.sage));
+    for (let i = 0; i < 16; i++) {
+      if (i !== MCP_ID) {
+        this.callsignTextures.set(`S${i}`, createCallsignTexture(`S${i}`, HIGHLAND_THEME.signal.sage));
+      }
     }
   }
 
@@ -801,7 +807,7 @@ export class TacticalEntityManager {
     });
 
     for (let i = 0; i < 16; i++) {
-      const isMcp = i === 0;
+      const isMcp = i === MCP_ID;
       const anchorLift = isMcp
         ? TACTICAL_MARKER_TARGET_PIXELS.mcpAnchorLiftM
         : TACTICAL_MARKER_TARGET_PIXELS.soldierAnchorLiftM;
@@ -1175,6 +1181,13 @@ export class TacticalEntityManager {
       status: 'CONNECTED',
     };
     this.nodeItems.push(item);
+    const neededPoolSize = Math.min(MAX_ACTIVE_GROUND_NODES + 1, this.nodeItems.length + 1);
+    while (this.declutterCandidates.length < neededPoolSize) {
+      this.declutterCandidates.push({ sprite: null, priority: 0, screenX: 0, screenY: 0, dist: 0 });
+    }
+    while (this.declutterAcceptedBoxes.length < neededPoolSize) {
+      this.declutterAcceptedBoxes.push({ minX: 0, maxX: 0, minY: 0, maxY: 0 });
+    }
     return item;
   }
 
@@ -1194,22 +1207,28 @@ export class TacticalEntityManager {
   }
 
   /**
-   * Pre-allocates 16 glowing 60 FPS 3D link flow pulses along active direct and 2-hop links.
+   * Pre-allocates 16 glowing 60 FPS 3D link flow pulses along active direct and 2-hop links
+   * (grows lazily up to MAX_ACTIVE_GROUND_NODES when dynamic nodes are added).
    */
   private initLinkPulses(): void {
-    const pulseGeo = new THREE.SphereGeometry(32.0, 8, 8);
+    this.pulseSharedGeo = new THREE.SphereGeometry(32.0, 8, 8);
     for (let i = 0; i < 16; i++) {
-      const pulseMat = new THREE.MeshBasicMaterial({
-        color: 0x00e5ff,
-        transparent: true,
-        opacity: 0.95,
-      });
-      const mesh = new THREE.Mesh(pulseGeo, pulseMat);
-      mesh.name = `linkPulseMesh_${i}`;
-      mesh.visible = false;
-      this.linkPulseMeshes.push(mesh);
-      this.linkPulseGroup.add(mesh);
+      this.createLinkPulseMesh(i);
     }
+  }
+
+  private createLinkPulseMesh(index: number): THREE.Mesh {
+    const pulseMat = new THREE.MeshBasicMaterial({
+      color: 0x00e5ff,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const mesh = new THREE.Mesh(this.pulseSharedGeo, pulseMat);
+    mesh.name = `linkPulseMesh_${index}`;
+    mesh.visible = false;
+    this.linkPulseMeshes.push(mesh);
+    this.linkPulseGroup.add(mesh);
+    return mesh;
   }
 
   /**
@@ -1332,21 +1351,16 @@ export class TacticalEntityManager {
     this.relayBackhaulLine.visible = false;
     this.relayGroup.add(this.relayBackhaulLine);
 
+    this.relayHopSharedMat = new THREE.LineBasicMaterial({
+      color: 0x10b981, // Emerald 2-hop mesh link
+      linewidth: 2,
+      transparent: true,
+      opacity: 0.85,
+    });
+
     // Per-node Hop-1 lines (Ground Terminal -> [MCP-OPT])
     for (let i = 0; i < 16; i++) {
-      const hopGeo = new THREE.BufferGeometry();
-      hopGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-      const hopMat = new THREE.LineBasicMaterial({
-        color: 0x10b981, // Emerald 2-hop mesh link
-        linewidth: 2,
-        transparent: true,
-        opacity: 0.85,
-      });
-      const hopLine = new THREE.Line(hopGeo, hopMat);
-      hopLine.name = `relayHop1Line_${i}`;
-      hopLine.visible = false;
-      this.relayHop1Lines.set(i, hopLine);
-      this.relayGroup.add(hopLine);
+      this.getOrCreateRelayHop1Line(i);
     }
 
     // 3D EW Jammer Emitter Beacon (Crimson Octahedron)
@@ -1374,6 +1388,20 @@ export class TacticalEntityManager {
     this.jammerRayLine.name = 'jammerRayLine';
     this.jammerRayLine.visible = false;
     this.jammerGroup.add(this.jammerRayLine);
+  }
+
+  private getOrCreateRelayHop1Line(nodeId: number): THREE.Line {
+    let hopLine = this.relayHop1Lines.get(nodeId);
+    if (!hopLine) {
+      const hopGeo = new THREE.BufferGeometry();
+      hopGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      hopLine = new THREE.Line(hopGeo, this.relayHopSharedMat);
+      hopLine.name = `relayHop1Line_${nodeId}`;
+      hopLine.visible = false;
+      this.relayHop1Lines.set(nodeId, hopLine);
+      this.relayGroup.add(hopLine);
+    }
+    return hopLine;
   }
 
   /**
@@ -1427,7 +1455,11 @@ export class TacticalEntityManager {
     const acnPos = this.acnGroup.position;
 
     if (Array.isArray(nodes)) {
-      const activeIds = new Set(nodes.map(n => n.node_id));
+      const activeIds = this.activeNodeIdsScratch;
+      activeIds.clear();
+      for (let i = 0; i < nodes.length; i++) {
+        activeIds.add(nodes[i].node_id);
+      }
 
       // Hide all items that are no longer active in telemetry
       for (const item of this.nodeItems) {
@@ -1563,7 +1595,9 @@ export class TacticalEntityManager {
 
         if (Array.isArray(frame.nodes_telemetry)) {
           for (const n of frame.nodes_telemetry) {
-            const hLine = this.relayHop1Lines.get(n.node_id);
+            const hLine = n.node_id >= 0 && n.node_id < MAX_ACTIVE_GROUND_NODES
+              ? this.getOrCreateRelayHop1Line(n.node_id)
+              : this.relayHop1Lines.get(n.node_id);
             if (hLine) {
               if (n.is_relayed) {
                 hLine.visible = true;
@@ -1625,20 +1659,28 @@ export class TacticalEntityManager {
     const acnPos = this.acnGroup.position;
 
     const nodes = frame.nodes_telemetry || [];
-    for (let i = 0; i < 16; i++) {
+    const activePulseCount = Math.min(nodes.length, MAX_ACTIVE_GROUND_NODES);
+    while (this.linkPulseMeshes.length < activePulseCount) {
+      this.createLinkPulseMesh(this.linkPulseMeshes.length);
+    }
+    for (let i = activePulseCount; i < this.linkPulseMeshes.length; i++) {
+      this.linkPulseMeshes[i].visible = false;
+    }
+
+    for (let i = 0; i < activePulseCount; i++) {
       const pulseMesh = this.linkPulseMeshes[i];
-      if (!pulseMesh) continue;
-      const node = nodes.find((n: any) => n.node_id === i);
-      const item = this.nodeItems.find((it) => it.nodeId === i);
+      const node = nodes[i];
+      if (!pulseMesh || !node) continue;
+      const item = this.getNodeItem(node.node_id);
       const isMapped = item ? item.isMapped : false;
 
-      if (!node || !isMapped || item?.status === 'OUTAGE_DISCONNECTED' || item?.status === 'BLOCKED_TERRAIN' || item?.status === 'BLOCKED_OBSTACLE') {
+      if (!isMapped || item?.status === 'OUTAGE_DISCONNECTED' || item?.status === 'BLOCKED_TERRAIN' || item?.status === 'BLOCKED_OBSTACLE') {
         pulseMesh.visible = false;
         continue;
       }
 
       pulseMesh.visible = true;
-      const t = (now * 0.0016 + i * 0.17) % 1.0;
+      const t = (now * 0.0016 + node.node_id * 0.17) % 1.0;
       const mat = pulseMesh.material as THREE.MeshBasicMaterial;
 
       const isPreOcclusion = (node.registration_state === 'PRE_OCCLUSION_FLUSH' || (item?.status as string) === 'PRE_OCCLUSION_FLUSH');
@@ -1713,10 +1755,13 @@ export class TacticalEntityManager {
         this.occlusionTerrainMeshRef = terrainMesh;
         this.lastEvaluatedTelemetryVersion = this.occlusionTelemetryVersion;
 
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < this.nodeItems.length; i++) {
           const item = this.nodeItems[i];
-          if (!item.isMapped) {
-            this.nodeContactOccluded[i] = false;
+          const occIdx = item.nodeId;
+          if (!item.isMapped || !item.group.visible) {
+            if (occIdx >= 0 && occIdx < MAX_ACTIVE_GROUND_NODES) {
+              this.nodeContactOccluded[occIdx] = false;
+            }
             continue;
           }
 
@@ -1735,9 +1780,11 @@ export class TacticalEntityManager {
             this.occlusionRaycaster.far = dist;
             const hits = this.occlusionRaycaster.intersectObject(terrainMesh, false);
             // Occluded if an intervening ridge crest exists between camera and contact point
-            this.nodeContactOccluded[i] = hits.some((h) => h.distance < dist - 5.0);
-          } else {
-            this.nodeContactOccluded[i] = false;
+            if (occIdx >= 0 && occIdx < MAX_ACTIVE_GROUND_NODES) {
+              this.nodeContactOccluded[occIdx] = hits.some((h) => h.distance < dist - 5.0);
+            }
+          } else if (occIdx >= 0 && occIdx < MAX_ACTIVE_GROUND_NODES) {
+            this.nodeContactOccluded[occIdx] = false;
           }
         }
       }
@@ -1810,8 +1857,11 @@ export class TacticalEntityManager {
     }
 
     // 3. Ground Nodes LOD Evaluation & Contact Occlusion
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < this.nodeItems.length; i++) {
       const item = this.nodeItems[i];
+      if (!item.group.visible) {
+        continue;
+      }
       if (!item.isMapped) {
         item.visualGroup.visible = false;
         item.markerAnchorGroup.visible = false;
@@ -1823,7 +1873,7 @@ export class TacticalEntityManager {
         continue;
       }
 
-      const isContactOccluded = this.nodeContactOccluded[i];
+      const isContactOccluded = this.isNodeContactOccluded(item.nodeId);
 
       const npSim = item.group.position;
       const npRoot = this.scratchVecA.set(npSim.x, npSim.z, -npSim.y);
@@ -1893,7 +1943,7 @@ export class TacticalEntityManager {
 
     if (!this.labelsVisible) {
       this.acnCallsignSprite.visible = false;
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < this.nodeItems.length; i++) {
         this.nodeItems[i].callsignSprite.visible = false;
       }
       this.declutterAcceptedCount = 0;
@@ -1907,7 +1957,7 @@ export class TacticalEntityManager {
       -this.acnGroup.position.y
     );
     const acnNdc = this.scratchVecB.copy(acnRoot).project(camera);
-    if (acnNdc.z <= 1.0) {
+    if (acnNdc.z <= 1.0 && this.declutterCandidateCount < this.declutterCandidates.length) {
       const c = this.declutterCandidates[this.declutterCandidateCount++];
       c.sprite = this.acnCallsignSprite;
       c.priority = 2; // ACN is priority 2
@@ -1919,9 +1969,9 @@ export class TacticalEntityManager {
     }
 
     // Evaluate ground node candidates
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < this.nodeItems.length; i++) {
       const item = this.nodeItems[i];
-      if (!item.isMapped || this.nodeContactOccluded[i]) {
+      if (!item.group.visible || !item.isMapped || this.isNodeContactOccluded(item.nodeId)) {
         item.callsignSprite.visible = false;
         continue;
       }
@@ -1968,6 +2018,9 @@ export class TacticalEntityManager {
       else if (item.isMcp) priority = 3;
       else if (isOutageOrDegraded) priority = 4;
 
+      if (this.declutterCandidateCount >= this.declutterCandidates.length) {
+        continue;
+      }
       const c = this.declutterCandidates[this.declutterCandidateCount++];
       c.sprite = item.callsignSprite;
       c.priority = priority;
@@ -2023,7 +2076,7 @@ export class TacticalEntityManager {
         }
       }
 
-      if (!collides) {
+      if (!collides && this.declutterAcceptedCount < this.declutterAcceptedBoxes.length) {
         const acceptedBox = this.declutterAcceptedBoxes[this.declutterAcceptedCount++];
         acceptedBox.minX = minX;
         acceptedBox.maxX = maxX;
@@ -2093,7 +2146,7 @@ export class TacticalEntityManager {
   }
 
   public isNodeContactOccluded(nodeId: number): boolean {
-    if (nodeId < 0 || nodeId >= 16) return false;
+    if (nodeId < 0 || nodeId >= MAX_ACTIVE_GROUND_NODES) return false;
     return this.nodeContactOccluded[nodeId];
   }
 
@@ -2128,12 +2181,12 @@ export class TacticalEntityManager {
     }
 
     // 2. Ground Nodes
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < this.nodeItems.length; i++) {
       const item = this.nodeItems[i];
       if (!item.isMapped || !item.group.visible || !isObjectVisibleInHierarchy(item.group)) {
         continue;
       }
-      if (this.nodeContactOccluded[i]) {
+      if (this.isNodeContactOccluded(item.nodeId)) {
         continue;
       }
 
@@ -2226,7 +2279,7 @@ export class TacticalEntityManager {
     this.labelsVisible = visible;
     if (!visible) {
       this.acnCallsignSprite.visible = false;
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < this.nodeItems.length; i++) {
         this.nodeItems[i].callsignSprite.visible = false;
       }
     }

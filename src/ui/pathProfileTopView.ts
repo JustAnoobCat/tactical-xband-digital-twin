@@ -23,10 +23,12 @@ import { calcNiceStep } from './linkProfileViewport';
 import type { LinkCommunicationStatus, LinkStatusClassification } from '../core/linkStatusClassifier';
 import { getMapLinkStyle } from './mapLinkStyles';
 import {
+  BIOME_DEM_METADATA,
   REAL_LADAKH_DEM_METADATA,
   type TerrainBoundsTelemetry,
   type DemGeographicMetadata,
 } from '../core/terrain';
+import type { BiomeId } from '../core/biomePhysics';
 import { HIGHLAND_THEME } from './workbench/chartTheme';
 
 export interface TopViewBounds {
@@ -79,6 +81,7 @@ export interface TopViewRenderOptions {
   readonly showElevationLegend?: boolean;
   readonly waypoints?: readonly any[];
   readonly trajectoryMode?: string;
+  readonly biomeId?: BiomeId;
 }
 
 export interface DemHillshadeRaster {
@@ -98,10 +101,48 @@ export const KNOWN_LADAKH_SUMMITS: readonly { name: string; elevM: number; xM: n
   { name: 'DRAS PASS', elevM: 4790, xM: -14000, yM: -8000 },
 ];
 
+function computeTopViewHypsometricRgb(z: number): [number, number, number] {
+  if (z <= 0.0) {
+    const tOcean = Math.max(0.0, Math.min(1.0, (z + 500.0) / 500.0));
+    return [7 + tOcean * 3, 18 + tOcean * 8, 30 + tOcean * 14];
+  }
+  if (z < 5.0) {
+    const t = z / 5.0;
+    return [12 + t * 10, 30 + t * 6, 44 - t * 10];
+  }
+  if (z < 400.0) {
+    const t = (z - 5.0) / 395.0;
+    return [22 + t * 24, 36 + t * 14, 34 + t * 4];
+  }
+  if (z < 1500.0) {
+    const t = (z - 400.0) / 1100.0;
+    return [46 - t * 14, 50 - t * 8, 38 + t * 6];
+  }
+  if (z < 2800.0) {
+    const t = (z - 1500.0) / 1300.0;
+    return [32 - t * 18, 42 - t * 23, 44 - t * 16];
+  }
+  const tElev = Math.max(0.0, Math.min(1.0, (z - 2800.0) / 3000.0));
+  if (tElev < 0.18) {
+    const t = tElev / 0.18;
+    return [14 + t * 6, 19 + t * 7, 28 + t * 8];
+  }
+  if (tElev < 0.55) {
+    const t = (tElev - 0.18) / 0.37;
+    return [20 + t * 18, 26 + t * 22, 36 + t * 28];
+  }
+  if (tElev < 0.85) {
+    const t = (tElev - 0.55) / 0.30;
+    return [38 + t * 24, 48 + t * 28, 64 + t * 34];
+  }
+  const tSnow = Math.max(0.0, Math.min(1.0, (z - 5350.0) / 1150.0));
+  return [62 + tSnow * 25, 76 + tSnow * 28, 98 + tSnow * 32];
+}
+
 /**
  * Generates an authentic hillshade and elevation raster from DEM samples.
  * Uses exact Lambertian reflectance (azimuth 315° NW, altitude 45°) and
- * authentic Ladakh tactical hypsometric color grading (2800m - 5800m MSL).
+ * full-range 0 m - 6,500 m tactical hypsometric color grading.
  * Preserves transparency for out-of-coverage (NaN) samples.
  */
 export function generateDemHillshadeRaster(
@@ -178,29 +219,10 @@ export function generateDemHillshadeRaster(
       const dot = (nx * lx + ny * ly + nz * lz) / lenN;
       const shade = Math.max(0.22, Math.min(1.0, 0.44 + 0.56 * dot));
 
-      // Dark-mode tactical military color grading based on altitude (2800m - 5800m)
-      const tElev = Math.max(0.0, Math.min(1.0, (z - 2800.0) / 3000.0));
+      // Dark-mode full-range (0 m - 6,500 m) tactical hypsometric color grading
+      const [rBase, gBase, bBase] = computeTopViewHypsometricRgb(z);
 
-      let rBase: number, gBase: number, bBase: number;
-      if (tElev < 0.18) {
-        // Low valleys: deep charcoal slate
-        const t = tElev / 0.18;
-        rBase = 14 + t * 6;  gBase = 19 + t * 7;  bBase = 28 + t * 8;
-      } else if (tElev < 0.55) {
-        // Mid-elevation slopes & ridges: tactical steel
-        const t = (tElev - 0.18) / 0.37;
-        rBase = 20 + t * 18; gBase = 26 + t * 22; bBase = 36 + t * 28;
-      } else if (tElev < 0.85) {
-        // High alpine massifs: dark granite
-        const t = (tElev - 0.55) / 0.30;
-        rBase = 38 + t * 24; gBase = 48 + t * 28; bBase = 64 + t * 34;
-      } else {
-        // Summit crests (Zanskar, Nun-Kun): subtle frosted peaks
-        const t = (tElev - 0.85) / 0.15;
-        rBase = 62 + t * 25; gBase = 76 + t * 28; bBase = 98 + t * 32;
-      }
-
-      const red = Math.min(255, Math.max(10, Math.floor(rBase * shade)));
+      const red = Math.min(255, Math.max(7, Math.floor(rBase * shade)));
       const green = Math.min(255, Math.max(14, Math.floor(gBase * shade)));
       const blue = Math.min(255, Math.max(20, Math.floor(bBase * shade)));
 
@@ -806,11 +828,103 @@ function drawDemTerrain(
   ctx.restore();
 }
 
+function getProfileTerrainMinMax(profile?: LinkProfile | null): { minM: number; maxM: number } | null {
+  if (!profile || !Array.isArray(profile.samples) || profile.samples.length === 0) return null;
+  let minM = Number.POSITIVE_INFINITY;
+  let maxM = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < profile.samples.length; i++) {
+    const z = profile.samples[i].terrainElevationMslM;
+    if (Number.isFinite(z)) {
+      if (z < minM) minM = z;
+      if (z > maxM) maxM = z;
+    }
+  }
+  return Number.isFinite(minM) && Number.isFinite(maxM) ? { minM, maxM } : null;
+}
+
+function isLadakhTopViewBiome(options?: TopViewRenderOptions, profile?: LinkProfile | null): boolean {
+  if (options?.biomeId && options.biomeId !== 'alpine_mountain') {
+    return false;
+  }
+  const tileName = options?.activeTerrainBounds?.tileName ?? options?.terrainSource?.bounds?.tileName;
+  if (
+    tileName &&
+    (tileName === 'THAR_DESERT' ||
+      tileName === 'INDO_GANGETIC_PLAINS' ||
+      tileName === 'NORTHEAST_JUNGLE' ||
+      tileName === 'ARABIAN_SEA_LITTORAL')
+  ) {
+    return false;
+  }
+  const profRange = getProfileTerrainMinMax(profile);
+  if (profRange && profRange.maxM < 2000.0) {
+    return false;
+  }
+  return true;
+}
+
+function resolveLegendElevationRange(
+  options?: TopViewRenderOptions,
+  profile?: LinkProfile | null,
+): { minM: number; maxM: number } {
+  const boundsMeta = (options?.activeTerrainBounds ?? options?.terrainSource?.bounds) as
+    | (TerrainBoundsTelemetry & { minElevationM?: number; maxElevationM?: number })
+    | null
+    | undefined;
+  if (
+    boundsMeta &&
+    Number.isFinite(boundsMeta.minElevationM) &&
+    Number.isFinite(boundsMeta.maxElevationM) &&
+    boundsMeta.maxElevationM! > boundsMeta.minElevationM!
+  ) {
+    return { minM: boundsMeta.minElevationM!, maxM: boundsMeta.maxElevationM! };
+  }
+  if (options?.biomeId && BIOME_DEM_METADATA[options.biomeId]) {
+    const bm = BIOME_DEM_METADATA[options.biomeId];
+    if (Number.isFinite(bm.minElevationM) && Number.isFinite(bm.maxElevationM)) {
+      return { minM: bm.minElevationM!, maxM: bm.maxElevationM! };
+    }
+  }
+  const tileName = boundsMeta?.tileName;
+  if (tileName === 'THAR_DESERT') return { minM: 180, maxM: 310 };
+  if (tileName === 'INDO_GANGETIC_PLAINS') return { minM: 200, maxM: 240 };
+  if (tileName === 'NORTHEAST_JUNGLE') return { minM: 250, maxM: 1350 };
+  if (tileName === 'ARABIAN_SEA_LITTORAL') return { minM: 0, maxM: 220 };
+  const profRange = getProfileTerrainMinMax(profile);
+  if (profRange && profRange.maxM < 2000.0) {
+    return {
+      minM: profRange.minM,
+      maxM: Math.max(profRange.minM + 10, profRange.maxM),
+    };
+  }
+  return { minM: 2800, maxM: 5800 };
+}
+
+function formatLegendElevLabel(elevM: number, includeUnit: boolean): string {
+  const label = elevM >= 1000 ? `${(elevM / 1000).toFixed(1)}k` : `${Math.round(elevM)}`;
+  return includeUnit ? `${label} m` : label;
+}
+
+function rgbToHexColor(r: number, g: number, b: number): string {
+  const clampByte = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return (
+    '#' +
+    clampByte(r).toString(16).padStart(2, '0') +
+    clampByte(g).toString(16).padStart(2, '0') +
+    clampByte(b).toString(16).padStart(2, '0')
+  );
+}
+
 function drawKnownSummits(
   ctx: CanvasRenderingContext2D,
   layout: ViewportLayout,
-  viewport: TopViewViewportState
+  viewport: TopViewViewportState,
+  options?: TopViewRenderOptions,
+  profile?: LinkProfile | null,
 ): void {
+  if (!isLadakhTopViewBiome(options, profile)) {
+    return;
+  }
   const bounds = viewport.bounds;
   ctx.save();
   for (const summit of KNOWN_LADAKH_SUMMITS) {
@@ -842,13 +956,19 @@ function drawKnownSummits(
 
 export function renderElevationLegend(
   ctx: CanvasRenderingContext2D,
-  layout: ViewportLayout
+  layout: ViewportLayout,
+  elevationRange?: { readonly minM: number; readonly maxM: number }
 ): void {
   const { padL, height: h, padB } = layout;
   const legX = padL + 12;
   const legY = h - padB - 26;
   const legW = 96;
   const legH = 7;
+  const minM = elevationRange && Number.isFinite(elevationRange.minM) ? elevationRange.minM : 2800;
+  const maxM =
+    elevationRange && Number.isFinite(elevationRange.maxM) && elevationRange.maxM > minM
+      ? elevationRange.maxM
+      : Math.max(minM + 100, 5800);
 
   ctx.save();
   ctx.fillStyle = HIGHLAND_THEME.substrate.hudFill;
@@ -871,10 +991,19 @@ export function renderElevationLegend(
 
   // Gradient Bar
   const grad = ctx.createLinearGradient(legX, 0, legX + legW, 0);
-  grad.addColorStop(0, '#0e131c');    // 2800m
-  grad.addColorStop(0.33, '#1c2738'); // 3800m
-  grad.addColorStop(0.66, '#384860'); // 4800m
-  grad.addColorStop(1.0, '#6682a8');  // 5800m
+  if (minM === 2800 && maxM === 5800) {
+    grad.addColorStop(0, '#0e131c');    // 2800m
+    grad.addColorStop(0.33, '#1c2738'); // 3800m
+    grad.addColorStop(0.66, '#384860'); // 4800m
+    grad.addColorStop(1.0, '#6682a8');  // 5800m
+  } else {
+    const stops = [0, 0.33, 0.66, 1.0];
+    for (const s of stops) {
+      const z = minM + s * (maxM - minM);
+      const [r, g, b] = computeTopViewHypsometricRgb(z);
+      grad.addColorStop(s, rgbToHexColor(r, g, b));
+    }
+  }
   ctx.fillStyle = grad;
   ctx.fillRect(legX, legY, legW, legH);
   ctx.strokeStyle = 'rgba(240, 236, 228, 0.25)';
@@ -884,9 +1013,9 @@ export function renderElevationLegend(
   ctx.font = `7px ${HIGHLAND_THEME.font.mono}`;
   ctx.fillStyle = HIGHLAND_THEME.text.primary;
   ctx.textAlign = 'left';
-  ctx.fillText('2.8k', legX, legY + legH + 7);
+  ctx.fillText(formatLegendElevLabel(minM, false), legX, legY + legH + 7);
   ctx.textAlign = 'right';
-  ctx.fillText('5.8k m', legX + legW, legY + legH + 7);
+  ctx.fillText(formatLegendElevLabel(maxM, true), legX + legW, legY + legH + 7);
 
   ctx.restore();
 }
@@ -1490,8 +1619,8 @@ export function renderTerrainTopView(
   // 1. Authentic DEM Terrain Layer
   drawDemTerrain(ctx, layout, viewport, options);
 
-  // 2. Known Summits within the viewport
-  drawKnownSummits(ctx, layout, viewport);
+  // 2. Known Summits within the viewport (Ladakh/Kargil only)
+  drawKnownSummits(ctx, layout, viewport, options, profile);
 
   // 2b. Custom Obstacles footprint layer
   drawObstacleFootprints(ctx, layout, viewport, options?.obstacles, profile.obstacleIntervals?.map(o => o.obstacleId));
@@ -1694,7 +1823,7 @@ export function renderTerrainTopView(
 
   // 10. Elevation Legend
   if (options?.showElevationLegend !== false) {
-    renderElevationLegend(ctx, layout);
+    renderElevationLegend(ctx, layout, resolveLegendElevationRange(options, profile));
   }
 
   ctx.restore();
@@ -1760,8 +1889,8 @@ export function renderRfTopView(
   // 1. Authentic DEM Terrain Layer (identical alignment and scale)
   drawDemTerrain(ctx, layout, viewport, options);
 
-  // 2. Known Summits within the viewport
-  drawKnownSummits(ctx, layout, viewport);
+  // 2. Known Summits within the viewport (Ladakh/Kargil only)
+  drawKnownSummits(ctx, layout, viewport, options, profile);
 
   // 2b. Custom Obstacles footprint layer
   drawObstacleFootprints(ctx, layout, viewport, options?.obstacles, profile.obstacleIntervals?.map(o => o.obstacleId));
@@ -1963,7 +2092,7 @@ export function renderRfTopView(
 
   // 10. Elevation Legend
   if (options?.showElevationLegend !== false) {
-    renderElevationLegend(ctx, layout);
+    renderElevationLegend(ctx, layout, resolveLegendElevationRange(options, profile));
   }
 
   ctx.restore();

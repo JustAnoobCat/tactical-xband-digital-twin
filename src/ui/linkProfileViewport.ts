@@ -966,7 +966,7 @@ function drawTypedProfileContent(
   if (options?.hoverInfo) {
     const hInfo = options.hoverInfo;
     const hx = hInfo.canvasX;
-    if (hx >= layout.padL && hx <= layout.padL + plotH * 10) {
+    if (hx >= layout.padL && hx <= layout.width - layout.padR) {
       ctx.save();
       // Vertical cursor line
       ctx.setLineDash([2, 2]);

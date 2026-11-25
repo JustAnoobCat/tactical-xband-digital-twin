@@ -124,7 +124,7 @@ describe('toolboxPrecisionSuite CAD / GIS / RF instrument helpers', () => {
     assert.equal(resolveRulerSlantDistanceM(undefined), null);
   });
 
-  it('classifies Keysight RF SINR meter states across outage, QPSK, 16-QAM, and 64-QAM', () => {
+  it('classifies Keysight RF SINR meter states across outage, π/2-BPSK, QPSK, 8-PSK, 16-APSK, and 64-APSK', () => {
     const standby = computeRfSinrMeterState(null, true);
     assert.equal(standby.bandLabel, 'STANDBY');
     assert.equal(standby.fillPct, 0);
@@ -133,13 +133,25 @@ describe('toolboxPrecisionSuite CAD / GIS / RF instrument helpers', () => {
     assert.equal(shadowed.tone, 'shadowed');
     assert.equal(shadowed.bandLabel, 'OUTAGE');
 
+    const bpsk = computeRfSinrMeterState(0, true);
+    assert.equal(bpsk.tone, 'marginal');
+    assert.equal(bpsk.bandLabel, 'π/2-BPSK');
+
     const marginal = computeRfSinrMeterState(5, true);
     assert.equal(marginal.tone, 'marginal');
     assert.equal(marginal.bandLabel, 'QPSK');
 
+    const psk8 = computeRfSinrMeterState(9, true);
+    assert.equal(psk8.tone, 'clear');
+    assert.equal(psk8.bandLabel, '8-PSK');
+
+    const apsk16 = computeRfSinrMeterState(14, true);
+    assert.equal(apsk16.tone, 'clear');
+    assert.equal(apsk16.bandLabel, '16-APSK');
+
     const strong = computeRfSinrMeterState(22, true);
     assert.equal(strong.tone, 'clear');
-    assert.equal(strong.bandLabel, '64-QAM');
+    assert.equal(strong.bandLabel, '64-APSK');
     assert.equal(strong.fillPct, 80);
   });
 

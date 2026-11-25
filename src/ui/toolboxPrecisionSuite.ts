@@ -16,7 +16,7 @@ import { cartesianToGeodetic } from '../core/geodesy';
 import { azimuthToCardinal16 } from '../core/rfPropagationMath';
 import { evaluateCursorRfProbe } from '../core/cursorProbeEngine';
 import { generatePerpendicularLinkSlicerObstacle } from '../core/cadObstacleSlicerEngine';
-import { sampleDemSafe, type SiteProbeViewshedResult } from './terrainToolboxAnalysis';
+import { sampleDemSafe, type HorizonMaskBin, type SiteProbeViewshedResult } from './terrainToolboxAnalysis';
 import {
   sampleProbeSignalAtWorldPoint,
   type ProbeHeatmapLayerMode,
@@ -271,7 +271,7 @@ export function computeRfSinrMeterState(sinrDb: number | null | undefined, isLos
   const s = sinrDb as number;
   const clamped = Math.max(-10, Math.min(30, s));
   const fillPct = ((clamped + 10) / 40) * 100;
-  if (!isLos || s < 0) {
+  if (!isLos || s < -1.5) {
     return {
       fillPct: Math.max(4, fillPct),
       tone: 'shadowed',
@@ -279,13 +279,19 @@ export function computeRfSinrMeterState(sinrDb: number | null | undefined, isLos
       statusLabel: !isLos ? 'SHADOWED' : 'BELOW FLOOR',
     };
   }
-  if (s < 8) {
+  if (s < 2.5) {
+    return { fillPct, tone: 'marginal', bandLabel: 'π/2-BPSK', statusLabel: 'LOW MARGIN' };
+  }
+  if (s < 8.0) {
     return { fillPct, tone: 'marginal', bandLabel: 'QPSK', statusLabel: 'MARGINAL' };
   }
-  if (s < 16) {
-    return { fillPct, tone: 'clear', bandLabel: '16-QAM', statusLabel: 'CLEAR LINK' };
+  if (s < 11.5) {
+    return { fillPct, tone: 'clear', bandLabel: '8-PSK', statusLabel: 'CLEAR LINK' };
   }
-  return { fillPct, tone: 'clear', bandLabel: '64-QAM', statusLabel: 'HIGH MARGIN' };
+  if (s < 22.0) {
+    return { fillPct, tone: 'clear', bandLabel: '16-APSK', statusLabel: 'CLEAR LINK' };
+  }
+  return { fillPct, tone: 'clear', bandLabel: '64-APSK', statusLabel: 'HIGH MARGIN' };
 }
 
 export interface QgisCoverageBreakdown {
@@ -985,18 +991,20 @@ export function renderRfFieldProbeOverlay(
     ctx.restore();
   }
 
-  // 3. 360° Polar Horizon Mask Fill (if viewshed horizon angles exist) + Calibrated Compass Rose
+  // 3. 360° Polar Horizon Mask Fill (if viewshed horizonMask bins exist) + Calibrated Compass Rose
   const rInner = 18;
   const rOuter = 40;
-  const horizonAngles = tbState?.viewshedResult?.horizonMaskDeg;
-  if (Array.isArray(horizonAngles) && horizonAngles.length >= 12) {
+  const horizonMask: readonly HorizonMaskBin[] | undefined = vsRes?.horizonMask;
+  if (Array.isArray(horizonMask) && horizonMask.length >= 12) {
     ctx.save();
     ctx.fillStyle = 'rgba(168, 85, 247, 0.14)';
     ctx.beginPath();
-    for (let i = 0; i < horizonAngles.length; i++) {
-      const deg = (i / horizonAngles.length) * 360;
+    for (let i = 0; i < horizonMask.length; i++) {
+      const bin = horizonMask[i];
+      const deg = Number.isFinite(bin?.azimuthDeg) ? bin.azimuthDeg : (i / horizonMask.length) * 360;
       const rad = ((deg - 90) * Math.PI) / 180;
-      const maskNorm = Math.max(0.12, Math.min(1, Number(horizonAngles[i] || 0) / 30));
+      const elevDeg = Number.isFinite(bin?.horizonElevDeg) ? bin.horizonElevDeg : 0;
+      const maskNorm = Math.max(0.12, Math.min(1, elevDeg / 30));
       const r = rInner + (rOuter - rInner) * maskNorm;
       const px = sp.x + Math.cos(rad) * r;
       const py = sp.y + Math.sin(rad) * r;
@@ -1889,11 +1897,11 @@ export function createToolboxPrecisionUi(deps: ToolboxPrecisionUiDeps = {}): Too
           <span class="tb-rf-tick" style="left:65%"></span>
         </div>
         <div class="tb-rf-scale">
-          <span>Outage</span>
+          <span>π/2-BPSK</span>
           <span>QPSK</span>
-          <span>16-QAM</span>
-          <span>64-QAM</span>
-          <span>Strong</span>
+          <span>8-PSK</span>
+          <span>16-APSK</span>
+          <span>64-APSK</span>
         </div>
       `;
       const actionBar = probePane.querySelector('.tb-action-bar');

@@ -26,7 +26,9 @@ import type {
   NodeTransferTelemetry,
   ProfileFrameMessage,
   HiFiPhysicsTelemetry,
+  TelemetryWeatherCellSummary,
 } from '../shared/workerProtocol';
+import type { AdvectingWeatherCell } from '../core/biomePhysics';
 import { cartesianToGeodetic, type GeodeticCoordinate } from '../core/geodesy';
 import {
   REAL_LADAKH_DEM_METADATA,
@@ -181,6 +183,7 @@ export interface TelemetrySimulationState {
   readonly aiSkyShepherdNodeId?: number | null;
   readonly aiSkyShepherdDirective?: string;
   readonly hifiTelemetry?: HiFiPhysicsTelemetry;
+  readonly weatherCells?: readonly AdvectingWeatherCell[];
 }
 
 /**
@@ -680,6 +683,18 @@ export class TelemetrySerializer {
       normalizeSlotAllocationToFrame(a, state.lastReportTac?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
     const acnGeo = cartesianToGeodetic(acnPos[0], acnPos[1]);
 
+    let weatherCellsSummary: TelemetryWeatherCellSummary[] | undefined;
+    if (state.weatherCells && state.weatherCells.length > 0) {
+      const tSec = Math.max(0.0, state.simTimeS);
+      weatherCellsSummary = state.weatherCells.map((cell) => ({
+        id: cell.id,
+        center_x_m: cell.centerX0M + cell.velocityXMps * tSec,
+        center_y_m: cell.centerY0M + cell.velocityYMps * tSec,
+        radius_m: cell.radiusM,
+        peak_rain_mmh: cell.peakRainRateMmH,
+      }));
+    }
+
     return {
       frame_index: state.frameIndex,
       sim_time_s: state.simTimeS,
@@ -837,6 +852,7 @@ export class TelemetrySerializer {
       ai_sky_shepherd_node_id: state.aiSkyShepherdNodeId ?? null,
       ai_sky_shepherd_directive: state.aiSkyShepherdDirective ?? '',
       hifi_telemetry: state.hifiTelemetry,
+      ...(weatherCellsSummary ? { weather_cells: weatherCellsSummary } : {}),
     };
   }
 

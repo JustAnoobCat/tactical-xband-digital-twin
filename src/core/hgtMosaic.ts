@@ -25,6 +25,16 @@ import {
 } from './hgtParser';
 import type { DemGeographicMetadata } from './terrain';
 
+/**
+ * Computes WGS-84 longitude degree length in metres at the given tile/mosaic center latitude,
+ * scaling the Ladakh 34.5°N reference constant by cos(lat) / cos(34.5°).
+ */
+export function computeMetersPerDegLon(tileCenterLatDeg: number): number {
+  const cosRef = Math.cos((THEATER_ORIGIN_LAT_DEG * Math.PI) / 180.0);
+  const cosLat = Math.cos((tileCenterLatDeg * Math.PI) / 180.0);
+  return (HGT_METERS_PER_DEG_LON / cosRef) * cosLat;
+}
+
 export const DEFAULT_MAX_ACTIVE_TILES = 4; // e.g. 2x2 contiguous patch
 export const DEFAULT_LRU_CACHE_CAPACITY = 12; // In-memory decoded tiles
 
@@ -535,9 +545,11 @@ export function stitchHgtTiles(
     }
   }
 
-  // Derive georeferenced Cartesian bounds relative to theater origin (34.5°N, 76.5°E)
-  const minX = (minLon - THEATER_ORIGIN_LON_DEG) * HGT_METERS_PER_DEG_LON;
-  const maxX = (maxLon - THEATER_ORIGIN_LON_DEG) * HGT_METERS_PER_DEG_LON;
+  // Derive georeferenced Cartesian bounds with longitude scale at actual mosaic center latitude
+  const tileCenterLatDeg = (minLat + maxLat) / 2.0;
+  const metersPerDegLon = computeMetersPerDegLon(tileCenterLatDeg);
+  const minX = (minLon - THEATER_ORIGIN_LON_DEG) * metersPerDegLon;
+  const maxX = (maxLon - THEATER_ORIGIN_LON_DEG) * metersPerDegLon;
   const minY = (minLat - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
   const maxY = (maxLat - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
   const halfWidthM = (maxX - minX) / 2.0;

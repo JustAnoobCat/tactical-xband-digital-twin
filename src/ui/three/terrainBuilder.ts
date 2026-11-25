@@ -20,6 +20,16 @@ import { REAL_LADAKH_DEM_METADATA } from '../../core/terrain';
 export const APPROVED_SKIRT_BASE_MSL_M = 1700.0;
 
 /**
+ * Computes a terrain-adaptive skirt & datum base elevation MSL:
+ * preserves 1,700 m MSL for Ladakh (~2,800+ m min), while placing skirt bottoms
+ * cleanly below ground/ocean for lowland and maritime biomes (0 - 1,350 m).
+ */
+export function computeDynamicSkirtBaseMslM(minElevationM: number): number {
+  const safeMin = Number.isFinite(minElevationM) ? minElevationM : APPROVED_SKIRT_BASE_MSL_M;
+  return Math.min(APPROVED_SKIRT_BASE_MSL_M, Math.floor(safeMin - 200.0));
+}
+
+/**
  * Continuous bilinear elevation interpolation on a source DEM raster.
  * Used for endpoint-preserving reduced resolution mapping.
  */
@@ -274,7 +284,7 @@ export function buildBalancedDemGeometry(data: TerrainMeshDataPayload): THREE.Bu
 export function buildPerimeterSkirtGeometry(
   data: TerrainMeshDataPayload,
   resolution: TerrainMeshResolution,
-  skirtBaseMslM = APPROVED_SKIRT_BASE_MSL_M
+  skirtBaseMslM = computeDynamicSkirtBaseMslM(data.minElevationM)
 ): THREE.BufferGeometry | null {
   // In synthetic mode, omit skirts to prevent clipping uncalibrated procedural heights
   if (data.terrainMode === 'synthetic') {
@@ -364,8 +374,8 @@ export function buildPerimeterSkirtGeometry(
     if (resolution === 'native512') {
       return data.elevations[r * 512 + c];
     }
-    const u = (c * 511.0) / 255.0;
-    const v = (r * 511.0) / 255.0;
+    const u = (c * 511.0) / S;
+    const v = (r * 511.0) / S;
     return sampleDemBilinear(data.elevations, u, v, 512, 512);
   };
 
@@ -535,7 +545,8 @@ export function buildTerrainGeometrySet(
         ? buildNativeDemGeometry(data)
         : buildBalancedDemGeometry(data);
 
-  const skirtGeometry = buildPerimeterSkirtGeometry(data, resolution, APPROVED_SKIRT_BASE_MSL_M);
+  const skirtBaseMslM = computeDynamicSkirtBaseMslM(data.minElevationM);
+  const skirtGeometry = buildPerimeterSkirtGeometry(data, resolution, skirtBaseMslM);
 
   const vertexCount = meshGeometry.getAttribute('position').count;
   const triangleCount = meshGeometry.getIndex() ? meshGeometry.getIndex()!.count / 3 : 0;

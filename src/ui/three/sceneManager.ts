@@ -22,12 +22,14 @@ import {
   APPROVED_SKIRT_BASE_MSL_M,
   buildTacticalDatumGrid,
   buildTerrainGeometrySet,
+  computeDynamicSkirtBaseMslM,
 } from './terrainBuilder';
 import {
   createFastSkirtMaterial,
   createFastTerrainMaterial,
 } from './terrainRenderer';
 import { isObjectVisibleInHierarchy, TacticalEntityManager } from './tacticalEntityManager';
+import { MAX_ACTIVE_GROUND_NODES } from '../../shared/constants';
 
 export class ThreeSceneManager {
   public readonly renderer: THREE.WebGLRenderer;
@@ -493,7 +495,7 @@ export class ThreeSceneManager {
     }
 
     const nodeId = nearestTargetHit.object.userData?.nodeId;
-    if (typeof nodeId === 'number' && nodeId >= 0 && nodeId < 16) {
+    if (typeof nodeId === 'number' && nodeId >= 0 && nodeId < MAX_ACTIVE_GROUND_NODES) {
       if (this.tacticalEntityManager.isNodeContactOccluded(nodeId)) {
         return null;
       }
@@ -913,9 +915,10 @@ export class ThreeSceneManager {
       this.worldGroup.add(this.skirtMesh);
     }
 
-    // 4. Abstract tactical datum grid covering 1,200 km theater
+    // 4. Abstract tactical datum grid covering 1,200 km theater at adaptive terrain base MSL
+    const dynamicDatumZ = computeDynamicSkirtBaseMslM(this.cachedTerrainData.minElevationM);
     this.datumGrid = buildTacticalDatumGrid(
-      APPROVED_SKIRT_BASE_MSL_M,
+      dynamicDatumZ,
       600000.0,
       this.cachedTerrainData.bounds
     );

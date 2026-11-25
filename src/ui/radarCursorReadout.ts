@@ -23,6 +23,8 @@ import {
   DEM_COVERAGE_HALF_WIDTH_M,
   DEM_COVERAGE_HALF_HEIGHT_M,
 } from '../core/geodesy';
+import { THEATER_BIOMES, type BiomeId } from '../core/biomePhysics';
+import { BIOME_DEM_METADATA } from '../core/terrain';
 import { HIGHLAND_THEME } from './workbench/chartTheme';
 
 export interface RadarCursorReadoutInput {
@@ -38,6 +40,16 @@ export interface RadarCursorReadoutInput {
   readonly getElevation?: (xM: number, yM: number) => number;
   /** Optional coverage predicate */
   readonly isWithinCoverage?: (xM: number, yM: number) => boolean;
+  /** Optional active theater biome for geodetic origin lookup */
+  readonly biomeId?: BiomeId;
+  /** Optional explicit geodetic origin latitude (degrees) */
+  readonly originLatDeg?: number;
+  /** Optional explicit geodetic origin longitude (degrees) */
+  readonly originLonDeg?: number;
+  /** Optional explicit coverage half-width (metres) */
+  readonly halfWidthM?: number;
+  /** Optional explicit coverage half-height (metres) */
+  readonly halfHeightM?: number;
 }
 
 export interface RadarCursorReadoutResult {
@@ -71,6 +83,11 @@ export function computeRadarCursorReadout(input: RadarCursorReadoutInput): Radar
     terrainMode = 'real',
     getElevation,
     isWithinCoverage: customCoverageCheck,
+    biomeId,
+    originLatDeg,
+    originLonDeg,
+    halfWidthM,
+    halfHeightM,
   } = input;
 
   if (!isInsideRadar || !Number.isFinite(xM) || !Number.isFinite(yM)) {
@@ -94,8 +111,39 @@ export function computeRadarCursorReadout(input: RadarCursorReadoutInput): Radar
     };
   }
 
-  // 1. Geodetic conversion via authoritative geodesy module
-  const geo = cartesianToGeodetic(xM, yM);
+  // 1. Geodetic conversion via active biome/origin or authoritative Ladakh geodesy module
+  const biomeDef = biomeId ? THEATER_BIOMES[biomeId] : undefined;
+  const biomeMeta = biomeId ? BIOME_DEM_METADATA[biomeId] : undefined;
+  const hasCustomOrigin = Number.isFinite(originLatDeg) && Number.isFinite(originLonDeg);
+
+  const centerLat = hasCustomOrigin
+    ? (originLatDeg as number)
+    : (biomeDef ? biomeDef.centerLatDeg : GEODESY_ORIGIN_LAT_DEG);
+  const centerLon = hasCustomOrigin
+    ? (originLonDeg as number)
+    : (biomeDef ? biomeDef.centerLonDeg : GEODESY_ORIGIN_LON_DEG);
+
+  const useLadakhDefault =
+    !hasCustomOrigin && (!biomeDef || biomeId === 'alpine_mountain') &&
+    !Number.isFinite(halfWidthM) && !Number.isFinite(halfHeightM);
+
+  const geo = useLadakhDefault
+    ? cartesianToGeodetic(xM, yM)
+    : (() => {
+        const covHalfH = Number.isFinite(halfHeightM) && (halfHeightM as number) > 0
+          ? (halfHeightM as number)
+          : (biomeMeta?.halfHeightM ?? METERS_PER_DEG_LAT);
+        const covHalfW = Number.isFinite(halfWidthM) && (halfWidthM as number) > 0
+          ? (halfWidthM as number)
+          : (biomeMeta?.halfWidthM ??
+              (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
+                Math.cos((centerLat * Math.PI) / 180.0));
+        return {
+          latDeg: centerLat + yM / covHalfH,
+          lonDeg: centerLon + xM / covHalfW,
+          isWithinCoverage: Math.abs(xM) <= covHalfW && Math.abs(yM) <= covHalfH,
+        };
+      })();
   const isCovered = customCoverageCheck
     ? customCoverageCheck(xM, yM)
     : geo.isWithinCoverage;
@@ -154,7 +202,7 @@ export function computeRadarCursorReadout(input: RadarCursorReadoutInput): Radar
     `DMS: ${dmsFull}`,
     `Terrain Elevation: ${terrainElevationMslM !== null ? `${Math.round(terrainElevationMslM).toLocaleString('en-US')} m MSL` : 'N/A (Outside DEM Coverage)'}`,
     `Local Theater Coordinates: ${localCoordsFormatted}`,
-    `Projection: WGS-84 Local Equirectangular (Center ${GEODESY_ORIGIN_LAT_DEG.toFixed(1)}°N, ${GEODESY_ORIGIN_LON_DEG.toFixed(1)}°E)`,
+    `Projection: WGS-84 Local Equirectangular (Center ${Math.abs(centerLat).toFixed(1)}°${centerLat >= 0 ? 'N' : 'S'}, ${Math.abs(centerLon).toFixed(1)}°${centerLon >= 0 ? 'E' : 'W'})`,
   ].join('\n');
 
   return {

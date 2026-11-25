@@ -386,6 +386,14 @@ export interface DownlinkTelemetry {
   readonly broadcast_active: boolean;
 }
 
+export interface TelemetryWeatherCellSummary {
+  readonly id: string;
+  readonly center_x_m: number;
+  readonly center_y_m: number;
+  readonly radius_m: number;
+  readonly peak_rain_mmh: number;
+}
+
 export interface TelemetryFrame {
   readonly frame_index: number;
   readonly sim_time_s: number;
@@ -493,6 +501,7 @@ export interface TelemetryFrame {
   readonly mean_dust_loss_db?: number;
   readonly mean_pol_loss_db?: number;
   readonly weather_cell_count?: number;
+  readonly weather_cells?: ReadonlyArray<TelemetryWeatherCellSummary>;
   readonly transport_abr_telemetry?: TransportAbrTelemetry;
   readonly ew_eccm_telemetry?: EwEccmTelemetry;
   readonly constellation_mobility_telemetry?: ConstellationMobilityTelemetry;

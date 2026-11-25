@@ -25,20 +25,12 @@ import {
 } from './threeVolumetricRfMath';
 import { readActiveCanvasCvdMode } from '../canvasTheme';
 import { isObjectVisibleInHierarchy } from './tacticalEntityManager';
+import { MAX_ACTIVE_GROUND_NODES } from '../../shared/constants';
 
 export class ThreeSceneController extends ThreeSceneManager {
   public readonly volumetricRfLayer: ThreeVolumetricRfLayer;
-  private readonly nodePickedCallbacks: Array<(nodeId: number) => void> = [];
   private latestFrame: any = null;
 
-  // Click-vs-drag pointer disambiguation state (< 5 px threshold)
-  private static readonly CLICK_DRAG_MAX_DISPLACEMENT_PX = 5.0;
-  private pointerDownX: number = 0;
-  private pointerDownY: number = 0;
-  private isPointerDownValid: boolean = false;
-
-  private boundPointerDown: ((e: PointerEvent | MouseEvent) => void) | null = null;
-  private boundPointerUp: ((e: PointerEvent | MouseEvent) => void) | null = null;
   private boundContextLost: ((e: Event) => void) | null = null;
   private boundContextRestored: ((e: Event) => void) | null = null;
   private contextLostPaused: boolean = false;
@@ -50,7 +42,6 @@ export class ThreeSceneController extends ThreeSceneManager {
     this.volumetricRfLayer = new ThreeVolumetricRfLayer(initialOptions);
     this.scene.add(this.volumetricRfLayer.rootGroup);
 
-    this.setupPickingPointerListeners();
     this.setupContextRecoveryListeners();
   }
 
@@ -102,74 +93,14 @@ export class ThreeSceneController extends ThreeSceneManager {
     return this.contextLostPaused || Boolean((this as any).isContextLost);
   }
 
-  private setupPickingPointerListeners(): void {
-    if (!this.canvas || typeof this.canvas.addEventListener !== 'function') return;
-
-    this.boundPointerDown = (e: PointerEvent | MouseEvent) => {
-      if (e.button !== 0) {
-        this.isPointerDownValid = false;
-        return;
-      }
-      this.pointerDownX = e.clientX;
-      this.pointerDownY = e.clientY;
-      this.isPointerDownValid = true;
-    };
-
-    this.boundPointerUp = (e: PointerEvent | MouseEvent) => {
-      if (!this.isPointerDownValid || e.button !== 0) {
-        this.isPointerDownValid = false;
-        return;
-      }
-      this.isPointerDownValid = false;
-
-      if (this.getViewMode() !== '3d') return;
-
-      const dx = e.clientX - this.pointerDownX;
-      const dy = e.clientY - this.pointerDownY;
-      const displacement = Math.hypot(dx, dy);
-
-      // Strict < 5 px click-vs-drag guard: camera orbit/pan gestures are never treated as picks
-      if (displacement < ThreeSceneController.CLICK_DRAG_MAX_DISPLACEMENT_PX) {
-        this.performRaycastPicking(e.clientX, e.clientY);
-      }
-    };
-
-    this.canvas.addEventListener('pointerdown', this.boundPointerDown);
-    this.canvas.addEventListener('pointerup', this.boundPointerUp);
-    this.canvas.addEventListener('mousedown', this.boundPointerDown);
-    this.canvas.addEventListener('mouseup', this.boundPointerUp);
-  }
-
-  private removePickingPointerListeners(): void {
-    if (!this.canvas || typeof this.canvas.removeEventListener !== 'function') return;
-
-    if (this.boundPointerDown) {
-      this.canvas.removeEventListener('pointerdown', this.boundPointerDown);
-      this.canvas.removeEventListener('mousedown', this.boundPointerDown);
-      this.boundPointerDown = null;
-    }
-    if (this.boundPointerUp) {
-      this.canvas.removeEventListener('pointerup', this.boundPointerUp);
-      this.canvas.removeEventListener('mouseup', this.boundPointerUp);
-      this.boundPointerUp = null;
-    }
-  }
-
   /**
-   * Performs 3D raycast picking from canvas coordinates through camera to entities.
+   * Authoritative 3D raycast picking override combining direct entity picking
+   * with world-hit proximity fallback (invoked once per click via ThreeSceneManager).
    */
-  public performRaycastPicking(clientX: number, clientY: number): number | null {
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-
-    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
-    const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
-
-    // Use raycaster from super
+  public override handlePointerClick(ndcX: number, ndcY: number): number | null {
     const raycaster = (this as any).raycaster as THREE.Raycaster ?? new THREE.Raycaster();
     raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
 
-    // Build selectable candidate objects
     const targets = this.tacticalEntityManager.getSelectableObjects();
     const candidateObjects: THREE.Object3D[] = targets.filter(isObjectVisibleInHierarchy);
     const terrainMesh = (this as any).terrainMesh as THREE.Mesh | null;
@@ -180,21 +111,27 @@ export class ThreeSceneController extends ThreeSceneManager {
     const hits = raycaster.intersectObjects(candidateObjects, false);
     if (hits.length === 0) return null;
 
-    // Direct object hit check (e.g. marker sprite or ACN)
     const directHit = hits.find(
-      (h) => isObjectVisibleInHierarchy(h.object) &&
+      (h) =>
+        isObjectVisibleInHierarchy(h.object) &&
         (typeof h.object.userData?.nodeId === 'number' || h.object.userData?.isAcn === true)
     );
-
     const terrainHit = hits.find((h) => h.object === terrainMesh);
+
     if (directHit) {
       if (terrainHit && terrainHit.distance < directHit.distance) {
-        // Intervening mountain ridge occludes target
         return null;
       }
-      const nodeId = directHit.object.userData?.isAcn === true ? -1 : directHit.object.userData?.nodeId;
-      if (typeof nodeId === 'number') {
-        this.notifyNodePicked(nodeId);
+      if (directHit.object.userData?.isAcn === true || directHit.object.userData?.nodeId === -1) {
+        this.tacticalEntityManager.triggerNodeSelected(-1);
+        return -1;
+      }
+      const nodeId = directHit.object.userData?.nodeId;
+      if (typeof nodeId === 'number' && nodeId >= 0 && nodeId < MAX_ACTIVE_GROUND_NODES) {
+        if (this.tacticalEntityManager.isNodeContactOccluded(nodeId)) {
+          return null;
+        }
+        this.tacticalEntityManager.triggerNodeSelected(nodeId);
         return nodeId;
       }
     }
@@ -206,6 +143,7 @@ export class ThreeSceneController extends ThreeSceneManager {
 
       for (const node of this.latestFrame.nodes_telemetry) {
         if (!node || node.is_mapped === false) continue;
+        if (this.tacticalEntityManager.isNodeContactOccluded(node.node_id)) continue;
         const rootPos = simToThreeCoords(node.x_m ?? 0, node.y_m ?? 0, node.z_m ?? 0);
         pickables.push({
           id: node.node_id,
@@ -213,15 +151,14 @@ export class ThreeSceneController extends ThreeSceneManager {
         });
       }
 
-      // Max proximity picking radius in world units (e.g. 8,000 m)
       const pickedId = pickNearestEntityFromWorldHit(
         [hitPoint.x, hitPoint.y, hitPoint.z],
         pickables,
         8000.0
       );
 
-      if (pickedId !== null) {
-        this.notifyNodePicked(pickedId);
+      if (pickedId !== null && pickedId >= 0 && pickedId < MAX_ACTIVE_GROUND_NODES) {
+        this.tacticalEntityManager.triggerNodeSelected(pickedId);
         return pickedId;
       }
     }
@@ -229,27 +166,27 @@ export class ThreeSceneController extends ThreeSceneManager {
     return null;
   }
 
-  private notifyNodePicked(nodeId: number): void {
-    this.setSelectedNode(nodeId);
-    for (const cb of this.nodePickedCallbacks) {
-      try {
-        cb(nodeId);
-      } catch (err) {
-        console.error('[ThreeSceneController] Error in nodePicked callback:', err);
-      }
-    }
+  /**
+   * Performs 3D raycast picking from canvas coordinates through camera to entities.
+   */
+  public performRaycastPicking(clientX: number, clientY: number): number | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+    return this.handlePointerClick(ndcX, ndcY);
   }
 
   /**
    * Registers a callback invoked whenever a 3D node is selected via raycast picking.
    */
   public onNodePicked(callback: (nodeId: number) => void): void {
-    this.nodePickedCallbacks.push(callback);
+    super.onNodeSelected(callback);
   }
 
   public override onNodeSelected(callback: (nodeId: number) => void): void {
     super.onNodeSelected(callback);
-    this.nodePickedCallbacks.push(callback);
   }
 
   public setVolumetricRfOptions(options: Partial<VolumetricRfOptions>): void {
@@ -290,8 +227,6 @@ export class ThreeSceneController extends ThreeSceneManager {
 
   public override dispose(): void {
     this.removeContextRecoveryListeners();
-    this.removePickingPointerListeners();
-    this.nodePickedCallbacks.length = 0;
     this.volumetricRfLayer.dispose();
     if (this.volumetricRfLayer.rootGroup.parent) {
       this.volumetricRfLayer.rootGroup.parent.remove(this.volumetricRfLayer.rootGroup);

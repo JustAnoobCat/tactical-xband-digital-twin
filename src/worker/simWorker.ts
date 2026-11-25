@@ -42,7 +42,7 @@ import {
 import { ActiveTransferManager, type NodeTransferState, getDefaultPayloadBytes } from '../core/transferManager';
 import { EdgeAiCopilotCoordinator, type ActiveAiMovement } from './aiCopilotCoordinator';
 import {
-  EdgeAiQTable, computeAiRecoveryAdvisory, computeToblerWalkingSpeedMs, evaluateAiBuddyRelayRescue, computeAiSkyShepherdUavOffset, computeAiLpiStealthPower, predictNodeBlackoutCountdown, type AiNodeRecoveryRecommendation, type AiBuddyRelayResult, type AiSkyShepherdResult, type AiLpiStealthResult, type AiBlackoutForecastResult, type SquadNodeForBuddyEval,
+  EdgeAiQTable, computeAiRecoveryAdvisory, computeToblerWalkingSpeedMs, evaluateAiBuddyRelayRescue, computeAiSkyShepherdUavOffset, computeAiLpiStealthPower, predictNodeBlackoutCountdown, type AiNodeRecoveryRecommendation, type AiBuddyRelayResult, type AiSkyShepherdResult, type AiLpiStealthResult, type AiBlackoutForecastResult, type SquadNodeForBuddyEval, type FixedWingKinematicConstraints,
 } from '../core/tacticalAiPathfinder';
 import {
   ACNTrajectory, createACNTrajectory, NodeTerrainState, PredictiveLookAheadEngine, PredictiveState, computeAirframeAttitude,
@@ -609,6 +609,20 @@ export class SimulationWorkerManager {
     this.emitHostMessage(message);
   }
 
+  private buildGroundKinematicConstraints(nodeType: string): FixedWingKinematicConstraints {
+    const speedMs = nodeType === 'mcp' ? 8.0 : 1.4;
+    const maxVertRateMs = nodeType === 'mcp'
+      ? Math.min(2.4, speedMs * 0.3)
+      : Math.min(0.6, speedMs * 0.45);
+    return {
+      speedMs,
+      maxBankDeg: 0.0,
+      minTurnRadiusOverrideM: nodeType === 'mcp' ? 12.0 : 3.0,
+      maxClimbRateMs: maxVertRateMs,
+      maxDescentRateMs: maxVertRateMs,
+    };
+  }
+
   public tickSimulation(emitTelemetry: boolean = true): void {
     this.simTimeS += FRAME_DT;
     this.frameIndex += 1;
@@ -705,11 +719,11 @@ export class SimulationWorkerManager {
           obstacles: this.terrainEngine.obstacleField.all,
           jammerPosEnu: this.envConfig.jammerPosEnu,
           jammerEnabled: this.envConfig.jammerEnabled,
-          kinematicConstraints: this.enableDubinsKinematics ? {
-            speedMs: node.nodeType === 'mcp' ? 8.0 : 1.4,
-            maxBankDeg: 0.0,
-            minTurnRadiusOverrideM: node.nodeType === 'mcp' ? 12.0 : 3.0,
-          } : undefined,
+          rfConfig: this.rfConfig,
+          envConfig: this.envConfig,
+          kinematicConstraints: this.enableDubinsKinematics
+            ? this.buildGroundKinematicConstraints(node.nodeType)
+            : undefined,
         });
         this.aiRecommendations.set(nid, rec);
         this.aiLastEvalTick.set(nid, this.aiTickCount);
@@ -748,11 +762,11 @@ export class SimulationWorkerManager {
             obstacles: this.terrainEngine.obstacleField.all,
             jammerPosEnu: this.envConfig.jammerPosEnu,
             jammerEnabled: this.envConfig.jammerEnabled,
-            kinematicConstraints: this.enableDubinsKinematics ? {
-              speedMs: node.nodeType === 'mcp' ? 8.0 : 1.4,
-              maxBankDeg: 0.0,
-              minTurnRadiusOverrideM: node.nodeType === 'mcp' ? 12.0 : 3.0,
-            } : undefined,
+            rfConfig: this.rfConfig,
+            envConfig: this.envConfig,
+            kinematicConstraints: this.enableDubinsKinematics
+              ? this.buildGroundKinematicConstraints(node.nodeType)
+              : undefined,
           });
           this.aiRecommendations.set(nid, rec);
         }
@@ -784,7 +798,7 @@ export class SimulationWorkerManager {
 
         // Pillar 1: AI Buddy-Relay Peer-to-Peer Squad Mesh
         if (this.aiBuddyMeshEnabled) {
-          const buddyResult = this.aiCoordinator.evaluateBuddyRelay(
+          const buddyResult = evaluateAiBuddyRelayRescue(
             {
               nodeId: nid,
               position: node.position,
@@ -794,7 +808,8 @@ export class SimulationWorkerManager {
             },
             squadForBuddy,
             (x, y) => this.terrainEngine.getElevation(x, y),
-            this.rfConfig.carrierFrequencyHz
+            this.rfConfig.carrierFrequencyHz,
+            this.rfConfig.channelBandwidthHz
           );
           this.aiBuddyRelayResults.set(nid, buddyResult);
         } else {
@@ -1679,7 +1694,7 @@ export class SimulationWorkerManager {
         const nid = node.nodeId;
         const curLs = nextLinks.get(nid);
         if (curLs && (curLs.isOutage || curLs.bitrateMbps < 1.0)) {
-          const buddyRes = this.aiCoordinator.evaluateBuddyRelay(
+          const buddyRes = evaluateAiBuddyRelayRescue(
             {
               nodeId: nid,
               position: node.position,
@@ -1689,7 +1704,8 @@ export class SimulationWorkerManager {
             },
             squadForBuddy,
             (x, y) => this.terrainEngine.getElevation(x, y),
-            this.rfConfig.carrierFrequencyHz
+            this.rfConfig.carrierFrequencyHz,
+            this.rfConfig.channelBandwidthHz
           );
           this.aiBuddyRelayResults.set(nid, buddyRes);
 
@@ -3067,11 +3083,11 @@ export class SimulationWorkerManager {
             getElevationAt: (x, y) => this.terrainEngine.getElevation(x, y),
             qTable: this.aiQTable,
             obstacles: this.terrainEngine.obstacleField.all,
-            kinematicConstraints: this.enableDubinsKinematics ? {
-              speedMs: Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]),
-              maxBankDeg: 30.0,
-              minTurnRadiusOverrideM: computeMinTurnRadiusM(Math.hypot(this.trajectoryEngine.getAcnVelocity(this.simTimeS)[0], this.trajectoryEngine.getAcnVelocity(this.simTimeS)[1]), 30.0),
-            } : undefined,
+            rfConfig: this.rfConfig,
+            envConfig: this.envConfig,
+            kinematicConstraints: this.enableDubinsKinematics
+              ? this.buildGroundKinematicConstraints(staticNode.nodeType)
+              : undefined,
           });
           this.aiRecommendations.set(nid, rec);
           this.aiLastEvalTick.set(nid, this.aiTickCount);

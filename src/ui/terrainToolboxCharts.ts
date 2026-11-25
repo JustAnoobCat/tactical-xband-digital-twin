@@ -490,16 +490,16 @@ export interface ProbeSignalSample {
   readonly sinrDb: number;
   readonly rssiDbm: number;
   readonly status: number;
-  readonly modcodTier: '64-QAM' | '16-QAM' | 'QPSK' | 'OUTAGE';
+  readonly modcodTier: '64-APSK' | '16-APSK' | '8-PSK' | 'QPSK' | 'π/2-BPSK' | 'OUTAGE';
 }
 
 const HEATMAP_STOPS: Readonly<Record<ProbeHeatmapPalette, ReadonlyArray<readonly [number, readonly [number, number, number]]>>> = {
   rf_spectrum: [
     [0.0, [95, 22, 38]],     // -15 dB deep shadow / outage
-    [0.33, [215, 68, 62]],   //   0 dB outage / QPSK threshold
-    [0.52, [238, 178, 56]],  //  +8 dB marginal QPSK
-    [0.72, [48, 196, 134]],  // +17 dB good 16-QAM
-    [1.0, [56, 218, 245]],   // +30 dB peak 64-QAM
+    [0.33, [215, 68, 62]],   // -1.5..0 dB π/2-BPSK / outage threshold
+    [0.52, [238, 178, 56]],  //  +8 dB 8-PSK / QPSK margin
+    [0.72, [48, 196, 134]],  // +17 dB good 16-APSK
+    [1.0, [56, 218, 245]],   // +30 dB peak 64-APSK
   ],
   thermal: [
     [0.0, [24, 16, 62]],
@@ -602,7 +602,17 @@ export function sampleProbeSignalAtWorldPoint(
   if (!Number.isFinite(sinrDb)) return null;
 
   const modcodTier: ProbeSignalSample['modcodTier'] =
-    sinrDb >= 18 ? '64-QAM' : sinrDb >= 10 ? '16-QAM' : sinrDb >= 0 ? 'QPSK' : 'OUTAGE';
+    sinrDb >= 22.0
+      ? '64-APSK'
+      : sinrDb >= 11.5
+        ? '16-APSK'
+        : sinrDb >= 8.0
+          ? '8-PSK'
+          : sinrDb >= 2.5
+            ? 'QPSK'
+            : sinrDb >= -1.5
+              ? 'π/2-BPSK'
+              : 'OUTAGE';
 
   return { distM, azDeg, sinrDb, rssiDbm, status, modcodTier };
 }
@@ -675,7 +685,7 @@ export function encodeProbeSignalHeatmapRgba(
     }
   }
 
-  // Subtle crisp iso-dB contour lines at 0 dB (Outage boundary), +10 dB (16-QAM), +18 dB (64-QAM)
+  // Subtle crisp iso-dB contour lines at 0 dB (Outage boundary), +10 dB (8-PSK/16-APSK), +18 dB (32/64-APSK)
   if (sinrField) {
     const levels = [0.0, 10.0, 18.0];
     for (let y = 1; y < size - 1; y++) {

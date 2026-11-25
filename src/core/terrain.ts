@@ -404,17 +404,42 @@ export function generateSpectralElevationGrid(
   return out;
 }
 
+export interface ElevationGridBounds {
+  readonly minX: number;
+  readonly maxX: number;
+  readonly minY: number;
+  readonly maxY: number;
+}
+
+function resolveProceduralBiomeBounds(
+  biomeId: BiomeId,
+  bounds?: ElevationGridBounds
+): ElevationGridBounds {
+  if (bounds) return bounds;
+  const meta = BIOME_DEM_METADATA[biomeId] ?? REAL_LADAKH_DEM_METADATA;
+  return {
+    minX: meta.minX ?? -meta.halfWidthM,
+    maxX: meta.maxX ?? meta.halfWidthM,
+    minY: meta.minY ?? -meta.halfHeightM,
+    maxY: meta.maxY ?? meta.halfHeightM,
+  };
+}
+
 /**
  * Generates procedural elevation matrix for Thar Arid Desert (180m to 310m MSL).
  * Features transverse dune fields, barchan slip-faces, and low regional relief.
+ * Point-registered with row 0 = maxY (North) and row size-1 = minY (South).
  */
 export function generateAridDesertElevationGrid(
   size: number = DEFAULT_GRID_SIZE,
-  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
-  seed: number = 42
+  _theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42,
+  bounds?: ElevationGridBounds
 ): Float32Array {
   const out = new Float32Array(size * size);
-  const step = (theaterExtentM * 2.0) / (size - 1);
+  const { minX, maxX, minY, maxY } = resolveProceduralBiomeBounds('arid_desert', bounds);
+  const stepX = (maxX - minX) / Math.max(1, size - 1);
+  const stepY = (maxY - minY) / Math.max(1, size - 1);
   const duneAngle = (22.0 * Math.PI) / 180.0;
   const sinD = Math.sin(duneAngle);
   const cosD = Math.cos(duneAngle);
@@ -431,9 +456,9 @@ export function generateAridDesertElevationGrid(
   let maxVal = Number.NEGATIVE_INFINITY;
 
   for (let r = 0; r < size; r++) {
-    const y = -theaterExtentM + r * step;
+    const y = maxY - r * stepY;
     for (let c = 0; c < size; c++) {
-      const x = -theaterExtentM + c * step;
+      const x = minX + c * stepX;
       const idx = r * size + c;
 
       const u = x * cosD + y * sinD;
@@ -462,14 +487,19 @@ export function generateAridDesertElevationGrid(
 /**
  * Generates procedural elevation matrix for Indo-Gangetic Open Plains (200m to 240m MSL).
  * Features gentle alluvial slope, low relief, and a subtle meandering river depression corridor.
+ * Point-registered with row 0 = maxY (North) and row size-1 = minY (South).
  */
 export function generateOpenPlainsElevationGrid(
   size: number = DEFAULT_GRID_SIZE,
-  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
-  seed: number = 42
+  _theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42,
+  bounds?: ElevationGridBounds
 ): Float32Array {
   const out = new Float32Array(size * size);
-  const step = (theaterExtentM * 2.0) / (size - 1);
+  const { minX, maxX, minY, maxY } = resolveProceduralBiomeBounds('open_plains', bounds);
+  const stepX = (maxX - minX) / Math.max(1, size - 1);
+  const stepY = (maxY - minY) / Math.max(1, size - 1);
+  const spanScale = Math.max(1e-9, Math.max(maxX - minX, maxY - minY));
 
   let s = (seed ^ 0x3c5f189d) >>> 0;
   const nextR = () => {
@@ -482,12 +512,12 @@ export function generateOpenPlainsElevationGrid(
   let maxVal = Number.NEGATIVE_INFINITY;
 
   for (let r = 0; r < size; r++) {
-    const y = -theaterExtentM + r * step;
+    const y = maxY - r * stepY;
     for (let c = 0; c < size; c++) {
-      const x = -theaterExtentM + c * step;
+      const x = minX + c * stepX;
       const idx = r * size + c;
 
-      const slope = ((-x + y) / (2.0 * theaterExtentM)) * 0.5;
+      const slope = ((-x + y) / spanScale) * 0.5;
       const meanderCenter = 25000.0 * Math.sin(y / 70000.0 + p1);
       const distToRiver = Math.abs(x - meanderCenter);
       const riverTrough = -0.35 * Math.exp(-(distToRiver * distToRiver) / (2.0 * Math.pow(15000.0, 2)));
@@ -510,14 +540,18 @@ export function generateOpenPlainsElevationGrid(
 /**
  * Generates procedural elevation matrix for Northeast Tropical Jungle (250m to 1350m MSL).
  * Features steep dissected ridges, dendritic drainage gullies, and rolling rainforest foothills.
+ * Point-registered with row 0 = maxY (North) and row size-1 = minY (South).
  */
 export function generateTropicalJungleElevationGrid(
   size: number = DEFAULT_GRID_SIZE,
-  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
-  seed: number = 42
+  _theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42,
+  bounds?: ElevationGridBounds
 ): Float32Array {
   const out = new Float32Array(size * size);
-  const step = (theaterExtentM * 2.0) / (size - 1);
+  const { minX, maxX, minY, maxY } = resolveProceduralBiomeBounds('tropical_jungle', bounds);
+  const stepX = (maxX - minX) / Math.max(1, size - 1);
+  const stepY = (maxY - minY) / Math.max(1, size - 1);
 
   let s = (seed ^ 0x7f4e2a1b) >>> 0;
   const nextR = () => {
@@ -532,9 +566,9 @@ export function generateTropicalJungleElevationGrid(
   let maxVal = Number.NEGATIVE_INFINITY;
 
   for (let r = 0; r < size; r++) {
-    const y = -theaterExtentM + r * step;
+    const y = maxY - r * stepY;
     for (let c = 0; c < size; c++) {
-      const x = -theaterExtentM + c * step;
+      const x = minX + c * stepX;
       const idx = r * size + c;
 
       const r1 = Math.sin(x / 40000.0 + ph1) * Math.cos(y / 45000.0 + ph2);
@@ -559,14 +593,18 @@ export function generateTropicalJungleElevationGrid(
 /**
  * Generates procedural elevation matrix for Arabian Sea Maritime Littoral (0m to 220m MSL).
  * Features calm open sea surface at exactly 0.0m MSL and coastal littoral cliffs rising to 220m MSL.
+ * Point-registered with row 0 = maxY (North) and row size-1 = minY (South).
  */
 export function generateMaritimeLittoralElevationGrid(
   size: number = DEFAULT_GRID_SIZE,
-  theaterExtentM: number = THEATER_EXTENT_1200KM_M,
-  seed: number = 42
+  _theaterExtentM: number = THEATER_EXTENT_1200KM_M,
+  seed: number = 42,
+  bounds?: ElevationGridBounds
 ): Float32Array {
   const out = new Float32Array(size * size);
-  const step = (theaterExtentM * 2.0) / (size - 1);
+  const { minX, maxX, minY, maxY } = resolveProceduralBiomeBounds('maritime_littoral', bounds);
+  const stepX = (maxX - minX) / Math.max(1, size - 1);
+  const stepY = (maxY - minY) / Math.max(1, size - 1);
 
   let s = (seed ^ 0x4a9b6c1d) >>> 0;
   const nextR = () => {
@@ -578,11 +616,11 @@ export function generateMaritimeLittoralElevationGrid(
   let maxLand = Number.NEGATIVE_INFINITY;
 
   for (let r = 0; r < size; r++) {
-    const y = -theaterExtentM + r * step;
+    const y = maxY - r * stepY;
     const coastX = -20000.0 + 35000.0 * Math.sin(y / 95000.0 + phCoast);
 
     for (let c = 0; c < size; c++) {
-      const x = -theaterExtentM + c * step;
+      const x = minX + c * stepX;
       const idx = r * size + c;
 
       if (x < coastX) {
@@ -615,17 +653,18 @@ export function generateBiomeElevationGrid(
   biomeId: BiomeId,
   size: number = DEFAULT_GRID_SIZE,
   theaterExtentM: number = THEATER_EXTENT_1200KM_M,
-  seed: number = 42
+  seed: number = 42,
+  bounds?: ElevationGridBounds
 ): Float32Array {
   switch (biomeId) {
     case 'arid_desert':
-      return generateAridDesertElevationGrid(size, theaterExtentM, seed);
+      return generateAridDesertElevationGrid(size, theaterExtentM, seed, bounds);
     case 'open_plains':
-      return generateOpenPlainsElevationGrid(size, theaterExtentM, seed);
+      return generateOpenPlainsElevationGrid(size, theaterExtentM, seed, bounds);
     case 'tropical_jungle':
-      return generateTropicalJungleElevationGrid(size, theaterExtentM, seed);
+      return generateTropicalJungleElevationGrid(size, theaterExtentM, seed, bounds);
     case 'maritime_littoral':
-      return generateMaritimeLittoralElevationGrid(size, theaterExtentM, seed);
+      return generateMaritimeLittoralElevationGrid(size, theaterExtentM, seed, bounds);
     case 'alpine_mountain':
     default:
       return generateSpectralElevationGrid(size, theaterExtentM, 2.3, seed);
@@ -732,13 +771,18 @@ export class TerrainEngine {
       return;
     }
 
+    const meta = BIOME_DEM_METADATA[biomeId] ?? REAL_LADAKH_DEM_METADATA;
     let grid = this._biomeGridCache.get(biomeId);
     if (!grid) {
-      grid = generateBiomeElevationGrid(biomeId, DEFAULT_GRID_SIZE, this.theaterExtentM, 42);
+      grid = generateBiomeElevationGrid(biomeId, DEFAULT_GRID_SIZE, this.theaterExtentM, 42, {
+        minX: meta.minX ?? -meta.halfWidthM,
+        maxX: meta.maxX ?? meta.halfWidthM,
+        minY: meta.minY ?? -meta.halfHeightM,
+        maxY: meta.maxY ?? meta.halfHeightM,
+      });
       this._biomeGridCache.set(biomeId, grid);
     }
 
-    const meta = BIOME_DEM_METADATA[biomeId] ?? REAL_LADAKH_DEM_METADATA;
     const stats = computeDemGridStats(grid);
     this.demMetadata = Object.freeze({
       ...meta,
@@ -910,9 +954,19 @@ const candidateUrls = url
    *   1° Longitude = 91,839.9774 m  (WGS-84 prime vertical N * cos(34.5°N))
    */
   public worldToLatLon(xM: number, yM: number): GeographicCoordinate {
-    const meta = REAL_LADAKH_DEM_METADATA;
-    const latDeg = meta.centerLatDeg + yM / meta.halfHeightM;
-    const lonDeg = meta.centerLonDeg + xM / meta.halfWidthM;
+    const meta = this.demMetadata ?? REAL_LADAKH_DEM_METADATA;
+    const minX = meta.minX ?? -meta.halfWidthM;
+    const maxX = meta.maxX ?? meta.halfWidthM;
+    const minY = meta.minY ?? -meta.halfHeightM;
+    const maxY = meta.maxY ?? meta.halfHeightM;
+    const centerXM = (minX + maxX) * 0.5;
+    const centerYM = (minY + maxY) * 0.5;
+    const halfSpanLonDeg = Math.max(1e-9, (meta.maxLonDeg - meta.minLonDeg) * 0.5);
+    const halfSpanLatDeg = Math.max(1e-9, (meta.maxLatDeg - meta.minLatDeg) * 0.5);
+    const metersPerDegLon = meta.halfWidthM / halfSpanLonDeg;
+    const metersPerDegLat = meta.halfHeightM / halfSpanLatDeg;
+    const latDeg = meta.centerLatDeg + (yM - centerYM) / metersPerDegLat;
+    const lonDeg = meta.centerLonDeg + (xM - centerXM) / metersPerDegLon;
     return { latDeg, lonDeg };
   }
 
@@ -921,9 +975,19 @@ const candidateUrls = url
    * (metres from origin). Exact inverse of worldToLatLon.
    */
   public latLonToWorld(latDeg: number, lonDeg: number): { xM: number; yM: number } {
-    const meta = REAL_LADAKH_DEM_METADATA;
-    const xM = (lonDeg - meta.centerLonDeg) * meta.halfWidthM;
-    const yM = (latDeg - meta.centerLatDeg) * meta.halfHeightM;
+    const meta = this.demMetadata ?? REAL_LADAKH_DEM_METADATA;
+    const minX = meta.minX ?? -meta.halfWidthM;
+    const maxX = meta.maxX ?? meta.halfWidthM;
+    const minY = meta.minY ?? -meta.halfHeightM;
+    const maxY = meta.maxY ?? meta.halfHeightM;
+    const centerXM = (minX + maxX) * 0.5;
+    const centerYM = (minY + maxY) * 0.5;
+    const halfSpanLonDeg = Math.max(1e-9, (meta.maxLonDeg - meta.minLonDeg) * 0.5);
+    const halfSpanLatDeg = Math.max(1e-9, (meta.maxLatDeg - meta.minLatDeg) * 0.5);
+    const metersPerDegLon = meta.halfWidthM / halfSpanLonDeg;
+    const metersPerDegLat = meta.halfHeightM / halfSpanLatDeg;
+    const xM = centerXM + (lonDeg - meta.centerLonDeg) * metersPerDegLon;
+    const yM = centerYM + (latDeg - meta.centerLatDeg) * metersPerDegLat;
     return { xM, yM };
   }
 

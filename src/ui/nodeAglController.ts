@@ -10,6 +10,7 @@ import {
   MIN_GROUND_AGL_M,
   MAX_GROUND_AGL_M,
   DEFAULT_ANTENNA_AGL_M,
+  MAX_ACTIVE_GROUND_NODES,
 } from '../shared/constants';
 
 export { MIN_GROUND_AGL_M, MAX_GROUND_AGL_M };
@@ -52,7 +53,7 @@ export interface AglEditEligibility {
  * Blocks editing when:
  * 1. Historical inspection is active.
  * 2. Spatial lock is enabled.
- * 3. Target node is ACN (node_id -1) or outside 0..15 range.
+ * 3. Target node is ACN (node_id -1) or outside 0..(MAX_ACTIVE_GROUND_NODES - 1) range.
  */
 export function checkAglEditEligibility(options: {
   readonly spatialLocked: boolean;
@@ -71,10 +72,10 @@ export function checkAglEditEligibility(options: {
       reason: 'Spatial lock is enabled; disable spatial lock to edit Antenna AGL.',
     };
   }
-  if (!Number.isInteger(options.nodeId) || options.nodeId < 0 || options.nodeId >= 16) {
+  if (!Number.isInteger(options.nodeId) || options.nodeId < 0 || options.nodeId >= MAX_ACTIVE_GROUND_NODES) {
     return {
       canEdit: false,
-      reason: 'ACN altitude is configured separately. AGL applies only to ground terminals (Node 0–15).',
+      reason: `ACN altitude is configured separately. AGL applies only to ground terminals (Node 0–${MAX_ACTIVE_GROUND_NODES - 1}).`,
     };
   }
   return { canEdit: true };
