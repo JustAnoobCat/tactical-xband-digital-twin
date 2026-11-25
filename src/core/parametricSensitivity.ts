@@ -158,7 +158,7 @@ export function evaluatePhysicsSensitivityPoint(
     const goodput = rawThroughput * (1.0 - residualLoss);
     const congestionDrop = Math.max(0.0, 1.0 - goodput / Math.max(offeredMbps, 1e-6));
     // Incorporate deadline expiry sensitivity to rho
-    const dropPct = clamp((congestionDrop * 0.85 + residualLoss * 0.45 + 0.02 * Math.max(0, rho - 0.7)) * 100.0, 0.5, 92.0);
+    const dropPct = clamp((congestionDrop * 0.85 + residualLoss * 0.45 + 0.02 * Math.max(0, rho - 0.7)) * 100.0, 0.0, 100.0);
     return {
       goodputMbps: round2(goodput),
       dropPct: round2(dropPct),
@@ -169,20 +169,17 @@ export function evaluatePhysicsSensitivityPoint(
   const reactRes = delivered(reactiveEffectiveCap, shadowFrac * 0.32 + 0.12 * cqiNorm);
   const tacRes = delivered(tacEffectiveCap, shadowFrac * 0.05 + 0.03 * cqiNorm + 0.04 * demNorm);
 
-  // Enforce physical upper/lower sanity bounds
-  const tacGoodputMbps = Math.max(tacRes.goodputMbps, round2(reactRes.goodputMbps + 0.5));
-  const reactiveGoodputMbps = Math.max(reactRes.goodputMbps, round2(statRes.goodputMbps + 0.5));
-  const tacDropRatePct = Math.min(tacRes.dropPct, round2(Math.max(0.5, reactRes.dropPct - 0.5)));
-  const reactiveDropRatePct = Math.min(reactRes.dropPct, round2(Math.max(1.0, statRes.dropPct - 0.5)));
+  const boundDrop = (v: number): number => (Number.isFinite(v) ? clamp(v, 0.0, 100.0) : 0.0);
+  const boundGoodput = (v: number): number => (Number.isFinite(v) ? Math.max(0.0, v) : 0.0);
 
   return Object.freeze({
     x,
-    staticGoodputMbps: statRes.goodputMbps,
-    staticDropRatePct: statRes.dropPct,
-    reactiveGoodputMbps,
-    reactiveDropRatePct,
-    tacGoodputMbps,
-    tacDropRatePct,
+    staticGoodputMbps: boundGoodput(statRes.goodputMbps),
+    staticDropRatePct: boundDrop(statRes.dropPct),
+    reactiveGoodputMbps: boundGoodput(reactRes.goodputMbps),
+    reactiveDropRatePct: boundDrop(reactRes.dropPct),
+    tacGoodputMbps: boundGoodput(tacRes.goodputMbps),
+    tacDropRatePct: boundDrop(tacRes.dropPct),
   });
 }
 

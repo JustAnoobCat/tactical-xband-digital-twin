@@ -583,7 +583,7 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
         'Expanding toolbox on cw < 1100 must dismiss Node Inspector',
       );
     }
-    await page.click('#terrain-toolbox-close-btn');
+    await page.click('#terrain-toolbox-close');
     await page.click('#btn-legend-toggle');
     if (await page.locator('#btn-close-node-details').isVisible()) {
       await page.click('#btn-close-node-details');
@@ -677,7 +677,7 @@ async function verifyViewport(browser, baseUrl, viewport, label) {
     await page.mouse.click(tbCanvasBox.x + tbCanvasBox.width * 0.51, tbCanvasBox.y + tbCanvasBox.height * 0.58);
     await page.click('#tb-picking-finish-btn');
     await page.waitForSelector('#tb-export-geojson-btn', { state: 'visible', timeout: ciTimeout(10000) });
-    await page.click('#terrain-toolbox-close-btn');
+    await page.click('#terrain-toolbox-close');
 
     // ------------------------------------------------------------------
     // 4. Authoring Tab (#tab-authoring / hotkey 8) + Edit-Mode Banner

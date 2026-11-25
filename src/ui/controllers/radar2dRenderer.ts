@@ -24,6 +24,7 @@
  */
 
 import { createLabelPlacer, CanvasLabelPlacer } from '../canvasLabelPlacer';
+import { getLatticeCanvasPalette } from '../canvasTheme';
 import { drawCartographicOverlays } from '../cartographyRenderer';
 import { HIGHLAND_THEME } from '../workbench/chartTheme';
 import {
@@ -118,6 +119,29 @@ export interface Radar2dRendererDeps {
 
 const TAU = Math.PI * 2;
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+
+const BIOME_AO_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  alpine_mountain: 'LADAKH AO',
+  arid_desert: 'THAR DESERT AO',
+  open_plains: 'OPEN PLAINS AO',
+  tropical_jungle: 'JUNGLE AO',
+  maritime_littoral: 'LITTORAL AO',
+});
+
+function resolveActiveAoLabel(activeBounds: any, telemetry: any): string {
+  const biomeId = telemetry?.biome_id ?? activeBounds?.biomeId;
+  if (typeof biomeId === 'string' && BIOME_AO_LABELS[biomeId]) {
+    return BIOME_AO_LABELS[biomeId];
+  }
+  const rawTileName =
+    typeof activeBounds?.tileName === 'string' && activeBounds.tileName.trim()
+      ? activeBounds.tileName.trim().replace(/_/g, ' ').toUpperCase()
+      : '';
+  if (rawTileName) {
+    return rawTileName.endsWith('AO') ? rawTileName : `${rawTileName} AO`;
+  }
+  return 'THEATER AO';
+}
 
 // ============================================================================
 // Pure Coordinate Transforms
@@ -463,9 +487,10 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
     const geometry = getRadarGeometry(w, h, vp.rangeM);
     const focusCtx = deps.getContextualMapContext();
     const mapLayers = deps.getMapLayerRegistry();
+    const palette = getLatticeCanvasPalette();
 
     // 1. Base substrate
-    ctx.fillStyle = HIGHLAND_THEME.substrate.void;
+    ctx.fillStyle = palette.voidBg;
     ctx.fillRect(0, 0, w, h);
 
     // 2. Terrain DEM bounds & exterior world satellite basemap (Radar SAT mode when zoomed out past DEM)
@@ -529,13 +554,14 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
           // Compact AO locator reticle when zoomed out to continental/world scale
           const cx = (terrainBounds.tl.x + terrainBounds.br.x) * 0.5;
           const cy = (terrainBounds.tl.y + terrainBounds.br.y) * 0.5;
+          const aoLabel = resolveActiveAoLabel(deps.getActiveTerrainBounds(), deps.getLatestTelemetry());
           ctx.save();
-          ctx.strokeStyle = HIGHLAND_THEME.signal.amber;
+          ctx.strokeStyle = palette.degraded;
           ctx.lineWidth = 1.5;
           ctx.strokeRect(cx - 7, cy - 7, 14, 14);
-          ctx.font = `bold 9px ${MONO}`;
-          ctx.fillStyle = HIGHLAND_THEME.signal.amber;
-          ctx.fillText('LADAKH AO', cx - 24, cy + 17);
+          ctx.font = `bold 10px ${MONO}`;
+          ctx.fillStyle = palette.degraded;
+          ctx.fillText(aoLabel, cx - 24, cy + 17);
           ctx.restore();
         }
       }
@@ -686,8 +712,8 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
         const nodePt = worldToScreen(node.posX, node.posY, w, h);
         const isSelected = String(selectedNodeId) === String(node.nodeId);
 
-        ctx.fillStyle = isSelected ? '#38bdf8' : '#94a3b8';
-        ctx.strokeStyle = '#000000';
+        ctx.fillStyle = isSelected ? palette.accent : palette.textSecondary;
+        ctx.strokeStyle = palette.voidBg;
         ctx.lineWidth = 1.5;
 
         ctx.beginPath();
@@ -695,20 +721,67 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
         ctx.fill();
         ctx.stroke();
 
-        ctx.font = `9px ${MONO}`;
-        ctx.fillStyle = isSelected ? '#38bdf8' : '#cbd5e1';
-        ctx.fillText(formatRadarNodeTag(node.nodeId, node.callsign), nodePt.x + 8, nodePt.y - 4);
+        const nodeTag = formatRadarNodeTag(node.nodeId, node.callsign);
+        ctx.font = `10px ${MONO}`;
+        const tagW = Math.max(20, ctx.measureText(nodeTag).width || nodeTag.length * 6.5);
+        const placed = activeLabelPlacer.placeLabel(nodePt.x + 8, nodePt.y - 12, tagW, 12, nodePt.x, nodePt.y);
+        ctx.fillStyle = isSelected ? palette.accent : palette.textPrimary;
+        ctx.fillText(nodeTag, placed.x, placed.y + 10);
       }
       ctx.restore();
     }
 
-    // 7. Primary ACN
+    // 7. Primary & Secondary Constellation ACNs
     const visAcn = mapLayers?.getEffectiveVisibility('entities.acn', focusCtx) ?? true;
     if (visAcn && Number.isFinite(acnPosWorld.x) && Number.isFinite(acnPosWorld.y)) {
       const acnPt = worldToScreen(acnPosWorld.x, acnPosWorld.y, w, h);
+      const secondaryAcns: any[] = !histSnap && Array.isArray(liveTelemetry?.constellation_mobility_telemetry?.secondary_acns)
+        ? liveTelemetry.constellation_mobility_telemetry.secondary_acns
+        : [];
+
       ctx.save();
-      ctx.fillStyle = '#00e5ff';
-      ctx.strokeStyle = '#000000';
+
+      // Secondary ACNs + dashed A2A cross-links back to primary ACN-1
+      if (secondaryAcns.length > 0) {
+        for (let sIdx = 0; sIdx < secondaryAcns.length; sIdx++) {
+          const sec = secondaryAcns[sIdx];
+          if (!sec || !Number.isFinite(sec.pos_x) || !Number.isFinite(sec.pos_y)) continue;
+          const secPt = worldToScreen(sec.pos_x, sec.pos_y, w, h);
+
+          // Dashed A2A cross-link back to primary ACN-1
+          ctx.strokeStyle = palette.relay;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.moveTo(acnPt.x, acnPt.y);
+          ctx.lineTo(secPt.x, secPt.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Secondary ACN marker (triangle in CVD-safe relay accent)
+          ctx.fillStyle = palette.relay;
+          ctx.strokeStyle = palette.voidBg;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(secPt.x, secPt.y - 7);
+          ctx.lineTo(secPt.x + 6, secPt.y + 5);
+          ctx.lineTo(secPt.x - 6, secPt.y + 5);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          const secLabel = String(sec.id || sec.name || `ACN-${sIdx + 2}`);
+          ctx.font = `bold 10px ${MONO}`;
+          const secLabelW = Math.max(28, ctx.measureText(secLabel).width || secLabel.length * 6.5);
+          const secPlaced = activeLabelPlacer.placeLabel(secPt.x + 9, secPt.y - 11, secLabelW, 12, secPt.x, secPt.y);
+          ctx.fillStyle = palette.relay;
+          ctx.fillText(secLabel, secPlaced.x, secPlaced.y + 10);
+        }
+      }
+
+      // Primary ACN marker
+      ctx.fillStyle = palette.accent;
+      ctx.strokeStyle = palette.voidBg;
       ctx.lineWidth = 2.0;
 
       // Triangle icon
@@ -720,9 +793,12 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       ctx.fill();
       ctx.stroke();
 
+      const acnLabel = secondaryAcns.length > 0 ? 'ACN-1' : 'ACN';
       ctx.font = `bold 10px ${MONO}`;
-      ctx.fillStyle = '#00e5ff';
-      ctx.fillText('ACN', acnPt.x + 10, acnPt.y - 4);
+      const acnLabelW = Math.max(24, ctx.measureText(acnLabel).width || acnLabel.length * 6.5);
+      const acnPlaced = activeLabelPlacer.placeLabel(acnPt.x + 10, acnPt.y - 12, acnLabelW, 12, acnPt.x, acnPt.y);
+      ctx.fillStyle = palette.accent;
+      ctx.fillText(acnLabel, acnPlaced.x, acnPlaced.y + 10);
       ctx.restore();
     }
 

@@ -30,6 +30,7 @@ const MAX_MERCATOR_LAT_DEG = 85.05112878;
 const MAX_VISIBLE_TILES_PER_FRAME = 120;
 const MIN_WORLD_TILE_ZOOM = 2;
 const MAX_WORLD_TILE_ZOOM = 15;
+const TILE_ERROR_RETRY_COOLDOWN_MS = 30_000;
 
 export interface VisibleWorldTile {
   readonly z: number;
@@ -63,13 +64,26 @@ export function latDegToTileY(latDeg: number, z: number): number {
   return Math.floor(y);
 }
 
+function resolveMetersPerDegLon(originLatDeg: number): number {
+  if (Math.abs(originLatDeg - GEODESY_ORIGIN_LAT_DEG) < 1e-9) {
+    return METERS_PER_DEG_LON;
+  }
+  return Math.max(1000.0, METERS_PER_DEG_LAT * Math.cos((originLatDeg * Math.PI) / 180.0));
+}
+
 /**
  * Unwrapped linear conversion from geodetic (lat, lon) to local Radar ENU meters.
  */
-export function geodeticToUnwrappedEnu(latDeg: number, lonDeg: number): { xM: number; yM: number } {
+export function geodeticToUnwrappedEnu(
+  latDeg: number,
+  lonDeg: number,
+  originLatDeg: number = GEODESY_ORIGIN_LAT_DEG,
+  originLonDeg: number = GEODESY_ORIGIN_LON_DEG
+): { xM: number; yM: number } {
+  const mPerDegLon = resolveMetersPerDegLon(originLatDeg);
   return {
-    xM: (lonDeg - GEODESY_ORIGIN_LON_DEG) * METERS_PER_DEG_LON,
-    yM: (latDeg - GEODESY_ORIGIN_LAT_DEG) * METERS_PER_DEG_LAT,
+    xM: (lonDeg - originLonDeg) * mPerDegLon,
+    yM: (latDeg - originLatDeg) * METERS_PER_DEG_LAT,
   };
 }
 
@@ -233,10 +247,21 @@ export function shadeTerrariumTileRgba(
  * Computes the list of visible Web Mercator tiles projected into exact
  * screen rectangles for the current 2D Radar viewport.
  */
-export function computeVisibleWorldTiles(viewport: RadarViewport): VisibleWorldTile[] {
+export function computeVisibleWorldTiles(
+  viewport: RadarViewport,
+  origin?: { readonly latDeg: number; readonly lonDeg: number }
+): VisibleWorldTile[] {
   const w = viewport.width;
   const h = viewport.height;
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return [];
+
+  const originLatDeg =
+    origin && Number.isFinite(origin.latDeg)
+      ? Math.max(-MAX_MERCATOR_LAT_DEG, Math.min(MAX_MERCATOR_LAT_DEG, origin.latDeg))
+      : GEODESY_ORIGIN_LAT_DEG;
+  const originLonDeg =
+    origin && Number.isFinite(origin.lonDeg) ? origin.lonDeg : GEODESY_ORIGIN_LON_DEG;
+  const mPerDegLon = resolveMetersPerDegLon(originLatDeg);
 
   const validRange = Number.isFinite(viewport.rangeM) && viewport.rangeM > 0 ? viewport.rangeM : 60000;
   const centerX = w / 2;
@@ -252,10 +277,10 @@ export function computeVisibleWorldTiles(viewport: RadarViewport): VisibleWorldT
   const minYM = panY - centerY / scale;
   const maxYM = panY + centerY / scale;
 
-  const minLon = GEODESY_ORIGIN_LON_DEG + minXM / METERS_PER_DEG_LON;
-  const maxLon = GEODESY_ORIGIN_LON_DEG + maxXM / METERS_PER_DEG_LON;
-  const minLat = Math.max(-MAX_MERCATOR_LAT_DEG, GEODESY_ORIGIN_LAT_DEG + minYM / METERS_PER_DEG_LAT);
-  const maxLat = Math.min(MAX_MERCATOR_LAT_DEG, GEODESY_ORIGIN_LAT_DEG + maxYM / METERS_PER_DEG_LAT);
+  const minLon = originLonDeg + minXM / mPerDegLon;
+  const maxLon = originLonDeg + maxXM / mPerDegLon;
+  const minLat = Math.max(-MAX_MERCATOR_LAT_DEG, originLatDeg + minYM / METERS_PER_DEG_LAT);
+  const maxLat = Math.min(MAX_MERCATOR_LAT_DEG, originLatDeg + maxYM / METERS_PER_DEG_LAT);
 
   if (minLat >= maxLat) return [];
 
@@ -293,8 +318,8 @@ export function computeVisibleWorldTiles(viewport: RadarViewport): VisibleWorldT
   for (let ty = minTy; ty <= maxTy; ty++) {
     const latNorth = tileYToLatDeg(ty, z);
     const latSouth = tileYToLatDeg(ty + 1, z);
-    const yNorthM = (latNorth - GEODESY_ORIGIN_LAT_DEG) * METERS_PER_DEG_LAT;
-    const ySouthM = (latSouth - GEODESY_ORIGIN_LAT_DEG) * METERS_PER_DEG_LAT;
+    const yNorthM = (latNorth - originLatDeg) * METERS_PER_DEG_LAT;
+    const ySouthM = (latSouth - originLatDeg) * METERS_PER_DEG_LAT;
     const sy0 = centerY - (yNorthM - panY) * scale;
     const sy1 = centerY - (ySouthM - panY) * scale;
     const dh = sy1 - sy0;
@@ -303,8 +328,8 @@ export function computeVisibleWorldTiles(viewport: RadarViewport): VisibleWorldT
     for (let txRaw = minTx; txRaw <= maxTx; txRaw++) {
       const lonWest = (txRaw / n) * 360.0 - 180.0;
       const lonEast = ((txRaw + 1) / n) * 360.0 - 180.0;
-      const xWestM = (lonWest - GEODESY_ORIGIN_LON_DEG) * METERS_PER_DEG_LON;
-      const xEastM = (lonEast - GEODESY_ORIGIN_LON_DEG) * METERS_PER_DEG_LON;
+      const xWestM = (lonWest - originLonDeg) * mPerDegLon;
+      const xEastM = (lonEast - originLonDeg) * mPerDegLon;
       const sx0 = centerX + (xWestM - panX) * scale;
       const sx1 = centerX + (xEastM - panX) * scale;
       const dw = sx1 - sx0;
@@ -335,6 +360,7 @@ interface CachedTileEntry {
   width: number;
   height: number;
   lastUsed: number;
+  errorTimestampMs?: number;
 }
 
 export interface WorldTileLayerOptions {
@@ -342,6 +368,9 @@ export interface WorldTileLayerOptions {
   readonly renderMode?: WorldTileRenderMode;
   readonly maxCacheSize?: number;
   readonly opacity?: number;
+  readonly allowExternalTiles?: boolean;
+  readonly originLatDeg?: number;
+  readonly originLonDeg?: number;
 }
 
 /**
@@ -354,6 +383,9 @@ export class WorldTileLayer {
   private readonly renderMode: WorldTileRenderMode;
   private readonly maxCacheSize: number;
   private readonly opacity: number;
+  private allowExternalTilesOption: boolean | undefined;
+  private originLatDeg: number;
+  private originLonDeg: number;
   private readonly cache = new Map<string, CachedTileEntry>();
   private accessTick = 0;
   private pendingNotify = false;
@@ -367,6 +399,45 @@ export class WorldTileLayer {
         : DEFAULT_WORLD_SATELLITE_TILE_URL);
     this.maxCacheSize = options.maxCacheSize ?? 220;
     this.opacity = options.opacity ?? 0.96;
+    this.allowExternalTilesOption = options.allowExternalTiles;
+    this.originLatDeg =
+      options.originLatDeg !== undefined && Number.isFinite(options.originLatDeg)
+        ? Math.max(-MAX_MERCATOR_LAT_DEG, Math.min(MAX_MERCATOR_LAT_DEG, options.originLatDeg))
+        : GEODESY_ORIGIN_LAT_DEG;
+    this.originLonDeg =
+      options.originLonDeg !== undefined && Number.isFinite(options.originLonDeg)
+        ? options.originLonDeg
+        : GEODESY_ORIGIN_LON_DEG;
+  }
+
+  public isExternalTilesAllowed(): boolean {
+    if (this.allowExternalTilesOption !== undefined) {
+      return this.allowExternalTilesOption;
+    }
+    if (typeof navigator !== 'undefined') {
+      if (typeof navigator.userAgent === 'string' && navigator.userAgent.includes('Electron')) {
+        return false;
+      }
+      if (navigator.onLine === false) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public setAllowExternalTiles(allow: boolean | undefined): void {
+    this.allowExternalTilesOption = allow;
+  }
+
+  public setOrigin(latDeg: number, lonDeg: number): void {
+    if (!Number.isFinite(latDeg) || !Number.isFinite(lonDeg)) return;
+    const clampedLat = Math.max(-MAX_MERCATOR_LAT_DEG, Math.min(MAX_MERCATOR_LAT_DEG, latDeg));
+    this.originLatDeg = clampedLat;
+    this.originLonDeg = lonDeg;
+  }
+
+  public getOrigin(): { latDeg: number; lonDeg: number } {
+    return { latDeg: this.originLatDeg, lonDeg: this.originLonDeg };
   }
 
   public setTileUrlTemplate(template: string): void {
@@ -462,9 +533,14 @@ export class WorldTileLayer {
     onTileLoaded?: () => void
   ): number {
     if (typeof Image === 'undefined') return 0;
-    const tiles = computeVisibleWorldTiles(viewport);
+    const tiles = computeVisibleWorldTiles(viewport, {
+      latDeg: this.originLatDeg,
+      lonDeg: this.originLonDeg,
+    });
     if (tiles.length === 0) return 0;
 
+    const canFetchExternal = this.isExternalTilesAllowed();
+    const nowMs = Date.now();
     let drawnCount = 0;
     ctx.save();
     ctx.imageSmoothingEnabled = true;
@@ -486,7 +562,12 @@ export class WorldTileLayer {
 
     for (const tile of tiles) {
       let entry = this.cache.get(tile.key);
-      if (!entry) {
+      const canRetryError =
+        entry?.status === 'error' &&
+        typeof entry.errorTimestampMs === 'number' &&
+        nowMs - entry.errorTimestampMs >= TILE_ERROR_RETRY_COOLDOWN_MS;
+
+      if ((!entry || canRetryError) && canFetchExternal) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         entry = { status: 'loading', source: img, width: 0, height: 0, lastUsed: ++this.accessTick };
@@ -501,17 +582,19 @@ export class WorldTileLayer {
           capturedEntry.width = img.naturalWidth || 256;
           capturedEntry.height = img.naturalHeight || 256;
           capturedEntry.status = 'loaded';
+          capturedEntry.errorTimestampMs = undefined;
           triggerNotify();
         };
         img.onerror = () => {
           capturedEntry.status = 'error';
+          capturedEntry.errorTimestampMs = Date.now();
         };
         img.src = formatSlippyTileUrl(this.tileUrlTemplate, tile.z, tile.tx, tile.ty);
-      } else {
+      } else if (entry) {
         entry.lastUsed = ++this.accessTick;
       }
 
-      if (entry.status === 'loaded' && entry.width > 0) {
+      if (entry && entry.status === 'loaded' && entry.width > 0) {
         ctx.drawImage(entry.source, tile.dx, tile.dy, tile.dw + 0.75, tile.dh + 0.75);
         drawnCount++;
       } else if (this.drawParentFallback(ctx, tile)) {

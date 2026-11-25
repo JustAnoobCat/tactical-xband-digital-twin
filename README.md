@@ -101,26 +101,31 @@ tactical-xband-digital-twin/
 │   │   ├── terrain.ts              # TerrainEngine (P.834, P.526-15 Bullington / Deygout, SRTM DEM)
 │   │   └── viewshedEngine.ts       # Polar X-band SINR viewshed & relay advisor
 │   ├── worker/                     # Authoritative Discrete-Event Web Worker
-│   │   ├── simWorker.ts            # SimulationWorkerManager (50 Hz authoritative loop, 3,281 lines)
+│   │   ├── simWorker.ts            # SimulationWorkerManager (50 Hz authoritative loop, 3,280 lines)
 │   │   └── telemetrySerializer.ts  # Binary/typed telemetry serialization & caching
 │   ├── ui/                         # UI Presentation & Visualization Coordinators
 │   │   ├── controllers/            # Typed UI Controller Modules (delegating alongside primary HTML workbench)
 │   │   │   ├── commandPaletteController.ts       # Command Palette dialog controller
 │   │   │   ├── dashboardAndAuthoringController.ts# Authoring studio & secondary scopes
 │   │   │   ├── missionIoController.ts            # Mission I/O, GIS & calibration UI
-│   │   │   ├── radar2dController.ts              # 2D tactical radar canvas controller
+│   │   │   ├── radar2dRenderer.ts                # 2D tactical radar canvas renderer
 │   │   │   └── terrainToolboxController.ts       # Direct-manipulation terrain toolbox
-│   │   ├── three/                  # Modular Three.js 3D Subsystem (sceneManager.ts, tacticalEntityManager.ts, terrainBuilder.ts, threeVolumetricRfLayer.ts)
+│   │   ├── three/                  # Modular Three.js 3D Subsystem (threeSceneController.ts, threeVolumetricRfLayer.ts, threeVolumetricRfMath.ts, threeTypes.ts)
 │   │   ├── canvasLabelPlacer.ts    # 2D tactical radar label collision-avoidance layout
 │   │   ├── canvasTheme.ts          # Lattice Obsidian & CVD theme tokens for 2D/3D canvases
-│   │   └── domSafety.ts            # Reusable XSS neutralization & trusted HTML helpers
+│   │   ├── domSafety.ts            # Reusable XSS neutralization & trusted HTML helpers
+│   │   ├── radarNodeMarkerLayer.ts # 2D radar node markers & WAAPI transitions
+│   │   ├── terrainToolboxCharts.ts # Terrain toolbox charts, profiles & RGBA heatmaps
+│   │   ├── toolboxPrecisionSuite.ts# Precision CAD / GIS / RF instruments & DEM quick presets
+│   │   ├── workspaceTilesManager.ts# Floating workspace tiles & telemetry formatting
+│   │   └── worldTileLayer.ts       # World tile layer & MapLibre geographic alignment
 │   └── shared/                     # Shared IPC Contracts & Protocols
 │       ├── constants.ts            # Physical constants (c, FRAME_DT = 0.020s, 8 GHz)
 │       └── workerProtocol.ts       # Typed WorkerInboundCommand & WorkerOutboundMessage
 ├── server/
 │   └── ts_parity_server.ts         # Canonical Node/TS headless parity server (node:http)
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Bounded parallel 114/116-suite runner (--concurrency=N, --serial)
+│   ├── run_all_verifications.mjs   # Bounded parallel 122-suite runner (--concurrency=N, --serial)
 │   ├── run_v8_coverage.mjs         # Native Node V8 code coverage reporter
 │   ├── verify-browser-ux.mjs       # Multi-viewport (4 viewports + 9 tabs) Playwright Chromium UX gate
 │   └── generate_scientific_dossier.ts# N=30 Monte Carlo research dossier generator
@@ -172,13 +177,13 @@ npm run benchmark:scientific
 
 ### Automated Verification Pipeline & Quality Gates
 The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
-- **`116` TypeScript verification suites** (114 core registered suites in `scripts/run_all_verifications.mjs` + Fix-01/02 algorithmic hardening gates; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
+- **`122` TypeScript verification suites** (`114` core V3.0 registered suites + `8` post-release hardening & UI/RF suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
 - **`27` Python `pytest` suites (`pytest -v`)**
 - **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs` across 4 viewports + 9 rail tabs enforced in CI)**
 - **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
 
 ```bash
-# Run all 116 TypeScript verification suites (114 core + hardening gates)
+# Run all 122 TypeScript verification suites (114 core V3.0 + 8 post-release suites)
 npm run verify:all
 
 # Run with custom concurrency or serial fallback

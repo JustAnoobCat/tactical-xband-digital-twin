@@ -379,7 +379,7 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
         }
       }
       const normPreset = sectorSelect.value === 'alpine_mountain' ? 'ladakh' : sectorSelect.value;
-      doc.querySelectorAll('#tb-dem-quick-switch .tb-dem-preset-btn[data-dem-preset]').forEach((btn) => {
+      doc.querySelectorAll?.('#tb-dem-quick-switch .tb-dem-preset-btn[data-dem-preset]')?.forEach((btn) => {
         const active = btn.getAttribute('data-dem-preset') === normPreset;
         btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-pressed', String(active));
@@ -626,7 +626,6 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
           );
         }
       };
-      tr.onclick = onRowClick;
       tr.addEventListener('click', onRowClick);
       tr.innerHTML = `
         <td class="c-acc">${escapeHtml(r.nidStr)}</td>

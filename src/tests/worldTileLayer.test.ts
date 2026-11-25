@@ -1,5 +1,24 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+
+let suitePassed = 0;
+let suiteFailed = 0;
+
+function describe(name: string, fn: () => void): void {
+  console.log(`\n▶ ${name}`);
+  fn();
+}
+
+function it(name: string, fn: () => void): void {
+  try {
+    fn();
+    suitePassed++;
+    console.log(`  ✔ ${name}`);
+  } catch (err) {
+    suiteFailed++;
+    console.error(`  ✖ ${name}`);
+    console.error(err);
+  }
+}
 import {
   DEFAULT_WORLD_RADAR_DEM_TILE_URL,
   DEFAULT_WORLD_SATELLITE_TILE_URL,
@@ -202,3 +221,8 @@ describe('WorldTileLayer & MapLibre Geo Transparency', () => {
     assert.equal(worldDrawCalls, 1, 'Radar SYN mode must not render world satellite tile layer');
   });
 });
+
+console.log(`\nℹ tests ${suitePassed + suiteFailed} | pass ${suitePassed} | fail ${suiteFailed}`);
+if (suiteFailed > 0) {
+  throw new Error(`${suiteFailed} test(s) failed`);
+}

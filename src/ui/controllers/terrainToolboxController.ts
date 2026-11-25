@@ -407,11 +407,15 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
     const kFactor = parseFloat(($('tb-transect-k') as HTMLInputElement)?.value || String(4 / 3));
     const nodeType = ($('tb-transect-node-type') as HTMLInputElement)?.value === 'mcp' ? 'mcp' : 'soldier';
     const includeObstacles = isPreview ? false : Boolean(($('tb-transect-obstacles') as HTMLInputElement)?.checked ?? true);
+    const rawTxMast = parseFloat(($('tb-transect-tx-mast') as HTMLInputElement)?.value ?? '');
+    const rawRxMast = parseFloat(($('tb-transect-rx-mast') as HTMLInputElement)?.value ?? '');
+    const txMastM = Number.isFinite(rawTxMast) && rawTxMast >= 0 ? Math.min(2000, rawTxMast) : 10;
+    const rxMastM = Number.isFinite(rawRxMast) && rawRxMast >= 0 ? Math.min(2000, rawRxMast) : 2;
 
-    const inputs = transectWaypoints.map(wp => ({
+    const inputs = transectWaypoints.map((wp, idx) => ({
       xM: wp.xM,
       yM: wp.yM,
-      aglM: 2,
+      aglM: idx === 0 ? txMastM : rxMastM,
       heightMode: 'ground_agl' as const,
     }));
 
@@ -424,7 +428,7 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
 
     if (transectResult && transectResult.samples && transectResult.samples.length >= 2) {
       const elevs = transectResult.samples.map((s: any) => s.terrainMslM);
-      const rf = computeTransectRfMetrics(elevs, transectResult.totalHorizontalM, 10, 2);
+      const rf = computeTransectRfMetrics(elevs, transectResult.totalHorizontalM, txMastM, rxMastM);
       setText('tb-transect-fresnel', `${rf.minF1ClearanceM.toFixed(1)} m (${Math.round(rf.minF1ClearancePct)}%)`);
       setText('tb-transect-diffraction', `${rf.p526DiffractionLossDb.toFixed(1)} dB`);
       setText('tb-transect-snr', `${rf.estSnrDb.toFixed(1)} dB / ${rf.estModcod}`);
@@ -435,8 +439,8 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
       const demB = sampleDemSafe(ctx.terrainEngine, wpB.xM, wpB.yM).elevationM || 3500;
 
       rulerMetrics = computeGeodeticRulerMetrics(
-        { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: 10 },
-        { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: 2 }
+        { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
+        { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM }
       );
     }
     renderToolboxDrawer();
@@ -453,9 +457,37 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
           ? ((liveTelemetry.acn_telemetry.heading_rad * 180 / Math.PI) % 360 + 360) % 360
           : 0);
 
+    const aglRaw = parseFloat(($('tb-probe-agl') as HTMLInputElement)?.value ?? '');
+    const aglM = Number.isFinite(aglRaw) && aglRaw >= 0 ? Math.min(500, aglRaw) : 2;
+    const radiusRaw = parseFloat(($('tb-probe-radius') as HTMLInputElement)?.value ?? '');
+    const radiusKm = Number.isFinite(radiusRaw) && radiusRaw >= 5 ? Math.min(60, radiusRaw) : 24;
+    const targetMode = ($('tb-probe-target') as HTMLInputElement)?.value === 'acn_alt' ? 'acn_alt' : 'ground_agl';
+    const includeObstacles = Boolean(($('tb-probe-obstacles') as HTMLInputElement)?.checked ?? true);
+    const nodeType = ($('tb-transect-node-type') as HTMLInputElement)?.value === 'mcp' ? 'mcp' : 'soldier';
+    const unitKind = ($('tb-probe-unit-select') as HTMLInputElement)?.value === 'mcp' ? 'mcp' : 'soldier';
+
+    if (ctx.terrainEngine) {
+      viewshedResult = computeSiteProbeViewshed(ctx, {
+        xM: probeSite.xM,
+        yM: probeSite.yM,
+        observerAglM: aglM,
+        radiusM: radiusKm * 1000,
+        targetMode,
+        targetAglM: 2.0,
+        includeObstacles,
+        txPowerDbm: unitKind === 'mcp' ? 40 : 30,
+      });
+      orbitResult = computeOrbitPersistence(ctx, probeSite.xM, probeSite.yM, aglM, includeObstacles, nodeType);
+      sweepResult = computeAltitudeSweep(
+        ctx,
+        { kind: 'probe', xM: probeSite.xM, yM: probeSite.yM, aglM },
+        { includeObstacles, nodeType }
+      );
+    }
+
     cursorProbeLive = evaluateCursorRfProbe(
       { xM: probeSite.xM, yM: probeSite.yM },
-      2,
+      aglM,
       acnPos,
       acnHeading,
       (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
@@ -592,6 +624,14 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
           <span>Elevation MSL</span><span>${p?.terrainMslM?.toFixed(0) ?? '--'} m</span>
           <span>ACN Direct Link</span><span>${p?.acnLink ? `${escapeHtml(p.acnLink.modcod)} · ${p.acnLink.snrDb.toFixed(1)} dB` : 'Out of Reach'}</span>
         </div>`;
+      const polarCvs = $('tb-polar-canvas') as HTMLCanvasElement | null;
+      if (polarCvs && viewshedResult) {
+        renderPolarHorizonChart(polarCvs, viewshedResult);
+      }
+      const sweepCvs = $('tb-sweep-canvas') as HTMLCanvasElement | null;
+      if (sweepCvs && sweepResult) {
+        renderAltitudeSweepChart(sweepCvs, sweepResult);
+      }
     } else if (activeMode === 'region') {
       hasBody = true;
       const z = zonalStats;
@@ -747,7 +787,7 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
   };
 
   const handleKeydown = (e: KeyboardEvent): boolean => {
-    const is3d = deps.getTelemetry()?.stageViewMode === '3d';
+    const is3d = $('radar-stage')?.getAttribute('data-map-renderer') === '3d';
     const action = resolveToolboxHotkeyAction(e.key, {
       ctrlKey: e.ctrlKey,
       metaKey: e.metaKey,

@@ -3910,7 +3910,7 @@ details.c2-card[open] > summary {
   justify-content: space-between;
   font-family: var(--lo-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--lo-text-muted);
 }
 
@@ -3930,7 +3930,7 @@ details.c2-card[open] > summary {
 
 .tb-probe-hm-stat-lbl {
   font-family: var(--lo-sans);
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--lo-text-muted);
 }
 
@@ -4631,7 +4631,7 @@ details.c2-card[open] > summary {
   background: rgba(9, 11, 16, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-family: var(--lo-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0.01em;

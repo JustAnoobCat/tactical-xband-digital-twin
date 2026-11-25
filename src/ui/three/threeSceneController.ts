@@ -39,6 +39,9 @@ export class ThreeSceneController extends ThreeSceneManager {
 
   private boundPointerDown: ((e: PointerEvent | MouseEvent) => void) | null = null;
   private boundPointerUp: ((e: PointerEvent | MouseEvent) => void) | null = null;
+  private boundContextLost: ((e: Event) => void) | null = null;
+  private boundContextRestored: ((e: Event) => void) | null = null;
+  private contextLostPaused: boolean = false;
 
   constructor(config: ThreeRendererConfig, initialOptions?: Partial<VolumetricRfOptions>) {
     super(config);
@@ -48,6 +51,55 @@ export class ThreeSceneController extends ThreeSceneManager {
     this.scene.add(this.volumetricRfLayer.rootGroup);
 
     this.setupPickingPointerListeners();
+    this.setupContextRecoveryListeners();
+  }
+
+  private setupContextRecoveryListeners(): void {
+    if (!this.canvas || typeof this.canvas.addEventListener !== 'function') return;
+
+    this.boundContextLost = (e: Event) => {
+      if (e && typeof e.preventDefault === 'function') {
+        e.preventDefault();
+      }
+      this.contextLostPaused = true;
+      (this as any).isContextLost = true;
+      this.stopAnimationLoop();
+    };
+
+    this.boundContextRestored = () => {
+      this.contextLostPaused = false;
+      (this as any).isContextLost = false;
+      this.handleResize();
+      if (this.latestFrame && this.getViewMode() === '3d') {
+        const selectedNodeId = this.tacticalEntityManager.getSelectedNodeId?.() ?? null;
+        const cvdMode = readActiveCanvasCvdMode();
+        this.volumetricRfLayer.update(this.latestFrame, { selectedNodeId, cvdMode });
+      }
+      if (this.getViewMode() === '3d') {
+        this.startAnimationLoop();
+        this.render();
+      }
+    };
+
+    this.canvas.addEventListener('webglcontextlost', this.boundContextLost);
+    this.canvas.addEventListener('webglcontextrestored', this.boundContextRestored);
+  }
+
+  private removeContextRecoveryListeners(): void {
+    if (!this.canvas || typeof this.canvas.removeEventListener !== 'function') return;
+
+    if (this.boundContextLost) {
+      this.canvas.removeEventListener('webglcontextlost', this.boundContextLost);
+      this.boundContextLost = null;
+    }
+    if (this.boundContextRestored) {
+      this.canvas.removeEventListener('webglcontextrestored', this.boundContextRestored);
+      this.boundContextRestored = null;
+    }
+  }
+
+  public isWebGlContextLost(): boolean {
+    return this.contextLostPaused || Boolean((this as any).isContextLost);
   }
 
   private setupPickingPointerListeners(): void {
@@ -237,6 +289,7 @@ export class ThreeSceneController extends ThreeSceneManager {
   }
 
   public override dispose(): void {
+    this.removeContextRecoveryListeners();
     this.removePickingPointerListeners();
     this.nodePickedCallbacks.length = 0;
     this.volumetricRfLayer.dispose();

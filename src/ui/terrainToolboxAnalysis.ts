@@ -529,6 +529,68 @@ function computeSpecularPoint(
 }
 
 /**
+ * ITU-R P.838-3 horizontal-polarization X-band rain attenuation coefficients (k_H, alpha_H),
+ * log-linearly interpolated for k_H across [7, 12] GHz and anchored to exact (0.00411, 1.39) at 8.0 GHz.
+ */
+function resolveXBandRainCoefficients(carrierFrequencyHz: number): { kH: number; alphaH: number } {
+  const fGhz = Number.isFinite(carrierFrequencyHz) && carrierFrequencyHz > 0 ? carrierFrequencyHz / 1e9 : 8.0;
+  if (Math.abs(fGhz - 8.0) <= 1e-6) {
+    return { kH: 0.00411, alphaH: 1.39 };
+  }
+  const anchors: readonly [number, number, number][] = [
+    [7.0, 0.00265, 1.312],
+    [8.0, 0.00411, 1.39],
+    [10.0, 0.0101, 1.276],
+    [12.0, 0.0188, 1.217],
+  ];
+  const clampedGhz = Math.max(7.0, Math.min(12.0, fGhz));
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const [f0, k0, a0] = anchors[i];
+    const [f1, k1, a1] = anchors[i + 1];
+    if (clampedGhz <= f1) {
+      const t = (clampedGhz - f0) / (f1 - f0);
+      const kH = Math.exp(Math.log(k0) + t * (Math.log(k1) - Math.log(k0)));
+      const alphaH = a0 + t * (a1 - a0);
+      return { kH, alphaH };
+    }
+  }
+  return { kH: 0.0188, alphaH: 1.217 };
+}
+
+function applyFrequencyScaledRainStatus(
+  status: LinkStatus,
+  rainRateMmH: number,
+  kH: number,
+  alphaH: number,
+  bandwidthHz: number,
+  obstacleBlocked: boolean,
+): LinkStatus {
+  if (rainRateMmH <= 0 || status.rainLossDb <= 0 || (kH === 0.00411 && alphaH === 1.39)) {
+    return status;
+  }
+  const scale = (kH * Math.pow(rainRateMmH, alphaH)) / (0.00411 * Math.pow(rainRateMmH, 1.39));
+  const newRainLossDb = Math.max(0, status.rainLossDb * scale);
+  const deltaLossDb = newRainLossDb - status.rainLossDb;
+  const newSnrDb = status.snrDb - deltaLossDb;
+  const modcod = LinkBudgetEngine.selectModCod(newSnrDb);
+  const isOutage = obstacleBlocked || modcod.name === 'LINK_OUTAGE';
+  const spectralEfficiency = isOutage ? 0.0 : modcod.spectralEfficiencyBpsHz;
+  const bitrateBps = isOutage ? 0.0 : spectralEfficiency * bandwidthHz;
+  return {
+    ...status,
+    rainLossDb: newRainLossDb,
+    totalLossDb: status.totalLossDb + deltaLossDb,
+    prxDbm: status.prxDbm - deltaLossDb,
+    snrDb: newSnrDb,
+    modcodName: modcod.name,
+    spectralEfficiency,
+    bitrateBps,
+    bitrateMbps: bitrateBps / 1.0e6,
+    isOutage,
+  };
+}
+
+/**
  * Mode 2: Evaluates single-hop or multi-segment polyline transect with full RF link budget,
  * dominant Fresnel crest, height deltas, O(N) specular reflection, k-sweep, and M3 rain sensitivity.
  */
@@ -762,12 +824,21 @@ export function evaluateTransect(
     } else if (!(d3D > 1e-3)) {
       rainStatusReason = 'COINCIDENT';
     } else {
-      linkStatus = linkEngine.evaluateLink(
+      const { kH, alphaH } = resolveXBandRainCoefficients(ctx.rfConfig.carrierFrequencyHz);
+      const rawLinkStatus = linkEngine.evaluateLink(
         nodeType,
         d3D,
         obstruction.diffractionLossDb,
         ctx.rfConfig,
         env,
+        effObstacleBlocked,
+      );
+      linkStatus = applyFrequencyScaledRainStatus(
+        rawLinkStatus,
+        rainRateMmH,
+        kH,
+        alphaH,
+        ctx.rfConfig.channelBandwidthHz,
         effObstacleBlocked,
       );
       const zeroStatus = linkEngine.evaluateLink(
@@ -790,7 +861,7 @@ export function evaluateTransect(
         const lEffKm = Math.min(d3D / 1000, env.rainCellLengthKm);
         criticalRainRateMmH =
           lEffKm > 0
-            ? Math.pow((zeroStatus.snrDb - OUTAGE_SNR_FLOOR_DB) / (0.00411 * lEffKm), 1 / 1.39)
+            ? Math.pow((zeroStatus.snrDb - OUTAGE_SNR_FLOOR_DB) / (kH * lEffKm), 1 / alphaH)
             : null;
         rainStatusReason = 'OK';
       }
@@ -803,12 +874,20 @@ export function evaluateTransect(
           rainCellLengthKm: ctx.envConfig.rainCellLengthKm,
           atmosphericTemperatureK: ctx.envConfig.atmosphericTemperatureK,
         });
-        const st = linkEngine.evaluateLink(
+        const rawSweepStatus = linkEngine.evaluateLink(
           nodeType,
           d3D,
           obstruction.diffractionLossDb,
           ctx.rfConfig,
           sweepEnv,
+          effObstacleBlocked,
+        );
+        const st = applyFrequencyScaledRainStatus(
+          rawSweepStatus,
+          r,
+          kH,
+          alphaH,
+          ctx.rfConfig.channelBandwidthHz,
           effObstacleBlocked,
         );
         rainSweep.push({
@@ -1480,11 +1559,49 @@ export function computeSiteProbeViewshed(
   }
 
   const rEff = ctx.envConfig.effectiveEarthRadiusM;
-  const wavelength = ctx.rfConfig.wavelengthM;
+  const rfAny = ctx.rfConfig as (RFConfig & { rxNoiseFigureDb?: number; rxAntennaGainDbi?: number }) | undefined;
+  const speedOfLight =
+    Number.isFinite(rfAny?.speedOfLight) && rfAny!.speedOfLight > 0 ? rfAny!.speedOfLight : 299792458.0;
+  const carrierFreqHz =
+    Number.isFinite(rfAny?.carrierFrequencyHz) && rfAny!.carrierFrequencyHz > 0 ? rfAny!.carrierFrequencyHz : 8.0e9;
+  const wavelength =
+    Number.isFinite(rfAny?.wavelengthM) && rfAny!.wavelengthM > 0
+      ? rfAny!.wavelengthM
+      : speedOfLight / carrierFreqHz;
   const fsplConstDb = 20 * Math.log10((4 * Math.PI) / Math.max(wavelength, 1e-6));
-  // Calibrated 8 GHz X-band link budget (matching cursorProbeEngine: txPower + 22 dBi total gain, -101 dBm thermal noise floor)
-  const linkGainBudgetDbm = txPowerDbm + 22.0;
-  const noiseFloorDbm = -101.0;
+
+  // Live RF thermal noise floor and antenna gain budget from ctx.rfConfig
+  const channelBandwidthHz =
+    Number.isFinite(rfAny?.channelBandwidthHz) && rfAny!.channelBandwidthHz > 0
+      ? rfAny!.channelBandwidthHz
+      : 1.0e6;
+  const rxNoiseFigureDb = Number.isFinite(rfAny?.rxNoiseFigureDb)
+    ? rfAny!.rxNoiseFigureDb!
+    : Number.isFinite(rfAny?.acnNoiseFigureDb)
+      ? rfAny!.acnNoiseFigureDb
+      : 5.0;
+  const atmosphericTempK =
+    Number.isFinite(ctx.envConfig?.atmosphericTemperatureK) && ctx.envConfig.atmosphericTemperatureK > 0
+      ? ctx.envConfig.atmosphericTemperatureK
+      : 290.0;
+  const boltzmann =
+    Number.isFinite(rfAny?.boltzmannConstant) && rfAny!.boltzmannConstant > 0
+      ? rfAny!.boltzmannConstant
+      : 1.380649e-23;
+  const { pNoiseDbm: noiseFloorDbm } = LinkBudgetEngine.computeThermalNoiseFloorDbm(
+    channelBandwidthHz,
+    rxNoiseFigureDb,
+    atmosphericTempK,
+    boltzmann,
+  );
+  const acnGainDbi = Number.isFinite(rfAny?.acnAntennaGainDbi) ? rfAny!.acnAntennaGainDbi : 16.0;
+  const rxGainDbi = Number.isFinite(rfAny?.rxAntennaGainDbi)
+    ? rfAny!.rxAntennaGainDbi!
+    : Number.isFinite(rfAny?.soldierAntennaGainDbi)
+      ? rfAny!.soldierAntennaGainDbi
+      : 3.0;
+  const cableLossDb = Number.isFinite(rfAny?.cableLossDb) ? rfAny!.cableLossDb : 1.5;
+  const linkGainBudgetDbm = txPowerDbm + acnGainDbi + rxGainDbi - cableLossDb;
   const acnAlt = ctx.acnPositionMslM?.[2] ?? 5000;
   const targetAglM = input.targetAglM ?? 2.0;
   const obstacles = input.includeObstacles ? ctx.terrainEngine.obstacleField.all : [];

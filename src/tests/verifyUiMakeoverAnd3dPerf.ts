@@ -208,15 +208,15 @@ console.log('\n[UMP-T3] Verifying Obsidian Aerospace Theme & Spec Persistence...
   // 4. Verify Obsidian Aerospace Theme Tokens & Tabular Numerics in CSS
   const css = readFileSync(resolve(process.cwd(), 'frontend/c2-console-theme.css'), 'utf-8');
   const requiredTokens = [
-    '#06080d', // Deep Obsidian Void
-    '#0b0f17', // Primary Workbench
-    '#101622', // Instrument Card
-    '#161f30', // Elevated Header
-    '#00e5ff', // Electric Cyan
-    '#00e676', // Tactical Emerald
-    '#ffab00', // Aerospace Amber
-    '#ff2a54', // Signal Crimson
-    '#b388ff', // Violet Plasma
+    '#090b10', // --lo-void (Carbon-Graphite Void)
+    '#0d1016', // --lo-bg (Primary Background)
+    '#12161f', // --lo-surface (Instrument Surface)
+    '#161b26', // --lo-card (Elevated Card)
+    '#38bdf8', // --lo-accent (Aerospace Sky Accent)
+    '#22c55e', // --lo-ok / --c2-sig-optimal (Tactical Emerald)
+    '#eab308', // --lo-warn / --c2-sig-degraded (Aerospace Amber)
+    '#ef4444', // --lo-err / --c2-sig-outage (Signal Crimson)
+    '#3b82f6', // --lo-relay / --c2-sig-relay (Relay Blue)
   ];
   for (const token of requiredTokens) {
     assert.ok(css.toLowerCase().includes(token.toLowerCase()), `c2-console-theme.css must define token ${token}`);

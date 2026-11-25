@@ -54,6 +54,7 @@ export interface AdversaryEsmLpiParams {
 
 export interface AdversaryEsmLpiResult {
   readonly interceptPowerDbm: number;
+  readonly freeSpaceDetectionRadiusM: number;
   readonly detectionRadiusM: number;
   readonly detectionRadiusKm: number;
   readonly lpiSafetyRatio: number;
@@ -239,14 +240,17 @@ export function evaluateAdversaryEsmLpi(params: AdversaryEsmLpiParams): Adversar
   const fsplAtEsmDb = 20.0 * Math.log10(dEsmM) + freqTermDb;
   const interceptPowerDbm = pTxDbm + gTxDbi + gEsmDbi - fsplAtEsmDb - terrainLossDb;
 
-  // Free-Space Detection Radius R_det where P_int == sEsmDbm:
-  // sEsmDbm = pTxDbm + gTxDbi + gEsmDbi - terrainLossDb - (20*log10(R_det) + freqTermDb)
-  const availablePathLossDb = pTxDbm + gTxDbi + gEsmDbi - terrainLossDb - sEsmDbm;
-  let detectionRadiusM = 0.0;
-  if (availablePathLossDb > freqTermDb) {
-    const log10R = (availablePathLossDb - freqTermDb) / 20.0;
-    detectionRadiusM = Math.pow(10.0, log10R);
+  // Pure Free-Space Detection Radius R_fs where P_int(terrainLossDb=0) == sEsmDbm:
+  const freeSpacePathLossBudgetDb = pTxDbm + gTxDbi + gEsmDbi - sEsmDbm;
+  let freeSpaceDetectionRadiusM = 0.0;
+  if (freeSpacePathLossBudgetDb > freqTermDb) {
+    const log10Rfs = (freeSpacePathLossBudgetDb - freqTermDb) / 20.0;
+    freeSpaceDetectionRadiusM = Math.pow(10.0, log10Rfs);
   }
+
+  // Terrain-shielded effective detection radius: shrinks by 10^(-terrainLossDb / 20)
+  const detectionRadiusM =
+    freeSpaceDetectionRadiusM * Math.pow(10.0, -Math.max(0.0, terrainLossDb) / 20.0);
 
   const detectionRadiusKm = detectionRadiusM / 1000.0;
   const lpiSafetyRatio = friendlyRangeM / Math.max(1.0, detectionRadiusM);
@@ -257,6 +261,7 @@ export function evaluateAdversaryEsmLpi(params: AdversaryEsmLpiParams): Adversar
 
   return {
     interceptPowerDbm,
+    freeSpaceDetectionRadiusM,
     detectionRadiusM,
     detectionRadiusKm,
     lpiSafetyRatio,

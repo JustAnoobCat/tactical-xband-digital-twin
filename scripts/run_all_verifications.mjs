@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (116 Total Suites)
+// Verification Suites Registry (122 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -174,7 +174,13 @@ const REGISTERED_SUITES = [
 
 REGISTERED_SUITES.push(
   { id: 'verify:fix01-hardening', name: 'CI/Server/Electron Hardening & RFC 9110 Range (FIX-01)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyHardeningFix01.ts'], category: 'hardening' },
-  { id: 'verify:fix02-algorithms', name: 'Scientific & Algorithmic Hardening (FIX-02)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyHardeningFix02.ts'], category: 'hardening' }
+  { id: 'verify:fix02-algorithms', name: 'Scientific & Algorithmic Hardening (FIX-02)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyHardeningFix02.ts'], category: 'hardening' },
+  { id: 'verify:audit-fixes', name: 'Audit Remediation & Security Unit Tests', command: process.execPath, args: [viteNodeBin, 'src/tests/auditFixes.test.ts'], category: 'hardening' },
+  { id: 'verify:radar-marker-layer', name: '2D Radar Node Marker Layer & WAAPI Transitions', command: process.execPath, args: [viteNodeBin, 'src/tests/radarNodeMarkerLayer.test.ts'], category: 'ui' },
+  { id: 'verify:world-tile-layer', name: 'World Tile Layer & MapLibre Geo Transparency', command: process.execPath, args: [viteNodeBin, 'src/tests/worldTileLayer.test.ts'], category: 'ui' },
+  { id: 'verify:probe-signal-heatmap', name: 'Probe RF Signal Propagation Heat Map', command: process.execPath, args: [viteNodeBin, 'src/tests/probeSignalHeatmap.test.ts'], category: 'rf' },
+  { id: 'verify:toolbox-precision', name: 'Toolbox Precision CAD / GIS / RF Suite & DEM Presets', command: process.execPath, args: [viteNodeBin, 'src/tests/toolboxPrecisionSuite.test.ts'], category: 'ui' },
+  { id: 'verify:workspace-tiles', name: 'Workspace Tiles Manager State & Telemetry Formatting', command: process.execPath, args: [viteNodeBin, 'src/tests/workspaceTilesManager.test.ts'], category: 'ui' }
 );
 
 // -----------------------------------------------------------------------------

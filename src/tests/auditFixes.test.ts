@@ -1,26 +1,54 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { generateUuidV4 } from '../core/nodeRegistry.ts';
-import { parseMissionScenarioJson } from '../core/militaryGisEngine.ts';
+import { generateUuidV4 } from '../core/nodeRegistry';
+import { parseMissionScenarioJson } from '../core/militaryGisEngine';
 import {
   parseByteRangeHeader,
   MAX_OFFLINE_TILE_CHUNK_BYTES,
-} from '../core/offlineTileProtocol.ts';
+} from '../core/offlineTileProtocol';
 import {
   computeParametricSensitivityCurve,
   evaluateParametricSensitivity,
-} from '../core/parametricSensitivity.ts';
-import { FQCoDelQueue, GroundNodeTrafficSubsystem, Packet } from '../core/queues.ts';
-import { TerrainAwareDynamicScheduler, ReactiveMlwdfScheduler } from '../core/scheduler.ts';
-import { TerrainEngine } from '../core/terrain.ts';
-import { ACNTrajectoryEngine } from '../core/trajectory.ts';
-import { PolarViewshedEngine } from '../core/viewshedEngine.ts';
-import { RFConfig, EnvironmentConfig, ACNFlightConfig } from '../core/config.ts';
-import type { LinkStatus, PredictiveState } from '../shared/types.ts';
+} from '../core/parametricSensitivity';
+import { FQCoDelQueue, GroundNodeTrafficSubsystem, Packet } from '../core/queues';
+import { TerrainAwareDynamicScheduler, ReactiveMlwdfScheduler } from '../core/scheduler';
+import { TerrainEngine } from '../core/terrain';
+import { ACNTrajectoryEngine, type PredictiveState } from '../core/trajectory';
+import { PolarViewshedEngine } from '../core/viewshedEngine';
+import { RFConfig, EnvironmentConfig, ACNFlightConfig } from '../core/config';
+import type { LinkStatus } from '../core/linkBudget';
+import { evaluateAdversaryEsmLpi } from '../core/ewEccmEngine';
+import { drawCartographicOverlays } from '../ui/cartographyRenderer';
+import { getLatticeCanvasPalette } from '../ui/canvasTheme';
+import { createTelemetryDomUpdaters } from '../ui/controllers/telemetryDomUpdaters';
+import { createRadar2dRenderer } from '../ui/controllers/radar2dRenderer';
+import { createTerrainToolboxController } from '../ui/controllers/terrainToolboxController';
+import { createRadarNodeMarkerLayer } from '../ui/radarNodeMarkerLayer';
+import { WorldTileLayer, computeVisibleWorldTiles } from '../ui/worldTileLayer';
+import { createWorkspaceTilesManager } from '../ui/workspaceTilesManager';
+
+let suitePassed = 0;
+let suiteFailed = 0;
+
+function describe(name: string, fn: () => void): void {
+  console.log(`\n▶ ${name}`);
+  fn();
+}
+
+function it(name: string, fn: () => void): void {
+  try {
+    fn();
+    suitePassed++;
+    console.log(`  ✔ ${name}`);
+  } catch (err) {
+    suiteFailed++;
+    console.error(`  ✖ ${name}`);
+    console.error(err);
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -212,4 +240,250 @@ describe('Audit remediation unit tests', () => {
       `Active jammer should degrade relay orbit SINR (clear=${clearRec.meanSinrToAcnDb.toFixed(2)}, jammed=${jammedRec.meanSinrToAcnDb.toFixed(2)})`,
     );
   });
+
+  it('RESCUE-2 Fix 1 & 8: parametricSensitivity removes +0.5 clamps & ewEccmEngine terrain-shields detectionRadiusM', () => {
+    const sensSrc = fs.readFileSync(path.join(ROOT_DIR, 'src', 'core', 'parametricSensitivity.ts'), 'utf8');
+    assert.equal(sensSrc.includes('reactRes.goodputMbps + 0.5'), false);
+    assert.equal(sensSrc.includes('statRes.goodputMbps + 0.5'), false);
+
+    const pt = evaluateParametricSensitivity('traffic_load', 5.0);
+    assert.ok(pt.tacDropRatePct >= 0 && pt.tacDropRatePct <= 100);
+    assert.ok(pt.reactiveDropRatePct >= 0 && pt.reactiveDropRatePct <= 100);
+    assert.ok(pt.staticDropRatePct >= 0 && pt.staticDropRatePct <= 100);
+
+    const unshielded = evaluateAdversaryEsmLpi({ txPowerDbm: 30, esmTerrainShieldDb: 0 });
+    const shielded20 = evaluateAdversaryEsmLpi({ txPowerDbm: 30, esmTerrainShieldDb: 20 });
+    assert.equal(unshielded.detectionRadiusM, unshielded.freeSpaceDetectionRadiusM);
+    assert.equal(shielded20.freeSpaceDetectionRadiusM, unshielded.freeSpaceDetectionRadiusM);
+    assert.ok(Math.abs(shielded20.detectionRadiusM / unshielded.detectionRadiusM - 0.1) < 1e-6);
+    assert.ok(shielded20.lpiSafetyRatio > unshielded.lpiSafetyRatio * 9.9);
+  });
+
+  it('RESCUE-2 Fix 2: OPS Fleet Registry row click triggers selection exactly once', () => {
+    const clickListeners: Array<() => void> = [];
+    const mockRow: any = {
+      style: {},
+      classList: { add: () => {} },
+      dataset: {},
+      innerHTML: '',
+      onclick: null,
+      addEventListener: (ev: string, fn: () => void) => {
+        if (ev === 'click') clickListeners.push(fn);
+      },
+    };
+    const tbody: any = { replaceChildren: () => {} };
+    const mockDoc: any = {
+      getElementById: (id: string) => (id === 'ops-fleet-tbody' ? tbody : null),
+      createElement: () => mockRow,
+    };
+    let selectCalls = 0;
+    const updaters = createTelemetryDomUpdaters({
+      documentRef: mockDoc,
+      onSelectNode: () => {
+        selectCalls++;
+      },
+    });
+    updaters.renderOpsFleetRegistry([{ node_id: 1, name: 'S1', snr_db: 18, link_outage: false }], null);
+    assert.equal(mockRow.onclick, null, 'Duplicate tr.onclick handler must not be assigned');
+    assert.equal(clickListeners.length, 1);
+    clickListeners[0]();
+    assert.equal(selectCalls, 1);
+  });
+
+  it('RESCUE-2 Fix 3 & 4: cartography scale bar avoids unit collision & radar2dRenderer wires labelPlacer, secondary_acns & CVD palette', () => {
+    const drawnTexts: Array<{ text: string; x: number }> = [];
+    const fillRects: Array<{ w: number; h: number }> = [];
+    const lineDashes: number[][] = [];
+    const fontsUsed: string[] = [];
+    const mockCtx: any = {
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      textAlign: 'left',
+      textBaseline: 'alphabetic',
+      globalAlpha: 1,
+      imageSmoothingEnabled: true,
+      set font(v: string) {
+        fontsUsed.push(v);
+      },
+      clearRect: () => {},
+      fillRect: (_x: number, _y: number, w: number, h: number) => fillRects.push({ w, h }),
+      strokeRect: () => {},
+      beginPath: () => {},
+      rect: () => {},
+      clip: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      stroke: () => {},
+      fill: () => {},
+      arc: () => {},
+      closePath: () => {},
+      setLineDash: (d: number[]) => lineDashes.push([...d]),
+      measureText: (t: string) => ({ width: t.length * 6 }),
+      fillText: (text: string, x: number) => drawnTexts.push({ text, x }),
+      drawImage: () => {},
+      save: () => {},
+      restore: () => {},
+    };
+
+    drawCartographicOverlays(mockCtx, { width: 800, height: 600, metersPerPixel: 180 });
+    assert.ok(drawnTexts.some((d) => d.text === '10'), 'Scale bar half label should omit repeated km suffix');
+    assert.ok(drawnTexts.some((d) => d.text === '20 km'));
+    assert.ok(fillRects.some((r) => r.h === 5 && r.w >= 55), 'Scale bar segments must reflect >= 110px bar width');
+
+    drawnTexts.length = 0;
+    fontsUsed.length = 0;
+    const renderer = createRadar2dRenderer({
+      canvas: { width: 800, height: 600, parentElement: { clientWidth: 800, clientHeight: 600 } } as any,
+      ctx: mockCtx,
+      getRangeM: () => 200000,
+      getPanOffset: () => ({ xM: 0, yM: 0 }),
+      getStageViewMode: () => '2d',
+      getTerrainMapMode: () => 'radar',
+      getLatestTelemetry: () => ({
+        biome_id: 'arid_desert',
+        acn_telemetry: { pos_x: 0, pos_y: 0 },
+        nodes_telemetry: [{ node_id: 1, x_m: 1000, y_m: 1000, terrain_is_los: true, snr_db: 15 }],
+        constellation_mobility_telemetry: {
+          secondary_acns: [{ id: 'ACN-2', name: 'ACN-2', pos_x: 15000, pos_y: 12000 }],
+        },
+      }),
+      getHistoricalSnapshot: () => null,
+      getActiveTerrainBounds: () => ({ minX: -500, maxX: 500, minY: -500, maxY: 500, terrainMode: 'real', isValidCoverage: true }),
+      getHillshadeCanvas: () => ({ width: 512, height: 512 } as any),
+      getBackdropCanvas: () => null,
+      getBackdropMode: () => 'relief',
+      getMapLayerRegistry: () => ({ getEffectiveVisibility: () => true, getLayerOpacity: () => 0.9 }),
+      getContextualMapContext: () => ({}),
+      getSelectedNodeId: () => null,
+      getToolboxState: () => ({}),
+      getObstacleEditor: () => ({ draft: [], selectedId: null }),
+      isMgrsGridActive: () => false,
+    });
+    renderer.renderRadar();
+
+    assert.ok((renderer.getActiveLabelPlacer()?.getPlacedCount() ?? 0) >= 3, 'activeLabelPlacer must place ACN-1, ACN-2, and fallback nodes');
+    assert.ok(drawnTexts.some((d) => d.text === 'ACN-1'));
+    assert.ok(drawnTexts.some((d) => d.text === 'ACN-2'));
+    assert.ok(drawnTexts.some((d) => d.text === 'THAR DESERT AO'), 'AO zoom-out label must follow active biome');
+    assert.ok(lineDashes.some((d) => d.length === 2 && d[0] === 5 && d[1] === 4), 'Secondary ACN must draw dashed A2A cross-link');
+    assert.equal(fontsUsed.some((f) => /\b9px\b/.test(f)), false, 'radar2dRenderer must not use < 10px fonts');
+    assert.equal(getLatticeCanvasPalette().accent, '#38bdf8');
+  });
+
+  it('RESCUE-2 Fix 5: terrainToolboxController reads mast inputs & checks real DOM 3D attribute', () => {
+    let viewRenderer = '3d';
+    const els: Record<string, any> = {
+      'tb-transect-tx-mast': { value: '45' },
+      'tb-transect-rx-mast': { value: '12' },
+      'radar-stage': { getAttribute: (name: string) => (name === 'data-map-renderer' ? viewRenderer : null) },
+      'terrain-toolbox-status': { textContent: '' },
+    };
+    const mockDoc: any = {
+      getElementById: (id: string) => els[id] ?? null,
+      querySelectorAll: () => [],
+    };
+    const flatTerrain = new TerrainEngine({ terrainMode: 'synthetic', customElevationFn: () => 3500 });
+    const ctrl = createTerrainToolboxController({
+      documentRef: mockDoc,
+      getTelemetry: () => ({ acn_telemetry: { pos_x: 0, pos_y: 0, pos_z: 5000 }, nodes_telemetry: [] }),
+      getHistoricalSnapshot: () => null,
+      getTerrainEngine: () => flatTerrain,
+      getObstacleEditor: () => null,
+      sendCommand: () => {},
+      markRadarDirty: () => {},
+      drawRadar: () => {},
+    });
+
+    // Hotkey must bail when #radar-stage data-map-renderer="3d"
+    const blocked = ctrl.handleKeydown({ key: 'r', preventDefault: () => {} } as any);
+    assert.equal(blocked, false);
+
+    // Switch to 2D radar -> hotkey activates transect
+    viewRenderer = 'radar';
+    const allowed = ctrl.handleKeydown({ key: 'r', preventDefault: () => {} } as any);
+    assert.equal(allowed, true);
+
+    ctrl.handleMapClick({ x: 0, y: 0 });
+    ctrl.handleMapClick({ x: 5000, y: 0 });
+    const st = ctrl.getState();
+    assert.ok(st.rulerMetrics, 'rulerMetrics must be computed');
+    // Vertical antenna delta should reflect (12 - 45) = -33 m difference between RX and TX mast on flat terrain
+    assert.ok(Math.abs(st.rulerMetrics.antennaElevationDeltaM - (-33)) < 1e-6);
+  });
+
+  it('RESCUE-2 Fix 6 & 7: workspaceTilesManager cleans resize listener, worldTileLayer enforces air-gap, radarNodeMarkerLayer.clear cancels WAAPI', () => {
+    const cancelled: string[] = [];
+    const mkAnim = (tag: string) => ({ cancel: () => cancelled.push(tag) });
+    const mkEl = (tag: string): any => {
+      const el: any = {
+        tagName: tag,
+        className: '',
+        hidden: false,
+        textContent: '',
+        style: {},
+        attrs: new Map<string, string>(),
+        children: [] as any[],
+        parent: null as any,
+        setAttribute: (k: string, v: string) => el.attrs.set(k, v),
+        appendChild: (c: any) => { c.parent = el; el.children.push(c); return c; },
+        remove: () => {
+          if (el.parent) {
+            el.parent.children = el.parent.children.filter((x: any) => x !== el);
+            el.parent = null;
+          }
+        },
+        animate: () => mkAnim(el.className),
+      };
+      return el;
+    };
+    const container = mkEl('div');
+    const markerLayer = createRadarNodeMarkerLayer({
+      container,
+      documentRef: { createElement: (t: string) => mkEl(t) } as any,
+      prefersReducedMotion: () => false,
+    });
+    markerLayer.sync(
+      [{ nodeId: 1, x: 100, y: 100, status: 'connected', selected: true, label: 'S1' }],
+      { width: 800, height: 600, rangeM: 60000, panX: 0, panY: 0 },
+      true,
+    );
+    markerLayer.clear();
+    assert.ok(cancelled.includes('radar-node-pulse') && cancelled.includes('radar-node-dot') && cancelled.includes('radar-node-reticle'));
+
+    const layer = new WorldTileLayer({ allowExternalTiles: false });
+    layer.setOrigin(27.0, 71.5);
+    assert.deepEqual(layer.getOrigin(), { latDeg: 27.0, lonDeg: 71.5 });
+    const tiles = computeVisibleWorldTiles({ width: 800, height: 600, rangeM: 60000 }, layer.getOrigin());
+    assert.ok(tiles.length > 0);
+    // Air-gapped WorldTileLayer must not issue Image fetches
+    const origImage = (globalThis as any).Image;
+    let imageConstructed = 0;
+    (globalThis as any).Image = class { constructor() { imageConstructed++; } };
+    try {
+      layer.draw({ save() {}, restore() {} } as any, { width: 800, height: 600, rangeM: 60000 });
+      assert.equal(imageConstructed, 0);
+    } finally {
+      (globalThis as any).Image = origImage;
+    }
+
+    // Verify workspaceTilesManager stores & removes resize listener on destroy() and imports escapeHtml
+    const mgrSrc = fs.readFileSync(path.join(ROOT_DIR, 'src', 'ui', 'workspaceTilesManager.ts'), 'utf8');
+    assert.ok(mgrSrc.includes("import { escapeHtml } from './domSafety'"));
+    assert.ok(mgrSrc.includes("window.removeEventListener('resize', boundOnResize)"));
+    assert.ok(createWorkspaceTilesManager);
+  });
+
+  it('RESCUE-2 Fix 9: threeSceneController attaches and disposes webglcontextlost/restored handlers', () => {
+    const ctrlSrc = fs.readFileSync(path.join(ROOT_DIR, 'src', 'ui', 'three', 'threeSceneController.ts'), 'utf8');
+    assert.ok(ctrlSrc.includes("'webglcontextlost'"));
+    assert.ok(ctrlSrc.includes("'webglcontextrestored'"));
+    assert.ok(ctrlSrc.includes("removeEventListener('webglcontextlost'"));
+    assert.ok(ctrlSrc.includes("removeEventListener('webglcontextrestored'"));
+  });
 });
+
+console.log(`\nℹ tests ${suitePassed + suiteFailed} | pass ${suitePassed} | fail ${suiteFailed}`);
+if (suiteFailed > 0) {
+  throw new Error(`${suiteFailed} test(s) failed`);
+}

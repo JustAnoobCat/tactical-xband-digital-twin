@@ -16,6 +16,7 @@ import {
   DEM_QUICK_PRESETS,
   resolveDemQuickPresetFromSector,
 } from './toolboxPrecisionSuite';
+import { escapeHtml } from './domSafety';
 
 // ============================================================================
 // Types & Constants
@@ -713,14 +714,6 @@ const TILE_ICONS: Record<WorkspaceTileId, string> = {
 const TILES_GRID_ICON =
   '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1"/></svg>';
 
-function escapeHtml(text: string): string {
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 // ============================================================================
 // Interactive DOM Controller
 // ============================================================================
@@ -760,6 +753,8 @@ export function createWorkspaceTilesManager(
   let mounted = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let lastRenderKey = '';
+  let lastBarKey = '';
+  let boundOnResize: (() => void) | null = null;
 
   let overlayEl: HTMLDivElement | null = null;
   let gridEl: HTMLDivElement | null = null;
@@ -953,6 +948,7 @@ export function createWorkspaceTilesManager(
     overlayEl.hidden = !shouldShow;
     if (!shouldShow) {
       lastRenderKey = '';
+      lastBarKey = '';
       return;
     }
 
@@ -972,8 +968,40 @@ export function createWorkspaceTilesManager(
     lastRenderKey = renderKey;
 
     const barEl = overlayEl.querySelector('#workspace-tiles-bar');
-    if (barEl) {
-      barEl.innerHTML = renderControlBarHtml();
+    const barKey = JSON.stringify({ layout: state.layout, openTiles: state.openTiles });
+    if (barEl && barKey !== lastBarKey) {
+      const hasFocusInBar =
+        typeof document !== 'undefined' &&
+        Boolean(document.activeElement) &&
+        barEl.contains(document.activeElement);
+      if (hasFocusInBar && barEl.children.length > 0) {
+        // Sync active/pressed states in-place to preserve keyboard focus
+        barEl.querySelectorAll<HTMLButtonElement>('[data-ws-toggle-tile]').forEach((btn) => {
+          const id = btn.dataset.wsToggleTile;
+          const active = Boolean(id && state.openTiles.includes(id as WorkspaceTileId));
+          btn.classList.toggle('is-open', active);
+          btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        barEl.querySelectorAll<HTMLButtonElement>('[data-ws-preset]').forEach((btn) => {
+          const preset = WORKSPACE_TILE_PRESETS.find((p) => p.id === btn.dataset.wsPreset);
+          const isCurrent = Boolean(
+            preset &&
+              state.layout === preset.layout &&
+              state.openTiles.length === preset.tiles.length &&
+              preset.tiles.every((t, i) => state.openTiles[i] === t)
+          );
+          btn.classList.toggle('is-active', isCurrent);
+          btn.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
+        });
+        barEl.querySelectorAll<HTMLButtonElement>('[data-ws-layout]').forEach((btn) => {
+          const isCurrent = btn.dataset.wsLayout === state.layout;
+          btn.classList.toggle('is-active', isCurrent);
+          btn.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
+        });
+      } else {
+        barEl.innerHTML = renderControlBarHtml();
+      }
+      lastBarKey = barKey;
     }
     gridEl.innerHTML = snapshots
       .map((snap, idx) => renderTileCardHtml(snap.tileId, snap, idx, snapshots.length, input.activeMode))
@@ -1230,12 +1258,15 @@ export function createWorkspaceTilesManager(
 
     if (typeof window !== 'undefined') {
       (window as any).workspaceTilesManager = api;
-      window.addEventListener('resize', () => {
-        if (state.enabled) {
-          lastRenderKey = '';
-          sync();
-        }
-      });
+      if (!boundOnResize) {
+        boundOnResize = () => {
+          if (state.enabled) {
+            lastRenderKey = '';
+            sync();
+          }
+        };
+        window.addEventListener('resize', boundOnResize);
+      }
     }
 
     sync();
@@ -1245,6 +1276,10 @@ export function createWorkspaceTilesManager(
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
+    }
+    if (boundOnResize && typeof window !== 'undefined') {
+      window.removeEventListener('resize', boundOnResize);
+      boundOnResize = null;
     }
     overlayEl?.remove();
     toolbarBtnEl?.remove();

@@ -237,7 +237,37 @@ export function drawCartographicOverlays(
   // ==========================================================================
   // 3. Dynamic Metric Scale Bar (Bottom-Right, left of Layers button)
   // ==========================================================================
-  const scaleStep = computeNiceScaleBarLengthM(mpp, 120);
+  const maxAllowedBarW = w >= 320 ? Math.max(110, Math.min(280, w - 190)) : Math.max(60, w - 160);
+  let scaleStep = computeNiceScaleBarLengthM(mpp, Math.min(180, maxAllowedBarW));
+  if (scaleStep.barWidthPx < 110 && maxAllowedBarW >= 110) {
+    const nextStep = NICE_SCALE_STEPS_M.find(
+      (step) => step / mpp >= 110 && step / mpp <= maxAllowedBarW
+    );
+    if (nextStep !== undefined) {
+      const formatM = (m: number): string => {
+        if (m >= 1000) {
+          const km = m / 1000;
+          return `${km % 1 === 0 ? km.toFixed(0) : km.toFixed(1)} km`;
+        }
+        return `${Math.round(m)} m`;
+      };
+      scaleStep = {
+        stepM: nextStep,
+        barWidthPx: nextStep / mpp,
+        labelFull: formatM(nextStep),
+        labelHalf: formatM(nextStep / 2),
+      };
+    }
+  }
+  const fullUnitSuffix = scaleStep.labelFull.endsWith(' km')
+    ? ' km'
+    : scaleStep.labelFull.endsWith(' m')
+      ? ' m'
+      : '';
+  const halfDisplayLabel =
+    fullUnitSuffix && scaleStep.labelHalf.endsWith(fullUnitSuffix)
+      ? scaleStep.labelHalf.slice(0, -fullUnitSuffix.length)
+      : scaleStep.labelHalf;
   const barW = scaleStep.barWidthPx;
   const barH = 5;
   const padX = 14;
@@ -277,7 +307,7 @@ export function drawCartographicOverlays(
   ctx.fillText('0', barX, barY - 2);
 
   ctx.textAlign = 'center';
-  ctx.fillText(scaleStep.labelHalf, barX + halfW, barY - 2);
+  ctx.fillText(halfDisplayLabel, barX + halfW, barY - 2);
 
   ctx.textAlign = 'right';
   ctx.fillText(scaleStep.labelFull, barX + barW, barY - 2);

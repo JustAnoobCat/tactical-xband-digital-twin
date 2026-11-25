@@ -307,6 +307,21 @@ export function createRadarNodeMarkerLayer(
   let prevCamera: RadarCameraSignature | null = null;
   let isHidden = false;
 
+  const cancelRecordAnimations = (record: ActiveMarkerRecord): void => {
+    if (record.pulseAnim && typeof record.pulseAnim.cancel === 'function') {
+      try { record.pulseAnim.cancel(); } catch { /* noop */ }
+      record.pulseAnim = null;
+    }
+    if (record.dotAnim && typeof record.dotAnim.cancel === 'function') {
+      try { record.dotAnim.cancel(); } catch { /* noop */ }
+      record.dotAnim = null;
+    }
+    if (record.reticleAnim && typeof record.reticleAnim.cancel === 'function') {
+      try { record.reticleAnim.cancel(); } catch { /* noop */ }
+      record.reticleAnim = null;
+    }
+  };
+
   const setHiddenState = (hidden: boolean) => {
     if (isHidden === hidden) return;
     isHidden = hidden;
@@ -506,15 +521,7 @@ export function createRadarNodeMarkerLayer(
     // Remove markers for despawned nodes cleanly
     for (const [nodeId, record] of records.entries()) {
       if (!activeIds.has(nodeId)) {
-        if (record.pulseAnim && typeof record.pulseAnim.cancel === 'function') {
-          try { record.pulseAnim.cancel(); } catch { /* noop */ }
-        }
-        if (record.dotAnim && typeof record.dotAnim.cancel === 'function') {
-          try { record.dotAnim.cancel(); } catch { /* noop */ }
-        }
-        if (record.reticleAnim && typeof record.reticleAnim.cancel === 'function') {
-          try { record.reticleAnim.cancel(); } catch { /* noop */ }
-        }
+        cancelRecordAnimations(record);
         record.root.remove();
         records.delete(nodeId);
       }
@@ -527,6 +534,7 @@ export function createRadarNodeMarkerLayer(
 
   const clear = (): void => {
     for (const record of records.values()) {
+      cancelRecordAnimations(record);
       record.root.remove();
     }
     records.clear();

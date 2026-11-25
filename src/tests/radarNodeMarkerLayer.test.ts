@@ -1,5 +1,24 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+
+let suitePassed = 0;
+let suiteFailed = 0;
+
+function describe(name: string, fn: () => void): void {
+  console.log(`\n▶ ${name}`);
+  fn();
+}
+
+function it(name: string, fn: () => void): void {
+  try {
+    fn();
+    suitePassed++;
+    console.log(`  ✔ ${name}`);
+  } catch (err) {
+    suiteFailed++;
+    console.error(`  ✖ ${name}`);
+    console.error(err);
+  }
+}
 
 import {
   computeMarkerMotionDelta,
@@ -274,3 +293,8 @@ describe('createRadarNodeMarkerLayer DOM & Web Animations API transitions', () =
     assert.equal(container.getAttribute('aria-hidden'), 'true');
   });
 });
+
+console.log(`\nℹ tests ${suitePassed + suiteFailed} | pass ${suitePassed} | fail ${suiteFailed}`);
+if (suiteFailed > 0) {
+  throw new Error(`${suiteFailed} test(s) failed`);
+}

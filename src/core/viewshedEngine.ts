@@ -542,6 +542,55 @@ export class PolarViewshedEngine {
    *
    * Returns an authoritative RelayAdvisorReport with optimal ridgeline coordinate and coverage metrics.
    */
+  private static resolveFallbackTerrainElevationM(terrain: TerrainEngine): number {
+    const bounds = typeof terrain.getTerrainBoundsTelemetry === 'function'
+      ? terrain.getTerrainBoundsTelemetry()
+      : null;
+
+    let sumElev = 0.0;
+    let count = 0;
+
+    if (
+      bounds &&
+      Number.isFinite(bounds.minX) &&
+      Number.isFinite(bounds.maxX) &&
+      Number.isFinite(bounds.minY) &&
+      Number.isFinite(bounds.maxY)
+    ) {
+      const spanX = bounds.maxX - bounds.minX;
+      const spanY = bounds.maxY - bounds.minY;
+      // For large synthetic theaters (e.g. +/- 600 km), sample within the active +/- 20 km tactical window
+      const halfSampleX = Math.min(Math.abs(spanX) * 0.4, 20000.0);
+      const halfSampleY = Math.min(Math.abs(spanY) * 0.4, 20000.0);
+      const cx = 0.5 * (bounds.minX + bounds.maxX);
+      const cy = 0.5 * (bounds.minY + bounds.maxY);
+      const offsets = [-1, 0, 1];
+      for (const ox of offsets) {
+        for (const oy of offsets) {
+          const z = terrain.getElevation(cx + ox * halfSampleX, cy + oy * halfSampleY);
+          if (Number.isFinite(z)) {
+            sumElev += z;
+            count++;
+          }
+        }
+      }
+    }
+
+    if (count === 0) {
+      const centerZ = terrain.getElevation(0.0, 0.0);
+      if (Number.isFinite(centerZ)) {
+        return centerZ;
+      }
+      const metaMin = terrain.hasRealDem ? terrain.demMetadata?.minElevationM : undefined;
+      if (metaMin !== undefined && Number.isFinite(metaMin)) {
+        return metaMin;
+      }
+      return 3500.0;
+    }
+
+    return sumElev / count;
+  }
+
   public computeOptimalRelayPlacement(
     trajectoryEngine: ACNTrajectory,
     terrain: TerrainEngine,
@@ -550,19 +599,22 @@ export class PolarViewshedEngine {
     env: EnvironmentConfig,
     orbitPhasesCount: number = 12
   ): RelayAdvisorReport {
+    const fallbackTerrainElev = PolarViewshedEngine.resolveFallbackTerrainElevationM(terrain);
+
     // 1. Calculate ground node mean elevation & center
     let meanGroundElev = 0.0;
     let validNodeCount = 0;
     for (const node of groundNodes) {
       const pos = node.position;
       const posZ = pos.length >= 3 ? pos[2] : undefined;
+      const sampledElev = terrain.getElevation(pos[0], pos[1]);
       const elev = posZ !== undefined && Number.isFinite(posZ)
         ? posZ
-        : (terrain.getElevation(pos[0], pos[1]) || 3500.0);
+        : (Number.isFinite(sampledElev) ? sampledElev : fallbackTerrainElev);
       meanGroundElev += elev;
       validNodeCount++;
     }
-    meanGroundElev = validNodeCount > 0 ? meanGroundElev / validNodeCount : 3500.0;
+    meanGroundElev = validNodeCount > 0 ? meanGroundElev / validNodeCount : fallbackTerrainElev;
 
     // 2. Pre-sample 12 equidistant ACN orbital phases
     let orbitPeriodS =
@@ -652,7 +704,8 @@ export class PolarViewshedEngine {
           const nearestSectorCenter = Math.round(bodyAzDeg / 90.0) * 90.0;
           const offAzDeg = Math.abs(bodyAzDeg - nearestSectorCenter);
           const offElDeg = Math.abs(elevDeg - (-15.0)); // -15 deg sector downtilt
-          const patternRolloffDb = Math.min(18.0, 12.0 * Math.pow(offAzDeg / 90.0, 2) + 12.0 * Math.pow(offElDeg / 65.0, 2));
+          const theta3dB = 65.0; // Canonical ITU-R F.1336 sector 3 dB beamwidth matching QuadSectorAntennaEngine
+          const patternRolloffDb = Math.min(18.0, 12.0 * Math.pow(offAzDeg / theta3dB, 2) + 12.0 * Math.pow(offElDeg / theta3dB, 2));
           const effAcnGainDbi = rf.acnAntennaGainDbi - patternRolloffDb;
 
           // Sky noise temperature increase from atmospheric + rain attenuation
@@ -692,7 +745,7 @@ export class PolarViewshedEngine {
         for (const gNode of groundNodes) {
           const gnPos = gNode.position;
           const gnElev = terrain.getElevation(gnPos[0], gnPos[1]);
-          const terrainSurfaceZ = (Number.isFinite(gnElev) ? gnElev : 3500.0) + 2.0;
+          const terrainSurfaceZ = (Number.isFinite(gnElev) ? gnElev : fallbackTerrainElev) + 2.0;
           const gnPosZ = gnPos.length >= 3 ? gnPos[2] : undefined;
           const gnZ = gnPosZ !== undefined && Number.isFinite(gnPosZ)
             ? Math.max(gnPosZ, terrainSurfaceZ)
