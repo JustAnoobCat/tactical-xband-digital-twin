@@ -265,13 +265,43 @@ export function normalizeSlotAllocationToFrame(
  * Dedicated telemetry serializer constructing host telemetry payloads from simulation state.
  */
 export class TelemetrySerializer {
-  private readonly geodeticCache = new Map<number, { x: number; y: number; geo: GeodeticCoordinate }>();
+  private readonly geodeticCache = new Map<
+    number,
+    { x: number; y: number; biomeKey: string; geo: GeodeticCoordinate }
+  >();
 
-  public getGeodetic(nodeId: number, x: number, y: number): GeodeticCoordinate {
+  private getBiomeGeodeticKey(terrainEngine?: TerrainEngine): string {
+    if (!terrainEngine) return 'default';
+    const meta = terrainEngine.demMetadata;
+    return `${terrainEngine.activeBiomeId}|${terrainEngine.terrain_mode}|${meta?.tileName ?? ''}|${meta?.centerLatDeg ?? ''}|${meta?.centerLonDeg ?? ''}|${meta?.halfWidthM ?? ''}|${meta?.halfHeightM ?? ''}`;
+  }
+
+  public getGeodetic(
+    nodeId: number,
+    x: number,
+    y: number,
+    terrainEngine?: TerrainEngine
+  ): GeodeticCoordinate {
+    const biomeKey = this.getBiomeGeodeticKey(terrainEngine);
     const cached = this.geodeticCache.get(nodeId);
-    if (cached && cached.x === x && cached.y === y) return cached.geo;
-    const geo = cartesianToGeodetic(x, y);
-    this.geodeticCache.set(nodeId, { x, y, geo });
+    if (cached && cached.x === x && cached.y === y && cached.biomeKey === biomeKey) {
+      return cached.geo;
+    }
+
+    let geo: GeodeticCoordinate;
+    if (terrainEngine) {
+      const { latDeg, lonDeg } = terrainEngine.worldToLatLon(x, y);
+      const meta = terrainEngine.demMetadata ?? REAL_LADAKH_DEM_METADATA;
+      geo = {
+        latDeg,
+        lonDeg,
+        isWithinCoverage: Math.abs(x) <= meta.halfWidthM && Math.abs(y) <= meta.halfHeightM,
+      };
+    } else {
+      geo = cartesianToGeodetic(x, y);
+    }
+
+    this.geodeticCache.set(nodeId, { x, y, biomeKey, geo });
     return geo;
   }
 
@@ -290,7 +320,7 @@ export class TelemetrySerializer {
       const q = node.queue;
 
       const [nx, ny] = node.position;
-      const geo = this.getGeodetic(node.nodeId, nx, ny);
+      const geo = this.getGeodetic(node.nodeId, nx, ny, state.terrainEngine);
 
       const c2Bytes = q.getClassBacklogBytes(69);
       const voiceBytes = q.getClassBacklogBytes(65);
@@ -535,9 +565,10 @@ export class TelemetrySerializer {
       }
     }
 
+    const fl = Math.round((acnPos[2] * 3.28084) / 100);
     let narrative = activeNodes.length === 0
       ? 'ACN RELAY STANDBY: Operational loiter orbit active. Zero ground terminals currently deployed. Ready for dynamic terminal deployment.'
-      : 'NOMINAL PATROL: All terminals in clear Line-of-Sight. ACN coverage bubble tracking along elliptical orbit at FL500 (5,000m).';
+      : `NOMINAL PATROL: All terminals in clear Line-of-Sight. ACN coverage bubble tracking along elliptical orbit at FL${fl} (${Math.round(acnPos[2]).toLocaleString('en-US')}m).`;
     if (flushNode) {
       narrative = `LOOK-AHEAD EVENT: S${flushNode.node.nodeId} predicted to enter mountain shadow in ${flushNode.ps.timeToOcclusionS.toFixed(1)}s. Tac-TAD expanded its slot to evacuate queue backlog before cutoff.`;
     } else if (cutoffNode) {
@@ -694,7 +725,7 @@ export class TelemetrySerializer {
       normalizeSlotAllocationToFrame(a, state.lastReportTac?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
     const mapAllocReactive = (a: SlotAllocation) =>
       normalizeSlotAllocationToFrame(a, state.lastReportReactive?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
-    const acnGeo = cartesianToGeodetic(acnPos[0], acnPos[1]);
+    const acnGeo = state.terrainEngine.worldToLatLon(acnPos[0], acnPos[1]);
 
     let weatherCellsSummary: TelemetryWeatherCellSummary[] | undefined;
     if (state.weatherCells && state.weatherCells.length > 0) {
@@ -792,7 +823,7 @@ export class TelemetrySerializer {
       },
       terrain_mode: state.terrainEngine.terrain_mode,
       terrain_bounds_km: state.terrainEngine.terrain_mode === 'real'
-        ? REAL_LADAKH_DEM_METADATA.halfWidthM / 1000
+        ? (state.terrainEngine.demMetadata?.halfWidthM ?? REAL_LADAKH_DEM_METADATA.halfWidthM) / 1000
         : THEATER_HALF_M / 1000,
       terrain_bounds: state.terrainEngine.getTerrainBoundsTelemetry(),
       tdma_frame_config: state.tdmaConfig ? state.tdmaConfig.toObject() : undefined,

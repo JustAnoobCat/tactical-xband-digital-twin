@@ -24,10 +24,12 @@ import {
   GeoTiffParseResult,
 } from '../../core/militaryGisEngine';
 import {
-  cartesianToGeodetic,
   GEODESY_ORIGIN_LAT_DEG,
   GEODESY_ORIGIN_LON_DEG,
+  localToLatLon,
 } from '../../core/geodesy';
+import { BIOME_DEM_METADATA } from '../../core/terrain';
+import { THEATER_BIOMES } from '../../core/biomePhysics';
 import {
   parseFlightTestTraceCsv,
   evaluateTwinCalibrationTrace,
@@ -76,6 +78,8 @@ export interface MissionTelemetrySnapshot {
     readonly pos_x?: number;
     readonly pos_y?: number;
     readonly pos_z?: number;
+    readonly lat_deg?: number;
+    readonly lon_deg?: number;
     readonly altitude_msl_m?: number;
     readonly flight_path?: ReadonlyArray<readonly [number, number]>;
     readonly flight_path_3d?: ReadonlyArray<readonly [number, number, number]>;
@@ -126,6 +130,7 @@ export interface MissionTelemetrySnapshot {
   };
   readonly tac_goodput_mbps?: number;
   readonly scheduler_mode?: string;
+  readonly biome_id?: BiomeId;
   readonly biome_em_enabled?: boolean;
   readonly hifi_telemetry?: TelemetryFrame['hifi_telemetry'];
   readonly transport_abr_telemetry?: TelemetryFrame['transport_abr_telemetry'];
@@ -478,6 +483,39 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
     loadPresetTrace(presetSelect?.value || 'kargil_alpine_ridge');
   }
 
+  const resolveBiomeCenter = (
+    biomeIdRaw?: string
+  ): { biomeId: BiomeId; centerLatDeg: number; centerLonDeg: number } => {
+    const biomeId = (
+      biomeIdRaw && biomeIdRaw in BIOME_DEM_METADATA ? biomeIdRaw : 'alpine_mountain'
+    ) as BiomeId;
+    const meta = BIOME_DEM_METADATA[biomeId];
+    return {
+      biomeId,
+      centerLatDeg: meta?.centerLatDeg ?? GEODESY_ORIGIN_LAT_DEG,
+      centerLonDeg: meta?.centerLonDeg ?? GEODESY_ORIGIN_LON_DEG,
+    };
+  };
+
+  const resolveSnapshotLatLon = (
+    latDeg: number | undefined,
+    lonDeg: number | undefined,
+    xM: number,
+    yM: number,
+    centerLatDeg: number,
+    centerLonDeg: number
+  ): { latDeg: number; lonDeg: number } => {
+    if (
+      typeof latDeg === 'number' &&
+      Number.isFinite(latDeg) &&
+      typeof lonDeg === 'number' &&
+      Number.isFinite(lonDeg)
+    ) {
+      return { latDeg, lonDeg };
+    }
+    return localToLatLon(xM, yM, centerLatDeg, centerLonDeg);
+  };
+
   function buildTacticalSnapshot(
     frameOverride?: MissionTelemetryInput | null
   ): TacticalMissionSnapshot {
@@ -488,12 +526,29 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
           ? deps.getLatestTelemetry()
           : null) as Partial<TelemetryFrame> | MissionTelemetrySnapshot | null | undefined;
     const entities: TacticalSnapshotEntity[] = [];
+    const { centerLatDeg, centerLonDeg } = resolveBiomeCenter(
+      deps?.getActiveBiomeId ? deps.getActiveBiomeId() : undefined
+    );
 
     // ACN
     const acn = frame?.acn_telemetry as
-      | { readonly pos_x?: number; readonly pos_y?: number; readonly pos_z?: number; readonly altitude_msl_m?: number }
+      | {
+          readonly pos_x?: number;
+          readonly pos_y?: number;
+          readonly pos_z?: number;
+          readonly lat_deg?: number;
+          readonly lon_deg?: number;
+          readonly altitude_msl_m?: number;
+        }
       | undefined;
-    const acnGeo = cartesianToGeodetic(acn?.pos_x ?? 0, acn?.pos_y ?? 0);
+    const acnGeo = resolveSnapshotLatLon(
+      acn?.lat_deg,
+      acn?.lon_deg,
+      acn?.pos_x ?? 0,
+      acn?.pos_y ?? 0,
+      centerLatDeg,
+      centerLonDeg
+    );
     const acnAltMsl =
       typeof acn?.altitude_msl_m === 'number' && Number.isFinite(acn.altitude_msl_m)
         ? acn.altitude_msl_m
@@ -516,7 +571,14 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
       : [];
     for (const n of nodes) {
       const nodeId = n.node_id ?? n.id ?? 1;
-      const nGeo = cartesianToGeodetic(n.x_m ?? 0, n.y_m ?? 0);
+      const nGeo = resolveSnapshotLatLon(
+        n.lat_deg,
+        n.lon_deg,
+        n.x_m ?? 0,
+        n.y_m ?? 0,
+        centerLatDeg,
+        centerLonDeg
+      );
       const rawRole = (
         typeof n.node_type === 'string' && n.node_type.trim().length > 0
           ? n.node_type
@@ -559,7 +621,12 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
 
     // Jammer if enabled
     if (frame?.jammer_enabled && Array.isArray(frame.jammer_pos_enu)) {
-      const jGeo = cartesianToGeodetic(frame.jammer_pos_enu[0], frame.jammer_pos_enu[1]);
+      const jGeo = localToLatLon(
+        frame.jammer_pos_enu[0],
+        frame.jammer_pos_enu[1],
+        centerLatDeg,
+        centerLonDeg
+      );
       entities.push({
         id: 'JAMMER-1',
         callsign: 'ADVERSARY-EW',
@@ -574,7 +641,14 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
     const links: TacticalSnapshotLink[] = [];
     for (const n of nodes) {
       const nodeId = n.node_id ?? n.id ?? 1;
-      const nGeo = cartesianToGeodetic(n.x_m ?? 0, n.y_m ?? 0);
+      const nGeo = resolveSnapshotLatLon(
+        n.lat_deg,
+        n.lon_deg,
+        n.x_m ?? 0,
+        n.y_m ?? 0,
+        centerLatDeg,
+        centerLonDeg
+      );
       const snr = typeof n.sinr_db === 'number' && Number.isFinite(n.sinr_db)
         ? n.sinr_db
         : typeof n.snr_db === 'number' && Number.isFinite(n.snr_db)
@@ -665,14 +739,17 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
     });
 
     const patternSelect = $('fp-pattern-select') as HTMLSelectElement | null;
+    const { biomeId, centerLatDeg, centerLonDeg } = resolveBiomeCenter(
+      deps?.getActiveBiomeId ? deps.getActiveBiomeId() : undefined
+    );
     const scenario: MissionScenarioV3 = {
       schemaVersion: 'xband-dt-scenario-v3',
       title: 'Tactical Ladakh Sector Mission',
       timestamp: new Date().toISOString(),
       theater: {
-        biomeId: deps?.getActiveBiomeId ? deps.getActiveBiomeId() : 'alpine_mountain',
-        centerLatDeg: GEODESY_ORIGIN_LAT_DEG,
-        centerLonDeg: GEODESY_ORIGIN_LON_DEG,
+        biomeId,
+        centerLatDeg,
+        centerLonDeg,
       },
       acn: {
         callsign: 'VIPER-01',
@@ -805,10 +882,14 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
       };
     });
 
+    const fallbackBiome = resolveBiomeCenter(
+      frame?.biome_id ?? (deps?.getActiveBiomeId ? deps.getActiveBiomeId() : undefined)
+    );
+    const biomeDef = THEATER_BIOMES[fallbackBiome.biomeId] ?? THEATER_BIOMES.alpine_mountain;
+    const fallbackBiomeLabel = `${biomeDef.name} (${fallbackBiome.centerLatDeg.toFixed(1)}°N, ${fallbackBiome.centerLonDeg.toFixed(1)}°E)`;
     const activeSector = $('dem-sector-select') as HTMLSelectElement | null;
     const biomeName =
-      activeSector?.options[activeSector.selectedIndex]?.text ||
-      'Ladakh Alpine Mountain (34.5°N, 76.5°E)';
+      activeSector?.options[activeSector.selectedIndex]?.text || fallbackBiomeLabel;
 
     const hifiFlags = frame?.hifi_telemetry?.enabled_flags;
     const ewTelemetry = frame?.ew_eccm_telemetry;
@@ -930,9 +1011,10 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
       unsupportedFields.push(`theater.biomeId (${scenario.theater.biomeId})`);
     }
 
+    const targetBiome = resolveBiomeCenter(scenario.theater.biomeId);
     if (
-      Math.abs(scenario.theater.centerLatDeg - GEODESY_ORIGIN_LAT_DEG) > 1e-4 ||
-      Math.abs(scenario.theater.centerLonDeg - GEODESY_ORIGIN_LON_DEG) > 1e-4
+      Math.abs(scenario.theater.centerLatDeg - targetBiome.centerLatDeg) > 1e-4 ||
+      Math.abs(scenario.theater.centerLonDeg - targetBiome.centerLonDeg) > 1e-4
     ) {
       unsupportedFields.push('theater.centerLatDeg/centerLonDeg');
     }

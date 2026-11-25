@@ -6,7 +6,7 @@
  * 1. Free Space Path Loss (FSPL) and Friis transmission equation.
  * 2. ITU-R P.676 atmospheric gas absorption (0.012 dB/km at 8.0 GHz).
  * 3. ITU-R P.838-3 specific rain attenuation.
- * 4. Receiver thermal noise floor over 1.0 MHz bandwidth.
+ * 4. Receiver thermal noise floor over 5.0 MHz bandwidth.
  * 5. DVB-S2X / 3GPP Rel-17 NTN discrete 8-state MODCOD table with 2.5 dB margin.
  */
 

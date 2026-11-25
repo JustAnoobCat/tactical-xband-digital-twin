@@ -31,6 +31,7 @@ import type {
   WorkerInboundCommand,
 } from '../shared/workerProtocol';
 import { THEATER_BIOMES } from '../core/biomePhysics';
+import { BIOME_DEM_METADATA } from '../core/terrain';
 import { MCP_ID } from '../shared/constants';
 import { HillshadeGenerator } from '../worker/hillshadeGenerator';
 import { buildTerrainGeometrySet } from '../ui/three/terrainBuilder';
@@ -349,6 +350,34 @@ try {
     sim.tickSimulation(true);
     desertFrame = capturedFrames[capturedFrames.length - 1].frame;
     assert.equal(desertFrame.nodes_telemetry.length, 16);
+    assert.ok(
+      Math.abs(desertFrame.acn_telemetry.lat_deg - THEATER_BIOMES.arid_desert.centerLatDeg) < 0.25 &&
+        Math.abs(desertFrame.acn_telemetry.lon_deg - THEATER_BIOMES.arid_desert.centerLonDeg) < 0.25,
+      `arid_desert acn_telemetry must emit Thar Desert coords (~27°N, 71.5°E), got (${desertFrame.acn_telemetry.lat_deg}, ${desertFrame.acn_telemetry.lon_deg})`
+    );
+    for (const nodeTel of desertFrame.nodes_telemetry) {
+      assert.ok(
+        Math.abs(nodeTel.lat_deg - THEATER_BIOMES.arid_desert.centerLatDeg) < 0.5 &&
+          Math.abs(nodeTel.lon_deg - THEATER_BIOMES.arid_desert.centerLonDeg) < 0.5,
+        `arid_desert node ${nodeTel.node_id} must emit Thar Desert coords (~27°N, 71.5°E), got (${nodeTel.lat_deg}, ${nodeTel.lon_deg})`
+      );
+    }
+    assert.ok(
+      !desertFrame.plain_english_narrative.includes('FL500'),
+      `plain_english_narrative must never report hardcoded FL500, got: ${desertFrame.plain_english_narrative}`
+    );
+    const expectedFl = Math.round((desertFrame.acn_telemetry.altitude_msl_m * 3.28084) / 100);
+    if (desertFrame.plain_english_narrative.includes('NOMINAL PATROL')) {
+      assert.ok(
+        desertFrame.plain_english_narrative.includes(`FL${expectedFl}`),
+        `NOMINAL PATROL narrative must contain dynamic FL${expectedFl}, got: ${desertFrame.plain_english_narrative}`
+      );
+    }
+    const expectedDesertHalfKm = BIOME_DEM_METADATA.arid_desert.halfWidthM / 1000;
+    assert.ok(
+      Math.abs(desertFrame.terrain_bounds_km - expectedDesertHalfKm) < 1e-4,
+      `arid_desert terrain_bounds_km must equal ${expectedDesertHalfKm}, got ${desertFrame.terrain_bounds_km}`
+    );
   });
 
   // Step 3b: Spawn dynamic Node 16 -> tick -> ObstacleEditor, AGL eligibility, 3D managers & entityCount
@@ -493,10 +522,25 @@ try {
     const exportedJson = io.exportScenarioJson();
     const parsedScenario = JSON.parse(exportedJson);
     assert.equal(parsedScenario.theater.biomeId, 'arid_desert');
+    assert.equal(
+      parsedScenario.theater.centerLatDeg,
+      BIOME_DEM_METADATA.arid_desert.centerLatDeg,
+      'exportScenarioJson must emit Thar Desert centerLatDeg'
+    );
+    assert.equal(
+      parsedScenario.theater.centerLonDeg,
+      BIOME_DEM_METADATA.arid_desert.centerLonDeg,
+      'exportScenarioJson must emit Thar Desert centerLonDeg'
+    );
     assert.equal(parsedScenario.nodes.length, 17);
 
     const applyRes = io.applyScenarioJson(exportedJson);
     assert.equal(applyRes.ok, true, 'applyScenarioJson must parse exported scenario cleanly');
+    assert.equal(
+      applyRes.unsupportedFields.includes('theater.centerLatDeg/centerLonDeg'),
+      false,
+      'arid_desert scenario round-trip must not emit false theater.centerLatDeg/centerLonDeg warning'
+    );
     assert.equal(
       applyRes.unsupportedFields.includes('worker command dispatcher unavailable'),
       false,
@@ -525,9 +569,21 @@ try {
     assert.notEqual(aar.kpis.tacDeliveredMb, 20.38, 'Hardcoded 20.38 must not appear');
 
     const tacSnap = io.buildTacticalSnapshot(frame17);
+    const acnEntity = tacSnap.entities.find((e) => e.role === 'ACN');
     const mcpEntity = tacSnap.entities.find((e) => e.id === MCP_ID);
     const soldierEntity = tacSnap.entities.find((e) => e.id === 0);
+    assert.ok(acnEntity, 'ACN-1 must be present in TacticalSnapshot');
+    assert.ok(
+      Math.abs(acnEntity!.latDeg - THEATER_BIOMES.arid_desert.centerLatDeg) < 0.25 &&
+        Math.abs(acnEntity!.lonDeg - THEATER_BIOMES.arid_desert.centerLonDeg) < 0.25,
+      `TacticalSnapshot ACN must use Thar Desert coords (~27°N, 71.5°E), got (${acnEntity!.latDeg}, ${acnEntity!.lonDeg})`
+    );
     assert.ok(mcpEntity, 'Node 15 must be present in TacticalSnapshot');
+    assert.ok(
+      Math.abs(mcpEntity!.latDeg - THEATER_BIOMES.arid_desert.centerLatDeg) < 0.5 &&
+        Math.abs(mcpEntity!.lonDeg - THEATER_BIOMES.arid_desert.centerLonDeg) < 0.5,
+      `TacticalSnapshot MCP must use Thar Desert coords (~27°N, 71.5°E), got (${mcpEntity!.latDeg}, ${mcpEntity!.lonDeg})`
+    );
     assert.equal(mcpEntity!.role, 'MCP', 'Node 15 must be tagged MCP');
     assert.equal(soldierEntity?.role, 'SOLDIER', 'Node 0 must be tagged SOLDIER');
   });

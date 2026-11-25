@@ -207,21 +207,21 @@ npm run build
 
 ## 5. Benchmark Results & Scientific Ablation
 
-### 5.1 Multi-Seed Physics-Realism Ablation Study ($N = 30$ Seeds, 95% Student-$t$ CI)
+### 5.1 Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark ($N = 30$ Paired Seeds, 95% Student-$t$ CI)
 
-Evaluated across $N = 30$ independent pseudo-random flight seeds (base seed = `20261122`, 60 frames per seed @ 50 Hz) over identical high-relief Ladakh flight trajectories, matching [`benchmark_results/scientific_ablation_n30.csv`](benchmark_results/scientific_ablation_n30.csv):
+Evaluated across $N = 30$ paired synthetic link-layer seeds (base seed = `20261122`, 60 frames per seed @ 50 Hz) over a controlled 36–41 km synthetic double-ridge MCP backhaul benchmark segment (distinct from full-DEM digital twin flight runs), matching [`benchmark_results/scientific_ablation_n30.csv`](benchmark_results/scientific_ablation_n30.csv) and [`benchmark_results/BENCHMARK_DOSSIER.md`](benchmark_results/BENCHMARK_DOSSIER.md):
 
 | Configuration | Goodput Factor (95% CI) | Residual BLER (95% CI) | Outage Ratio (95% CI) | Mean SNR [dB] (95% CI) |
 |:---|:---:|:---:|:---:|:---:|
-| **1. Baseline Idealized** | $1.492 \pm 0.018$ | $0.540 \pm 0.009$ | $0.511 \pm 0.008$ | $+4.69 \pm 0.16$ |
-| **2. Multi-Edge & Attitude** | $1.111 \pm 0.016$ | $0.657 \pm 0.006$ | $0.634 \pm 0.006$ | $-2.66 \pm 0.16$ |
-| **3. Delayed-CQI Unprotected** | $0.795 \pm 0.027$ | $0.761 \pm 0.006$ | $0.616 \pm 0.008$ | $-2.66 \pm 0.16$ |
-| **4. Full Realistic Stack (OLLA + HARQ)** | **$0.844 \pm 0.023$** | **$0.727 \pm 0.007$** | **$0.626 \pm 0.008$** | **$-2.66 \pm 0.16$** |
+| **1. Baseline Idealized** | $1.669 \pm 0.020$ | $0.453 \pm 0.012$ | $0.412 \pm 0.014$ | $+7.84 \pm 0.23$ |
+| **2. Multi-Edge & Attitude** | $1.247 \pm 0.016$ | $0.612 \pm 0.007$ | $0.586 \pm 0.007$ | $+0.49 \pm 0.23$ |
+| **3. Delayed-CQI Unprotected** | $0.934 \pm 0.028$ | $0.720 \pm 0.010$ | $0.556 \pm 0.009$ | $+0.49 \pm 0.23$ |
+| **4. Full Realistic Stack (OLLA + HARQ)** | **$0.994 \pm 0.026$** | **$0.680 \pm 0.008$** | **$0.569 \pm 0.009$** | **$+0.49 \pm 0.23$** |
 
 #### Welch Two-Sample $t$-Test Hypothesis Verification
-- **Hypothesis 1 (Optimistic Bias of Idealized Models):** Baseline idealized propagation significantly overestimates effective goodput compared to the realistic physical stack ($\Delta = +0.648$, $t = 44.73$, $\text{df} = 54.64$, $p = 9.92 \times 10^{-45}$, Cohen's $d = 11.55$, **Confirmed $p < 0.01$**).
-- **Hypothesis 2 (Closed-Loop Error Recovery via OLLA + HARQ):** Closed-loop OLLA adaptation combined with HARQ Chase Combining significantly suppresses residual BLER against uncompensated delayed CQI ($\Delta = -0.035$, $t = 7.25$, $\text{df} = 56.84$, $p = 1.25 \times 10^{-9}$, Cohen's $d = 1.87$, **Confirmed $p < 0.01$**).
-- **Hypothesis 3 (Multi-Edge & Airframe Obstacle Defilade Loss):** Cascaded Deygout multi-edge diffraction and airframe bank shadowing reduce received channel SNR by $7.35\text{ dB}$ ($t = 64.88$, $\text{df} = 58.00$, $p = 7.67 \times 10^{-56}$, Cohen's $d = 16.75$, **Confirmed $p < 0.01$**).
+- **Hypothesis 1 (Optimistic Bias of Idealized Models):** Baseline idealized propagation significantly overestimates effective goodput compared to the realistic physical stack ($\Delta = +0.6745$, $t = 42.048$, $\text{df} = 54.26$, $p = 4.293 \times 10^{-43}$, Cohen's $d = 10.857$, **Confirmed $p < 0.01$**).
+- **Hypothesis 2 (Closed-Loop Error Recovery via OLLA + HARQ):** Closed-loop OLLA adaptation combined with HARQ Chase Combining significantly suppresses residual BLER against uncompensated delayed CQI ($\Delta = +0.0398$ BLER reduction, $t = 6.342$, $\text{df} = 56.91$, $p = 3.963 \times 10^{-8}$, Cohen's $d = 1.637$, **Confirmed $p < 0.01$**).
+- **Hypothesis 3 (Multi-Edge & Airframe Obstacle Defilade Loss):** Cascaded Deygout multi-edge diffraction and airframe bank shadowing reduce received channel SNR by $7.35\text{ dB}$ ($t = 46.217$, $\text{df} = 58.00$, $p = 1.851 \times 10^{-47}$, Cohen's $d = 11.933$, **Confirmed $p < 0.01$**).
 
 ---
 

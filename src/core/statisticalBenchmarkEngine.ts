@@ -569,10 +569,11 @@ export function evaluateAblationFlightSegment(
   let harqSlot = createHarqProcessSlot(1);
   const snrHistory: number[] = [];
 
-  // Canonical cruise speed and baseline X-band RF parameters (36 dBm + 3 dBi + 16 dBi - 5 dB, 5 MHz, 5 dB NF)
+  // Canonical cruise speed and baseline MCP X-band backhaul parameters (43 dBm + 20 dBi + 16 dBi - 5 dB, 5 MHz, 5 dB NF)
   const flightConfig = new ACNFlightConfig();
   const rfConfig = new RFConfig({ channelBandwidthHz: 5e6 });
   const envConfig = new EnvironmentConfig();
+  const mcpTx = rfConfig.getTransmitterParams('mcp');
   const cruiseSpeedMps = flightConfig.loiterSpeedMps;
   const radialVelocityMs = cruiseSpeedMps * (130.0 / 160.0);
   const { pNoiseDbm } = LinkBudgetEngine.computeThermalNoiseFloorDbm(
@@ -582,7 +583,7 @@ export function evaluateAblationFlightSegment(
     rfConfig.boltzmannConstant
   );
   const canonicalLinkPowerDbm =
-    rfConfig.soldierTxPowerDbm + rfConfig.soldierAntennaGainDbi + rfConfig.acnAntennaGainDbi - 5.0;
+    mcpTx.txPowerDbm + mcpTx.antennaGainDbi + rfConfig.acnAntennaGainDbi - 5.0;
 
   for (let k = 0; k < numFrames; k++) {
     const t = k * 0.02; // 50 Hz -> 20 ms
@@ -1031,7 +1032,7 @@ Overall ITU-R & Geodetic Cross-Validation Verdict: ${ituAnchors.allPassed ? 'ALL
 
 ---
 
-### 2. Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark ($N=${result.numSeeds} paired seeds)
+### 2. Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark ($N=${result.numSeeds}$ paired seeds)
 Evaluation executed across ${result.numSeeds} paired synthetic link-layer seeds (base seed = ${result.baseSeed}, ${result.numFramesPerRun} frames per run) over a controlled synthetic double-ridge benchmark segment (distinct from full-DEM digital twin flight runs):
 
 | Configuration | Goodput Factor (95% CI) | Residual BLER (95% CI) | Outage Ratio (95% CI) | Mean SNR [dB] (95% CI) |

@@ -175,7 +175,66 @@ console.log('\n[PDS-T2] Verifying Byte-for-Byte Zero-Drift Artifact Parity...');
     diskDossier.includes('### 7. DATA-QUALITY REVIEW AND REQUIRED FOLLOW-UP'),
     'Dossier must preserve Section 7'
   );
-  console.log('  ✓ Pre-existing historical sections (1 through 7) preserved intact [PASS]');
+  assert.ok(
+    !diskDossier.includes('($N=30 paired seeds)'),
+    'BENCHMARK_DOSSIER.md must not contain unclosed $N=30 LaTeX heading'
+  );
+  assert.ok(
+    diskDossier.includes('($N=30$ paired seeds)'),
+    'BENCHMARK_DOSSIER.md must contain balanced ($N=30$ paired seeds) LaTeX heading'
+  );
+
+  // 4. README.md Section 5.1 sync guard against scientific_ablation_n30.csv
+  const readmePath = resolve(process.cwd(), 'README.md');
+  assert.ok(existsSync(readmePath), `README.md must exist on disk: ${readmePath}`);
+  const readmeText = readFileSync(readmePath, 'utf-8');
+  const sec51Start = readmeText.indexOf('### 5.1');
+  const sec52Start = readmeText.indexOf('### 5.2');
+  assert.ok(sec51Start !== -1 && sec52Start > sec51Start, 'README.md must contain Section 5.1 and Section 5.2');
+  const readmeSec51 = readmeText.slice(sec51Start, sec52Start);
+
+  assert.ok(
+    readmeSec51.includes('Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark'),
+    'README.md Section 5.1 must describe the Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark'
+  );
+  assert.ok(
+    !/\(\$N=\d+\s+paired seeds\)/.test(readmeSec51),
+    'README.md Section 5.1 must not contain unclosed $N=30 LaTeX syntax'
+  );
+
+  const csvRows = diskCsv.trim().split('\n').slice(1);
+  assert.equal(csvRows.length, 4, 'scientific_ablation_n30.csv must have 4 configuration rows');
+  for (const row of csvRows) {
+    const parts = row.split(',');
+    const cfgId = parts[0];
+    const gMean = Number(parts[2]).toFixed(3);
+    const gCi = Number(parts[3]).toFixed(3);
+    const bMean = Number(parts[4]).toFixed(3);
+    const bCi = Number(parts[5]).toFixed(3);
+    const oMean = Number(parts[6]).toFixed(3);
+    const oCi = Number(parts[7]).toFixed(3);
+    const sMeanVal = Number(parts[8]);
+    const sMeanAbs = Math.abs(sMeanVal).toFixed(2);
+    const sCi = Number(parts[9]).toFixed(2);
+
+    assert.ok(
+      readmeSec51.includes(`${gMean} \\pm ${gCi}`),
+      `README.md §5.1 missing ${cfgId} goodput ${gMean} \\pm ${gCi}`
+    );
+    assert.ok(
+      readmeSec51.includes(`${bMean} \\pm ${bCi}`),
+      `README.md §5.1 missing ${cfgId} BLER ${bMean} \\pm ${bCi}`
+    );
+    assert.ok(
+      readmeSec51.includes(`${oMean} \\pm ${oCi}`),
+      `README.md §5.1 missing ${cfgId} outage ${oMean} \\pm ${oCi}`
+    );
+    assert.ok(
+      readmeSec51.includes(`${sMeanAbs} \\pm ${sCi}`),
+      `README.md §5.1 missing ${cfgId} SNR ${sMeanAbs} \\pm ${sCi}`
+    );
+  }
+  console.log('  ✓ Pre-existing historical sections (1 through 7) and README.md §5.1 CSV sync verified [PASS]');
 }
 
 // =================================================================================================

@@ -152,28 +152,28 @@ Overall ITU-R & Geodetic Cross-Validation Verdict: ALL PASS (Zero Discrepancies)
 
 ---
 
-### 2. Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark ($N=30 paired seeds)
+### 2. Controlled 4-Point Synthetic Link-Layer Physics Micro-Benchmark ($N=30$ paired seeds)
 Evaluation executed across 30 paired synthetic link-layer seeds (base seed = 20261122, 60 frames per run) over a controlled synthetic double-ridge benchmark segment (distinct from full-DEM digital twin flight runs):
 
 | Configuration | Goodput Factor (95% CI) | Residual BLER (95% CI) | Outage Ratio (95% CI) | Mean SNR [dB] (95% CI) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Baseline Idealized** | 0.329 ± 0.013 | 0.788 ± 0.006 | 0.763 ± 0.005 | -16.16 ± 0.23 |
-| **Multi-Edge + Attitude** | 0.210 ± 0.010 | 0.855 ± 0.006 | 0.838 ± 0.006 | -23.51 ± 0.23 |
-| **Delayed CQI (No OLLA/HARQ)** | 0.098 ± 0.009 | 0.923 ± 0.007 | 0.838 ± 0.006 | -23.51 ± 0.23 |
-| **Full Realistic (OLLA + HARQ)** | 0.118 ± 0.009 | 0.903 ± 0.007 | 0.842 ± 0.006 | -23.51 ± 0.23 |
+| **Baseline Idealized** | 1.669 ± 0.020 | 0.453 ± 0.012 | 0.412 ± 0.014 | 7.84 ± 0.23 |
+| **Multi-Edge + Attitude** | 1.247 ± 0.016 | 0.612 ± 0.007 | 0.586 ± 0.007 | 0.49 ± 0.23 |
+| **Delayed CQI (No OLLA/HARQ)** | 0.934 ± 0.028 | 0.720 ± 0.010 | 0.556 ± 0.009 | 0.49 ± 0.23 |
+| **Full Realistic (OLLA + HARQ)** | 0.994 ± 0.026 | 0.680 ± 0.008 | 0.569 ± 0.009 | 0.49 ± 0.23 |
 
 ---
 
 ### 3. Welch Two-Sample t-Test Hypothesis Verification Summary
 
 - **Hypothesis 1 (Optimistic Bias of Idealized Models):** Baseline idealized propagation significantly overestimates effective goodput compared to the realistic physical stack.
-  - Goodput Factor Delta: +0.2107 (+21.07% absolute overestimation)
-  - Welch Test: t = 27.057, df = 52.81, p = 1.271e-32, Cohen's d = 6.986
+  - Goodput Factor Delta: +0.6745 (+67.45% absolute overestimation)
+  - Welch Test: t = 42.048, df = 54.26, p = 4.293e-43, Cohen's d = 10.857
   - Verdict: Statistically Significant (p < 0.01, Confirmed)
 
 - **Hypothesis 2 (Closed-Loop Error Recovery via OLLA + HARQ):** Closed-loop OLLA adaptation combined with HARQ Chase Combining suppresses residual BLER caused by outdated CQI feedback.
-  - Residual BLER Delta: +0.0197 (+1.97% reduction in uncorrectable block errors)
-  - Welch Test: t = 4.162, df = 57.97, p = 1.059e-4, Cohen's d = 1.075
+  - Residual BLER Delta: +0.0398 (+3.98% reduction in uncorrectable block errors)
+  - Welch Test: t = 6.342, df = 56.91, p = 3.963e-8, Cohen's d = 1.637
   - Verdict: Statistically Significant (p < 0.01, Confirmed)
 
 - **Hypothesis 3 (Multi-Edge & Airframe Obstacle Defilade Loss):** Cascaded Deygout multi-edge diffraction and airframe bank shadowing reduce received channel SNR.
@@ -194,18 +194,18 @@ Evaluation executed across 30 paired synthetic link-layer seeds (base seed = 202
 \toprule
 \textbf{Configuration} & \textbf{Goodput Factor} & \textbf{Residual BLER} & \textbf{Outage Ratio} & \textbf{Mean SNR [dB]} \\
 \midrule
-Baseline Idealized & $0.329 \pm 0.013$ & $0.788 \pm 0.006$ & $0.763 \pm 0.005$ & $-16.16 \pm 0.23$ \\
-Multi-Edge + Attitude & $0.210 \pm 0.010$ & $0.855 \pm 0.006$ & $0.838 \pm 0.006$ & $-23.51 \pm 0.23$ \\
-Delayed CQI (No OLLA/HARQ) & $0.098 \pm 0.009$ & $0.923 \pm 0.007$ & $0.838 \pm 0.006$ & $-23.51 \pm 0.23$ \\
-Full Realistic (OLLA + HARQ) & $0.118 \pm 0.009$ & $0.903 \pm 0.007$ & $0.842 \pm 0.006$ & $-23.51 \pm 0.23$ \\
+Baseline Idealized & $1.669 \pm 0.020$ & $0.453 \pm 0.012$ & $0.412 \pm 0.014$ & $7.84 \pm 0.23$ \\
+Multi-Edge + Attitude & $1.247 \pm 0.016$ & $0.612 \pm 0.007$ & $0.586 \pm 0.007$ & $0.49 \pm 0.23$ \\
+Delayed CQI (No OLLA/HARQ) & $0.934 \pm 0.028$ & $0.720 \pm 0.010$ & $0.556 \pm 0.009$ & $0.49 \pm 0.23$ \\
+Full Realistic (OLLA + HARQ) & $0.994 \pm 0.026$ & $0.680 \pm 0.008$ & $0.569 \pm 0.009$ & $0.49 \pm 0.23$ \\
 \bottomrule
 \end{tabular}
 \vspace{1ex}
 \begin{minipage}{\columnwidth}
 \footnotesize
 \textit{Note:} Values denote sample mean $\pm$ 95\% Student-$t$ confidence interval across $N = 30$ paired synthetic link-layer benchmark seeds (base seed = 20261122; distinct from full-DEM digital twin runs).
-Welch's two-sample $t$-test confirms that idealized models significantly overestimate effective goodput compared to the full realistic stack ($\Delta = +0.211, t = 27.06, \text{df} = 52.8, p = 1.27e-32, d = 6.99$).
-Closed-loop OLLA and HARQ Chase Combining significantly suppresses residual BLER against uncompensated delayed CQI ($\Delta = +0.020, t = 4.16, \text{df} = 58.0, p = 1.06e-4, d = 1.07$).
+Welch's two-sample $t$-test confirms that idealized models significantly overestimate effective goodput compared to the full realistic stack ($\Delta = +0.675, t = 42.05, \text{df} = 54.3, p = 4.29e-43, d = 10.86$).
+Closed-loop OLLA and HARQ Chase Combining significantly suppresses residual BLER against uncompensated delayed CQI ($\Delta = +0.040, t = 6.34, \text{df} = 56.9, p = 3.96e-8, d = 1.64$).
 Cascaded multi-edge diffraction and airframe bank shadowing reduce mean received SNR by 7.35~dB ($t = 46.22, p = 1.85e-47, d = 11.93$).
 \end{minipage}
 \end{table}

@@ -315,6 +315,12 @@ console.log('\n[3/5] Verifying dashboard Megabits, traffic inventory FL/DL duty,
   assert.ok(cols.nodeIds instanceof Uint16Array, 'SpatialSnapshotBuffer nodeIds backing storage must be Uint16Array');
   assert.equal(cols.nodeIds[0], 300, `nodeId=300 must not wrap in Uint16Array, got ${cols.nodeIds[0]}`);
   assert.equal(buf.get(0)?.nodes[0].nodeId, 300);
+  const ts300 = buf.extractNodeTimeSeries(300);
+  assert.equal(ts300.snrDb.length, 1, 'extractNodeTimeSeries(300) must return 1 recorded sample');
+  assert.ok(
+    Number.isFinite(ts300.snrDb[0]) && Math.abs(ts300.snrDb[0] - 16.5) < 1e-4,
+    `extractNodeTimeSeries(300) must preserve valid non-NaN SNR (16.5 dB), got ${ts300.snrDb[0]}`
+  );
 
   console.log('  -> PASS: Dashboard Mb units, dynamic FL/DL duty scaling, selNodeId=7, and Uint16 nodeId=300 verified.');
 }

@@ -15,6 +15,7 @@ import { RFConfig, EnvironmentConfig, NodeType } from './config';
 import { TerrainEngine, TerrainObstruction } from './terrain';
 import { QuadSectorAntennaEngine, AcnAttitudeState, worldLosToBodyFrame } from './antennaArray';
 import { LinkBudgetEngine, LinkStatus } from './linkBudget';
+import { THEATER_BIOMES } from './biomePhysics';
 import type { ACNTrajectory } from './trajectory';
 
 export const NUM_AZIMUTHS = 36; // 10° angular steps: 0°, 10°, ..., 350°
@@ -391,9 +392,10 @@ export class PolarViewshedEngine {
     const rxGainDbi = rf.acnAntennaGainDbi - minAttenDb;
 
     // 3. Propagation losses
+    const freezingIsothermM = THEATER_BIOMES[terrain.activeBiomeId]?.freezingIsothermM ?? 4800.0;
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantDistM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantDistM, cellZ, acnPos[2], rf.carrierFrequencyHz);
-    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantDistM, env, cellZ, acnPos[2]);
+    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantDistM, env, cellZ, acnPos[2], freezingIsothermM);
     const totalLossDb =
       fsplDb +
       diffLossDb +
@@ -649,6 +651,9 @@ export class PolarViewshedEngine {
     );
     const baseNoiseW = thermalNoise.pNoiseW;
     const baseNoiseDbm = thermalNoise.pNoiseDbm;
+    const freezingIsothermM = THEATER_BIOMES[terrain.activeBiomeId]?.freezingIsothermM ?? 4800.0;
+    const { txPowerDbm: soldierTxPowerDbm, antennaGainDbi: soldierAntennaGainDbi } =
+      rf.getTransmitterParams('soldier');
 
     let bestScore = -Infinity;
     let bestCandPos: Position3D = [0, 0, meanGroundElev + 500];
@@ -691,7 +696,7 @@ export class PolarViewshedEngine {
           // Slant link budget to ACN (FSPL + diffraction + gas + rain + losses)
           const fsplDb = LinkBudgetEngine.computeFsplDb(dM, rf.carrierFrequencyHz, rf.speedOfLight);
           const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(dM, candZ, acnPos[2], rf.carrierFrequencyHz);
-          const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dM, env, candZ, acnPos[2]);
+          const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dM, env, candZ, acnPos[2], freezingIsothermM);
           const totalLossDb = fsplDb + diffLossDb + gasLossDb + rainLossDb + rf.cableLossDb + rf.implementationMarginDb;
 
           // Quad-sector body-frame elevation & azimuth roll-off aligned with QuadSectorAntennaEngine (90 deg az x 65 deg el, 16 dBi peak)
@@ -764,13 +769,17 @@ export class PolarViewshedEngine {
 
           const fsplDb = LinkBudgetEngine.computeFsplDb(dGroundM, rf.carrierFrequencyHz, rf.speedOfLight);
           const gGasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(dGroundM, gnZ, candZ, rf.carrierFrequencyHz);
-          const gRainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dGroundM, env, gnZ, candZ);
+          const gRainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dGroundM, env, gnZ, candZ, freezingIsothermM);
           const gAtmoLossDb = gGasLossDb + gRainLossDb;
           const gSkyK = 275.0 * (1.0 - Math.pow(10.0, -gAtmoLossDb / 10.0));
           const gNoiseW = baseNoiseW + rf.boltzmannConstant * gSkyK * rf.channelBandwidthHz;
           const gNoiseDbm = 10.0 * Math.log10(Math.max(gNoiseW, 1e-22) * 1000.0);
 
-          const pRxGroundDbm = 30.0 + 0.0 + 5.0 - (fsplDb + diffLossDb + gAtmoLossDb + rf.cableLossDb + rf.implementationMarginDb);
+          const pRxGroundDbm =
+            soldierTxPowerDbm +
+            soldierAntennaGainDbi +
+            5.0 -
+            (fsplDb + diffLossDb + gAtmoLossDb + rf.cableLossDb + rf.implementationMarginDb);
           const groundSinrDb = pRxGroundDbm - (Number.isFinite(gNoiseDbm) ? gNoiseDbm : baseNoiseDbm);
 
           if (groundSinrDb >= 4.0 || obsNode.isLos) {

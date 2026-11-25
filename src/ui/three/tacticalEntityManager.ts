@@ -422,6 +422,9 @@ export class TacticalEntityManager {
 
   // Ground Nodes (16 items)
   private nodeItems: GroundNodeItem[] = [];
+  private mcpShelterGeo!: THREE.BoxGeometry;
+  private mcpDishGeo!: THREE.SphereGeometry;
+  private soldierTripodGeo!: THREE.ConeGeometry;
 
   // Communication Links (16 links)
   private linkLines: THREE.Line[] = [];
@@ -772,12 +775,12 @@ export class TacticalEntityManager {
     const pSol = ASSUMED_PHYSICAL_DIMENSIONS.soldierTerminal;
 
     // 1. Shared MCP 1x Physical Geometries
-    const mcpShelterGeo = new THREE.BoxGeometry(
+    this.mcpShelterGeo = new THREE.BoxGeometry(
       pMcp.shelterWidthM,
       pMcp.shelterLengthM,
       pMcp.shelterHeightM
     );
-    const mcpDishGeo = new THREE.SphereGeometry(
+    this.mcpDishGeo = new THREE.SphereGeometry(
       pMcp.dishDiameterM * 0.5,
       12,
       6,
@@ -786,17 +789,21 @@ export class TacticalEntityManager {
       0,
       Math.PI * 0.4
     );
-    mcpDishGeo.rotateX(-Math.PI / 2);
-    mcpDishGeo.translate(0, 0, pMcp.shelterHeightM * 0.8);
+    this.mcpDishGeo.rotateX(-Math.PI / 2);
+    this.mcpDishGeo.translate(0, 0, pMcp.shelterHeightM * 0.8);
 
     // 2. Shared Soldier 1x Physical Geometry
-    const soldierTripodGeo = new THREE.ConeGeometry(
+    this.soldierTripodGeo = new THREE.ConeGeometry(
       pSol.tripodBaseRadiusM,
       pSol.mastHeightM,
       6
     );
-    soldierTripodGeo.rotateX(Math.PI / 2);
-    soldierTripodGeo.translate(0, 0, pSol.mastHeightM * 0.5);
+    this.soldierTripodGeo.rotateX(Math.PI / 2);
+    this.soldierTripodGeo.translate(0, 0, pSol.mastHeightM * 0.5);
+
+    const mcpShelterGeo = this.mcpShelterGeo;
+    const mcpDishGeo = this.mcpDishGeo;
+    const soldierTripodGeo = this.soldierTripodGeo;
 
     // Plumb line material
     const plumbMat = new THREE.LineBasicMaterial({
@@ -1036,18 +1043,9 @@ export class TacticalEntityManager {
     const nodeGroup = new THREE.Group();
     nodeGroup.name = `nodeGroup_${nodeId}`;
 
-    const pMcp = ASSUMED_PHYSICAL_DIMENSIONS.mcpTerminal;
-    const pSol = ASSUMED_PHYSICAL_DIMENSIONS.soldierTerminal;
-    const mcpDishGeo = new THREE.CylinderGeometry(pMcp.dishDiameterM * 0.5, pMcp.dishDiameterM * 0.5, 0.4, 16);
-    mcpDishGeo.rotateX(Math.PI / 4);
-    mcpDishGeo.translate(0, 0, pMcp.mastHeightM);
-
-    const mcpShelterGeo = new THREE.BoxGeometry(pMcp.shelterLengthM, pMcp.shelterWidthM, pMcp.shelterHeightM);
-    mcpShelterGeo.translate(0, 0, pMcp.shelterHeightM * 0.5);
-
-    const soldierTripodGeo = new THREE.ConeGeometry(pSol.tripodBaseRadiusM, pSol.mastHeightM, 6);
-    soldierTripodGeo.rotateX(Math.PI / 2);
-    soldierTripodGeo.translate(0, 0, pSol.mastHeightM * 0.5);
+    const mcpDishGeo = this.mcpDishGeo;
+    const mcpShelterGeo = this.mcpShelterGeo;
+    const soldierTripodGeo = this.soldierTripodGeo;
 
     const visualGroup = new THREE.Group();
     visualGroup.name = `nodeVisual_${nodeId}`;

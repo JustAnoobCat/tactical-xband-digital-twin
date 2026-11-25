@@ -717,7 +717,7 @@ export class SpatialSnapshotBuffer {
     const isObstacleBlocked = new Uint8Array(n);
     const currentState = new Uint8Array(n);
 
-    const targetId = nodeId & 0xff;
+    const targetId = nodeId & 0xffff;
 
     // Cache local array references for high-throughput loop
     const simTimeArr = this.simulationTimeS;

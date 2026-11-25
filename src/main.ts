@@ -700,6 +700,7 @@ function disarmDestructiveButton(buttonEl) {
     buttonEl.textContent = entry.originalLabel;
   }
 }
+window.disarmDestructiveButton = disarmDestructiveButton;
 
 function disarmAllDestructiveConfirmations(exceptEl = null) {
   for (const btn of Array.from(armedConfirmRegistry.keys())) {
@@ -726,11 +727,17 @@ function armDestructiveConfirm(buttonEl, { armedLabel = 'Confirm?', timeoutMs = 
         }
       }
     }, true);
+    document.addEventListener('focusin', (e) => {
+      if (armedConfirmRegistry.size === 0) return;
+      const target = e.target;
+      if (!target || target === document || target === window) return;
+      for (const btn of Array.from(armedConfirmRegistry.keys())) {
+        if (btn !== target && !btn.contains(target)) {
+          disarmDestructiveButton(btn);
+        }
+      }
+    }, true);
   }
-
-  buttonEl.addEventListener('blur', () => {
-    disarmDestructiveButton(buttonEl);
-  });
 
   buttonEl.addEventListener('click', (e) => {
     e?.stopPropagation?.();
@@ -6670,6 +6677,7 @@ window.resetSim = function() {
   networkTrafficTracker.clear();
   lastRenderedNodesKey = '';
   lastOpsFleetSignature = '';
+  telemetryUpdaters.resetTelemetryDomState();
   setSpeed(PLAYBACK_SPEED.defaultValue);
   updateStepControlUI(true);
   updatePauseButtonUI();
@@ -6690,6 +6698,7 @@ window.loadPreset = function(id) {
   flightParamsDirty = false;
   lastRenderedNodesKey = '';
   lastOpsFleetSignature = '';
+  telemetryUpdaters.resetTelemetryDomState();
   if (id === 'PRESET_RESET' || id === 'PRESET_ACN_ONLY' || id === 'PRESET_16_NODES') {
     if (historyController.isInspecting) {
       historyController.exitHistorical();
@@ -10900,8 +10909,12 @@ function updateDashboardDOM(frame, force = false) {
       schedulerMode: frame.scheduler_mode,
     });
   }
+  const nodesKey = Array.isArray(frame.nodes_telemetry)
+    ? frame.nodes_telemetry.map(n => n.node_id).join(',')
+    : '';
+  const hasNodeListTransition = Boolean(frame.nodes_telemetry && nodesKey !== lastRenderedNodesKey);
   const nowMs = performance.now();
-  if (!force && (nowMs - lastDomUpdateMs < DOM_UPDATE_INTERVAL_MS)) {
+  if (!force && !hasNodeListTransition && (nowMs - lastDomUpdateMs < DOM_UPDATE_INTERVAL_MS)) {
     return;
   }
   lastDomUpdateMs = nowMs;
@@ -10929,8 +10942,7 @@ function updateDashboardDOM(frame, force = false) {
   if (frame.nodes_telemetry) {
     populateDropdownsOnce(frame.nodes_telemetry);
     const activeTabId = document.querySelector('.tab-content.active')?.id;
-    const nodesKey = frame.nodes_telemetry.map(n => n.node_id).join(',');
-    const nodesChanged = nodesKey !== lastRenderedNodesKey;
+    const nodesChanged = hasNodeListTransition;
     const tbody = $('terminal-inventory-tbody');
     const hasRows = Boolean(tbody && !tbody.querySelector('td[colspan]') && tbody.children.length >= 2);
 
