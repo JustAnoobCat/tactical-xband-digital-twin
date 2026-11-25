@@ -267,10 +267,10 @@ assert.ok(readmeText.includes('SPEC-WALKABLE-TERRAIN-PATHFINDER-AND-OBSTACLE-AVO
 // 3. Verify c2-console-theme.css exists
 assert.ok(existsSync(path.join(ROOT_DIR, 'frontend/c2-console-theme.css')), 'frontend/c2-console-theme.css must exist');
 
-// 4. Verify index.html multi-waypoint rendering and readout support
-const indexHtml = readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
-assert.ok(indexHtml.includes('ai_walk_path_enu'), 'index.html must process ai_walk_path_enu');
-assert.ok(indexHtml.includes('Max Slope:'), 'index.html must display Max Slope in #ai-directive-readout');
+// 4. Verify src/main.ts multi-waypoint rendering and readout support
+const mainTs = readFileSync(path.join(ROOT_DIR, 'src', 'main.ts'), 'utf8');
+assert.ok(mainTs.includes('ai_walk_path_enu'), 'src/main.ts must process ai_walk_path_enu');
+assert.ok(mainTs.includes('Max Slope:'), 'src/main.ts must display Max Slope in #ai-directive-readout');
 
 console.log('✓ WPO-T4 PASS: Spec persistence, README linking, and theme invariance verified.');
 

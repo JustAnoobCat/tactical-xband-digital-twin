@@ -38,7 +38,6 @@ import {
   getMapLinkStyle,
   getStatusBadgeInfo,
 } from '../mapLinkStyles';
-import { cartesianToGeodetic } from '../../core/geodesy';
 import { obstacleContainsPoint } from '../../core/obstacles';
 import { escapeHtml } from '../domSafety';
 import type { WorldTileLayer } from '../worldTileLayer';

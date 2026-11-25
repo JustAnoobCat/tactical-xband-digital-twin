@@ -194,16 +194,23 @@ for (const line of sec5.split('\n')) {
 
 assert.equal(assertedIdsFromSpec.length, 273, `Expected 273 asserted DOM IDs in UI-01 Section 5, parsed ${assertedIdsFromSpec.length}`);
 
+const mainTsContent = fs.readFileSync(path.join(ROOT_DIR, 'src', 'main.ts'), 'utf-8');
+const dynamicIds = new Set<string>(seenIds);
+const dynIdRegex = /(?<![\w-])id=["']([^"']+)["']/g;
+while ((match = dynIdRegex.exec(mainTsContent)) !== null) {
+  dynamicIds.add(match[1]);
+}
+
 const missingAssertedIds: string[] = [];
 for (const assertedId of assertedIdsFromSpec) {
-  if (!seenIds.has(assertedId)) {
+  if (!dynamicIds.has(assertedId)) {
     missingAssertedIds.push(assertedId);
   }
 }
 assert.deepEqual(
   missingAssertedIds,
   [],
-  `All 273 test-asserted DOM IDs from UI-01 §5 must be preserved in index.html. Missing: ${missingAssertedIds.join(', ')}`
+  `All 273 test-asserted DOM IDs from UI-01 §5 must be preserved in index.html / src/main.ts. Missing: ${missingAssertedIds.join(', ')}`
 );
 
 console.log(`  -> Zero duplicate DOM IDs verified across ${allIds.length} elements.`);

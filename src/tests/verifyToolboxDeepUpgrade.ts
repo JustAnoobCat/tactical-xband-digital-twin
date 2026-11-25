@@ -81,10 +81,10 @@ console.log('\n[TBU-T1] Verifying 3D Zero-Lag Optimization (fast128 Decimation &
   const computeCalls = (entityMgrCode.match(/\.computeLineDistances\(\)/g) || []).length;
   assert.equal(computeCalls, 0, 'tacticalEntityManager.ts must have ZERO .computeLineDistances() calls to eliminate CPU-to-GPU overhead');
 
-  // 5. Verify index.html throttles secondary canvases (including timeline) to 125ms (8Hz) in 3D mode
-  const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf-8');
-  assert.ok(indexHtml.includes("stageViewMode === '3d'"), "index.html must check stageViewMode === '3d'");
-  assert.ok(indexHtml.includes('last3dSecondaryCanvasThrottleMs') && indexHtml.includes('125'), "index.html must throttle timeline and secondary canvases to 125ms (8Hz) in 3D mode");
+  // 5. Verify src/main.ts throttles secondary canvases (including timeline) to 125ms (8Hz) in 3D mode
+  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  assert.ok(mainTs.includes("stageViewMode === '3d'"), "src/main.ts must check stageViewMode === '3d'");
+  assert.ok(mainTs.includes('last3dSecondaryCanvasThrottleMs') && mainTs.includes('125'), "src/main.ts must throttle timeline and secondary canvases to 125ms (8Hz) in 3D mode");
 
   console.log('  ✓ buildFastDemGeometry produces 16,384-vertex, 32,258-triangle mesh with Uint16Array indices');
   console.log('  ✓ MeshBasicMaterial verified for unlit rendering');
@@ -98,26 +98,26 @@ console.log('\n[TBU-T1] Verifying 3D Zero-Lag Optimization (fast128 Decimation &
 // =================================================================================================
 console.log('\n[TBU-T2] Verifying Scheduler-Synchronized MapLibre Kinetic Overlay & Static Outage Badging...');
 {
-  const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf-8');
+  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
 
   // 1. Verify scheduler mode and active Gantt extraction
-  assert.ok(indexHtml.includes('frame.scheduler_mode'), 'renderMapLibreKineticOverlay must inspect frame.scheduler_mode');
-  assert.ok(indexHtml.includes('frame.tac_gantt') && indexHtml.includes('frame.static_gantt'), 'renderMapLibreKineticOverlay must select between frame.tac_gantt and frame.static_gantt');
-  assert.ok(indexHtml.includes('scheduledAllocByNodeId'), 'renderMapLibreKineticOverlay must build scheduledAllocByNodeId map');
+  assert.ok(mainTs.includes('frame.scheduler_mode'), 'renderMapLibreKineticOverlay must inspect frame.scheduler_mode');
+  assert.ok(mainTs.includes('frame.tac_gantt') && mainTs.includes('frame.static_gantt'), 'renderMapLibreKineticOverlay must select between frame.tac_gantt and frame.static_gantt');
+  assert.ok(mainTs.includes('scheduledAllocByNodeId'), 'renderMapLibreKineticOverlay must build scheduledAllocByNodeId map');
 
   // 2. Verify pulse train animation gating on isScheduled && !isOutage
-  assert.ok(indexHtml.includes('isScheduled && !isOutage'), 'Packet pulse trains must only animate when isScheduled && !isOutage');
+  assert.ok(mainTs.includes('isScheduled && !isOutage'), 'Packet pulse trains must only animate when isScheduled && !isOutage');
 
   // 3. Verify color coding by active 5QI classes
-  assert.ok(indexHtml.includes('#ff2a54') && indexHtml.includes('#00e5ff') && indexHtml.includes('#00e676') && indexHtml.includes('#ffab00') && indexHtml.includes('#b388ff'),
+  assert.ok(mainTs.includes('#ff2a54') && mainTs.includes('#00e5ff') && mainTs.includes('#00e676') && mainTs.includes('#ffab00') && mainTs.includes('#b388ff'),
     'renderMapLibreKineticOverlay must support 5QI class colors (Crimson 69, Cyan 65, Emerald 67, Amber 70, Violet flush)');
 
   // 4. Verify [TX] and FLUSHING [Φ_evac] badge rendering
-  assert.ok(indexHtml.includes('[TX]'), 'renderMapLibreKineticOverlay must render [TX] badges next to scheduled nodes');
-  assert.ok(indexHtml.includes('FLUSHING [Φ_evac]') || indexHtml.includes('FLUSHING'), 'renderMapLibreKineticOverlay must support pre-occlusion flush badge');
+  assert.ok(mainTs.includes('[TX]'), 'renderMapLibreKineticOverlay must render [TX] badges next to scheduled nodes');
+  assert.ok(mainTs.includes('FLUSHING [Φ_evac]') || mainTs.includes('FLUSHING'), 'renderMapLibreKineticOverlay must support pre-occlusion flush badge');
 
   // 5. Verify [WASTED TX] static outage flash
-  assert.ok(indexHtml.includes('[WASTED TX]'), 'renderMapLibreKineticOverlay must render [WASTED TX] flash when static schedule encounters an outage');
+  assert.ok(mainTs.includes('[WASTED TX]'), 'renderMapLibreKineticOverlay must render [WASTED TX] flash when static schedule encounters an outage');
 
   console.log('  ✓ Active Gantt selection (tac_gantt vs static_gantt) verified');
   console.log('  ✓ Packet pulse trains gated strictly on isScheduled && !isOutage');

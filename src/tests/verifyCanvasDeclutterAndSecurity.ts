@@ -225,6 +225,7 @@ console.log('[CDS-T4] Verifying Integration & Zero-Slop Gate...');
 
 const root = process.cwd();
 const indexHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
+const mainTs = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
 const placerTs = readFileSync(resolve(root, 'src/ui/canvasLabelPlacer.ts'), 'utf8');
 const domSafetyTs = readFileSync(resolve(root, 'src/ui/domSafety.ts'), 'utf8');
 
@@ -233,12 +234,12 @@ const EMOJI_REGEX = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
 assert(!EMOJI_REGEX.test(placerTs), 'Found emoji in canvasLabelPlacer.ts');
 assert(!EMOJI_REGEX.test(domSafetyTs), 'Found emoji in domSafety.ts');
 
-// Air-gap notice in index.html
+// Air-gap notice in src/main.ts (extracted from index.html)
 const AIR_GAP_NOTICE = 'Air-gap mode: external map tiles blocked/offline — switch to Radar / SRTM DEM';
-assert(indexHtml.includes(AIR_GAP_NOTICE), `Air-gap notice missing in index.html: "${AIR_GAP_NOTICE}"`);
+assert(mainTs.includes(AIR_GAP_NOTICE), `Air-gap notice missing in src/main.ts: "${AIR_GAP_NOTICE}"`);
 
-// Verify createLabelPlacer is imported/used in index.html
-assert(indexHtml.includes('createLabelPlacer'), 'createLabelPlacer is not referenced in index.html');
+// Verify createLabelPlacer is imported/used in src/main.ts
+assert(mainTs.includes('createLabelPlacer'), 'createLabelPlacer is not referenced in src/main.ts');
 
 // Zero duplicate DOM IDs check in index.html
 const idMatches = [...indexHtml.matchAll(/id=["']([a-zA-Z0-9_-]+)["']/g)].map(m => m[1]);

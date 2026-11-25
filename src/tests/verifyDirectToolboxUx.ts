@@ -160,31 +160,32 @@ console.log('\n[UI05-T2] Verifying Zero-Lag CSS Hover Flyouts, Crosshair & Armed
 // =================================================================================================
 // [UI05-T3] Figma-Style Keyboard Shortcuts (V/R/P/A/B/Enter/Esc), Modifier & Input Element Guards
 // =================================================================================================
+const mainTs = readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8');
 console.log('\n[UI05-T3] Verifying Figma-Style Keyboard Shortcuts & Strict Input Guards...');
 {
   // 1. Strict editable keyboard target guard function must exist
   assert.ok(
-    indexHtml.includes('function isEditableKeyboardTarget(target)'),
-    'isEditableKeyboardTarget helper must be defined in index.html',
+    mainTs.includes('function isEditableKeyboardTarget(target)'),
+    'isEditableKeyboardTarget helper must be defined in src/main.ts',
   );
   assert.ok(
-    indexHtml.includes("target.closest('input, select, textarea, [contenteditable") ||
-    indexHtml.includes("target.closest('input,select,textarea,[contenteditable"),
+    mainTs.includes("target.closest('input, select, textarea, [contenteditable") ||
+    mainTs.includes("target.closest('input,select,textarea,[contenteditable"),
     'isEditableKeyboardTarget must inspect input, select, textarea, and contenteditable',
   );
   console.log('  ✓ isEditableKeyboardTarget helper verified [PASS]');
 
   // 2. Modifier keys guard: Ctrl, Meta (Cmd), Alt must never trigger single-letter shortcuts
   assert.ok(
-    indexHtml.includes('if (e.ctrlKey || e.metaKey || e.altKey) return;') ||
-    indexHtml.includes('if(e.ctrlKey||e.metaKey||e.altKey) return;'),
+    mainTs.includes('if (e.ctrlKey || e.metaKey || e.altKey) return;') ||
+    mainTs.includes('if(e.ctrlKey||e.metaKey||e.altKey) return;'),
     'Keyboard shortcut listener must immediately bail on Ctrl, Meta, or Alt keys',
   );
   console.log('  ✓ Modifier key check (!ctrlKey && !metaKey && !altKey) verified [PASS]');
 
   // 3. 2D / 3D mode guard for terrain tools
   assert.ok(
-    indexHtml.includes("stageViewMode === '3d'") || indexHtml.includes('threeController.getViewMode?.() === \'3d\''),
+    mainTs.includes("stageViewMode === '3d'") || mainTs.includes('threeController.getViewMode?.() === \'3d\''),
     'Keyboard shortcuts must guard against triggering in 3D view mode',
   );
   console.log('  ✓ 3D mode guard verified [PASS]');
@@ -193,7 +194,7 @@ console.log('\n[UI05-T3] Verifying Figma-Style Keyboard Shortcuts & Strict Input
   const requiredHotkeys = ["'Escape'", "'Enter'", "'v'", "'r'", "'p'", "'a'", "'b'"];
   for (const hk of requiredHotkeys) {
     assert.ok(
-      indexHtml.includes(`key === ${hk}`) || indexHtml.includes(`e.key === ${hk}`),
+      mainTs.includes(`key === ${hk}`) || mainTs.includes(`e.key === ${hk}`),
       `Keyboard handler must check for ${hk}`,
     );
   }
@@ -207,33 +208,33 @@ console.log('\n[UI05-T4] Verifying 1-Click Auto-Arm State Transitions & Terse St
 {
   // 1. setTbMode must accept autoArm parameter and arm tool modes directly
   assert.ok(
-    indexHtml.includes('const setTbMode = (mode, autoArm = true) =>') ||
-    indexHtml.includes('function setTbMode(mode, autoArm = true)'),
+    mainTs.includes('const setTbMode = (mode, autoArm = true) =>') ||
+    mainTs.includes('function setTbMode(mode, autoArm = true)'),
     'setTbMode must support autoArm parameter defaulting to true',
   );
 
   assert.ok(
-    indexHtml.includes("terrainToolMode = 'transect-2pt';"),
+    mainTs.includes("terrainToolMode = 'transect-2pt';"),
     'Auto-arm for transect must directly set terrainToolMode = "transect-2pt"',
   );
   assert.ok(
-    indexHtml.includes("terrainToolMode = 'probe';"),
+    mainTs.includes("terrainToolMode = 'probe';"),
     'Auto-arm for probe must directly set terrainToolMode = "probe"',
   );
   assert.ok(
-    indexHtml.includes("terrainToolMode = 'region';"),
+    mainTs.includes("terrainToolMode = 'region';"),
     'Auto-arm for region must directly set terrainToolMode = "region"',
   );
   assert.ok(
-    indexHtml.includes("terrainToolMode = 'obstacle-place';"),
+    mainTs.includes("terrainToolMode = 'obstacle-place';"),
     'Auto-arm for obstacle must directly set terrainToolMode = "obstacle-place"',
   );
   console.log('  ✓ 1-Click auto-arm state transitions verified [PASS]');
 
   // 2. Double-click on radar canvas closes region polygon when >= 3 points exist
   assert.ok(
-    indexHtml.includes("terrainToolMode === 'region' && terrainRegionDraft.length >= 3") &&
-    indexHtml.includes('finishTerrainRegion()'),
+    mainTs.includes("terrainToolMode === 'region' && terrainRegionDraft.length >= 3") &&
+    mainTs.includes('finishTerrainRegion()'),
     'Double-click handler must call finishTerrainRegion when region points >= 3',
   );
   console.log('  ✓ Double-click polygon completion verified [PASS]');
@@ -247,9 +248,10 @@ console.log('\n[UI05-T4] Verifying 1-Click Auto-Arm State Transitions & Terse St
     'Click map to drop barrier',
   ];
 
+  const uiAll = `${indexHtml}\n${mainTs}`;
   for (const phrase of tersePhrases) {
     assert.ok(
-      indexHtml.includes(phrase),
+      uiAll.includes(phrase),
       `Step guide banner must include terse phrase "${phrase}"`,
     );
   }

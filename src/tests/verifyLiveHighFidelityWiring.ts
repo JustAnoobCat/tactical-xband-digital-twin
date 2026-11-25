@@ -312,8 +312,10 @@ async function runSuite(): Promise<void> {
   );
 
   // Verify 1-click button
+  const mainTsPath = path.resolve(process.cwd(), 'src/main.ts');
+  const mainTs = fs.readFileSync(mainTsPath, 'utf-8');
   assert.ok(indexHtml.includes('id="btn-hifi-all-toggle"'), 'Button id="btn-hifi-all-toggle" must exist');
-  assert.ok(indexHtml.includes('onclick="toggleAllHiFiPhysics()"'), 'Button must wire to toggleAllHiFiPhysics()');
+  assert.ok(mainTs.includes('btn-hifi-all-toggle') && mainTs.includes('toggleAllHiFiPhysics'), 'src/main.ts must wire #btn-hifi-all-toggle to toggleAllHiFiPhysics()');
 
   // Verify 5 labeled checkboxes
   const expectedCheckboxes = [
@@ -363,11 +365,11 @@ async function runSuite(): Promise<void> {
     assert.ok(px >= 10.0, `Font size ${px}px in #hi-fi-physics-panel must be >= 10px`);
   }
 
-  // Verify script wiring
-  assert.ok(indexHtml.includes('window.onHiFiToggleChange = function'), 'window.onHiFiToggleChange must be defined');
-  assert.ok(indexHtml.includes('window.toggleAllHiFiPhysics = function'), 'window.toggleAllHiFiPhysics must be defined');
-  assert.ok(indexHtml.includes('window.updateHiFiPhysicsUI = updateHiFiPhysicsUI'), 'window.updateHiFiPhysicsUI must be exported');
-  assert.ok(indexHtml.includes('updateHiFiPhysicsUI(msg.frame.hifi_telemetry)'), 'updateHiFiPhysicsUI must be invoked on frame receipt');
+  // Verify script wiring in src/main.ts
+  assert.ok(mainTs.includes('window.onHiFiToggleChange = function'), 'window.onHiFiToggleChange must be defined');
+  assert.ok(mainTs.includes('window.toggleAllHiFiPhysics = function'), 'window.toggleAllHiFiPhysics must be defined');
+  assert.ok(mainTs.includes('window.updateHiFiPhysicsUI = updateHiFiPhysicsUI'), 'window.updateHiFiPhysicsUI must be exported');
+  assert.ok(mainTs.includes('updateHiFiPhysicsUI(msg.frame.hifi_telemetry)'), 'updateHiFiPhysicsUI must be invoked on frame receipt');
 
   console.log(`  ${ANSI.green}✓ UI DOM & accessibility contract verified: 5 controls, 5 readouts, zero emojis, >=10px fonts${ANSI.reset}`);
 

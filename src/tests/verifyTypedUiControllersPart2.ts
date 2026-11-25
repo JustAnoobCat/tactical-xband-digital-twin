@@ -307,7 +307,7 @@ runCheck('Monolith reduction target: index.html net reduction >= 1,500 lines', (
 });
 
 runCheck('Preserves required static test assertions (isEditableKeyboardTarget, createLabelPlacer, 3D mode guard)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+  const html = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8');
 
   // verifyDirectToolboxUx.ts checks
   assert.ok(html.includes('function isEditableKeyboardTarget(target)'), 'isEditableKeyboardTarget helper must exist in index.html');

@@ -61,21 +61,21 @@ console.log('\n[UMP-T1] Verifying MapLibre Kinetic Canvas Projection Seam...');
   assert.notEqual(offsetPt.x, originPt.x, 'East translation must shift container X');
   assert.notEqual(offsetPt.y, originPt.y, 'North translation must shift container Y');
 
-  // Verify index.html defines renderMapLibreKineticOverlay and transparent radar-canvas overlay
-  const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf-8');
-  assert.ok(indexHtml.includes('function renderMapLibreKineticOverlay'), 'index.html must define renderMapLibreKineticOverlay');
-  assert.ok(indexHtml.includes('projectEnuToContainerPoint'), 'index.html must invoke projectEnuToContainerPoint for kinetic animation');
-  assert.ok(indexHtml.includes("radar.style.pointerEvents = 'none'"), 'index.html must set pointer-events: none on radar overlay');
-  assert.ok(indexHtml.includes("radar.style.background = 'transparent'"), 'index.html must set transparent background on radar overlay');
-  assert.ok(indexHtml.includes("radar.style.zIndex = '4'"), 'index.html must set zIndex = 4 on radar overlay');
+  // Verify src/main.ts defines renderMapLibreKineticOverlay and transparent radar-canvas overlay
+  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  assert.ok(mainTs.includes('function renderMapLibreKineticOverlay'), 'src/main.ts must define renderMapLibreKineticOverlay');
+  assert.ok(mainTs.includes('projectEnuToContainerPoint'), 'src/main.ts must invoke projectEnuToContainerPoint for kinetic animation');
+  assert.ok(mainTs.includes("radar.style.pointerEvents = 'none'"), 'src/main.ts must set pointer-events: none on radar overlay');
+  assert.ok(mainTs.includes("radar.style.background = 'transparent'"), 'src/main.ts must set transparent background on radar overlay');
+  assert.ok(mainTs.includes("radar.style.zIndex = '4'"), 'src/main.ts must set zIndex = 4 on radar overlay');
 
   // Verify kinetic animation elements in renderMapLibreKineticOverlay
-  assert.ok(indexHtml.includes('Rotating Radar Sweep Line around ACN'), 'renderMapLibreKineticOverlay must render rotating sweep line');
-  assert.ok(indexHtml.includes('Rotating 4-Sector Lobes'), 'renderMapLibreKineticOverlay must render 4 sector lobes');
-  assert.ok(indexHtml.includes('Animated Packet Flow Pulses'), 'renderMapLibreKineticOverlay must render link pulses');
-  assert.ok(indexHtml.includes('Pulsing EW Jammer Rings'), 'renderMapLibreKineticOverlay must render EW jammer rings');
-  assert.ok(indexHtml.includes('[MCP-OPT]'), 'renderMapLibreKineticOverlay must render optimal ridge relay beacon [MCP-OPT]');
-  assert.ok(indexHtml.includes('[EW-JAM]'), 'renderMapLibreKineticOverlay must render EW jammer indicator [EW-JAM]');
+  assert.ok(mainTs.includes('Rotating Radar Sweep Line around ACN'), 'renderMapLibreKineticOverlay must render rotating sweep line');
+  assert.ok(mainTs.includes('Rotating 4-Sector Lobes'), 'renderMapLibreKineticOverlay must render 4 sector lobes');
+  assert.ok(mainTs.includes('Animated Packet Flow Pulses'), 'renderMapLibreKineticOverlay must render link pulses');
+  assert.ok(mainTs.includes('Pulsing EW Jammer Rings'), 'renderMapLibreKineticOverlay must render EW jammer rings');
+  assert.ok(mainTs.includes('[MCP-OPT]'), 'renderMapLibreKineticOverlay must render optimal ridge relay beacon [MCP-OPT]');
+  assert.ok(mainTs.includes('[EW-JAM]'), 'renderMapLibreKineticOverlay must render EW jammer indicator [EW-JAM]');
 
   console.log('  ✓ MapController projection transforms ENU coords to screen points accurately');
   console.log('  ✓ index.html transparent kinetic canvas overlay configured with pointer-events: none and zIndex: 4');
@@ -155,11 +155,11 @@ console.log('\n[UMP-T2] Verifying 3D Zero-Lag Optimization, Overdraw Elimination
   const mat = createFastTerrainMaterial();
   assert.ok(mat instanceof THREE.MeshLambertMaterial || mat instanceof THREE.MeshBasicMaterial, 'Terrain material must be MeshLambertMaterial or MeshBasicMaterial');
 
-  // 5. Verify index.html skips drawRadar() when stageViewMode === '3d'
-  const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf-8');
-  assert.ok(indexHtml.includes("if (!cvs || stageViewMode === '3d') return;"), 'drawRadar() must return immediately when in 3D mode');
-  assert.ok(indexHtml.includes("if (stageViewMode !== '3d'"), 'animationLoop must guard drawRadar() from executing during 3D mode');
-  assert.ok(indexHtml.includes('const DOM_UPDATE_INTERVAL_MS = 100'), 'updateDashboardDOM must be throttled to 10 Hz (100 ms)');
+  // 5. Verify src/main.ts skips drawRadar() when stageViewMode === '3d'
+  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  assert.ok(mainTs.includes("if (!cvs || stageViewMode === '3d') return;"), 'drawRadar() must return immediately when in 3D mode');
+  assert.ok(mainTs.includes("if (stageViewMode !== '3d'"), 'animationLoop must guard drawRadar() from executing during 3D mode');
+  assert.ok(mainTs.includes('const DOM_UPDATE_INTERVAL_MS = 100'), 'updateDashboardDOM must be throttled to 10 Hz (100 ms)');
 
   console.log('  ✓ Sector cone reach reduced from 25 km to 3.5 km with FrontSide rendering (zero alpha overdraw)');
   console.log('  ✓ Pre-allocated 16 glowing 3D link pulse meshes running at 60 FPS');

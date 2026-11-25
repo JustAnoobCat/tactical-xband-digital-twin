@@ -71,28 +71,29 @@ function testAc1DemStatsAndNonClobber(): void {
   assert.equal(engine.demMetadata.voidCount, 1);
   assert.ok(Object.isFrozen(engine.demMetadata), 'demMetadata must be frozen');
 
-  // Verify index.html M1 non-clobber & upload direct loadCustomDem & preset rain rule
+  // Verify index.html & src/main.ts M1 non-clobber & upload direct loadCustomDem & preset rain rule
   const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+  const mainTs = fs.readFileSync(path.join(process.cwd(), 'src', 'main.ts'), 'utf8');
   assert.ok(
-    html.includes('mainTerrainEngine.loadCustomDem(parseResult.elevations, parseResult.metadata)'),
+    mainTs.includes('mainTerrainEngine.loadCustomDem(parseResult.elevations, parseResult.metadata)'),
     'HGT upload handler calls mainTerrainEngine.loadCustomDem directly',
   );
   assert.ok(
-    html.includes('mainTerrainEngine.loadCustomDem(mosaic.elevations, mosaic.metadata)'),
+    mainTs.includes('mainTerrainEngine.loadCustomDem(mosaic.elevations, mosaic.metadata)'),
     'Mosaic upload handler calls mainTerrainEngine.loadCustomDem directly',
   );
   assert.ok(
-    html.includes('!mainTerrainEngine.hasRealDem'),
+    mainTs.includes('!mainTerrainEngine.hasRealDem'),
     'handleTerrainMeshDataResponse guards against overwriting mainTerrainEngine.realDemGrid when hasRealDem is true',
   );
   assert.ok(
-    html.includes("id === 'PRESET_MONSOON'") && html.includes("id === 'PRESET_AMBUSH'"),
+    mainTs.includes("id === 'PRESET_MONSOON'") && mainTs.includes("id === 'PRESET_AMBUSH'"),
     'loadPreset syncs #param-rain only on PRESET_MONSOON and PRESET_AMBUSH',
   );
   assert.ok(html.includes('id="terrain-toolbox-stack"'), 'Unified #terrain-toolbox-stack present');
   assert.ok(html.includes('id="terrain-toolbox-drawer"'), 'Scrollable #terrain-toolbox-drawer present');
-  assert.ok(html.includes('maplibre-probe-viewshed') && html.includes('maplibre-bridge-heatmap'), 'M4 MapLibre image sources wired');
-  assert.ok(html.includes('canAddNodeFromToolbox') && html.includes('MAX_ACTIVE_GROUND_NODES'), 'M2 capacity gate wired in index.html');
+  assert.ok(mainTs.includes('maplibre-probe-viewshed') && mainTs.includes('maplibre-bridge-heatmap'), 'M4 MapLibre image sources wired');
+  assert.ok(mainTs.includes('canAddNodeFromToolbox') && mainTs.includes('MAX_ACTIVE_GROUND_NODES'), 'M2 capacity gate wired in src/main.ts');
 }
 
 function makeCtx(terrainEngine: TerrainEngine, overrides: Partial<ToolboxSimulationContext> = {}): ToolboxSimulationContext {

@@ -26,8 +26,10 @@ console.log('   VERIFY: COMPREHENSIVE 51-POINT DIGITAL TWIN UX POLISH SUITE (UXP
 console.log('='.repeat(96));
 
 const htmlPath = path.join(ROOT_DIR, 'index.html');
+const mainTsPath = path.join(ROOT_DIR, 'src', 'main.ts');
 assert.ok(existsSync(htmlPath), 'index.html must exist');
-const htmlContent = readFileSync(htmlPath, 'utf8');
+assert.ok(existsSync(mainTsPath), 'src/main.ts must exist');
+const htmlContent = `${readFileSync(htmlPath, 'utf8')}\n${readFileSync(mainTsPath, 'utf8')}`;
 
 // -----------------------------------------------------------------------------
 // UXP-T1: Cross-Tab Node Selection Sync & Pointer Mutual Exclusion (Areas E & F)

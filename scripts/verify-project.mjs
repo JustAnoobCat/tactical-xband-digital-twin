@@ -2,6 +2,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const mainTs = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const uiSource = `${html}\n${mainTs}`;
 const worker = readFileSync(new URL('../src/worker/simWorker.ts', import.meta.url), 'utf8');
 const requiredFiles = [
   '../src/core/config.ts', '../src/core/terrain.ts', '../src/core/linkBudget.ts',
@@ -27,17 +29,17 @@ check('All five detail workspaces remain present', () => {
 check('Persistent map mount and resize separator are wired', () => {
   assert.match(html, /id="persistent-map-mount"/);
   assert.match(html, /id="map-resize-handle"/);
-  assert.match(html, /appendChild\(radarStage\)/);
-  assert.match(html, /xband-map-width-pct/);
+  assert.match(uiSource, /appendChild\(radarStage\)/);
+  assert.match(uiSource, /xband-map-width-pct/);
 });
 check('Map renderer continues while detail navigation changes', () => {
-  assert.match(html, /drawRadar\(\);/);
-  assert.match(html, /function drawRadar\(\)/);
-  assert.match(html, /requestAnimationFrame\(animationLoop\)/);
+  assert.match(uiSource, /drawRadar\(\);/);
+  assert.match(uiSource, /function drawRadar\(\)/);
+  assert.match(uiSource, /requestAnimationFrame\(animationLoop\)/);
 });
 check('Simulation remains worker-backed and telemetry-driven', () => {
-  assert.match(html, /new Worker\(new URL\("\.\/src\/worker\/simWorker\.ts", import\.meta\.url\)/);
-  assert.match(html, /msg\.type === 'TELEMETRY_FRAME'/);
+  assert.match(uiSource, /new Worker\(new URL\("\.\/(?:src\/)?worker\/simWorker\.ts", import\.meta\.url\)/);
+  assert.match(uiSource, /msg\.type === 'TELEMETRY_FRAME'/);
   assert.match(worker, /postMessage\(/);
 });
 check('Research report distinguishes historical results from current-engine validation', () => {
@@ -48,15 +50,15 @@ check('Research report distinguishes historical results from current-engine vali
 });
 check('Terminal search is wired to the populated terminal selector', () => {
   assert.match(html, /id="terminal-search"/);
-  assert.match(html, /window\.filterTerminalOptions = function\(query\)/);
-  assert.match(html, /option\.hidden = !match/);
+  assert.match(uiSource, /window\.filterTerminalOptions = function\(query\)/);
+  assert.match(uiSource, /option\.hidden = !match/);
   assert.match(html, /terminal-search-status/);
 });
 check('Scheduler allocation inspector uses current worker-frame allocations', () => {
   assert.match(html, /id="allocation-inspector"/);
-  assert.match(html, /frame\.active_gantt_allocations/);
-  assert.match(html, /selectedAllocations\.reduce/);
-  assert.match(html, /per-frame airtime/);
+  assert.match(uiSource, /frame\.active_gantt_allocations/);
+  assert.match(uiSource, /selectedAllocations\.reduce/);
+  assert.match(uiSource, /per-frame airtime/);
 });
 
 
@@ -70,22 +72,22 @@ check('Detailed analysis workspaces use responsive layouts', () => {
 });
 
 check('Scheduler percentiles are worker-authoritative', () => {
-  assert.match(html, /frame\.static_p50_bps/);
-  assert.match(html, /frame\.tac_p50_bps/);
-  assert.match(html, /rolling_window_sample_count/);
-  assert.match(html, /nearest-rank/);
-  assert.doesNotMatch(html, /validTacDeltas/);
-  assert.doesNotMatch(html, /Mbit\/frame/);
+  assert.match(uiSource, /frame\.static_p50_bps/);
+  assert.match(uiSource, /frame\.tac_p50_bps/);
+  assert.match(uiSource, /rolling_window_sample_count/);
+  assert.match(uiSource, /nearest-rank/);
+  assert.doesNotMatch(uiSource, /validTacDeltas/);
+  assert.doesNotMatch(uiSource, /Mbit\/frame/);
 });
 
 check('Comparison table distinguishes unavailable telemetry from confirmed zero', () => {
-  assert.match(html, /const UNAVAILABLE = '—'/);
-  assert.match(html, /function setMetricText/);
-  assert.match(html, /dataset\.telemetryState = 'unavailable'/);
-  assert.match(html, /static_utilization_pct/);
-  assert.match(html, /tac_utilization_pct/);
-  assert.match(html, /static_selected_backlog_kb/);
-  assert.match(html, /KiB/);
+  assert.match(uiSource, /const UNAVAILABLE = '—'/);
+  assert.match(uiSource, /function setMetricText/);
+  assert.match(uiSource, /dataset\.telemetryState = 'unavailable'/);
+  assert.match(uiSource, /static_utilization_pct/);
+  assert.match(uiSource, /tac_utilization_pct/);
+  assert.match(uiSource, /static_selected_backlog_kb/);
+  assert.match(uiSource, /KiB/);
 });
 
 check('Stage 12 reduces horizontal overflow in analytical panels', () => {
@@ -106,12 +108,12 @@ check('Simulation reset clears scheduler adaptation and run-local state', () => 
 
 check('Experiment capture exports raw telemetry with provenance metadata', () => {
   assert.match(html, /id="experiment-start"/);
-  assert.match(html, /function experimentObserve\(frame\)/);
-  assert.match(html, /function experimentExportCsv\(\)/);
-  assert.match(html, /function experimentExportJson\(\)/);
-  assert.match(html, /seed: 'unavailable in current telemetry'/);
-  assert.match(html, /not guaranteed complete per-frame instrumentation/);
-  assert.match(html, /experimentObserve\(frame\);/);
+  assert.match(uiSource, /function experimentObserve\(frame\)/);
+  assert.match(uiSource, /function experimentExportCsv\(\)/);
+  assert.match(uiSource, /function experimentExportJson\(\)/);
+  assert.match(uiSource, /seed: 'unavailable in current telemetry'/);
+  assert.match(uiSource, /not guaranteed complete per-frame instrumentation/);
+  assert.match(uiSource, /experimentObserve\(frame\);/);
 });
 
 check('Headless TypeScript benchmark runner records provenance and raw outputs', () => {

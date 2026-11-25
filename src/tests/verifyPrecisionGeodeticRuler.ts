@@ -191,6 +191,8 @@ console.log('\n[PGR-T3] Verifying DOM Controls, Global Layout Invariance & Spec 
 {
   const projectRoot = resolve(__dirname, '../..');
   const indexHtml = readFileSync(resolve(projectRoot, 'index.html'), 'utf-8');
+  const mainTs = readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8');
+  const uiBundle = `${indexHtml}\n${mainTs}`;
 
   // 1. Required DOM Controls inside #tb-pane-transect
   const requiredIds = [
@@ -222,8 +224,8 @@ console.log('\n[PGR-T3] Verifying DOM Controls, Global Layout Invariance & Spec 
   ];
   for (const id of legacyIds) {
     assert.ok(
-      indexHtml.includes(`id="${id}"`),
-      `Legacy DOM element #${id} must remain intact in index.html`,
+      uiBundle.includes(`id="${id}"`),
+      `Legacy DOM element #${id} must remain intact in index.html or src/main.ts`,
     );
   }
   console.log(`  ✓ All ${legacyIds.length} Legacy DOM elements intact [PASS]`);

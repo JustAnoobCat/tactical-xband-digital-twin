@@ -16,7 +16,7 @@ The platform models an Airborne Communication Node (ACN) serving 16 dismounted t
 In mountainous battlefields, severe terrain relief creates knife-edge and multi-ridge diffraction, deep non-line-of-sight (NLOS) shadow zones, and rapid link severing as airborne relay aircraft traverse mountain valleys. 
 
 This Digital Twin provides a real-time, browser-hosted laboratory to evaluate:
-- **Terrain-Induced Outages:** Dynamic shadow entry and re-emergence across steep Himalayan topography sampled from a $512 \times 512$ point-registered SRTM DEM, alongside support for multiple biomes.
+- **Terrain-Induced Outages:** Dynamic shadow entry and re-emergence across steep Himalayan topography sampled from a $512 \times 512$ AWS Terrarium Ladakh DEM ($\sim 360\text{ m} \times 434\text{ m/px}$), alongside native SRTM1/SRTM3 `.hgt` import support and multiple biomes.
 - **First-Principles RF Link Budgets:** Continuous path loss, diffraction, atmospheric absorption, rain attenuation, antenna roll-off, and airframe attitude dynamics.
 - **Quality-of-Service (QoS) Queue Dynamics:** 3GPP 5QI packet priority queues (5QI 69 Emergency C2, 65 Mission-Critical PTT Voice, 67 Tactical Video, 70 Tactical Imagery) with strict packet delay budgets.
 - **Predictive vs. Reactive MAC Scheduling:** Lookahead terrain pre-evacuation algorithms (`Tac-TAD`) vs. reactive baselines (`Reactive M-LWDF` and `Static TDMA`).
@@ -37,7 +37,7 @@ This Digital Twin provides a real-time, browser-hosted laboratory to evaluate:
 
 ### 2.3 Body-Fixed Quad-Sector Quadrant Antenna Array
 - **4-Sector Architecture:** Body-fixed quadrant horn antennas oriented at $\psi \in \{0^\circ\text{ FWD}, 90^\circ\text{ STBD}, 180^\circ\text{ AFT}, 270^\circ\text{ PORT}\}$.
-- **ITU-R F.1336 Radiation Patterns:** Parabolic azimuthal roll-off ($G_0 = 15.0\text{ dBi}$, $\theta_{3\text{dB}} = 65^\circ$, $G_{\text{sidelobe}} = 25\text{ dB}$).
+- **ITU-R F.1336 Radiation Patterns:** Parabolic azimuthal/elevation roll-off ($G_0 = 16.0\text{ dBi}$, $90^\circ$ azimuth HPBW $\times$ $65^\circ$ elevation HPBW, $G_{\text{sidelobe}} = 25\text{ dB}$).
 - **Dynamic Bank-Angle Coupling:** Aircraft centripetal turns calculate roll angle $\phi = \arctan(v^2 / (g R))$, projecting antennas into the 3D line-of-sight geometry.
 - **Sector Handover Hysteresis:** A $1.5\text{ dB}$ handover margin eliminates ping-pong chattering between adjacent sectors at $\pm 45^\circ$ crossover boundaries.
 
@@ -45,7 +45,7 @@ This Digital Twin provides a real-time, browser-hosted laboratory to evaluate:
 - **ITU-R P.834:** Effective Earth curvature radius with $k = 4/3$ parabolic bulge geometry.
 - **ITU-R P.526-15 §4.5.1 Multi-Ridge Diffraction:** Bullington double-horizon equivalent knife-edge method evaluating Tx and Rx horizon angles across sampled terrain.
 - **ITU-R P.526-15 §4.2 Physical DEM Crest Curvature:** Computes local obstacle radius of curvature $R_{\text{crest}} = \Delta s^2 / |h_{i-1} - 2h_i + h_{i+1}|$ to evaluate the genuine cylinder curvature loss $T(m, n)$, replacing legacy empirical constants.
-- **ITU-R P.676-13 Altitude-Integrated Gaseous Absorption:** Altitude-resolved barometric scale-height absorption ($H_{\text{scale}} = 2.0\text{ km}$ for $\text{H}_2\text{O}$, $8.0\text{ km}$ for dry $\text{O}_2$).
+- **ITU-R P.676-13 Altitude-Integrated Gaseous Absorption:** Altitude-resolved barometric scale-height absorption ($H_{\text{scale}} = 2.0\text{ km}$ for $\text{H}_2\text{O}$, $6.0\text{ km}$ for dry $\text{O}_2$).
 - **ITU-R P.838-3 / P.839-4 Rain Loss with Freezing Ceiling:** Horizontal-polarization rain loss integrating path length strictly below the regional $0^\circ\text{C}$ isotherm ($4,800\text{ m}$ MSL in Ladakh).
 - **ITU-R P.618-14 Atmospheric Sky-Noise Coupling:** Thermal brightness coupling adds antenna sky temperature $T_{\text{sky}}$ directly into the receiver noise figure floor ($\Delta N_{\text{sky}}$).
 - **Adaptive Modulation and Coding (ACM):** 8-tier DVB-S2X constellation mapping from $\pi/2\text{-BPSK 1/3}$ ($0.33\text{ bit/s/Hz}$ at $-1.5\text{ dB}$) to $64\text{-APSK 5/6}$ ($4.95\text{ bit/s/Hz}$ at $22.0\text{ dB}$).
@@ -119,19 +119,22 @@ tactical-xband-digital-twin/
 │   │   ├── toolboxPrecisionSuite.ts# Precision CAD / GIS / RF instruments & DEM quick presets
 │   │   ├── workspaceTilesManager.ts# Floating workspace tiles & telemetry formatting
 │   │   └── worldTileLayer.ts       # World tile layer & MapLibre geographic alignment
-│   └── shared/                     # Shared IPC Contracts & Protocols
-│       ├── constants.ts            # Physical constants (c, FRAME_DT = 0.020s, 8 GHz)
-│       └── workerProtocol.ts       # Typed WorkerInboundCommand & WorkerOutboundMessage
+│   ├── shared/                     # Shared IPC Contracts & Protocols
+│   │   ├── constants.ts            # Physical constants (c, FRAME_DT = 0.020s, 8 GHz)
+│   │   └── workerProtocol.ts       # Typed WorkerInboundCommand & WorkerOutboundMessage
+│   └── main.ts                     # Strict-CSP external ES module workbench orchestrator & DOM event bindings
 ├── server/
 │   └── ts_parity_server.ts         # Canonical Node/TS headless parity server (node:http)
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Bounded parallel 122-suite runner (--concurrency=N, --serial)
+│   ├── run_all_verifications.mjs   # Bounded parallel 128-suite runner (--concurrency=N, --serial)
 │   ├── run_v8_coverage.mjs         # Native Node V8 code coverage reporter
 │   ├── verify-browser-ux.mjs       # Multi-viewport (4 viewports + 9 tabs) Playwright Chromium UX gate
 │   └── generate_scientific_dossier.ts# N=30 Monte Carlo research dossier generator
-├── public/terrain/                 # Authentic 512x512 SRTM DEM binaries
-└── index.html                      # C2 Operator Workbench & Scientific Instruments (9 Rail Tabs, ~18.2k lines)
+├── public/terrain/                 # 512x512 AWS Terrarium Ladakh DEM (~360 m x 434 m/px; native SRTM1/SRTM3 .hgt import supported)
+└── index.html                      # C2 Operator Workbench & Scientific Instruments (9 Rail Tabs, ~4.3k lines, zero inline scripts/handlers)
 ```
+
+> **Legacy Reference Note:** Python modules under `core/*.py` and `server/app.py` represent a historical v1 Python reference prototype retained solely for regression comparison; they are superseded by the authoritative TypeScript simulation runtime (`src/`) and canonical Node/TS parity server (`server/ts_parity_server.ts`).
 
 ---
 
@@ -177,13 +180,13 @@ npm run benchmark:scientific
 
 ### Automated Verification Pipeline & Quality Gates
 The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
-- **`122` TypeScript verification suites** (`114` core V3.0 registered suites + `8` post-release hardening & UI/RF suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
+- **`128` TypeScript verification suites** (`114` core V3.0 registered suites + `14` post-release hardening, UI/RF, and REMED-01–06 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
 - **`27` Python `pytest` suites (`pytest -v`)**
 - **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs` across 4 viewports + 9 rail tabs enforced in CI)**
 - **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
 
 ```bash
-# Run all 122 TypeScript verification suites (114 core V3.0 + 8 post-release suites)
+# Run all 128 TypeScript verification suites (114 core V3.0 + 14 post-release suites)
 npm run verify:all
 
 # Run with custom concurrency or serial fallback

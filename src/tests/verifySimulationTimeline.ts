@@ -1266,7 +1266,7 @@ console.log('\n[TL-T10] Verifying Memory Benchmark at Maximum Capacity...');
   close(reconstructed.nodes[0].snrDb, 18.5, 0.05);
   assert.equal(reconstructed.selectedLinkBudget!.modcodName, '16-APSK 2/3');
 
-  console.log('  -> PASS: TL-T10 verified (memory strictly < 6.5 MB at 128 nodes, full fidelity reconstruction).');
+  console.log('  -> PASS: TL-T10 verified (memory strictly < 7.0 MB (6,849,000 B) at 128 nodes, full fidelity reconstruction).');
 }
 
 console.log('\n[TL-T13] Verifying Asymmetric Retention Synchronization...');

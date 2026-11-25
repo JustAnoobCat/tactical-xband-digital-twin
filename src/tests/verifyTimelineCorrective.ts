@@ -1384,14 +1384,15 @@ registerTest('TC-CORR-14', 'End-to-end dropped byte conservation holds identical
 // ----------------------------------------------------------------------------
 // TC-CORR-15: index.html Wiring, Style Invariance & Node Detail Isolation
 // ----------------------------------------------------------------------------
-registerTest('TC-CORR-15', 'index.html wires pre-mutation run gates, visibility FSM & preserves lines 7-596 inline CSS', () => {
+registerTest('TC-CORR-15', 'index.html & src/main.ts wire pre-mutation run gates, visibility FSM & preserve lines 7-596 inline CSS', () => {
   const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
-  assert(html.includes('simTimelineController.prepareTelemetryRun(msg.frame)'), 'Pre-mutation telemetry gate wired');
-  assert(html.includes('simTimelineController.ingestCommandResult(msg)'), 'Command result gate wired');
-  assert(html.includes('transitionTimelineInspectorStatus(timelineInspectorVisibility, isLive)'), 'Inspector status FSM wired');
-  assert(html.includes('toggleTimelineInspectorManual(timelineInspectorVisibility)'), 'Inspector manual toggle FSM wired');
-  assert(html.includes('resetTimelineInspectorVisibility()'), 'Inspector reset FSM wired');
-  assert(html.includes('simEpochStore.notifySimulationReset()'), 'Fallback reset uses notifySimulationReset');
+  const mainTs = readFileSync(join(process.cwd(), 'src', 'main.ts'), 'utf8');
+  assert(mainTs.includes('simTimelineController.prepareTelemetryRun(msg.frame)'), 'Pre-mutation telemetry gate wired');
+  assert(mainTs.includes('simTimelineController.ingestCommandResult(msg)'), 'Command result gate wired');
+  assert(mainTs.includes('transitionTimelineInspectorStatus(timelineInspectorVisibility, isLive)'), 'Inspector status FSM wired');
+  assert(mainTs.includes('toggleTimelineInspectorManual(timelineInspectorVisibility)'), 'Inspector manual toggle FSM wired');
+  assert(mainTs.includes('resetTimelineInspectorVisibility()'), 'Inspector reset FSM wired');
+  assert(mainTs.includes('simEpochStore.notifySimulationReset()'), 'Fallback reset uses notifySimulationReset');
   assert(html.includes('id="map-node-detail-content"'), 'Node detail isolation panel remains intact');
 });
 

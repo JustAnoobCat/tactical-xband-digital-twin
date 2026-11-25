@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (122 Total Suites)
+// Verification Suites Registry (128 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -185,7 +185,8 @@ REGISTERED_SUITES.push(
   { id: 'verify:remed02-multi-biome-3d', name: 'REMED-02 Multi-Biome Geodesy & 3D Geometry', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed02MultiBiomeAnd3d.ts'], category: 'remediation' },
   { id: 'verify:remed03-physics-unification', name: 'REMED-03 RF Propagation, DCM & Calibration Unification', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed03PhysicsUnification.ts'], category: 'remediation' },
   { id: 'verify:remed04-mac-qos-telemetry', name: 'REMED-04 MAC Fairness, 5QI SLA & PDU Dissector', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed04MacQosTelemetry.ts'], category: 'remediation' },
-  { id: 'verify:remed05-metrics-perf', name: 'REMED-05 Timeline Performance, Metrics & Scientific Transparency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed05MetricsAndPerf.ts'], category: 'remediation' }
+  { id: 'verify:remed05-metrics-perf', name: 'REMED-05 Timeline Performance, Metrics & Scientific Transparency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed05MetricsAndPerf.ts'], category: 'remediation' },
+  { id: 'verify:remed06-e2e-release', name: 'REMED-06 Strict CSP, Live Scenario Wiring & Career Demo Flow Gate', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed06EndToEndRelease.ts'], category: 'remediation' }
 );
 
 // -----------------------------------------------------------------------------

@@ -463,7 +463,6 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .topbar-left,
-.topbar-center,
 .topbar-right,
 .topbar-group,
 .sim-controls {
@@ -516,14 +515,6 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(56, 189, 248, 0.14);
   border: 1px solid rgba(56, 189, 248, 0.35);
   color: var(--lo-accent);
-  flex: none;
-}
-
-.brand-pip {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--lo-accent);
   flex: none;
 }
 

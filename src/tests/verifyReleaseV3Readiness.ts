@@ -61,7 +61,7 @@ async function runAllTests(): Promise<void> {
     assert.deepEqual(brokenLinks, [], `Broken local markdown links found in README.md: ${JSON.stringify(brokenLinks)}`);
   });
 
-  await runCheck('README.md contains live GitHub Pages demo URL, Actions CI badge, and accurate 114 suite count', () => {
+  await runCheck('README.md contains live GitHub Pages demo URL, Actions CI badge, and accurate 128 suite count', () => {
     const readmeContent = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
 
     assert.ok(
@@ -73,8 +73,8 @@ async function runAllTests(): Promise<void> {
       'README.md must contain GitHub Actions CI badge'
     );
     assert.ok(
-      readmeContent.includes('114') && readmeContent.includes('TypeScript verification suites'),
-      'README.md must accurately document 114 TypeScript verification suites'
+      readmeContent.includes('128') && readmeContent.includes('TypeScript verification suites'),
+      'README.md must accurately document 128 TypeScript verification suites'
     );
     assert.ok(
       readmeContent.includes('27') && readmeContent.includes('Python `pytest` suites'),
@@ -114,24 +114,35 @@ async function runAllTests(): Promise<void> {
   // ============================================================================
   console.log('\n[REL-T2] Suite Registry & Package Parity...');
 
-  await runCheck('scripts/run_all_verifications.mjs registers exactly 114 verification suites', () => {
+  await runCheck('scripts/run_all_verifications.mjs registers exactly 128 verification suites', () => {
     const runnerPath = path.join(ROOT_DIR, 'scripts', 'run_all_verifications.mjs');
     assert.equal(fs.existsSync(runnerPath), true);
     const content = fs.readFileSync(runnerPath, 'utf8');
 
-    const match = content.match(/const REGISTERED_SUITES = \[([\s\S]*?)\];/);
-    assert.ok(match, 'run_all_verifications.mjs must declare REGISTERED_SUITES array');
+    const baseMatch = content.match(/const REGISTERED_SUITES = \[([\s\S]*?)\];/);
+    assert.ok(baseMatch, 'run_all_verifications.mjs must declare REGISTERED_SUITES array');
 
-    const suiteEntries = match[1].split('{ id:').filter(s => s.trim().length > 0);
+    const baseEntries = baseMatch[1].split('{ id:').filter(s => s.trim().length > 0);
+    const pushMatches = [...content.matchAll(/REGISTERED_SUITES\.push\(([\s\S]*?)\);/g)];
+    let pushedEntriesCount = 0;
+    for (const pm of pushMatches) {
+      pushedEntriesCount += pm[1].split('{ id:').filter(s => s.trim().length > 0).length;
+    }
+    const totalSuitesCount = baseEntries.length + pushedEntriesCount;
+
     assert.equal(
-      suiteEntries.length,
-      114,
-      `REGISTERED_SUITES must contain exactly 114 suites, found ${suiteEntries.length}`
+      totalSuitesCount,
+      128,
+      `REGISTERED_SUITES must contain exactly 128 total suites (base=${baseEntries.length}, pushed=${pushedEntriesCount}), found ${totalSuitesCount}`
     );
 
     assert.ok(
       content.includes("'verify:release-v3-readiness'"),
       "REGISTERED_SUITES must include Suite 114 ('verify:release-v3-readiness')"
+    );
+    assert.ok(
+      content.includes("'verify:remed06-e2e-release'"),
+      "REGISTERED_SUITES must include REMED-06 ('verify:remed06-e2e-release')"
     );
   });
 

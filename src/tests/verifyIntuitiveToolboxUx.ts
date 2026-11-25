@@ -23,6 +23,7 @@ console.log('='.repeat(96));
 
 const projectRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
 const indexHtml = readFileSync(resolve(projectRoot, 'index.html'), 'utf-8');
+const mainTs = readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8');
 
 // =================================================================================================
 // [ITU-T1] Human-Friendly Tool Names, Sub-labels & Dynamic Step Guide Banner
@@ -97,21 +98,21 @@ console.log('\n[ITU-T2] Verifying Ruler Scale Division Toggle & Default OFF Inva
     'Toggle button #btn-toggle-ruler-ticks must be present in index.html',
   );
   assert.ok(
-    indexHtml.includes('Show Scale Divisions: OFF'),
+    indexHtml.includes('Show Scale Divisions: OFF') || mainTs.includes('Show Scale Divisions: OFF'),
     'Button label must indicate default state "Show Scale Divisions: OFF"',
   );
   console.log('  ✓ Toggle button #btn-toggle-ruler-ticks present with default OFF state [PASS]');
 
   // 2. Default state tbShowRulerTicks = false
   assert.ok(
-    indexHtml.includes('tbShowRulerTicks = false') || indexHtml.includes('tbShowRulerTicks=false'),
+    mainTs.includes('tbShowRulerTicks = false') || mainTs.includes('tbShowRulerTicks=false'),
     'tbShowRulerTicks must default to false',
   );
   console.log('  ✓ tbShowRulerTicks = false default invariant verified [PASS]');
 
   // 3. tbShowRulerTicks gates kilometer tick rendering
   assert.ok(
-    indexHtml.includes('tbShowRulerTicks && dHorizM > 500') || indexHtml.includes('tbShowRulerTicks&&dHorizM>500') || indexHtml.includes('if (tbShowRulerTicks'),
+    mainTs.includes('tbShowRulerTicks && dHorizM > 500') || mainTs.includes('tbShowRulerTicks&&dHorizM>500') || mainTs.includes('if (tbShowRulerTicks'),
     'tbShowRulerTicks must gate the drawing of kilometer scale ticks along ruler shaft',
   );
   console.log('  ✓ Kilometer scale division ticks gated by tbShowRulerTicks [PASS]');
@@ -142,11 +143,11 @@ console.log('\n[ITU-T3] Verifying Universal Escape Key Exit, Right-Hand Workspac
 
   // 3. Global Escape key handler closes active tools & restores workspace
   assert.ok(
-    indexHtml.includes("e.key === 'Escape'") || indexHtml.includes('e.key==="Escape"'),
+    mainTs.includes("e.key === 'Escape'") || mainTs.includes('e.key==="Escape"'),
     'Global keydown listener for Escape must be present',
   );
   assert.ok(
-    indexHtml.includes('closeTerrainToolbox') || indexHtml.includes('setTerrainToolboxExpanded'),
+    mainTs.includes('closeTerrainToolbox') || mainTs.includes('setTerrainToolboxExpanded'),
     'Escape key handler must close active toolbox and restore right-hand workspace',
   );
   console.log('  ✓ Universal Escape key tool exit & workspace restoration wired [PASS]');

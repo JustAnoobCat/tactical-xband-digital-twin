@@ -662,7 +662,8 @@ async function runSuite111(): Promise<void> {
     );
   }
 
-  // Verify global window bindings preserved
+  // Verify global window bindings preserved in src/main.ts (extracted from index.html)
+  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
   const requiredGlobalBindings = [
     'window.updateHiFiPhysicsUI = updateHiFiPhysicsUI',
     'window.updateBiomePhysicsUI = updateBiomePhysicsUI',
@@ -676,8 +677,8 @@ async function runSuite111(): Promise<void> {
 
   for (const binding of requiredGlobalBindings) {
     assert(
-      indexHtml.includes(binding),
-      `index.html preserves required global binding "${binding}"`
+      mainTs.includes(binding),
+      `src/main.ts preserves required global binding "${binding}"`
     );
   }
 

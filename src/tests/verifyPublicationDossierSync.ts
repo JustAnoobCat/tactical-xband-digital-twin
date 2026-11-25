@@ -183,21 +183,22 @@ console.log('\n[PDS-T2] Verifying Byte-for-Byte Zero-Drift Artifact Parity...');
 // =================================================================================================
 console.log('\n[PDS-T3] Verifying Live LAB Integration & Zero-Emoji Gate...');
 {
-  // 1. index.html Live LAB Wiring
+  // 1. index.html & src/main.ts Live LAB Wiring
   const indexPath = resolve(process.cwd(), 'index.html');
   const indexHtml = readFileSync(indexPath, 'utf-8');
+  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
 
   assert.ok(
-    indexHtml.includes('buildScientificValidationMarkdown'),
-    'index.html must import and reference buildScientificValidationMarkdown'
+    mainTs.includes('buildScientificValidationMarkdown'),
+    'src/main.ts must import and reference buildScientificValidationMarkdown'
   );
   assert.ok(
-    indexHtml.includes('runPhysicsRealismAblation'),
-    'index.html must import runPhysicsRealismAblation'
+    mainTs.includes('runPhysicsRealismAblation'),
+    'src/main.ts must import runPhysicsRealismAblation'
   );
   assert.ok(
-    indexHtml.includes('verifyAllItuReferenceAnchors'),
-    'index.html must import verifyAllItuReferenceAnchors'
+    mainTs.includes('verifyAllItuReferenceAnchors'),
+    'src/main.ts must import verifyAllItuReferenceAnchors'
   );
   assert.ok(
     indexHtml.includes('id="btn-generate-research-dossier"'),

@@ -723,6 +723,16 @@ export class ThreeSceneManager {
    * Telemetry and performance metrics
    */
   public getMetrics(): ThreeSceneMetrics {
+    const groundChildren = this.tacticalEntityManager?.groundNodesGroup?.children;
+    let entityCount = 17; // Fallback before first frame (1 ACN + 16 Ground Terminals)
+    if (groundChildren && groundChildren.length > 0) {
+      let activeGroundCount = 0;
+      for (let i = 0; i < groundChildren.length; i++) {
+        if (groundChildren[i].visible) activeGroundCount++;
+      }
+      entityCount = activeGroundCount + 1;
+    }
+
     return {
       fps: this.currentFps,
       frameTimeMs: this.currentFrameTimeMs,
@@ -736,7 +746,7 @@ export class ThreeSceneManager {
         ? this.terrainMesh.geometry.getIndex()!.count / 3
         : 0,
       drawCalls: this.renderer?.info?.render?.calls ?? 0,
-      entityCount: 17, // 1 ACN + 16 Ground Terminals
+      entityCount,
     };
   }
 

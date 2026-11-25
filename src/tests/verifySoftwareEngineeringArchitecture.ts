@@ -259,43 +259,43 @@ assert.equal(bannerOptimal.badge, 'CLEAR LOS');
 assert.equal(bannerOptimal.titleColor, '#22c55e');
 console.log('  ✓ resolveSoldierAiNotificationBanner produces verified tactical alerts across all states');
 
-// 3. index.html import & wrapper inspection
-const indexHtmlPath = path.resolve(process.cwd(), 'index.html');
-const indexHtmlCode = fs.readFileSync(indexHtmlPath, 'utf8');
+// 3. src/main.ts import & wrapper inspection (extracted from index.html)
+const mainTsPath = path.resolve(process.cwd(), 'src/main.ts');
+const mainTsCode = fs.readFileSync(mainTsPath, 'utf8');
 
 assert(
-  indexHtmlCode.includes("from './src/ui/scientificScopesRenderer.ts'"),
-  'index.html does not import from scientificScopesRenderer.ts',
+  mainTsCode.includes("from './ui/scientificScopesRenderer.ts'"),
+  'src/main.ts does not import from scientificScopesRenderer.ts',
 );
 assert(
-  indexHtmlCode.includes("from './src/ui/soldierEudRenderer.ts'"),
-  'index.html does not import from soldierEudRenderer.ts',
+  mainTsCode.includes("from './ui/soldierEudRenderer.ts'"),
+  'src/main.ts does not import from soldierEudRenderer.ts',
 );
 assert(
-  indexHtmlCode.includes('renderPolarAntennaScope(polarAntennaCanvas'),
-  'index.html does not delegate to renderPolarAntennaScope',
+  mainTsCode.includes('renderPolarAntennaScope(polarAntennaCanvas'),
+  'src/main.ts does not delegate to renderPolarAntennaScope',
 );
 assert(
-  indexHtmlCode.includes('renderLinkWaterfallCanvas(linkWaterfallCanvas'),
-  'index.html does not delegate to renderLinkWaterfallCanvas',
+  mainTsCode.includes('renderLinkWaterfallCanvas(linkWaterfallCanvas'),
+  'src/main.ts does not delegate to renderLinkWaterfallCanvas',
 );
 assert(
-  indexHtmlCode.includes('renderEcdfDelayScope(ecdfDelayCanvas'),
-  'index.html does not delegate to renderEcdfDelayScope',
+  mainTsCode.includes('renderEcdfDelayScope(ecdfDelayCanvas'),
+  'src/main.ts does not delegate to renderEcdfDelayScope',
 );
 assert(
-  indexHtmlCode.includes('renderSensitivitySweepScope('),
-  'index.html does not delegate to renderSensitivitySweepScope',
+  mainTsCode.includes('renderSensitivitySweepScope('),
+  'src/main.ts does not delegate to renderSensitivitySweepScope',
 );
 assert(
-  indexHtmlCode.includes('drawSoldierCompassScope('),
-  'index.html does not delegate to drawSoldierCompassScope',
+  mainTsCode.includes('drawSoldierCompassScope('),
+  'src/main.ts does not delegate to drawSoldierCompassScope',
 );
 assert(
-  indexHtmlCode.includes('resolveSoldierAiNotificationBanner('),
-  'index.html does not delegate to resolveSoldierAiNotificationBanner',
+  mainTsCode.includes('resolveSoldierAiNotificationBanner('),
+  'src/main.ts does not delegate to resolveSoldierAiNotificationBanner',
 );
-console.log('  ✓ index.html successfully wired with typed rendering module delegates');
+console.log('  ✓ src/main.ts successfully wired with typed rendering module delegates');
 
 console.log('SEA-T3: PASS\n');
 

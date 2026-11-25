@@ -190,7 +190,7 @@ async function waitForTelemetryReady(page, runtimeErrors) {
 async function ensureKargilScenarioLoaded(page) {
   const rowCount = await page.locator('#terminal-inventory-tbody tr td[colspan]').count();
   if (rowCount > 0 || (await page.locator('#terminal-inventory-tbody tr').count()) < 2) {
-    await page.click('button[onclick="runKargilScenario()"]');
+    await page.click('#btn-run-kargil-scenario');
     await page.waitForFunction(
       () => {
         const placeholder = document.querySelector('#terminal-inventory-tbody tr td[colspan]');
