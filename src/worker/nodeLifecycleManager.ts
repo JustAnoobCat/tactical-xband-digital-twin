@@ -527,6 +527,7 @@ export class NodeLifecycleManager {
     if (updatedEntity) {
       (staticNode as any).identity = updatedEntity.identity;
       (tacNode as any).identity = updatedEntity.identity;
+      if (reactiveNode) (reactiveNode as any).identity = updatedEntity.identity;
     }
 
     return {

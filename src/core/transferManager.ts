@@ -209,7 +209,7 @@ export class ActiveTransferManager {
         continue;
       }
 
-      const activeT = trans.activeType ?? 'SOS';
+      const activeT = (trans.activeType ?? 'SOS').toUpperCase();
       const targetQos = qosMap[activeT] ?? 69;
       const pred = params.predStates.get(nid);
       const currState = pred?.currentState ?? NodeTerrainState.NORMAL_LOS;
@@ -234,20 +234,32 @@ export class ActiveTransferManager {
         trans.droppedBytes += deltaDrops * avgSz;
       }
 
-      if (!isOutage && trans.status === 'TRANSMITTING') {
-        const alloc = params.activeReport?.allocations.find((a) => a.nodeId === nid);
-        if (alloc && alloc.capacityBits > 0) {
-          const bytesServed = Math.floor(alloc.capacityBits / 8);
+      if (!isOutage && !ls?.cqiDecodeFailure && trans.status === 'TRANSMITTING') {
+        let bytesServed = 0;
+        const allocs = params.activeReport?.allocations;
+        if (allocs) {
+          for (let i = 0; i < allocs.length; i++) {
+            const alloc = allocs[i];
+            if (alloc.nodeId !== nid) continue;
+            switch (targetQos) {
+              case 69: bytesServed += alloc.c2Bytes ?? 0; break;
+              case 65: bytesServed += alloc.voiceBytes ?? 0; break;
+              case 67: bytesServed += alloc.videoBytes ?? 0; break;
+              case 70: bytesServed += alloc.photoBytes ?? 0; break;
+            }
+          }
+        }
+        if (bytesServed > 0) {
           trans.deliveredBytes = Math.min(trans.totalBytes, trans.deliveredBytes + bytesServed);
 
-          if (activeT === 'SOS' || activeT === 'C2') {
+          if (trans.deliveredBytes >= trans.totalBytes) {
             trans.status = 'ACKNOWLEDGED';
             trans.ackTimeS = params.simTimeS;
-            trans.statusMessage = `[✓] SOS ACKNOWLEDGED BY ACN AT T+${params.simTimeS.toFixed(2)}s`;
-          } else if (trans.deliveredBytes >= trans.totalBytes) {
-            trans.status = 'ACKNOWLEDGED';
-            trans.ackTimeS = params.simTimeS;
-            trans.statusMessage = `[✓] ${activeT} FULLY DELIVERED & ACKNOWLEDGED AT T+${params.simTimeS.toFixed(2)}s`;
+            if (activeT === 'SOS' || activeT === 'C2') {
+              trans.statusMessage = `[✓] SOS ACKNOWLEDGED BY ACN AT T+${params.simTimeS.toFixed(2)}s`;
+            } else {
+              trans.statusMessage = `[✓] ${activeT} FULLY DELIVERED & ACKNOWLEDGED AT T+${params.simTimeS.toFixed(2)}s`;
+            }
           }
         }
       }

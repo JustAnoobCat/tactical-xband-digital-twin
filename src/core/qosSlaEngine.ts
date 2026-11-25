@@ -10,6 +10,8 @@
  * 4. Comprehensive network SLA compliance and backlog aggregation.
  */
 
+import { CANONICAL_5QI_PDB_MS, QOS_PROFILES } from './queues';
+
 export type SlaVerdict = 'SLA_COMPLIANT' | 'SLA_AT_RISK' | 'SLA_BREACHED';
 
 export interface BearerSlaDefinition {
@@ -26,33 +28,33 @@ export const CANONICAL_5QI_BEARERS: readonly BearerSlaDefinition[] = [
     qos5qi: 69,
     name: 'C2 / Emergency SOS',
     shortName: '5QI-69 C2',
-    pdbMs: 60.0,
-    priorityRank: 1,
-    defaultBytes: 128,
+    pdbMs: CANONICAL_5QI_PDB_MS[69],
+    priorityRank: QOS_PROFILES[69].priority,
+    defaultBytes: QOS_PROFILES[69].defaultBytes,
   },
   {
     qos5qi: 65,
     name: 'MC-PTT Tactical Voice',
     shortName: '5QI-65 Voice',
-    pdbMs: 100.0,
-    priorityRank: 2,
-    defaultBytes: 160,
+    pdbMs: CANONICAL_5QI_PDB_MS[65],
+    priorityRank: QOS_PROFILES[65].priority,
+    defaultBytes: QOS_PROFILES[65].defaultBytes,
   },
   {
     qos5qi: 67,
     name: 'MC Tactical Video',
     shortName: '5QI-67 Video',
-    pdbMs: 150.0,
-    priorityRank: 3,
-    defaultBytes: 1200,
+    pdbMs: CANONICAL_5QI_PDB_MS[67],
+    priorityRank: QOS_PROFILES[67].priority,
+    defaultBytes: QOS_PROFILES[67].defaultBytes,
   },
   {
     qos5qi: 70,
     name: 'ISR High-Res Imagery',
     shortName: '5QI-70 Photo',
-    pdbMs: 300.0,
-    priorityRank: 4,
-    defaultBytes: 1400,
+    pdbMs: CANONICAL_5QI_PDB_MS[70],
+    priorityRank: QOS_PROFILES[70].priority,
+    defaultBytes: QOS_PROFILES[70].defaultBytes,
   },
 ];
 
@@ -199,6 +201,20 @@ function extractBearerBacklogBits(node: any, qos5qi: number, defaultBytes: numbe
  */
 function extractNodeBearerSojournMs(node: any, qos5qi: number, pdbMs: number, simTimeS?: number): number {
   if (!node) return 0.0;
+
+  // 0. Live NodeTelemetryItem per-bearer HoL sojourn delay map
+  if (node.bearer_hol_delay_ms && typeof node.bearer_hol_delay_ms === 'object') {
+    let val: unknown;
+    switch (qos5qi) {
+      case 69: val = node.bearer_hol_delay_ms.c2_ms; break;
+      case 65: val = node.bearer_hol_delay_ms.voice_ms; break;
+      case 67: val = node.bearer_hol_delay_ms.video_ms; break;
+      case 70: val = node.bearer_hol_delay_ms.photo_ms; break;
+    }
+    if (typeof val === 'number' && Number.isFinite(val)) {
+      return Math.max(0.0, val);
+    }
+  }
 
   // 1. Direct bearer match if node is a bearer test object
   if (node.qos5qi === qos5qi || node.qos === qos5qi || node.bearer === qos5qi) {

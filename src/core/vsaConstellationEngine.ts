@@ -72,14 +72,15 @@ function normalizeToUnitAverageEnergy(points: readonly IqPoint[]): IqPoint[] {
  * - 16-QAM: 4x4 rectangular QAM lattice {-3, -1, 1, 3}^2 / sqrt(10).
  * - 16-APSK: ETSI EN 302 307-1 concentric 4+12 ring geometry (gamma = R2/R1 = 2.60) normalized to unit energy.
  * - 32-APSK: ETSI EN 302 307-1 concentric 4+12+16 3-ring geometry (gamma1 = 2.54, gamma2 = 4.33) normalized to unit energy.
- * - 64-QAM / 64-APSK: 8x8 square QAM lattice {-7, -5, -3, -1, 1, 3, 5, 7}^2 / sqrt(42).
+ * - 64-QAM: 8x8 square QAM lattice {-7, -5, -3, -1, 1, 3, 5, 7}^2 / sqrt(42).
+ * - 64-APSK: ETSI EN 302 307-2 concentric 4+12+20+28 4-ring geometry normalized to unit energy.
  * - pi/2-BPSK / BPSK: 2 points on unit circle (+/-1, 0).
  */
 export function getReferenceConstellation(modcodName: string): readonly IqPoint[] {
   const norm = String(modcodName || '').toUpperCase().trim();
 
-  // 1. 64-QAM / 64-APSK: 8x8 square QAM lattice normalized by 1/sqrt(42)
-  if (norm.includes('64') || norm.includes('64-APSK') || norm.includes('64-QAM') || norm.includes('64APSK') || norm.includes('64QAM')) {
+  // 1a. 64-QAM: 8x8 square QAM lattice normalized by 1/sqrt(42)
+  if (norm.includes('64-QAM') || norm.includes('64QAM') || norm.includes('QAM64') || norm.includes('QAM-64')) {
     const points: IqPoint[] = [];
     const scale = 1.0 / Math.sqrt(42.0);
     const coords = [-7, -5, -3, -1, 1, 3, 5, 7];
@@ -89,6 +90,31 @@ export function getReferenceConstellation(modcodName: string): readonly IqPoint[
           i: coords[c] * scale,
           q: coords[r] * scale,
         });
+      }
+    }
+    return normalizeToUnitAverageEnergy(points);
+  }
+
+  // 1b. 64-APSK: ETSI EN 302 307-2 concentric 4+12+20+28 4-ring geometry
+  if (norm.includes('64')) {
+    const gamma1 = 2.20;
+    const gamma2 = 3.60;
+    const gamma3 = 5.20;
+    const denom = 4.0 + 12.0 * gamma1 * gamma1 + 20.0 * gamma2 * gamma2 + 28.0 * gamma3 * gamma3;
+    const r1 = Math.sqrt(64.0 / denom);
+    const ringConfigs = [
+      { count: 4, radius: r1 },
+      { count: 12, radius: gamma1 * r1 },
+      { count: 20, radius: gamma2 * r1 },
+      { count: 28, radius: gamma3 * r1 },
+    ];
+    const points: IqPoint[] = [];
+    for (const ring of ringConfigs) {
+      const step = (2.0 * Math.PI) / ring.count;
+      const offset = Math.PI / ring.count;
+      for (let k = 0; k < ring.count; k++) {
+        const angle = offset + k * step;
+        points.push({ i: ring.radius * Math.cos(angle), q: ring.radius * Math.sin(angle) });
       }
     }
     return normalizeToUnitAverageEnergy(points);

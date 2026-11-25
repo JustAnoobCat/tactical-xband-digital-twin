@@ -33,14 +33,52 @@ export interface QoSProfile {
   readonly name: string;
   readonly priority: number;
   readonly pdbS: number;
+  /**
+   * Store-and-forward hard-drop TTL in seconds.
+   * For 5QI 69 (Emergency C2), 3GPP TS 23.501 specifies a 60 ms PDB (`pdbS: 0.060`),
+   * while SOS persistence across mountain-shadow outages retains queued packets up to 60.0 s.
+   */
+  readonly hardDropTtlS?: number;
   readonly defaultBytes: number;
 }
 
+/** Canonical 3GPP TS 23.501 Packet Delay Budgets (PDB) in milliseconds. */
+export const CANONICAL_5QI_PDB_MS: Readonly<Record<69 | 65 | 67 | 70, number>> = {
+  69: 60.0,
+  65: 75.0,
+  67: 150.0,
+  70: 300.0,
+};
+
 export const QOS_PROFILES: Readonly<Record<number, QoSProfile>> = {
-  69: { name: 'Emergency_C2', priority: 1, pdbS: 60.0, defaultBytes: 128 },
-  65: { name: 'MC_PTT_Voice', priority: 2, pdbS: 0.075, defaultBytes: 160 },
-  67: { name: 'MC_Video', priority: 3, pdbS: 0.15, defaultBytes: 1200 },
-  70: { name: 'Tactical_Photo', priority: 4, pdbS: 0.5, defaultBytes: 1400 },
+  69: {
+    name: 'Emergency_C2',
+    priority: 1,
+    pdbS: CANONICAL_5QI_PDB_MS[69] / 1000.0,
+    hardDropTtlS: 60.0,
+    defaultBytes: 128,
+  },
+  65: {
+    name: 'MC_PTT_Voice',
+    priority: 2,
+    pdbS: CANONICAL_5QI_PDB_MS[65] / 1000.0,
+    hardDropTtlS: CANONICAL_5QI_PDB_MS[65] / 1000.0,
+    defaultBytes: 160,
+  },
+  67: {
+    name: 'MC_Video',
+    priority: 3,
+    pdbS: CANONICAL_5QI_PDB_MS[67] / 1000.0,
+    hardDropTtlS: CANONICAL_5QI_PDB_MS[67] / 1000.0,
+    defaultBytes: 1200,
+  },
+  70: {
+    name: 'Tactical_Photo',
+    priority: 4,
+    pdbS: CANONICAL_5QI_PDB_MS[70] / 1000.0,
+    hardDropTtlS: CANONICAL_5QI_PDB_MS[70] / 1000.0,
+    defaultBytes: 1400,
+  },
 };
 
 /**
@@ -375,6 +413,8 @@ export class GroundNodeTrafficSubsystem {
 
   private readonly c2IntervalS: number = 0.1; // 10 Hz heartbeat
   private lastC2TimeS: number = -1.0;
+  private voicePacketAcc: number = 0.0;
+  private photoSliceAcc: number = 0.0;
   private rngState: number;
 
   constructor(
@@ -444,7 +484,7 @@ export class GroundNodeTrafficSubsystem {
     GroundNodeTrafficSubsystem.globalPacketCounter += 1;
     const prof = QOS_PROFILES[qos] ?? QOS_PROFILES[69];
     const sz = sizeBytes ?? prof.defaultBytes;
-    const dl = deadlineS ?? currentSimTimeS + prof.pdbS;
+    const dl = deadlineS ?? currentSimTimeS + (prof.hardDropTtlS ?? prof.pdbS);
 
     const pkt = new Packet(
       GroundNodeTrafficSubsystem.globalPacketCounter,
@@ -460,7 +500,7 @@ export class GroundNodeTrafficSubsystem {
 
   public generateTraffic(
     currentSimTimeS: number,
-    _frameDurationS: number = 0.02,
+    frameDurationS: number = 0.02,
     trafficScale?: number,
     videoBitrateScale?: number
   ): Packet[] {
@@ -471,28 +511,59 @@ export class GroundNodeTrafficSubsystem {
     const videoScale = Number.isFinite(videoBitrateScale) && (videoBitrateScale as number) >= 0
       ? (videoBitrateScale as number)
       : 1.0;
+    const dt = Number.isFinite(frameDurationS) && frameDurationS > 0 ? frameDurationS : 0.02;
+    const dtScale = dt / 0.02;
+    const isNominal20ms = Math.abs(dt - 0.02) < 1e-9;
     const generated: Packet[] = [];
 
     // 1. 5QI 69: Periodic C2 Health & Status
-    if (this.lastC2TimeS < 0.0 || currentSimTimeS - this.lastC2TimeS >= this.c2IntervalS / mult) {
+    const c2Interval = this.c2IntervalS / mult;
+    if (isNominal20ms) {
+      if (this.lastC2TimeS < 0.0 || currentSimTimeS - this.lastC2TimeS >= c2Interval) {
+        generated.push(this.enqueuePacket(69, currentSimTimeS));
+        this.lastC2TimeS = currentSimTimeS;
+      }
+    } else if (this.lastC2TimeS < 0.0) {
       generated.push(this.enqueuePacket(69, currentSimTimeS));
       this.lastC2TimeS = currentSimTimeS;
+    } else {
+      while (currentSimTimeS + 1e-9 - this.lastC2TimeS >= c2Interval) {
+        generated.push(this.enqueuePacket(69, currentSimTimeS));
+        this.lastC2TimeS += c2Interval;
+      }
     }
 
     // 2. 5QI 65: Mission-Critical PTT Voice
     if (this.hasVoice && currentSimTimeS >= this.voiceStartS && currentSimTimeS <= this.voiceEndS) {
-      generated.push(this.enqueuePacket(65, currentSimTimeS));
-      if (mult > 1.0) {
-        const extra = this.poissonDraw((mult - 1.0) * 1.0);
-        for (let i = 0; i < extra; i++) {
+      if (isNominal20ms) {
+        generated.push(this.enqueuePacket(65, currentSimTimeS));
+        if (mult > 1.0) {
+          const extra = this.poissonDraw((mult - 1.0) * 1.0);
+          for (let i = 0; i < extra; i++) {
+            generated.push(this.enqueuePacket(65, currentSimTimeS));
+          }
+        }
+      } else {
+        this.voicePacketAcc += dtScale;
+        while (this.voicePacketAcc >= 1.0 - 1e-9) {
           generated.push(this.enqueuePacket(65, currentSimTimeS));
+          this.voicePacketAcc = Math.max(0.0, this.voicePacketAcc - 1.0);
+        }
+        if (mult > 1.0) {
+          const extra = this.poissonDraw((mult - 1.0) * dtScale);
+          for (let i = 0; i < extra; i++) {
+            generated.push(this.enqueuePacket(65, currentSimTimeS));
+          }
         }
       }
     }
 
     // 3. 5QI 67: Tactical Mission-Critical Video (Paused if radio is in shadow)
     if (this.hasVideo && !this.isShadowed) {
-      const numVideo = this.poissonDraw(this.videoMeanPktsPerFrame * mult * videoScale);
+      const videoLambda = isNominal20ms
+        ? this.videoMeanPktsPerFrame * mult * videoScale
+        : this.videoMeanPktsPerFrame * mult * videoScale * dtScale;
+      const numVideo = this.poissonDraw(videoLambda);
       for (let i = 0; i < numVideo; i++) {
         generated.push(this.enqueuePacket(67, currentSimTimeS));
       }
@@ -504,18 +575,35 @@ export class GroundNodeTrafficSubsystem {
       currentSimTimeS >= this.photoTriggerTimeS &&
       this.photoBytesRemaining > 0
     ) {
-      const baseSlices = Math.min(2, Math.ceil(this.photoBytesRemaining / 1400));
-      const slices = Math.max(1, Math.round(baseSlices * Math.min(2.0, mult)));
-      for (let i = 0; i < slices; i++) {
-        const chunk = Math.min(1400, this.photoBytesRemaining);
-        generated.push(this.enqueuePacket(70, currentSimTimeS, chunk));
-        this.photoBytesRemaining -= chunk;
+      if (isNominal20ms) {
+        const baseSlices = Math.min(2, Math.ceil(this.photoBytesRemaining / 1400));
+        const slices = Math.max(1, Math.round(baseSlices * Math.min(2.0, mult)));
+        for (let i = 0; i < slices; i++) {
+          const chunk = Math.min(1400, this.photoBytesRemaining);
+          generated.push(this.enqueuePacket(70, currentSimTimeS, chunk));
+          this.photoBytesRemaining -= chunk;
+        }
+      } else {
+        const nominalSlices = Math.min(2, Math.ceil(this.photoBytesRemaining / 1400));
+        const scaledRate = Math.max(1, Math.round(nominalSlices * Math.min(2.0, mult)));
+        this.photoSliceAcc += scaledRate * dtScale;
+        const desiredSlices = Math.floor(this.photoSliceAcc + 1e-9);
+        this.photoSliceAcc = Math.max(0.0, this.photoSliceAcc - desiredSlices);
+        const maxPossibleSlices = Math.ceil(this.photoBytesRemaining / 1400);
+        const slices = Math.min(desiredSlices, maxPossibleSlices);
+        for (let i = 0; i < slices; i++) {
+          const chunk = Math.min(1400, this.photoBytesRemaining);
+          generated.push(this.enqueuePacket(70, currentSimTimeS, chunk));
+          this.photoBytesRemaining -= chunk;
+        }
       }
     }
 
     // 5. Stochastic Tactical Bursts under elevated congestion
     if (mult > 1.0 && !this.isShadowed && this.nodeType !== 'mcp') {
-      const burstLambda = (mult - 1.0) * 0.15;
+      const burstLambda = isNominal20ms
+        ? (mult - 1.0) * 0.15
+        : (mult - 1.0) * 0.15 * dtScale;
       const burstPkts = this.poissonDraw(burstLambda);
       for (let i = 0; i < burstPkts; i++) {
         generated.push(this.enqueuePacket(67, currentSimTimeS, 1024));

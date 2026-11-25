@@ -141,6 +141,12 @@ export interface NodeTelemetryItem {
   readonly voice_bytes: number;
   readonly video_bytes: number;
   readonly photo_bytes: number;
+  readonly bearer_hol_delay_ms?: {
+    readonly c2_ms: number;
+    readonly voice_ms: number;
+    readonly video_ms: number;
+    readonly photo_ms: number;
+  };
   readonly total_backlog_bytes: number;
   readonly is_transmitting: boolean;
   readonly is_wasting_airtime: boolean;

@@ -251,10 +251,10 @@ export function normalizeSlotAllocationToFrame(
     capacity_bits: a.capacityBits,
     modcod_name: a.modcodName,
     spectral_efficiency: a.spectralEfficiency,
-    c2_bytes: a.capacityBits > 0 ? 128 : 0,
-    voice_bytes: 0,
-    video_bytes: 0,
-    photo_bytes: 0,
+    c2_bytes: Number.isFinite(a.c2Bytes) && (a.c2Bytes as number) >= 0 ? Math.floor(a.c2Bytes as number) : 0,
+    voice_bytes: Number.isFinite(a.voiceBytes) && (a.voiceBytes as number) >= 0 ? Math.floor(a.voiceBytes as number) : 0,
+    video_bytes: Number.isFinite(a.videoBytes) && (a.videoBytes as number) >= 0 ? Math.floor(a.videoBytes as number) : 0,
+    photo_bytes: Number.isFinite(a.photoBytes) && (a.photoBytes as number) >= 0 ? Math.floor(a.photoBytes as number) : 0,
     is_pre_occlusion_flush: a.isPreOcclusionFlush,
     is_out_of_frame: isOutOfFrame,
     sector_id: a.sectorId,
@@ -296,6 +296,16 @@ export class TelemetrySerializer {
       const voiceBytes = q.getClassBacklogBytes(65);
       const videoBytes = q.getClassBacklogBytes(67);
       const photoBytes = q.getClassBacklogBytes(70);
+      const toHolMs = (qos5qi: number): number => {
+        const holMs = q.getHolDelayS(qos5qi, state.simTimeS) * 1000.0;
+        return Number.isFinite(holMs) && holMs > 0 ? holMs : 0.0;
+      };
+      const bearerHolDelayMs = {
+        c2_ms: toHolMs(69),
+        voice_ms: toHolMs(65),
+        video_ms: toHolMs(67),
+        photo_ms: toHolMs(70),
+      };
 
       const activeReport = state.schedulerMode === 'tac_tad' ? state.lastReportTac : state.lastReportStatic;
       const alloc = activeReport?.allocations.find((a) => a.nodeId === node.nodeId);
@@ -378,6 +388,7 @@ export class TelemetrySerializer {
         voice_bytes: voiceBytes,
         video_bytes: videoBytes,
         photo_bytes: photoBytes,
+        bearer_hol_delay_ms: bearerHolDelayMs,
         total_backlog_bytes: q.getTotalBacklogBytes(),
         is_transmitting: isTransmitting,
         is_wasting_airtime: isWastingAirtime,
@@ -681,6 +692,8 @@ export class TelemetrySerializer {
       normalizeSlotAllocationToFrame(a, state.lastReportStatic?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
     const mapAllocTac = (a: SlotAllocation) =>
       normalizeSlotAllocationToFrame(a, state.lastReportTac?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
+    const mapAllocReactive = (a: SlotAllocation) =>
+      normalizeSlotAllocationToFrame(a, state.lastReportReactive?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
     const acnGeo = cartesianToGeodetic(acnPos[0], acnPos[1]);
 
     let weatherCellsSummary: TelemetryWeatherCellSummary[] | undefined;
@@ -761,7 +774,7 @@ export class TelemetrySerializer {
       active_gantt_allocations: allocations,
       static_gantt_allocations: (state.lastReportStatic?.allocations ?? []).map(mapAllocStatic),
       tac_gantt_allocations: (state.lastReportTac?.allocations ?? []).map(mapAllocTac),
-      reactive_gantt_allocations: (state.lastReportReactive?.allocations ?? []).map(mapAllocTac),
+      reactive_gantt_allocations: (state.lastReportReactive?.allocations ?? []).map(mapAllocReactive),
       comparative_kpi_dashboard: kpi,
       static_p50_bps: state.staticGoodputTracker.p50Bps,
       static_p95_bps: state.staticGoodputTracker.p95Bps,

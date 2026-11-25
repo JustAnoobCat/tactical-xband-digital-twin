@@ -14,7 +14,7 @@
 import { FinalDropCaptureResult } from '../shared/workerProtocol';
 import { SPEED_OF_LIGHT } from './config';
 import { LinkStatus } from './linkBudget';
-import { GroundNodeTrafficSubsystem, QOS_PROFILES } from './queues';
+import { GroundNodeTrafficSubsystem, Packet, QOS_PROFILES } from './queues';
 import { NodeTerrainState, PredictiveState } from './trajectory';
 import { TdmaFrameConfig } from './tdmaConfig';
 
@@ -38,11 +38,48 @@ export interface SlotAllocation {
   readonly capacityBits: number;
   readonly isPreOcclusionFlush: boolean;
   readonly sectorId?: 0 | 1 | 2 | 3;
+  readonly c2Bytes?: number;
+  readonly voiceBytes?: number;
+  readonly videoBytes?: number;
+  readonly photoBytes?: number;
   readonly dynamicGuardOverheadScale?: number;
   readonly closedLoopCapacityScale?: number;
   readonly delayedCqiSnrDb?: number;
   readonly effectiveSnrDb?: number;
   readonly ollaOffsetDb?: number;
+}
+
+const DEQUEUE_TALLY = {
+  bitsServed: 0,
+  c2Bytes: 0,
+  voiceBytes: 0,
+  videoBytes: 0,
+  photoBytes: 0,
+};
+
+/** Accumulates served bits and per-5QI dequeued bytes into a zero-allocation scratch tally. */
+function tallyServedPackets(served: readonly Packet[]): typeof DEQUEUE_TALLY {
+  let bitsServed = 0;
+  let c2Bytes = 0;
+  let voiceBytes = 0;
+  let videoBytes = 0;
+  let photoBytes = 0;
+  for (let p = 0; p < served.length; p++) {
+    const pkt = served[p];
+    bitsServed += pkt.sizeBits;
+    switch (pkt.qos5qi) {
+      case 69: c2Bytes += pkt.sizeBytes; break;
+      case 65: voiceBytes += pkt.sizeBytes; break;
+      case 67: videoBytes += pkt.sizeBytes; break;
+      case 70: photoBytes += pkt.sizeBytes; break;
+    }
+  }
+  DEQUEUE_TALLY.bitsServed = bitsServed;
+  DEQUEUE_TALLY.c2Bytes = c2Bytes;
+  DEQUEUE_TALLY.voiceBytes = voiceBytes;
+  DEQUEUE_TALLY.videoBytes = videoBytes;
+  DEQUEUE_TALLY.photoBytes = photoBytes;
+  return DEQUEUE_TALLY;
 }
 
 export interface SchedulerMacFeedbackOptions {
@@ -429,8 +466,29 @@ abstract class DropTrackingScheduler implements BaseScheduler {
  * Blindly transmits into mountain shadow obstacles, wasting up to 33% of frame time.
  */
 export class LegacyStaticScheduler extends DropTrackingScheduler {
+  private static readonly CONSERVATIVE_OUTAGE_FALLBACK_BPS: number = 1.0e6; // QPSK 1/2 (~1.0 Mbps at 1 MHz BW)
   public readonly schedulerName: string = 'Legacy_Static_TDMA';
   public enableMultiSector: boolean = false;
+  private readonly lastKnownLosBitrateBps: Map<number, number> = new Map();
+
+  public reset(): void {
+    this.lastKnownLosBitrateBps.clear();
+  }
+
+  protected override onNodeEvicted(nodeId: number): void {
+    this.lastKnownLosBitrateBps.delete(nodeId);
+  }
+
+  private resolveTransmitRateBps(nodeId: number, ls: LinkStatus | undefined, isDepleted: boolean): number {
+    if (isDepleted) {
+      return 0;
+    }
+    if (ls && !ls.isOutage && ls.bitrateBps > 0) {
+      this.lastKnownLosBitrateBps.set(nodeId, ls.bitrateBps);
+      return ls.bitrateBps;
+    }
+    return this.lastKnownLosBitrateBps.get(nodeId) ?? LegacyStaticScheduler.CONSERVATIVE_OUTAGE_FALLBACK_BPS;
+  }
 
   public scheduleFrame(
     frameIndex: number,
@@ -532,7 +590,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
           const ps = getPred(node.nodeId);
 
           const isDepleted = node.batteryLevelPct <= 0 || node.isDepleted;
-          const rate = (!isDepleted && ls && ls.bitrateBps > 0) ? ls.bitrateBps : (isDepleted ? 0 : 4.95e6);
+          const rate = this.resolveTransmitRateBps(node.nodeId, ls, isDepleted);
           const guardScale = getGuardScale(node.nodeId);
           const delayedSnr = getDelayedSnr(node.nodeId);
           const ollaOffset = getOllaOffset(node.nodeId);
@@ -544,6 +602,29 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
           const capBits = isDepleted ? 0 : Math.floor(secTauSlot * effRate * guardScale);
           const capBytes = Math.floor(capBits / 8);
 
+          let c2Bytes = 0;
+          let voiceBytes = 0;
+          let videoBytes = 0;
+          let photoBytes = 0;
+
+          if (!isDepleted) {
+            const served = node.queue.dequeue(capBytes, currentSimTimeS);
+            const tally = tallyServedPackets(served);
+            const bitsServed = tally.bitsServed;
+            c2Bytes = tally.c2Bytes;
+            voiceBytes = tally.voiceBytes;
+            videoBytes = tally.videoBytes;
+            photoBytes = tally.photoBytes;
+
+            totalPayloadBitsDequeued += bitsServed;
+            if (ls?.isOutage || !ls || ls.bitrateBps <= 0 || ls.cqiDecodeFailure) {
+              totalBitsWasted += bitsServed;
+            } else {
+              totalBitsTx += bitsServed;
+              secBitsTx += bitsServed;
+            }
+          }
+
           allocations.push({
             nodeId: node.nodeId,
             slotStartS: secSlotStartS,
@@ -554,6 +635,10 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
             capacityBits: capBits,
             isPreOcclusionFlush: false,
             sectorId: k as 0 | 1 | 2 | 3,
+            c2Bytes,
+            voiceBytes,
+            videoBytes,
+            photoBytes,
             dynamicGuardOverheadScale: guardScale < 1.0 || macFeedbackOptions?.nodeGuardScale ? guardScale : undefined,
             closedLoopCapacityScale: closedLoopScale < 1.0 || macFeedbackOptions?.nodeClosedLoopCapacityScale ? closedLoopScale : undefined,
             delayedCqiSnrDb: delayedSnr,
@@ -563,22 +648,6 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
 
           secUsedTimeS += secTauSlot + this.config.guardIntervalS;
           secSlotStartS += secTauSlot + this.config.guardIntervalS;
-
-          if (!isDepleted) {
-            const served = node.queue.dequeue(capBytes, currentSimTimeS);
-            let bitsServed = 0;
-            for (let p = 0; p < served.length; p++) {
-              bitsServed += served[p].sizeBits;
-            }
-
-            totalPayloadBitsDequeued += bitsServed;
-            if (ls?.isOutage || !ls || ls.bitrateBps <= 0 || ls.cqiDecodeFailure) {
-              totalBitsWasted += bitsServed;
-            } else {
-              totalBitsTx += bitsServed;
-              secBitsTx += bitsServed;
-            }
-          }
         }
 
         sectorScheduledUlS[k] = secUsedTimeS;
@@ -680,6 +749,10 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
             spectralEfficiency: 0.0,
             capacityBits: 0,
             isPreOcclusionFlush: false,
+            c2Bytes: 0,
+            voiceBytes: 0,
+            videoBytes: 0,
+            photoBytes: 0,
           });
           usedTimeS += tauSlot + this.config.guardIntervalS;
           slotStartS += tauSlot + this.config.guardIntervalS;
@@ -695,7 +768,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
       const ps = getPred(node.nodeId);
 
       const isDepleted = node.batteryLevelPct <= 0 || node.isDepleted;
-      const rate = (!isDepleted && ls && ls.bitrateBps > 0) ? ls.bitrateBps : (isDepleted ? 0 : 4.95e6);
+      const rate = this.resolveTransmitRateBps(node.nodeId, ls, isDepleted);
       const guardScale = getGuardScale(node.nodeId);
       const delayedSnr = getDelayedSnr(node.nodeId);
       const ollaOffset = getOllaOffset(node.nodeId);
@@ -707,6 +780,28 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
       const capBits = isDepleted ? 0 : Math.floor(tauSlot * effRate * guardScale);
       const capBytes = Math.floor(capBits / 8);
 
+      let c2Bytes = 0;
+      let voiceBytes = 0;
+      let videoBytes = 0;
+      let photoBytes = 0;
+
+      if (!isDepleted) {
+        const served = node.queue.dequeue(capBytes, currentSimTimeS);
+        const tally = tallyServedPackets(served);
+        const bitsServed = tally.bitsServed;
+        c2Bytes = tally.c2Bytes;
+        voiceBytes = tally.voiceBytes;
+        videoBytes = tally.videoBytes;
+        photoBytes = tally.photoBytes;
+
+        totalPayloadBitsDequeued += bitsServed;
+        if (ls?.isOutage || !ls || ls.bitrateBps <= 0 || ls.cqiDecodeFailure) {
+          totalBitsWasted += bitsServed;
+        } else {
+          totalBitsTx += bitsServed;
+        }
+      }
+
       allocations.push({
         nodeId: node.nodeId,
         slotStartS,
@@ -716,6 +811,10 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         spectralEfficiency: isDepleted ? 0.0 : (ls?.spectralEfficiency ?? 0.0),
         capacityBits: capBits,
         isPreOcclusionFlush: false,
+        c2Bytes,
+        voiceBytes,
+        videoBytes,
+        photoBytes,
         dynamicGuardOverheadScale: guardScale < 1.0 || macFeedbackOptions?.nodeGuardScale ? guardScale : undefined,
         closedLoopCapacityScale: closedLoopScale < 1.0 || macFeedbackOptions?.nodeClosedLoopCapacityScale ? closedLoopScale : undefined,
         delayedCqiSnrDb: delayedSnr,
@@ -725,21 +824,6 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
 
       usedTimeS += tauSlot + this.config.guardIntervalS;
       slotStartS += tauSlot + this.config.guardIntervalS;
-
-      if (!isDepleted) {
-        const served = node.queue.dequeue(capBytes, currentSimTimeS);
-        let bitsServed = 0;
-        for (let p = 0; p < served.length; p++) {
-          bitsServed += served[p].sizeBits;
-        }
-
-        totalPayloadBitsDequeued += bitsServed;
-        if (ls?.isOutage || !ls || ls.bitrateBps <= 0 || ls.cqiDecodeFailure) {
-          totalBitsWasted += bitsServed;
-        } else {
-          totalBitsTx += bitsServed;
-        }
-      }
     }
 
     this.trackScheduledNodes(nodes);
@@ -1256,6 +1340,14 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
           const capBits = Math.floor(tauSlot * plan.rInst * guardScale);
           const capBytes = Math.floor(capBits / 8);
 
+          const served = plan.node.queue.dequeue(capBytes, currentSimTimeS);
+          const tally = tallyServedPackets(served);
+          const bitsServed = tally.bitsServed;
+          const c2Bytes = tally.c2Bytes;
+          const voiceBytes = tally.voiceBytes;
+          const videoBytes = tally.videoBytes;
+          const photoBytes = tally.photoBytes;
+
           allocations.push({
             nodeId: plan.nid,
             slotStartS: secSlotStartS,
@@ -1266,6 +1358,10 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
             capacityBits: capBits,
             isPreOcclusionFlush: plan.isFlush,
             sectorId: k as 0 | 1 | 2 | 3,
+            c2Bytes,
+            voiceBytes,
+            videoBytes,
+            photoBytes,
             dynamicGuardOverheadScale: guardScale < 1.0 || macFeedbackOptions?.nodeGuardScale ? guardScale : undefined,
             closedLoopCapacityScale: getClosedLoopScale(plan.nid) < 1.0 || macFeedbackOptions?.nodeClosedLoopCapacityScale ? getClosedLoopScale(plan.nid) : undefined,
             delayedCqiSnrDb: delayedSnr,
@@ -1275,11 +1371,6 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
           scheduledIds.add(plan.nid);
 
-          const served = plan.node.queue.dequeue(capBytes, currentSimTimeS);
-          let bitsServed = 0;
-          for (let p = 0; p < served.length; p++) {
-            bitsServed += served[p].sizeBits;
-          }
           totalPayloadBitsDequeued += bitsServed;
           if (plan.ls?.cqiDecodeFailure) {
             totalBitsWasted += bitsServed;
@@ -1506,6 +1597,14 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       const capBits = Math.floor(tauSlot * plan.rInst * guardScale);
       const capBytes = Math.floor(capBits / 8);
 
+      const served = plan.node.queue.dequeue(capBytes, currentSimTimeS);
+      const tally = tallyServedPackets(served);
+      const bitsServed = tally.bitsServed;
+      const c2Bytes = tally.c2Bytes;
+      const voiceBytes = tally.voiceBytes;
+      const videoBytes = tally.videoBytes;
+      const photoBytes = tally.photoBytes;
+
       allocations.push({
         nodeId: plan.nid,
         slotStartS,
@@ -1515,6 +1614,10 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         spectralEfficiency: plan.ls?.spectralEfficiency ?? 0.0,
         capacityBits: capBits,
         isPreOcclusionFlush: plan.isFlush,
+        c2Bytes,
+        voiceBytes,
+        videoBytes,
+        photoBytes,
         dynamicGuardOverheadScale: guardScale < 1.0 || macFeedbackOptions?.nodeGuardScale ? guardScale : undefined,
         closedLoopCapacityScale: getClosedLoopScale(plan.nid) < 1.0 || macFeedbackOptions?.nodeClosedLoopCapacityScale ? getClosedLoopScale(plan.nid) : undefined,
         delayedCqiSnrDb: delayedSnr,
@@ -1524,11 +1627,6 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
       scheduledIds.add(plan.nid);
 
-      const served = plan.node.queue.dequeue(capBytes, currentSimTimeS);
-      let bitsServed = 0;
-      for (let p = 0; p < served.length; p++) {
-        bitsServed += served[p].sizeBits;
-      }
       totalPayloadBitsDequeued += bitsServed;
       if (plan.ls?.cqiDecodeFailure) {
         totalBitsWasted += bitsServed;

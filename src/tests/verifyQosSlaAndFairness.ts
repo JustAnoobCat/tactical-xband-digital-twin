@@ -95,7 +95,8 @@ console.log('\n[QSF-T2] Verifying 3GPP 5QI Bearer SLA Verdicts & Headroom Clampi
   const bearerIds = CANONICAL_5QI_BEARERS.map(b => b.qos5qi);
   assert.deepEqual(bearerIds, [69, 65, 67, 70], 'Must include 5QI 69, 65, 67, and 70');
   const pdbs = CANONICAL_5QI_BEARERS.map(b => b.pdbMs);
-  assert.deepEqual(pdbs, [60.0, 100.0, 150.0, 300.0], 'Authoritative PDBs must be 60, 100, 150, 300 ms');
+  // Reconciled canonical 3GPP TS 23.501 PDBs (5QI 65 MC-PTT Voice = 75 ms per REMED-04)
+  assert.deepEqual(pdbs, [60.0, 75.0, 150.0, 300.0], 'Authoritative PDBs must be 60, 75, 150, 300 ms');
 
   // 2. Nominal Test: Low sojourn delays (all <= 0.75 * PDB) -> SLA_COMPLIANT
   const nominalNodes = [
@@ -104,7 +105,7 @@ console.log('\n[QSF-T2] Verifying 3GPP 5QI Bearer SLA Verdicts & Headroom Clampi
       c2_bytes: 256,
       c2_sojourn_ms: 20.0, // <= 0.75 * 60 = 45 ms
       voice_bytes: 320,
-      voice_sojourn_ms: 30.0, // <= 0.75 * 100 = 75 ms
+      voice_sojourn_ms: 30.0, // <= 0.75 * 75 = 56.25 ms
       video_bytes: 2400,
       video_sojourn_ms: 40.0, // <= 0.75 * 150 = 112.5 ms
       photo_bytes: 2800,
@@ -144,7 +145,7 @@ console.log('\n[QSF-T2] Verifying 3GPP 5QI Bearer SLA Verdicts & Headroom Clampi
       c2_bytes: 256,
       c2_sojourn_ms: 50.0, // 50ms > 45ms and <= 60ms -> SLA_AT_RISK
       voice_bytes: 320,
-      voice_sojourn_ms: 85.0, // 85ms > 75ms and <= 100ms -> SLA_AT_RISK
+      voice_sojourn_ms: 65.0, // 65ms > 56.25ms and <= 75ms -> SLA_AT_RISK
       video_bytes: 1200,
       video_sojourn_ms: 125.0, // 125ms > 112.5ms and <= 150ms -> SLA_AT_RISK
       photo_bytes: 1400,

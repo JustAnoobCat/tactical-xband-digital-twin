@@ -126,40 +126,60 @@ export function computeCrc32(bytes: readonly number[]): number {
 /**
  * Standard DVB-S2X MODCOD identifier lookup.
  */
-function getModcodIdentifier(name: string, spectralEff: number): number {
-  const norm = name.toUpperCase().trim();
-  if (norm.includes('QPSK')) {
-    if (norm.includes('1/4')) return 0x01;
-    if (norm.includes('1/3')) return 0x02;
-    if (norm.includes('2/5')) return 0x03;
-    if (norm.includes('1/2')) return 0x04;
-    if (norm.includes('3/5')) return 0x05;
-    if (norm.includes('2/3')) return 0x06;
-    if (norm.includes('3/4')) return 0x07;
-    if (norm.includes('4/5')) return 0x08;
-    if (norm.includes('5/6')) return 0x09;
-    if (norm.includes('8/9')) return 0x0a;
-    if (norm.includes('9/10')) return 0x0b;
-    return 0x04;
+export function getModcodIdentifier(name: string, spectralEff: number = 1.0): number {
+  const compact = String(name || '')
+    .toUpperCase()
+    .replace(/π/g, 'PI')
+    .replace(/[\s_-]+/g, '');
+
+  if (compact.includes('64APSK')) {
+    if (compact.includes('3/4')) return 0x40;
+    if (compact.includes('4/5')) return 0x41;
+    if (compact.includes('5/6')) return 0x42;
+    return 0x40;
   }
-  if (norm.includes('8PSK')) {
-    if (norm.includes('3/5')) return 0x10;
-    if (norm.includes('2/3')) return 0x11;
-    if (norm.includes('3/4')) return 0x12;
-    if (norm.includes('5/6')) return 0x13;
-    if (norm.includes('8/9')) return 0x14;
-    return 0x12;
+  if (compact.includes('32APSK')) {
+    if (compact.includes('3/4')) return 0x30;
+    if (compact.includes('4/5')) return 0x31;
+    if (compact.includes('5/6')) return 0x32;
+    if (compact.includes('8/9')) return 0x33;
+    return 0x30;
   }
-  if (norm.includes('16APSK')) {
-    if (norm.includes('2/3')) return 0x20;
-    if (norm.includes('3/4')) return 0x21;
-    if (norm.includes('4/5')) return 0x22;
-    if (norm.includes('5/6')) return 0x23;
-    if (norm.includes('8/9')) return 0x24;
+  if (compact.includes('16APSK')) {
+    if (compact.includes('2/3')) return 0x20;
+    if (compact.includes('3/4')) return 0x21;
+    if (compact.includes('4/5')) return 0x22;
+    if (compact.includes('5/6')) return 0x23;
+    if (compact.includes('8/9')) return 0x24;
     return 0x21;
   }
-  if (norm.includes('32APSK')) {
-    return 0x30;
+  if (compact.includes('8PSK')) {
+    if (compact.includes('3/5')) return 0x10;
+    if (compact.includes('2/3')) return 0x11;
+    if (compact.includes('3/4')) return 0x12;
+    if (compact.includes('5/6')) return 0x13;
+    if (compact.includes('8/9')) return 0x14;
+    return 0x12;
+  }
+  if (compact.includes('QPSK')) {
+    if (compact.includes('1/4')) return 0x01;
+    if (compact.includes('1/3')) return 0x02;
+    if (compact.includes('2/5')) return 0x03;
+    if (compact.includes('1/2')) return 0x04;
+    if (compact.includes('3/5')) return 0x05;
+    if (compact.includes('2/3')) return 0x06;
+    if (compact.includes('3/4')) return 0x07;
+    if (compact.includes('4/5')) return 0x08;
+    if (compact.includes('5/6')) return 0x09;
+    if (compact.includes('8/9')) return 0x0a;
+    if (compact.includes('9/10')) return 0x0b;
+    return 0x04;
+  }
+  if (compact.includes('BPSK')) {
+    if (compact.includes('1/4')) return 0x50;
+    if (compact.includes('1/3')) return 0x51;
+    if (compact.includes('1/2')) return 0x52;
+    return 0x51;
   }
   return Math.max(1, Math.min(255, Math.round(spectralEff * 32)));
 }

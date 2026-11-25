@@ -889,12 +889,14 @@ export class SimulationWorkerManager {
       this.executeTdmaSuperframe(t, FRAME_DT);
       this.recordSuperframeEpoch(FRAME_DT);
       this.tdmaAccumulatorS = 0.0;
+      this.stepTransferForCurrentSuperframe(t, this.schedulerMode === 'tac_tad' ? this.lastReportTac : this.lastReportStatic);
     } else if (tFrame < FRAME_DT - 1e-6) {
       while (this.tdmaAccumulatorS >= tFrame - 1e-6) {
         this.generateTickTraffic(t, tFrame);
         this.executeTdmaSuperframe(t, tFrame);
         this.recordSuperframeEpoch(tFrame);
         this.tdmaAccumulatorS -= tFrame;
+        this.stepTransferForCurrentSuperframe(t, this.schedulerMode === 'tac_tad' ? this.lastReportTac : this.lastReportStatic);
       }
     } else {
       this.generateTickTraffic(t, FRAME_DT);
@@ -902,20 +904,10 @@ export class SimulationWorkerManager {
         this.executeTdmaSuperframe(t, tFrame);
         this.recordSuperframeEpoch(tFrame);
         this.tdmaAccumulatorS -= tFrame;
+        this.stepTransferForCurrentSuperframe(t, this.schedulerMode === 'tac_tad' ? this.lastReportTac : this.lastReportStatic);
+      } else {
+        this.stepTransferForCurrentSuperframe(t, null);
       }
-    }
-
-    // 5. Active Transfer Machine
-    const activeReport = this.schedulerMode === 'tac_tad' ? this.lastReportTac : this.lastReportStatic;
-    if (activeReport) {
-      this.transferManager.step({
-        activeNodes: this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic,
-        linkStatuses: this.linkStatuses,
-        predStates: this.predStates,
-        activeReport,
-        simTimeS: t,
-        isPaused: this.isPaused,
-      });
     }
 
     // 6. Dispatch frame to main UI thread
@@ -935,6 +927,17 @@ export class SimulationWorkerManager {
         weatherCellCount: this.weatherCells.length,
       }));
     }
+  }
+
+  private stepTransferForCurrentSuperframe(t: number, activeReport: FrameScheduleReport | null): void {
+    this.transferManager.step({
+      activeNodes: this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic,
+      linkStatuses: this.linkStatuses,
+      predStates: this.predStates,
+      activeReport,
+      simTimeS: t,
+      isPaused: this.isPaused,
+    });
   }
 
   private generateTickTraffic(t: number, stepDt: number): void {
