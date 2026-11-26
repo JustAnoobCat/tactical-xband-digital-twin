@@ -33,6 +33,28 @@ fn get_tiles_directory(app: tauri::AppHandle) -> Result<String, String> {
     Ok(dir.to_string_lossy().into_owned())
 }
 
+#[tauri::command]
+fn list_offline_tiles(app: tauri::AppHandle) -> Result<Vec<tile_protocol::OfflineTileEntry>, String> {
+    let dir = tile_protocol::resolve_writable_tiles_dir(&app)?;
+    tile_protocol::list_offline_tiles_in_dir(&dir)
+}
+
+#[tauri::command]
+fn save_offline_tile(
+    app: tauri::AppHandle,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<tile_protocol::OfflineTileEntry, String> {
+    let dir = tile_protocol::resolve_writable_tiles_dir(&app)?;
+    tile_protocol::save_offline_tile_in_dir(&dir, &name, &bytes)
+}
+
+#[tauri::command]
+fn delete_offline_tile(app: tauri::AppHandle, name: String) -> Result<bool, String> {
+    let dir = tile_protocol::resolve_writable_tiles_dir(&app)?;
+    tile_protocol::delete_offline_tile_in_dir(&dir, &name)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -42,7 +64,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_runtime_diagnostics,
-            get_tiles_directory
+            get_tiles_directory,
+            list_offline_tiles,
+            save_offline_tile,
+            delete_offline_tile
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tactical X-Band Digital Twin desktop shell");

@@ -12,6 +12,7 @@ export interface OfflineTileRequest {
   readonly y: number;
   readonly ext: string;
   readonly relativePath: string;
+  readonly isArchiveOrAsset?: boolean;
 }
 
 export type ParseTileResult =
@@ -24,15 +25,19 @@ export type ParseTileResult =
       readonly y: number;
       readonly ext: string;
       readonly relativePath: string;
+      readonly isArchiveOrAsset?: boolean;
     }
   | { readonly ok: false; readonly error: string };
 
 const ALLOWED_EXTENSIONS = new Set<string>(['png', 'jpg', 'jpeg', 'webp', 'pbf', 'mvt']);
+const ARCHIVE_ASSET_EXTENSIONS = new Set<string>(['pmtiles', 'hgt', 'tif', 'tiff', 'bin', 'json']);
 const TILESET_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+const SAFE_ASSET_SEGMENT_REGEX = /^[a-zA-Z0-9._-]+$/;
 
 /**
  * Validates and parses an xband-tile:// request URL with strict defense against
  * directory traversal, encoded traversals, backslashes, null bytes, and out-of-bound zoom/coords.
+ * Supports both /{z}/{x}/{y}.{ext} tile paths and safe archive/asset paths (.pmtiles, .hgt, .tif, .tiff, .bin, .json).
  */
 export function parseOfflineTileRequestUrl(rawUrl: string): ParseTileResult {
   if (typeof rawUrl !== 'string' || rawUrl.trim().length === 0) {
@@ -45,6 +50,7 @@ export function parseOfflineTileRequestUrl(rawUrl: string): ParseTileResult {
     rawUrl.includes('..') ||
     lowerRaw.includes('%2e%2e') ||
     lowerRaw.includes('%2e') ||
+    lowerRaw.includes('%2f') ||
     rawUrl.includes('\\') ||
     lowerRaw.includes('%5c') ||
     rawUrl.includes('\0') ||
@@ -73,33 +79,91 @@ export function parseOfflineTileRequestUrl(rawUrl: string): ParseTileResult {
     return { ok: false, error: 'Invalid URL protocol' };
   }
 
-  // Host represents the tileset name (e.g. "terrain", "satellite", "elevation")
-  // Or in 3-slash notation (xband-tile:///tileset/z/x/y.ext), extract from the leading path segment
-  let tileset = parsed.hostname || parsed.host;
-  let pathname = parsed.pathname;
+  const host = parsed.hostname || parsed.host;
+  if (host.includes(':') || parsed.pathname.includes(':')) {
+    return { ok: false, error: 'Unexpected colon or drive prefix in offline tile URL' };
+  }
 
-  if (!tileset) {
-    const segments = pathname.split('/').filter(Boolean);
-    if (segments.length === 4) {
-      tileset = segments[0];
-      pathname = '/' + segments.slice(1).join('/');
+  const trimmedPath = parsed.pathname.replace(/^\/+/, '');
+  const relStr =
+    host && host.toLowerCase() !== 'localhost' && host.toLowerCase() !== 'xband-tile.localhost'
+      ? (trimmedPath ? `${host}/${trimmedPath}` : host)
+      : trimmedPath;
+
+  if (!relStr) {
+    return { ok: false, error: 'Empty offline tile path' };
+  }
+
+  const segments = relStr.split('/');
+  for (const seg of segments) {
+    if (
+      !seg ||
+      seg === '.' ||
+      seg === '..' ||
+      seg.startsWith('.') ||
+      seg.endsWith('.') ||
+      !SAFE_ASSET_SEGMENT_REGEX.test(seg)
+    ) {
+      return { ok: false, error: `Invalid path segment "${seg}" in offline tile URL` };
     }
   }
 
-  if (!tileset || !TILESET_NAME_REGEX.test(tileset)) {
+  const lastSegment = segments[segments.length - 1];
+  const lastDot = lastSegment.lastIndexOf('.');
+  if (lastDot <= 0 || lastDot === lastSegment.length - 1) {
+    return { ok: false, error: `Missing or invalid file extension in "${lastSegment}"` };
+  }
+  const ext = lastSegment.slice(lastDot + 1).toLowerCase();
+
+  // Archive / DEM / manifest asset path (.pmtiles, .hgt, .tif, .tiff, .bin, .json)
+  if (ARCHIVE_ASSET_EXTENSIONS.has(ext)) {
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (!TILESET_NAME_REGEX.test(segments[i])) {
+        return { ok: false, error: `Invalid directory segment "${segments[i]}"` };
+      }
+    }
+    const tileset = segments.length > 1 ? segments[0] : 'archive';
+    const relativePath = segments.join('/');
+    const request: OfflineTileRequest = {
+      tileset,
+      z: 0,
+      x: 0,
+      y: 0,
+      ext,
+      relativePath,
+      isArchiveOrAsset: true,
+    };
+    return {
+      ok: true,
+      request,
+      tileset,
+      z: 0,
+      x: 0,
+      y: 0,
+      ext,
+      relativePath,
+      isArchiveOrAsset: true,
+    };
+  }
+
+  // Standard slippy tile path must be strictly {tileset}/{z}/{x}/{y}.{ext}
+  if (segments.length !== 4) {
+    return { ok: false, error: `Invalid tile path structure: "${relStr}". Expected {tileset}/{z}/{x}/{y}.{ext}` };
+  }
+
+  const [tileset, zStr, xStr, yFile] = segments;
+  if (!TILESET_NAME_REGEX.test(tileset)) {
     return { ok: false, error: `Invalid tileset identifier: "${tileset}"` };
   }
 
-  // Path must be strictly /{z}/{x}/{y}.{ext}
-  const match = pathname.match(/^\/([0-9]+)\/([0-9]+)\/([0-9]+)\.([a-zA-Z0-9]+)$/);
-  if (!match) {
-    return { ok: false, error: `Invalid tile path structure: "${pathname}". Expected /{z}/{x}/{y}.{ext}` };
+  const fileMatch = yFile.match(/^([0-9]+)\.([a-zA-Z0-9]+)$/);
+  if (!/^[0-9]+$/.test(zStr) || !/^[0-9]+$/.test(xStr) || !fileMatch) {
+    return { ok: false, error: `Invalid tile path structure: "${relStr}". Expected /{z}/{x}/{y}.{ext}` };
   }
 
-  const z = parseInt(match[1], 10);
-  const x = parseInt(match[2], 10);
-  const y = parseInt(match[3], 10);
-  const ext = match[4].toLowerCase();
+  const z = parseInt(zStr, 10);
+  const x = parseInt(xStr, 10);
+  const y = parseInt(fileMatch[1], 10);
 
   // Validate zoom range: z in [0, 22]
   if (z < 0 || z > 22) {

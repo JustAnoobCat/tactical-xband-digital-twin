@@ -173,9 +173,34 @@ pub fn compute_polar_viewshed_into(
     out_sinr_db: &mut [f32],
     out_horizon_elev_deg: &mut [f32],
 ) {
+    compute_polar_viewshed_slice_into(
+        dem,
+        params,
+        0,
+        params.num_bearings,
+        out_sinr_db,
+        out_horizon_elev_deg,
+    );
+}
+
+/// Computes a slice of polar RF viewshed bearings `[start_bearing, start_bearing + bearing_count)`
+/// (wrapping modulo `params.num_bearings`) into caller-owned slices with zero extra allocations.
+pub fn compute_polar_viewshed_slice_into(
+    dem: &DemGridSpec<'_>,
+    params: &ViewshedParams,
+    start_bearing: usize,
+    bearing_count: usize,
+    out_sinr_db: &mut [f32],
+    out_horizon_elev_deg: &mut [f32],
+) {
     let nb = params.num_bearings;
     let nr = params.num_ranges;
-    if nb == 0 || nr == 0 || out_sinr_db.len() < nb * nr || out_horizon_elev_deg.len() < nb {
+    if nb == 0
+        || nr == 0
+        || bearing_count == 0
+        || out_sinr_db.len() < bearing_count * nr
+        || out_horizon_elev_deg.len() < bearing_count
+    {
         return;
     }
 
@@ -190,13 +215,15 @@ pub fn compute_polar_viewshed_into(
         * noise_factor;
     let p_noise_thermal_dbm = 10.0 * (p_noise_w * 1000.0).log10();
     let deg_step = 360.0 / nb as f64;
+    let start_mod = start_bearing % nb;
 
-    for az_idx in 0..nb {
+    for slice_idx in 0..bearing_count {
+        let az_idx = (start_mod + slice_idx) % nb;
         let bearing_deg = (az_idx as f64 * deg_step).rem_euclid(360.0);
         let rad = bearing_deg.to_radians();
         let sin_b = rad.sin();
         let cos_b = rad.cos();
-        let base_off = az_idx * nr;
+        let base_off = slice_idx * nr;
         let mut max_horizon_deg = -90.0_f64;
 
         for r_idx in 0..nr {
@@ -305,7 +332,7 @@ pub fn compute_polar_viewshed_into(
 
             out_sinr_db[base_off + r_idx] = (prx_dbm - p_noise_and_interf_dbm) as f32;
         }
-        out_horizon_elev_deg[az_idx] = max_horizon_deg as f32;
+        out_horizon_elev_deg[slice_idx] = max_horizon_deg as f32;
     }
 }
 
@@ -379,5 +406,100 @@ mod tests {
         assert!(shadowed.is_finite() && open_valley.is_finite());
         assert!(open_valley - shadowed > 15.0, "open={open_valley}, shadowed={shadowed}");
         assert!(horizon[0] > horizon[9]);
+    }
+
+    #[test]
+    fn test_polar_viewshed_slice_matches_full_bit_for_bit() {
+        let size = 64;
+        let mut dem_data = vec![3400.0f32; size * size];
+        for r in 0..size {
+            let y = 25000.0 - (r as f64 / (size - 1) as f64) * 50000.0;
+            for c in 0..size {
+                let x = -25000.0 + (c as f64 / (size - 1) as f64) * 50000.0;
+                let ridge = 1400.0 * (-((x - 4000.0).powi(2) + (y - 3000.0).powi(2)) / 1.6e7).exp();
+                dem_data[r * size + c] = (3400.0 + ridge) as f32;
+            }
+        }
+        let dem = DemGridSpec {
+            data: &dem_data,
+            cols: size,
+            rows: size,
+            min_x: -25000.0,
+            max_x: 25000.0,
+            min_y: -25000.0,
+            max_y: 25000.0,
+        };
+        let params = ViewshedParams {
+            num_bearings: 36,
+            num_ranges: 16,
+            r_min_m: 1500.0,
+            r_step_m: 1500.0,
+            acn_pos: [250.0, -150.0, 5100.0],
+            heading_deg: 42.0,
+            pitch_deg: 2.5,
+            bank_deg: -6.0,
+            carrier_freq_hz: 8.0e9,
+            speed_of_light: 299_792_458.0,
+            channel_bandwidth_hz: 1.0e6,
+            acn_antenna_gain_dbi: 16.0,
+            acn_noise_figure_db: 5.0,
+            soldier_tx_power_dbm: 36.0,
+            soldier_antenna_gain_dbi: 3.0,
+            cable_loss_db: 1.5,
+            implementation_margin_db: 2.5,
+            boltzmann_constant: 1.380_649e-23,
+            hpbw_az_deg: 90.0,
+            hpbw_el_deg: 65.0,
+            downtilt_deg: -15.0,
+            r_eff_m: DEFAULT_R_EFF_M,
+            atmospheric_temp_k: 290.0,
+            rain_rate_mmh: 12.0,
+            rain_cell_length_km: 10.0,
+            freezing_isotherm_m: 4400.0,
+            jammer_enabled: true,
+            jammer_by_sector: [-96.0, -105.0, -112.0, -98.0],
+        };
+
+        let mut full_sinr = vec![0.0f32; 36 * 16];
+        let mut full_horizon = vec![0.0f32; 36];
+        compute_polar_viewshed_into(&dem, &params, &mut full_sinr, &mut full_horizon);
+
+        // 4 x 9 contiguous slices
+        for start in (0..36).step_by(9) {
+            let mut slice_sinr = vec![0.0f32; 9 * 16];
+            let mut slice_horizon = vec![0.0f32; 9];
+            compute_polar_viewshed_slice_into(
+                &dem,
+                &params,
+                start,
+                9,
+                &mut slice_sinr,
+                &mut slice_horizon,
+            );
+            for k in 0..9 {
+                assert_eq!(slice_horizon[k].to_bits(), full_horizon[start + k].to_bits());
+                for r in 0..16 {
+                    assert_eq!(
+                        slice_sinr[k * 16 + r].to_bits(),
+                        full_sinr[(start + k) * 16 + r].to_bits()
+                    );
+                }
+            }
+        }
+
+        // Modulo wrap-around slice [30..36, 0..3]
+        let mut wrap_sinr = vec![0.0f32; 9 * 16];
+        let mut wrap_horizon = vec![0.0f32; 9];
+        compute_polar_viewshed_slice_into(&dem, &params, 30, 9, &mut wrap_sinr, &mut wrap_horizon);
+        for k in 0..9 {
+            let az = (30 + k) % 36;
+            assert_eq!(wrap_horizon[k].to_bits(), full_horizon[az].to_bits());
+            for r in 0..16 {
+                assert_eq!(
+                    wrap_sinr[k * 16 + r].to_bits(),
+                    full_sinr[az * 16 + r].to_bits()
+                );
+            }
+        }
     }
 }

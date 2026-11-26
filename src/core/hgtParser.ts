@@ -194,8 +194,9 @@ export function decodeHgtBuffer(
 }
 
 /**
- * Derives georeferenced DemGeographicMetadata for an SRTM tile in local Cartesian coordinates
- * relative to the theater origin (34.5°N, 76.5°E).
+ * Derives georeferenced DemGeographicMetadata for an SRTM tile in local Cartesian coordinates.
+ * Ladakh sector tiles (within ±2° of 34.5°N, 76.5°E) preserve exact theater-origin offsets;
+ * non-Ladakh single tiles compute exact cos(centerLatDeg) longitude scaling and center cleanly around (0, 0).
  */
 export function createHgtGeographicMetadata(
   coords: SrtmTileCoordinates,
@@ -204,10 +205,32 @@ export function createHgtGeographicMetadata(
   maxElev: number,
   voidCount: number
 ): DemGeographicMetadata {
-  const minX = (coords.minLonDeg - THEATER_ORIGIN_LON_DEG) * HGT_METERS_PER_DEG_LON;
-  const maxX = (coords.maxLonDeg - THEATER_ORIGIN_LON_DEG) * HGT_METERS_PER_DEG_LON;
-  const minY = (coords.minLatDeg - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
-  const maxY = (coords.maxLatDeg - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
+  const isLadakhSector =
+    Math.abs(coords.centerLatDeg - THEATER_ORIGIN_LAT_DEG) <= 2.0 &&
+    Math.abs(coords.centerLonDeg - THEATER_ORIGIN_LON_DEG) <= 2.0;
+
+  let minX: number;
+  let maxX: number;
+  let minY: number;
+  let maxY: number;
+
+  if (isLadakhSector) {
+    minX = (coords.minLonDeg - THEATER_ORIGIN_LON_DEG) * HGT_METERS_PER_DEG_LON;
+    maxX = (coords.maxLonDeg - THEATER_ORIGIN_LON_DEG) * HGT_METERS_PER_DEG_LON;
+    minY = (coords.minLatDeg - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
+    maxY = (coords.maxLatDeg - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
+  } else {
+    const cosRef = Math.cos((THEATER_ORIGIN_LAT_DEG * Math.PI) / 180.0);
+    const cosLat = Math.cos((coords.centerLatDeg * Math.PI) / 180.0);
+    const metersPerDegLon = (HGT_METERS_PER_DEG_LON / cosRef) * cosLat;
+    const spanX = (coords.maxLonDeg - coords.minLonDeg) * metersPerDegLon;
+    const spanY = (coords.maxLatDeg - coords.minLatDeg) * HGT_METERS_PER_DEG_LAT;
+    minX = -spanX * 0.5;
+    maxX = spanX * 0.5;
+    minY = -spanY * 0.5;
+    maxY = spanY * 0.5;
+  }
+
   const halfWidthM = (maxX - minX) / 2.0;
   const halfHeightM = (maxY - minY) / 2.0;
 

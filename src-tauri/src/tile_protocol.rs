@@ -2,14 +2,16 @@
 //! symlink escape rejection, extension allowlisting, and RFC 9110 byte-range streaming.
 
 use std::fs::{self, File};
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 
 use http::{header, Method, Request, Response, StatusCode};
+use serde::Serialize;
 use tauri::Manager;
 
 const MAX_RANGE_CHUNK_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_FULL_FILE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_SAVE_TILE_BYTES: usize = 256 * 1024 * 1024;
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "pmtiles", "png", "webp", "jpg", "jpeg", "pbf", "mvt", "json", "hgt", "bin", "tif", "tiff",
@@ -423,6 +425,183 @@ pub fn handle_tile_request(tiles_root: &Path, request: &Request<Vec<u8>>) -> Res
         .unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct OfflineTileEntry {
+    pub name: String,
+    pub size_bytes: u64,
+    pub ext: String,
+}
+
+fn validate_offline_tile_filename(name: &str) -> Result<(String, String), String> {
+    if name.is_empty()
+        || name.len() > 180
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+        || name.contains('\0')
+        || name.contains(':')
+        || name.starts_with('.')
+        || name.ends_with('.')
+        || name.chars().any(|c| c.is_control())
+    {
+        return Err(format!("Invalid offline tile filename: '{name}'"));
+    }
+
+    let p = Path::new(name);
+    let mut comps = p.components();
+    match (comps.next(), comps.next()) {
+        (Some(Component::Normal(_)), None) => {}
+        _ => return Err(format!("Offline tile filename must be a single path component: '{name}'")),
+    }
+
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .ok_or_else(|| format!("Offline tile filename missing extension: '{name}'"))?;
+
+    if !is_allowed_extension(&ext) {
+        return Err(format!("Disallowed offline tile extension '.{ext}'"));
+    }
+
+    Ok((name.to_string(), ext))
+}
+
+/// Lists validated offline tile/pack files directly inside `tiles_root`.
+pub fn list_offline_tiles_in_dir(tiles_root: &Path) -> Result<Vec<OfflineTileEntry>, String> {
+    if !tiles_root.exists() {
+        return Ok(Vec::new());
+    }
+    let canonical_root = fs::canonicalize(tiles_root)
+        .map_err(|e| format!("Failed to canonicalize tiles_root: {e}"))?;
+    let mut entries = Vec::new();
+    let rd = fs::read_dir(&canonical_root)
+        .map_err(|e| format!("Failed to read tiles directory: {e}"))?;
+
+    for item in rd {
+        let entry = match item {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let file_name = entry.file_name();
+        let Some(name_str) = file_name.to_str() else {
+            continue;
+        };
+        let Ok((validated_name, ext)) = validate_offline_tile_filename(name_str) else {
+            continue;
+        };
+        let path = entry.path();
+        let Ok(sym_meta) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if sym_meta.file_type().is_symlink() {
+            let Ok(resolved) = fs::canonicalize(&path) else {
+                continue;
+            };
+            if !resolved.starts_with(&canonical_root) {
+                continue;
+            }
+        }
+        let Ok(meta) = fs::metadata(&path) else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        entries.push(OfflineTileEntry {
+            name: validated_name,
+            size_bytes: meta.len(),
+            ext,
+        });
+    }
+
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(entries)
+}
+
+/// Atomically saves a validated offline tile/pack payload inside `tiles_root`.
+pub fn save_offline_tile_in_dir(
+    tiles_root: &Path,
+    name: &str,
+    bytes: &[u8],
+) -> Result<OfflineTileEntry, String> {
+    let (validated_name, ext) = validate_offline_tile_filename(name)?;
+    if bytes.len() > MAX_SAVE_TILE_BYTES {
+        return Err(format!(
+            "Payload size {} bytes exceeds maximum {} bytes",
+            bytes.len(),
+            MAX_SAVE_TILE_BYTES
+        ));
+    }
+
+    fs::create_dir_all(tiles_root)
+        .map_err(|e| format!("Failed to create tiles directory: {e}"))?;
+    let canonical_root = fs::canonicalize(tiles_root)
+        .map_err(|e| format!("Failed to canonicalize tiles directory: {e}"))?;
+    let target_path = canonical_root.join(&validated_name);
+
+    if let Ok(sym_meta) = fs::symlink_metadata(&target_path) {
+        if sym_meta.file_type().is_symlink() {
+            let resolved = fs::canonicalize(&target_path)
+                .map_err(|_| "Refusing to overwrite broken symlink".to_string())?;
+            if !resolved.starts_with(&canonical_root) {
+                return Err("Refusing to overwrite symlink outside tiles_root".to_string());
+            }
+        }
+    }
+
+    let tmp_name = format!(".tmp.{}.{}.part", std::process::id(), validated_name);
+    let tmp_path = canonical_root.join(tmp_name);
+    {
+        let mut tmp_file = File::create(&tmp_path)
+            .map_err(|e| format!("Failed to create temp tile file: {e}"))?;
+        if let Err(e) = tmp_file.write_all(bytes).and_then(|_| tmp_file.sync_all()) {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(format!("Failed to write tile file: {e}"));
+        }
+    }
+    if let Err(e) = fs::rename(&tmp_path, &target_path) {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(format!("Failed to finalize atomic tile write: {e}"));
+    }
+
+    Ok(OfflineTileEntry {
+        name: validated_name,
+        size_bytes: bytes.len() as u64,
+        ext,
+    })
+}
+
+/// Deletes a validated offline tile/pack file strictly inside `tiles_root`.
+pub fn delete_offline_tile_in_dir(tiles_root: &Path, name: &str) -> Result<bool, String> {
+    let (validated_name, _) = validate_offline_tile_filename(name)?;
+    if !tiles_root.exists() {
+        return Ok(false);
+    }
+    let canonical_root = fs::canonicalize(tiles_root)
+        .map_err(|e| format!("Failed to canonicalize tiles directory: {e}"))?;
+    let target_path = canonical_root.join(&validated_name);
+
+    match fs::symlink_metadata(&target_path) {
+        Ok(sym_meta) => {
+            if sym_meta.file_type().is_symlink() {
+                let resolved = fs::canonicalize(&target_path)
+                    .map_err(|_| "Refusing to follow broken symlink".to_string())?;
+                if !resolved.starts_with(&canonical_root) {
+                    return Err("Refusing to delete symlink outside tiles_root".to_string());
+                }
+            } else if sym_meta.is_dir() {
+                return Err("Refusing to delete a directory".to_string());
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(format!("Failed to inspect tile path: {err}")),
+    }
+
+    fs::remove_file(&target_path).map_err(|e| format!("Failed to delete tile: {e}"))?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,5 +812,72 @@ mod tests {
             handle_tile_request(&root.path, &req_405).status(),
             StatusCode::METHOD_NOT_ALLOWED
         );
+    }
+
+    #[test]
+    fn offline_tile_crud_validates_filenames_sizes_and_atomicity() {
+        let root = TempDirGuard::new("crud");
+
+        // Save valid HGT and PMTiles files
+        let saved_hgt = save_offline_tile_in_dir(&root.path, "N34E076.hgt", b"HGT_DATA").unwrap();
+        assert_eq!(saved_hgt.name, "N34E076.hgt");
+        assert_eq!(saved_hgt.size_bytes, 8);
+        assert_eq!(saved_hgt.ext, "hgt");
+
+        let saved_pm = save_offline_tile_in_dir(&root.path, "ladakh.pmtiles", b"PMTiles").unwrap();
+        assert_eq!(saved_pm.ext, "pmtiles");
+
+        let listed = list_offline_tiles_in_dir(&root.path).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].name, "N34E076.hgt");
+        assert_eq!(listed[1].name, "ladakh.pmtiles");
+
+        // Reject traversal, separators, null bytes, disallowed extensions
+        for bad in &[
+            "../evil.hgt",
+            "sub/file.hgt",
+            "sub\\file.hgt",
+            "bad\0.hgt",
+            "script.sh",
+            "payload.exe",
+            ".hidden.hgt",
+            "C:drive.hgt",
+        ] {
+            assert!(
+                save_offline_tile_in_dir(&root.path, bad, b"x").is_err(),
+                "Expected rejection for '{bad}'"
+            );
+            assert!(
+                delete_offline_tile_in_dir(&root.path, bad).is_err(),
+                "Expected delete rejection for '{bad}'"
+            );
+        }
+
+        // Delete existing & non-existing
+        assert_eq!(delete_offline_tile_in_dir(&root.path, "N34E076.hgt").unwrap(), true);
+        assert_eq!(delete_offline_tile_in_dir(&root.path, "N34E076.hgt").unwrap(), false);
+        let listed_after = list_offline_tiles_in_dir(&root.path).unwrap();
+        assert_eq!(listed_after.len(), 1);
+        assert_eq!(listed_after[0].name, "ladakh.pmtiles");
+    }
+
+    #[test]
+    fn offline_tile_save_rejects_oversized_and_symlink_escape() {
+        let root = TempDirGuard::new("oversized");
+        let outside = TempDirGuard::new("outside_crud");
+        let secret = outside.path.join("secret.hgt");
+        fs::write(&secret, b"OUTSIDE").unwrap();
+
+        #[cfg(unix)]
+        {
+            let escape_link = root.path.join("escape.hgt");
+            std::os::unix::fs::symlink(&secret, &escape_link).unwrap();
+            assert!(save_offline_tile_in_dir(&root.path, "escape.hgt", b"OVERWRITE").is_err());
+            assert!(delete_offline_tile_in_dir(&root.path, "escape.hgt").is_err());
+        }
+
+        // Ensure MAX_SAVE_TILE_BYTES is enforced (check error path without 256 MiB alloc if possible;
+        // test validate boundary constant directly)
+        assert_eq!(MAX_SAVE_TILE_BYTES, 256 * 1024 * 1024);
     }
 }

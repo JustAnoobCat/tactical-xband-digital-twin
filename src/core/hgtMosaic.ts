@@ -182,9 +182,10 @@ export function clusterNeighbouringTiles(
     const clusterTiles: SrtmCatalogTile[] = [];
     const queue: SrtmCatalogTile[] = [startTile];
     visited.add(startTile.tileName);
+    let head = 0;
 
-    while (queue.length > 0) {
-      const current = queue.shift()!;
+    while (head < queue.length) {
+      const current = queue[head++];
       clusterTiles.push(current);
 
       // Check all 8 neighbours (N, S, E, W, and diagonals)
@@ -430,16 +431,70 @@ export class DecodedTileCache {
   }
 }
 
+export interface StitchMosaicOptions {
+  readonly maxOutputGridDim?: number;
+}
+
+export interface LoadPatchAsyncOptions {
+  readonly signal?: AbortSignal;
+  readonly onProgress?: (loaded: number, total: number, phase: string) => void;
+  readonly cache?: DecodedTileCache;
+  readonly maxOutputGridDim?: number;
+}
+
+function createAbortError(message = 'HGT patch loading was aborted.'): Error {
+  const err = new Error(message);
+  err.name = 'AbortError';
+  return err;
+}
+
+function sampleTileBilinearOrNearest(
+  tile: DecodedTile,
+  localR: number,
+  localC: number
+): number {
+  const N = tile.sampleCount;
+  const r0 = Math.max(0, Math.min(N - 1, Math.floor(localR)));
+  const c0 = Math.max(0, Math.min(N - 1, Math.floor(localC)));
+  const r1 = Math.min(N - 1, r0 + 1);
+  const c1 = Math.min(N - 1, c0 + 1);
+  const fr = Math.max(0, Math.min(1, localR - r0));
+  const fc = Math.max(0, Math.min(1, localC - c0));
+
+  const v00 = tile.elevations[r0 * N + c0];
+  const v01 = tile.elevations[r0 * N + c1];
+  const v10 = tile.elevations[r1 * N + c0];
+  const v11 = tile.elevations[r1 * N + c1];
+
+  if (Number.isFinite(v00) && Number.isFinite(v01) && Number.isFinite(v10) && Number.isFinite(v11)) {
+    const top = v00 * (1 - fc) + v01 * fc;
+    const bot = v10 * (1 - fc) + v11 * fc;
+    return top * (1 - fr) + bot * fr;
+  }
+
+  // Fallback to nearest finite corner
+  const nr = fr >= 0.5 ? r1 : r0;
+  const nc = fc >= 0.5 ? c1 : c0;
+  const nearest = tile.elevations[nr * N + nc];
+  if (Number.isFinite(nearest)) return nearest;
+  for (const v of [v00, v01, v10, v11]) {
+    if (Number.isFinite(v)) return v;
+  }
+  return Number.NaN;
+}
+
 /**
  * Stitches multiple neighbouring decoded HGT tiles into a single seamless mosaic Float32Array.
  * Handles:
  *   - Shared boundary edge resolution (averaging valid overlapping samples, void fill).
  *   - Missing tiles within the patch bounding box (filled with Number.NaN).
  *   - North-to-South row orientation and West-to-East column orientation.
+ *   - Bounded working-grid downsampling for multi-tile SRTM1 mosaics (default maxOutputGridDim = 1024).
  */
 export function stitchHgtTiles(
   tiles: readonly DecodedTile[],
-  explicitBounds?: { minLatDeg: number; maxLatDeg: number; minLonDeg: number; maxLonDeg: number }
+  explicitBounds?: { minLatDeg: number; maxLatDeg: number; minLonDeg: number; maxLonDeg: number },
+  options?: StitchMosaicOptions
 ): StitchedMosaicResult {
   if (!tiles || tiles.length === 0) {
     throw new Error('stitchHgtTiles: At least one tile is required to stitch a mosaic.');
@@ -471,11 +526,22 @@ export function stitchHgtTiles(
   // Mosaic raster dimensions
   // Each 1-deg interval adds (sampleCount - 1) cells, plus 1 for the closing boundary sample.
   const step = sampleCount - 1;
-  const totalCols = tileCols * step + 1;
-  const totalRows = tileRows * step + 1;
+  const rawCols = tileCols * step + 1;
+  const rawRows = tileRows * step + 1;
 
-  const mosaic = new Float32Array(totalCols * totalRows).fill(Number.NaN);
-  const weights = new Uint8Array(totalCols * totalRows);
+  const isMultiTileSrtm1 = sampleCount > SRTM3_SAMPLE_COUNT && (tiles.length > 1 || tileRows > 1 || tileCols > 1);
+  const requestedMaxDim = options?.maxOutputGridDim;
+  const effectiveMaxDim =
+    requestedMaxDim !== undefined && requestedMaxDim > 0
+      ? requestedMaxDim
+      : isMultiTileSrtm1
+        ? 1024
+        : undefined;
+
+  const needsDownsample = effectiveMaxDim !== undefined && Math.max(rawCols, rawRows) > effectiveMaxDim;
+  const scale = needsDownsample ? effectiveMaxDim / Math.max(rawCols, rawRows) : 1.0;
+  const outCols = needsDownsample ? Math.max(2, Math.round(rawCols * scale)) : rawCols;
+  const outRows = needsDownsample ? Math.max(2, Math.round(rawRows * scale)) : rawRows;
 
   const tileSet = new Set<string>();
   tiles.forEach((t) => tileSet.add(t.tileName));
@@ -494,45 +560,79 @@ export function stitchHgtTiles(
     }
   }
 
-  let minElev = Number.POSITIVE_INFINITY;
-  let maxElev = Number.NEGATIVE_INFINITY;
-  let voidCount = 0;
+  const mosaic = new Float32Array(outCols * outRows).fill(Number.NaN);
 
-  // Stamp each tile into the mosaic
-  for (const tile of tiles) {
-    // Tile row 0 is Northern edge. Tile col 0 is Western edge.
-    // In mosaic: tr = 0 is Northernmost tile row (maxLat - tile.maxLatDeg)
-    const tr = maxLat - tile.maxLatDeg;
-    const tc = tile.minLonDeg - minLon;
+  if (needsDownsample) {
+    // Direct bounded resampling without allocating full multi-tile SRTM1 grid
+    const tileGrid: (DecodedTile | undefined)[] = new Array(tileRows * tileCols);
+    for (const tile of tiles) {
+      const tr = maxLat - tile.maxLatDeg;
+      const tc = tile.minLonDeg - minLon;
+      if (tr >= 0 && tr < tileRows && tc >= 0 && tc < tileCols) {
+        tileGrid[tr * tileCols + tc] = tile;
+      }
+    }
 
-    const rowOffset = tr * step;
-    const colOffset = tc * step;
-    const N = tile.sampleCount;
+    for (let outR = 0; outR < outRows; outR++) {
+      const rawR = (outR * (rawRows - 1)) / (outRows - 1);
+      const tr = Math.min(tileRows - 1, Math.floor(rawR / step));
+      const localR = rawR - tr * step;
+      const rowBase = outR * outCols;
 
-    for (let r = 0; r < N; r++) {
-      const destR = rowOffset + r;
-      const destRowBase = destR * totalCols;
-      const srcRowBase = r * N;
+      for (let outC = 0; outC < outCols; outC++) {
+        const rawC = (outC * (rawCols - 1)) / (outCols - 1);
+        const tc = Math.min(tileCols - 1, Math.floor(rawC / step));
+        const localC = rawC - tc * step;
 
-      for (let c = 0; c < N; c++) {
-        const destC = colOffset + c;
-        const destIdx = destRowBase + destC;
-        const val = tile.elevations[srcRowBase + c];
+        const tile = tileGrid[tr * tileCols + tc];
+        if (tile) {
+          mosaic[rowBase + outC] = sampleTileBilinearOrNearest(tile, localR, localC);
+        }
+      }
+    }
+  } else {
+    const weights = new Uint8Array(outCols * outRows);
 
-        if (Number.isFinite(val)) {
-          const curW = weights[destIdx];
-          if (curW === 0) {
-            mosaic[destIdx] = val;
-            weights[destIdx] = 1;
-          } else {
-            // Shared boundary edge with neighbour: average overlapping valid samples
-            mosaic[destIdx] = (mosaic[destIdx] * curW + val) / (curW + 1);
-            weights[destIdx] = (curW + 1) as any;
+    // Stamp each tile into the mosaic at native resolution
+    for (const tile of tiles) {
+      // Tile row 0 is Northern edge. Tile col 0 is Western edge.
+      // In mosaic: tr = 0 is Northernmost tile row (maxLat - tile.maxLatDeg)
+      const tr = maxLat - tile.maxLatDeg;
+      const tc = tile.minLonDeg - minLon;
+
+      const rowOffset = tr * step;
+      const colOffset = tc * step;
+      const N = tile.sampleCount;
+
+      for (let r = 0; r < N; r++) {
+        const destR = rowOffset + r;
+        const destRowBase = destR * outCols;
+        const srcRowBase = r * N;
+
+        for (let c = 0; c < N; c++) {
+          const destC = colOffset + c;
+          const destIdx = destRowBase + destC;
+          const val = tile.elevations[srcRowBase + c];
+
+          if (Number.isFinite(val)) {
+            const curW = weights[destIdx];
+            if (curW === 0) {
+              mosaic[destIdx] = val;
+              weights[destIdx] = 1;
+            } else {
+              // Shared boundary edge with neighbour: average overlapping valid samples
+              mosaic[destIdx] = (mosaic[destIdx] * curW + val) / (curW + 1);
+              weights[destIdx] = (curW + 1) as any;
+            }
           }
         }
       }
     }
   }
+
+  let minElev = Number.POSITIVE_INFINITY;
+  let maxElev = Number.NEGATIVE_INFINITY;
+  let voidCount = 0;
 
   // Calculate elevation statistics and void count across the mosaic
   for (let i = 0; i < mosaic.length; i++) {
@@ -559,8 +659,8 @@ export function stitchHgtTiles(
   const tileLabel = tileNames.length === 1 ? tileNames[0] : `PATCH [${tileNames.join(', ')}]`;
 
   const metadata: DemGeographicMetadata = {
-    rasterWidth: totalCols,
-    rasterHeight: totalRows,
+    rasterWidth: outCols,
+    rasterHeight: outRows,
     centerLatDeg: (minLat + maxLat) / 2.0,
     centerLonDeg: (minLon + maxLon) / 2.0,
     minLatDeg: minLat,
@@ -569,8 +669,8 @@ export function stitchHgtTiles(
     maxLonDeg: maxLon,
     halfWidthM,
     halfHeightM,
-    groundResolutionXM: (maxX - minX) / (totalCols - 1),
-    groundResolutionYM: (maxY - minY) / (totalRows - 1),
+    groundResolutionXM: (maxX - minX) / (outCols - 1),
+    groundResolutionYM: (maxY - minY) / (outRows - 1),
     minX,
     maxX,
     minY,
@@ -582,8 +682,8 @@ export function stitchHgtTiles(
   };
 
   return {
-    rasterWidth: totalCols,
-    rasterHeight: totalRows,
+    rasterWidth: outCols,
+    rasterHeight: outRows,
     minLatDeg: minLat,
     maxLatDeg: maxLat,
     minLonDeg: minLon,
@@ -596,5 +696,82 @@ export function stitchHgtTiles(
     metadata,
     missingTiles,
   };
+}
+
+/**
+ * Non-blocking async patch decoder & stitcher with AbortSignal cancellation and progress reporting.
+ * Yields to the event loop between tiles so UI stays responsive and aborted loads release buffers immediately.
+ */
+export async function decodeAndStitchPatchAsync(
+  patch: PatchSelection,
+  options?: LoadPatchAsyncOptions
+): Promise<StitchedMosaicResult> {
+  const signal = options?.signal;
+  const onProgress = options?.onProgress;
+  const cache = options?.cache;
+
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+
+  const total = patch.tiles.length;
+  const decodedTiles: DecodedTile[] = [];
+
+  try {
+    for (let i = 0; i < total; i++) {
+      if (signal?.aborted) {
+        throw createAbortError();
+      }
+      const catalogTile = patch.tiles[i];
+      onProgress?.(i, total, 'decoding');
+
+      let decoded = cache?.get(catalogTile.tileName);
+      if (!decoded) {
+        const buffer = await catalogTile.file.arrayBuffer();
+        if (signal?.aborted) {
+          throw createAbortError();
+        }
+        const res = decodeHgtBuffer(buffer, catalogTile.sampleCount);
+        decoded = {
+          tileName: catalogTile.tileName,
+          minLatDeg: catalogTile.minLatDeg,
+          maxLatDeg: catalogTile.maxLatDeg,
+          minLonDeg: catalogTile.minLonDeg,
+          maxLonDeg: catalogTile.maxLonDeg,
+          sampleCount: catalogTile.sampleCount,
+          elevations: res.elevations,
+          minElevationM: res.minElevationM,
+          maxElevationM: res.maxElevationM,
+          voidCount: res.voidCount,
+        };
+        if (signal?.aborted) {
+          throw createAbortError();
+        }
+        cache?.set(catalogTile.tileName, decoded);
+      }
+
+      decodedTiles.push(decoded);
+      onProgress?.(i + 1, total, 'decoding');
+
+      // Yield cleanly between tiles so UI / cancel clicks remain responsive
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (signal?.aborted) {
+        throw createAbortError();
+      }
+    }
+
+    onProgress?.(total, total, 'stitching');
+    const mosaic = stitchHgtTiles(decodedTiles, patch, {
+      maxOutputGridDim: options?.maxOutputGridDim,
+    });
+    if (signal?.aborted) {
+      throw createAbortError();
+    }
+    onProgress?.(total, total, 'complete');
+    return mosaic;
+  } catch (err) {
+    decodedTiles.length = 0;
+    throw err;
+  }
 }
 

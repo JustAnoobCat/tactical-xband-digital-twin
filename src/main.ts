@@ -6,10 +6,12 @@ import {
   clusterNeighbouringTiles,
   selectActivePatch,
   stitchHgtTiles,
+  decodeAndStitchPatchAsync,
   DecodedTileCache,
   DEFAULT_MAX_ACTIVE_TILES,
   DEFAULT_LRU_CACHE_CAPACITY,
 } from './core/hgtMosaic.ts';
+import { OfflineMissionPackStore, inferPackKind } from './core/offlineMissionPackStore.ts';
 import { REAL_LADAKH_DEM_METADATA } from './core/terrain.ts';
 import { MAX_ACN_WAYPOINTS, RFConfig, EnvironmentConfig } from './core/config.ts';
 import {
@@ -298,6 +300,8 @@ import {
 } from './ui/worldTileLayer.ts';
 import { createRadarNodeMarkerLayer } from './ui/radarNodeMarkerLayer.ts';
 import { createToolboxPrecisionUi, createToolboxRuntimeBridge, computeBarrierWallRotationDeg } from './ui/toolboxPrecisionSuite.ts';
+import { EventSourcedFlightRecorder } from './core/flightRecorder.ts';
+import { SystemHealthHud } from './ui/systemHealthHud.ts';
 
 /* Render-quality layer */
 (function(){
@@ -420,6 +424,7 @@ function getMissionIoController() {
       postWorkerCommand: (cmd) => {
         sendCommand(cmd);
       },
+      getFlightRecorder: () => flightRecorder,
     });
   }
   return missionIoControllerInstance;
@@ -676,6 +681,12 @@ window.switchDocSubview = function(subview) {
     }
     window.renderWorkerJitterProfiler?.(typeof latestTelemetry !== 'undefined' ? latestTelemetry : null);
     window.renderTwinCalibrationScope?.();
+    getSystemHealthHud().update({
+      frame: typeof latestTelemetry !== 'undefined' ? latestTelemetry : null,
+      rollingStepSamples: rollingWorkerStepSamples,
+      rollingInterFrameDeltas: rollingWorkerInterFrameDeltas,
+      recordedEventsCount: flightRecorder.getEventCount(),
+    });
   }
 };
 
@@ -704,6 +715,12 @@ window.toggleDiagJsonExpand = function() {
       },
       { force: true, isPanelVisible: true }
     );
+    getSystemHealthHud().update({
+      frame: latestTelemetry,
+      rollingStepSamples: rollingWorkerStepSamples,
+      rollingInterFrameDeltas: rollingWorkerInterFrameDeltas,
+      recordedEventsCount: flightRecorder.getEventCount(),
+    });
   }
 };
 
@@ -2510,6 +2527,21 @@ let latestProfileNodeId = -1;
 // Dedicated 50 Hz WebWorker
 const worker = new Worker(new URL("./worker/simWorker.ts", import.meta.url), { type: "module" });
 
+const flightRecorder = new EventSourcedFlightRecorder({
+  seed: 0,
+  initialBiomeId: 'alpine_mountain',
+});
+let systemHealthHudInstance = null;
+function getSystemHealthHud() {
+  if (!systemHealthHudInstance) {
+    systemHealthHudInstance = new SystemHealthHud({
+      getWorldTileLayer: () => getRadarWorldTileLayer(),
+      getRecordedEventCount: () => flightRecorder.getEventCount(),
+    });
+  }
+  return systemHealthHudInstance;
+}
+
 /**
  * Authoritative typed helper for dispatching worker commands from the main UI thread.
  * Ensures consistent transfer list handling and command typing.
@@ -2518,6 +2550,11 @@ const worker = new Worker(new URL("./worker/simWorker.ts", import.meta.url), { t
  * @param {Transferable[]} [transferList]
  */
 function sendCommand(msg, transferList) {
+  flightRecorder.recordCommand(
+    msg,
+    Number(latestTelemetry?.frame_index ?? 0),
+    Number(latestTelemetry?.sim_time_s ?? 0)
+  );
   if (worker) {
     if (transferList && transferList.length > 0) {
       worker.postMessage(msg, transferList);
@@ -3860,6 +3897,7 @@ worker.onmessage = (event) => {
     }
     obstacleEditor.markSimulationFrameAdvanced();
     latestTelemetry = msg.frame;
+    flightRecorder.observeFrame(msg.frame);
     const currentNodeIds = new Set((msg.frame.nodes_telemetry || []).map(node => node.node_id));
     const priorSelectedNodeId = selectedNodeId;
     if (!currentNodeIds.has(selectedNodeId)) selectedNodeId = Number.isInteger(msg.frame.selected_node_id) && currentNodeIds.has(msg.frame.selected_node_id) ? msg.frame.selected_node_id : -1;
@@ -3927,6 +3965,12 @@ worker.onmessage = (event) => {
     observeTelemetryTiming(msg.frame);
     if (isDiagnosticsPanelVisible()) {
       renderWorkerJitterProfiler(msg.frame);
+      getSystemHealthHud().update({
+        frame: msg.frame,
+        rollingStepSamples: rollingWorkerStepSamples,
+        rollingInterFrameDeltas: rollingWorkerInterFrameDeltas,
+        recordedEventsCount: flightRecorder.getEventCount(),
+      });
     }
   } else if (msg.type === 'PROFILE_FRAME') {
     // Stale-response protection: discard if the serial is not strictly newer than the
@@ -4277,6 +4321,8 @@ $('map-node-details')?.addEventListener('click', event => {
   }
   if (rfToggle === 'fresnel') {
     mapLayerRegistry.toggleLayer('rf.fresnelZone');
+    const activeTabId = document.querySelector('.tab-content.active')?.id || 'tab-overview';
+    syncTelemetrySubscriptionProfile(activeTabId);
     return;
   }
   const action = event.target?.closest?.('[data-map-action]')?.dataset.mapAction;
@@ -9291,9 +9337,135 @@ window.setTerrainMode = function(mode) {
 
 /* ---------- Upload Modal, Multi-Tile Folder Catalog & Streaming Engine ---------- */
 const tileCache = new DecodedTileCache(typeof DEFAULT_LRU_CACHE_CAPACITY !== 'undefined' ? DEFAULT_LRU_CACHE_CAPACITY : 12);
+const offlinePackStore = new OfflineMissionPackStore();
 let currentCatalog = [];
 let currentClusters = [];
 let activePatchSelection = null;
+let activeHgtAbortController = null;
+
+function setCustomDemControlsState({ loading = false, loaded = false } = {}) {
+  const btnCancel = $('btn-cancel-hgt-load');
+  const btnUnload = $('btn-unload-custom-dem');
+  if (btnCancel) btnCancel.hidden = !loading;
+  if (btnUnload) btnUnload.hidden = !loaded;
+}
+
+function sendCustomDemZeroCopy(elevations, metadata) {
+  const transferable = new Float32Array(elevations);
+  sendCommand(
+    {
+      type: 'LOAD_CUSTOM_DEM',
+      elevations: transferable,
+      metadata,
+    },
+    [transferable.buffer]
+  );
+  setCustomDemControlsState({ loading: false, loaded: true });
+}
+
+function resetTerrainFileInputs() {
+  const fileEl = $('terrainFileInput');
+  const folderEl = $('terrainFolderInput');
+  if (fileEl) fileEl.value = '';
+  if (folderEl) folderEl.value = '';
+}
+
+function invokeTauriOfflineIpc(cmd, args) {
+  const tauriInvoke = window?.__TAURI_INTERNALS__?.invoke;
+  if (typeof tauriInvoke === 'function') {
+    return tauriInvoke(cmd, args);
+  }
+  return null;
+}
+
+async function persistOfflinePack(name, kind, bufferOrBytes) {
+  try {
+    const bytes = bufferOrBytes instanceof Uint8Array ? bufferOrBytes : new Uint8Array(bufferOrBytes);
+    if (bytes.byteLength <= 64 * 1024 * 1024) {
+      await offlinePackStore.savePack(name, kind, bytes);
+      const tauriPromise = invokeTauriOfflineIpc('save_offline_tile', { name, bytes: Array.from(bytes) });
+      if (tauriPromise) {
+        await tauriPromise.catch(() => {});
+      }
+      await refreshOfflinePackList();
+    }
+  } catch {
+    // Non-fatal if storage quota or filename is unsupported
+  }
+}
+
+async function refreshOfflinePackList() {
+  const summaryEl = $('offline-pack-summary');
+  const listEl = $('offline-pack-list');
+  if (!summaryEl && !listEl) return;
+
+  try {
+    const packs = await offlinePackStore.listPacks();
+    if (summaryEl) {
+      const totalKb = packs.reduce((acc, p) => acc + p.sizeBytes, 0) / 1024;
+      summaryEl.textContent = packs.length === 0
+        ? '0 cached'
+        : `${packs.length} cached (${totalKb >= 1024 ? `${(totalKb / 1024).toFixed(1)} MB` : `${totalKb.toFixed(0)} KB`})`;
+    }
+    if (listEl) {
+      listEl.replaceChildren();
+      if (packs.length === 0) {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.textContent = 'No cached offline terrain or scenario packs.';
+        listEl.appendChild(emptyMsg);
+        return;
+      }
+      for (const pack of packs) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-top:1px solid rgba(255,255,255,0.06)';
+        const label = document.createElement('span');
+        const kb = pack.sizeBytes / 1024;
+        const sizeStr = kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(0)} KB`;
+        label.textContent = `${pack.name} [${pack.kind}] (${sizeStr})`;
+        label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:6px;flex-shrink:0';
+
+        const btnLoad = document.createElement('button');
+        btnLoad.type = 'button';
+        btnLoad.className = 'btn-sm';
+        btnLoad.textContent = 'Load';
+        btnLoad.addEventListener('click', async () => {
+          const loaded = await offlinePackStore.loadPack(pack.name);
+          if (!loaded) return;
+          if (inferPackKind(loaded.name) === 'scenario') {
+            getMissionIoController().applyScenarioJson(new TextDecoder().decode(loaded.bytes));
+          } else {
+            const fileBlob = new File([loaded.bytes], loaded.name);
+            window.onFileSelected?.(fileBlob);
+          }
+        });
+
+        const btnDel = document.createElement('button');
+        btnDel.type = 'button';
+        btnDel.className = 'btn-sm';
+        btnDel.textContent = 'Delete';
+        btnDel.addEventListener('click', async () => {
+          await offlinePackStore.deletePack(pack.name);
+          const tauriPromise = invokeTauriOfflineIpc('delete_offline_tile', { name: pack.name });
+          if (tauriPromise) {
+            await tauriPromise.catch(() => {});
+          }
+          await refreshOfflinePackList();
+        });
+
+        actions.appendChild(btnLoad);
+        actions.appendChild(btnDel);
+        row.appendChild(label);
+        row.appendChild(actions);
+        listEl.appendChild(row);
+      }
+    }
+  } catch {
+    if (summaryEl) summaryEl.textContent = 'Unavailable';
+  }
+}
 
 function getTerrainLayout() {
   const cvs = (typeof terrainCanvas !== 'undefined' && terrainCanvas) ? terrainCanvas : $('terrain-canvas');
@@ -9362,6 +9534,7 @@ function openUploadModal() {
   if (modal) modal.removeAttribute('hidden');
   const statusBox = $('upload-status');
   if (statusBox) statusBox.style.display = 'none';
+  void refreshOfflinePackList();
 }
 window.openUploadModal = openUploadModal;
 
@@ -9429,15 +9602,12 @@ window.onFileSelected = function(file) {
         setMapLibreTerrainRaster(parseResult.elevations, parseResult.metadata);
         invalidateToolboxCache();
 
-        // Send custom DEM to worker
-        sendCommand({
-          type: 'LOAD_CUSTOM_DEM',
-          elevations: parseResult.elevations,
-          metadata: parseResult.metadata,
-        });
+        // Send custom DEM to worker zero-copy
+        sendCustomDemZeroCopy(parseResult.elevations, parseResult.metadata);
         sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
         sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
         requestTerrainMeshData(true);
+        void persistOfflinePack(file.name, 'hgt', buffer);
 
         // Center cameras without altering authentic coordinates
         window.centerMapOnTerrain(parseResult.metadata);
@@ -9491,14 +9661,11 @@ window.onFileSelected = function(file) {
         setMapLibreTerrainRaster(parseResult.elevationsM, meta);
         invalidateToolboxCache();
 
-        sendCommand({
-          type: 'LOAD_CUSTOM_DEM',
-          elevations: parseResult.elevationsM,
-          metadata: meta,
-        });
+        sendCustomDemZeroCopy(parseResult.elevationsM, meta);
         sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
         sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
         requestTerrainMeshData(true);
+        void persistOfflinePack(file.name, 'geotiff', buffer);
 
         window.centerMapOnTerrain(meta);
 
@@ -9555,11 +9722,7 @@ window.onFileSelected = function(file) {
         pendingTerrainCenteringBounds = meta;
         setMapLibreTerrainRaster(floatElevations, meta);
         invalidateToolboxCache();
-        sendCommand({
-          type: 'LOAD_CUSTOM_DEM',
-          elevations: floatElevations,
-          metadata: meta,
-        });
+        sendCustomDemZeroCopy(floatElevations, meta);
         sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
         sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
         requestTerrainMeshData(true);
@@ -9601,6 +9764,65 @@ async function decodeTileFile(catalogTile) {
   return decoded;
 }
 
+window.cancelHgtLoad = function() {
+  if (activeHgtAbortController) {
+    activeHgtAbortController.abort();
+    activeHgtAbortController = null;
+  }
+  tileCache.clear();
+  currentCatalog = [];
+  currentClusters = [];
+  activePatchSelection = null;
+  resetTerrainFileInputs();
+  setCustomDemControlsState({ loading: false, loaded: Boolean(activeTerrainBounds) });
+  const statusBox = $('upload-status');
+  if (statusBox) {
+    statusBox.style.display = 'block';
+    statusBox.className = 'upload-status-box status-error';
+    statusBox.textContent = '[CANCELLED] HGT load cancelled; buffers released.';
+  }
+};
+
+window.unloadCustomTerrain = function() {
+  if (activeHgtAbortController) {
+    activeHgtAbortController.abort();
+    activeHgtAbortController = null;
+  }
+  tileCache.clear();
+  currentCatalog = [];
+  currentClusters = [];
+  activePatchSelection = null;
+  resetTerrainFileInputs();
+
+  mainTerrainEngine.hasRealDem = false;
+  mainTerrainEngine.realDemGrid = null;
+  if (typeof activeBiomeId === 'string' && activeBiomeId !== 'alpine_mountain') {
+    mainTerrainEngine.setBiome(activeBiomeId);
+  }
+  activeTerrainBounds = null;
+  pendingTerrainCenteringBounds = null;
+  if (terrainTopViewport && typeof terrainTopViewport.clearPinnedBounds === 'function') {
+    terrainTopViewport.clearPinnedBounds();
+  }
+  if (typeof mapLibreTerrainRaster !== 'undefined') {
+    mapLibreTerrainRaster = null;
+  }
+
+  sendCommand({ type: 'UNLOAD_CUSTOM_TERRAIN' });
+  invalidateToolboxCache();
+  markRadarDirty();
+  setCustomDemControlsState({ loading: false, loaded: false });
+
+  const patchCtrl = $('folder-patch-controls');
+  if (patchCtrl) patchCtrl.style.display = 'none';
+  const statusBox = $('upload-status');
+  if (statusBox) {
+    statusBox.style.display = 'block';
+    statusBox.className = 'upload-status-box status-success';
+    statusBox.textContent = '[OK] Custom DEM unloaded; built-in biome DEM restored and RAM freed.';
+  }
+};
+
 window.loadActivePatch = async function(options) {
   const statusBox = $('upload-status');
   const patchCtrl = $('folder-patch-controls');
@@ -9608,19 +9830,33 @@ window.loadActivePatch = async function(options) {
   statusBox.className = 'upload-status-box status-loading';
   statusBox.textContent = `Selecting and stitching terrain patch...`;
 
+  if (activeHgtAbortController) {
+    activeHgtAbortController.abort();
+  }
+  const abortController = new AbortController();
+  activeHgtAbortController = abortController;
+  setCustomDemControlsState({ loading: true, loaded: Boolean(activeTerrainBounds) });
+
   try {
     const patch = selectActivePatch(options);
     if (!patch || patch.tiles.length === 0) {
       statusBox.className = 'upload-status-box status-error';
       statusBox.textContent = `[ERR] Could not select a valid terrain patch from catalog.`;
+      setCustomDemControlsState({ loading: false, loaded: Boolean(activeTerrainBounds) });
       return;
     }
     activePatchSelection = patch;
 
     statusBox.textContent = `Decoding ${patch.tiles.length} active patch tile(s) [${patch.tiles.map(t => t.tileName).join(', ')}]...`;
-    const decodedTiles = await Promise.all(patch.tiles.map(decodeTileFile));
-
-    const mosaic = stitchHgtTiles(decodedTiles, patch);
+    const mosaic = await decodeAndStitchPatchAsync(patch, {
+      signal: abortController.signal,
+      cache: tileCache,
+      onProgress: (loaded, total, phase) => {
+        if (abortController.signal.aborted) return;
+        statusBox.textContent = `HGT ${phase}: ${loaded}/${total} tile(s) [${patch.tiles.map(t => t.tileName).join(', ')}]...`;
+      },
+    });
+    if (abortController.signal.aborted) return;
 
     mainTerrainEngine.loadCustomDem(mosaic.elevations, mosaic.metadata);
     activeTerrainBounds = mosaic.metadata;
@@ -9628,12 +9864,8 @@ window.loadActivePatch = async function(options) {
     setMapLibreTerrainRaster(mosaic.elevations, mosaic.metadata);
     invalidateToolboxCache();
 
-    // Send LOAD_CUSTOM_DEM to worker
-    sendCommand({
-      type: 'LOAD_CUSTOM_DEM',
-      elevations: mosaic.elevations,
-      metadata: mosaic.metadata,
-    });
+    // Send LOAD_CUSTOM_DEM zero-copy to worker
+    sendCustomDemZeroCopy(mosaic.elevations, mosaic.metadata);
     sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
     sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
     requestTerrainMeshData(true);
@@ -9649,8 +9881,18 @@ window.loadActivePatch = async function(options) {
       renderFolderPatchControls(patchCtrl, patch, currentCatalog, currentClusters, mosaic);
     }
   } catch (err) {
-    statusBox.className = 'upload-status-box status-error';
-    statusBox.textContent = `[ERR] Failed to stitch patch: ${err?.message || err}`;
+    if (err?.name === 'AbortError' || abortController.signal.aborted) {
+      statusBox.className = 'upload-status-box status-error';
+      statusBox.textContent = '[CANCELLED] HGT load cancelled; buffers released.';
+    } else {
+      statusBox.className = 'upload-status-box status-error';
+      statusBox.textContent = `[ERR] Failed to stitch patch: ${err?.message || err}`;
+    }
+    setCustomDemControlsState({ loading: false, loaded: Boolean(activeTerrainBounds) });
+  } finally {
+    if (activeHgtAbortController === abortController) {
+      activeHgtAbortController = null;
+    }
   }
 };
 
@@ -9766,6 +10008,23 @@ window.onFolderSelected = async function(fileList) {
 
 /* ---------- Tab Navigation ---------- */
 const TABS = ['tab-overview', 'tab-scheduler', 'tab-network', 'tab-terrain', 'tab-terminal', 'tab-authoring', 'tab-doc', 'tab-registration', 'tab-soldier'];
+function syncTelemetrySubscriptionProfile(activeTabId) {
+  const linkProfile =
+    activeTabId === 'tab-terrain' ||
+    Boolean(mapLayerRegistry?.isLayerVisible?.('rf.fresnelZone'));
+  const vsaConstellation = activeTabId === 'tab-terminal';
+  const pduDissector = activeTabId === 'tab-scheduler';
+  sendCommand({
+    type: 'SET_TELEMETRY_PROFILE',
+    subscriptions: {
+      linkProfile,
+      vsaConstellation,
+      pduDissector,
+      viewshed: true,
+    },
+  });
+}
+
 window.switchMainTab = function(targetTabId) {
   if (targetTabId === 'tab-diagnostics') {
     targetTabId = 'tab-doc';
@@ -9774,6 +10033,7 @@ window.switchMainTab = function(targetTabId) {
   if (tbOpen) {
     closeTerrainToolbox();
   }
+  syncTelemetrySubscriptionProfile(targetTabId);
   document.querySelectorAll('.detail-viewport > .tab-content').forEach(el => {
     el.style.display = '';
   });
@@ -9828,6 +10088,12 @@ window.switchMainTab = function(targetTabId) {
       },
       { force: true, isPanelVisible: true }
     );
+    getSystemHealthHud().update({
+      frame: latestTelemetry,
+      rollingStepSamples: rollingWorkerStepSamples,
+      rollingInterFrameDeltas: rollingWorkerInterFrameDeltas,
+      recordedEventsCount: flightRecorder.getEventCount(),
+    });
   }
   scheduleResizeCanvases();
   markUiDirtyAndWake();
@@ -11534,7 +11800,9 @@ function updateDashboardDOM(frame, force = false) {
     const pEl = $('qbar-70');
     if (pEl) pEl.style.width = `${Math.min(100, (ph / 2000000) * 100)}%`;
     setText('qval-70', `${(ph / 1024).toFixed(0)} / 2000 KB`);
-    renderVsaScope(selNode, frame);
+    if (document.querySelector('.tab-content.active')?.id === 'tab-terminal') {
+      renderVsaScope(selNode, frame);
+    }
     if (selNode.ai_directive_text) {
       const slopeTag = typeof selNode.ai_max_step_slope_deg === 'number' ? ` · Max Slope: ${selNode.ai_max_step_slope_deg.toFixed(1)}°` : '';
       setText('ai-directive-readout', `${selNode.ai_directive_text}${slopeTag}`);
@@ -11574,7 +11842,9 @@ function updateDashboardDOM(frame, force = false) {
     const pEl = $('qbar-70');
     if (pEl) pEl.style.width = '0%';
     setText('qval-70', '--');
-    renderVsaScope(null, frame);
+    if (document.querySelector('.tab-content.active')?.id === 'tab-terminal') {
+      renderVsaScope(null, frame);
+    }
   }
 
   // Active Transfer State Machine
@@ -14459,6 +14729,18 @@ setTimeout(() => {
   byId('btn-doc-subview-diag')?.addEventListener('click', () => window.switchDocSubview?.('diag'));
   byId('btn-doc-subview-ref')?.addEventListener('click', () => window.switchDocSubview?.('ref'));
   byId('btn-diag-json-expand')?.addEventListener('click', () => window.toggleDiagJsonExpand?.());
+  byId('btn-syshealth-export-rec')?.addEventListener('click', () => {
+    const ioCtrl = getMissionIoController();
+    const json = ioCtrl.exportFlightRecording();
+    ioCtrl.triggerDownload(json, `xband-flight-${Date.now()}.stratos.json`, 'application/json');
+  });
+  syncTelemetrySubscriptionProfile(document.querySelector('.tab-content.active')?.id || 'tab-overview');
+  getSystemHealthHud().update({
+    frame: latestTelemetry,
+    rollingStepSamples: rollingWorkerStepSamples,
+    rollingInterFrameDeltas: rollingWorkerInterFrameDeltas,
+    recordedEventsCount: flightRecorder.getEventCount(),
+  });
 
   byId('btn-author-tab-traj')?.addEventListener('click', () => window.switchAuthoringPane?.('traj'));
   byId('btn-author-tab-tdma')?.addEventListener('click', () => window.switchAuthoringPane?.('tdma'));
@@ -14475,8 +14757,37 @@ setTimeout(() => {
   dropzone?.addEventListener('dragover', (e) => window.onDragOver?.(e));
   dropzone?.addEventListener('dragleave', (e) => window.onDragLeave?.(e));
   dropzone?.addEventListener('drop', (e) => window.onDropFile?.(e));
-  byId('terrainFileInput')?.addEventListener('change', (e) => window.onFileSelected?.(e.currentTarget.files?.[0]));
-  byId('terrainFolderInput')?.addEventListener('change', (e) => window.onFolderSelected?.(e.currentTarget.files));
+  byId('terrainFileInput')?.addEventListener('change', (e) => {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (file) window.onFileSelected?.(file);
+  });
+  byId('terrainFolderInput')?.addEventListener('change', (e) => {
+    const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : [];
+    e.currentTarget.value = '';
+    if (files.length > 0) window.onFolderSelected?.(files);
+  });
   byId('btn-browse-terrain-file')?.addEventListener('click', () => byId('terrainFileInput')?.click());
   byId('btn-browse-terrain-folder')?.addEventListener('click', () => byId('terrainFolderInput')?.click());
+  byId('btn-cancel-hgt-load')?.addEventListener('click', () => window.cancelHgtLoad?.());
+  byId('btn-unload-custom-dem')?.addEventListener('click', () => window.unloadCustomTerrain?.());
+  byId('btn-clear-offline-packs')?.addEventListener('click', async () => {
+    await offlinePackStore.clearAll();
+    const tauriList = invokeTauriOfflineIpc('list_offline_tiles');
+    if (tauriList) {
+      try {
+        const items = await tauriList;
+        if (Array.isArray(items)) {
+          for (const it of items) {
+            if (it?.name) {
+              await invokeTauriOfflineIpc('delete_offline_tile', { name: it.name })?.catch?.(() => {});
+            }
+          }
+        }
+      } catch {
+        // Safe ignore outside Tauri
+      }
+    }
+    await refreshOfflinePackList();
+  });
 })();

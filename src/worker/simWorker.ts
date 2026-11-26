@@ -53,7 +53,7 @@ import {
 import { isFiniteNumber } from '../shared/utils';
 import type { Position3D } from '../shared/types';
 import type {
-  WorkerCommandResult, SelectedLinkBudgetTelemetry, TelemetryGanttAllocation, WorkerInboundCommand, WorkerOutboundMessage, TelemetryFrame, NodeTelemetryItem, FresnelSliceTelemetry, TerrainMeshDataReadyMessage, ConfigUpdateParams, SpatialFrameSnapshot, SpatialNodeSnapshot, SpatialLinkBudgetSnapshot, TimelineCommunicationRecord, SuperframeEpochRecord, SuperframeDiscontinuityRecord, SchedulerEpochMetrics, EvictionDropFinalizationRecord, EvictionSchedulerId, HiFiPhysicsTelemetry, TransportAbrTelemetry,
+  WorkerCommandResult, SelectedLinkBudgetTelemetry, TelemetryGanttAllocation, WorkerInboundCommand, WorkerOutboundMessage, TelemetryFrame, NodeTelemetryItem, FresnelSliceTelemetry, TerrainMeshDataReadyMessage, ConfigUpdateParams, SpatialFrameSnapshot, SpatialNodeSnapshot, SpatialLinkBudgetSnapshot, TimelineCommunicationRecord, SuperframeEpochRecord, SuperframeDiscontinuityRecord, SchedulerEpochMetrics, EvictionDropFinalizationRecord, EvictionSchedulerId, HiFiPhysicsTelemetry, TransportAbrTelemetry, TelemetrySubscriptionProfile,
 } from '../shared/workerProtocol';
 import { HillshadeGenerator, type HillshadeResult } from './hillshadeGenerator';
 import { RayMarchCache } from './rayMarchCache';
@@ -160,11 +160,22 @@ export class SimulationWorkerManager {
   public jammerSectorInterferenceDbm: readonly [number, number, number, number] = [-150.0, -150.0, -150.0, -150.0];
   public readonly viewshedEngine: PolarViewshedEngine = new PolarViewshedEngine();
   public viewshedEnabled: boolean = false;
+  public telemetrySubscriptions: {
+    linkProfile: boolean;
+    vsaConstellation: boolean;
+    pduDissector: boolean;
+    viewshed: boolean;
+  } = {
+    linkProfile: true, vsaConstellation: true, pduDissector: true, viewshed: true,
+  };
+  public uiPublishIntervalTicks: number = 1;
   public relayAdvisorReport: RelayAdvisorReport | undefined = undefined;
   public relayedNodeCount: number = 0;
   public relayBackhaulSectorId?: 0 | 1 | 2 | 3;
   public relayBackhaulSnrDb?: number;
   private relayHop1ObstructionCache: Map<number, TerrainObstruction> = new Map();
+  private builtinAlpineDemBackup: Float32Array | null = null;
+  private hasCustomDemLoaded = false;
   private readonly rayMarchCache = new RayMarchCache();
   public get rayMarchCacheHits(): number { return this.rayMarchCache.hits; }
   public set rayMarchCacheHits(v: number) { this.rayMarchCache.hits = v; }
@@ -212,13 +223,15 @@ export class SimulationWorkerManager {
   }
 
   public get viewshedSinrGrid(): Float32Array | undefined {
-    return this.viewshedEnabled
+    return (this.viewshedEnabled && this.telemetrySubscriptions.viewshed)
       ? cloneToTransferableFloat32(this.viewshedEngine.getSinrGrid())
       : undefined;
   }
 
   public get relayAdvisor(): RelayAdvisorReport | undefined {
-    return this.relayAdvisorReport;
+    return this.telemetrySubscriptions.viewshed
+      ? this.relayAdvisorReport
+      : undefined;
   }
 
   public computeDelayQuantiles(nodes: readonly GroundNodeTrafficSubsystem[]): number[] {
@@ -912,8 +925,16 @@ export class SimulationWorkerManager {
       }
     }
 
-    // 6. Dispatch frame to main UI thread
-    if (emitTelemetry) {
+    // Step constellation/mobility physics at exact 50 Hz regardless of UI publish cadence
+    this.buildConstellationMobilityTelemetry(acnPos);
+
+    // 6. Dispatch frame to main UI thread (publish cadence never alters 50 Hz physics)
+    const shouldPublish = emitTelemetry && (
+      this.activeStepRequestId !== undefined ||
+      this.uiPublishIntervalTicks <= 1 ||
+      (this.frameIndex % this.uiPublishIntervalTicks === 0)
+    );
+    if (shouldPublish) {
       const frame = this.buildTelemetryFrame(acnPos);
       this.replayBuffer.push(t, frame, false);
       (frame as any).batch_spatial_snapshots = this.batchSpatialSnapshots.splice(0);
@@ -1356,7 +1377,7 @@ export class SimulationWorkerManager {
       }
 
       const ls = this.linkEngine.evaluateLink({
-        nodeType: node.nodeType, slantRangeM: slantM, diffractionLossDb: obstruction.diffractionLossDb,
+        nodeType: (node.nodeType as string) === 'convoy' ? 'vehicular' : node.nodeType, slantRangeM: slantM, diffractionLossDb: obstruction.diffractionLossDb,
         rf: this.rfConfig, env: this.envConfig, obstacleBlocked: obstruction.obstacleBlocked,
         customTxPowerDbm, sectorEval, nodeAltM: nz, acnAltM: acnPos[2],
         crestRadiusM: obstruction.crestRadiusM, curvatureLossDb: obstruction.curvatureLossDb,
@@ -1582,7 +1603,7 @@ export class SimulationWorkerManager {
           ));
 
           const hop1Link = this.linkEngine.evaluateLink({
-            nodeType: node.nodeType, slantRangeM: dHop1M, diffractionLossDb: hop1Obs.diffractionLossDb,
+            nodeType: (node.nodeType as string) === 'convoy' ? 'vehicular' : node.nodeType, slantRangeM: dHop1M, diffractionLossDb: hop1Obs.diffractionLossDb,
             rf: this.rfConfig, env: this.envConfig, obstacleBlocked: hop1Obs.obstacleBlocked,
             customTxPowerDbm: node.txPowerDbm, nodeAltM: node.position[2], acnAltM: relayPos[2],
             crestRadiusM: hop1Obs.crestRadiusM, curvatureLossDb: hop1Obs.curvatureLossDb,
@@ -1908,7 +1929,7 @@ export class SimulationWorkerManager {
     }
     const obstruction = this.obstructionResults.get(node.nodeId) ?? this.terrainEngine.evaluateTerrainObstruction(node.position, acnPos, this.rfConfig, this.envConfig);
     const linkStatus = this.linkStatuses.get(node.nodeId) ?? this.linkEngine.evaluateLink({
-      nodeType: node.nodeType,
+      nodeType: (node.nodeType as string) === 'convoy' ? 'vehicular' : node.nodeType,
       slantRangeM: Math.hypot(acnPos[0] - node.position[0], acnPos[1] - node.position[1], acnPos[2] - node.position[2]),
       diffractionLossDb: obstruction.diffractionLossDb, rf: this.rfConfig, env: this.envConfig,
       obstacleBlocked: obstruction.obstacleBlocked, customTxPowerDbm: node.txPowerDbm,
@@ -2055,11 +2076,11 @@ export class SimulationWorkerManager {
     this.ensureActiveNodesDomainEvaluations(acnPos);
     const activeNodes = this.schedulerMode === 'tac_tad' ? this.nodesTac : this.nodesStatic;
     const selNode = activeNodes.find((n) => n.nodeId === this.selectedNodeId) ?? activeNodes[0];
-    const fresnelSlice = this.buildFresnelSlice(selNode, acnPos);
+    const fresnelSlice = this.telemetrySubscriptions.linkProfile ? this.buildFresnelSlice(selNode, acnPos) : undefined;
     const frame = this.telemetrySerializer.buildTelemetryFrame(this, acnPos, fresnelSlice);
     (frame as any).transport_abr_telemetry = this.buildTransportAbrTelemetry();
     (frame as any).ew_eccm_telemetry = this.buildEwEccmTelemetry();
-    (frame as any).constellation_mobility_telemetry = this.buildConstellationMobilityTelemetry(acnPos);
+    (frame as any).constellation_mobility_telemetry = this.constellationMobilityTelemetry ?? this.buildConstellationMobilityTelemetry(acnPos);
     this.lastTelemetryFrame = frame;
     return frame;
   }
@@ -2498,6 +2519,7 @@ export class SimulationWorkerManager {
         if (v.weatherCells !== undefined) this.weatherCells = v.weatherCells;
 
         this.terrainEngine.setBiome(v.biomeId);
+        this.hasCustomDemLoaded = false;
         this.onDemUpdated(msg.request_id);
         return result(true);
       }
@@ -2509,11 +2531,15 @@ export class SimulationWorkerManager {
         if (!elevations || (!(elevations instanceof Float32Array) && !(elevations instanceof ArrayBuffer))) {
           return reject('elevations must be Float32Array or ArrayBuffer.');
         }
+        if (!this.hasCustomDemLoaded && this.biomeId === 'alpine_mountain' && this.terrainEngine.realDemGrid) {
+          this.builtinAlpineDemBackup = this.terrainEngine.realDemGrid;
+        }
 
         const success = this.terrainEngine.loadCustomDem(elevations, metadata);
         if (!success) {
           return reject('Failed to load custom DEM into terrain engine.');
         }
+        this.hasCustomDemLoaded = true;
 
         const bounds = this.onDemUpdated(msg.request_id);
         this.emitHostMessage({
@@ -2521,6 +2547,30 @@ export class SimulationWorkerManager {
           tile_name: metadata?.tileName ?? 'custom', resolution: metadata?.rasterWidth ?? 512, bounds,
         });
 
+        this.emitProfileFrame();
+        return result(true);
+      }
+
+      case 'UNLOAD_CUSTOM_TERRAIN': {
+        if (this.spatialLocked) return locked();
+        this.clearRayMarchCache();
+        if (this.biomeId === 'alpine_mountain') {
+          if (this.builtinAlpineDemBackup) {
+            this.terrainEngine.loadCustomDem(this.builtinAlpineDemBackup, REAL_LADAKH_DEM_METADATA);
+          } else {
+            this.terrainEngine.realDemGrid = null;
+            (this.terrainEngine as unknown as { _ladakhDemGrid: Float32Array | null })._ladakhDemGrid = null;
+            this.terrainEngine.hasRealDem = false;
+            this.terrainEngine.demMetadata = REAL_LADAKH_DEM_METADATA;
+            this.terrainEngine.setTerrainMode('synthetic');
+          }
+        } else {
+          this.terrainEngine.setBiome(this.biomeId);
+        }
+        this.hasCustomDemLoaded = false;
+        this.onDemUpdated(msg.request_id);
+        const { message: payload, transferList } = TerrainMeshGenerator.generate(this.terrainEngine, msg.request_id, 512);
+        this.emitHostMessage(payload, transferList);
         this.emitProfileFrame();
         return result(true);
       }
@@ -3030,6 +3080,20 @@ export class SimulationWorkerManager {
         return result(true);
       }
 
+      case 'SET_TELEMETRY_PROFILE': {
+        if (msg.subscriptions && typeof msg.subscriptions === 'object') {
+          const s = msg.subscriptions;
+          if (typeof s.linkProfile === 'boolean') this.telemetrySubscriptions.linkProfile = s.linkProfile;
+          if (typeof s.vsaConstellation === 'boolean') this.telemetrySubscriptions.vsaConstellation = s.vsaConstellation;
+          if (typeof s.pduDissector === 'boolean') this.telemetrySubscriptions.pduDissector = s.pduDissector;
+          if (typeof s.viewshed === 'boolean') this.telemetrySubscriptions.viewshed = s.viewshed;
+        }
+        if (typeof msg.uiPublishIntervalTicks === 'number' && Number.isFinite(msg.uiPublishIntervalTicks)) {
+          this.uiPublishIntervalTicks = Math.max(1, Math.min(4, Math.round(msg.uiPublishIntervalTicks)));
+        }
+        return result(true);
+      }
+
       case 'SET_AI_COPILOT_CONFIG': {
         if (typeof msg.buddyMeshEnabled === 'boolean') {
           this.aiBuddyMeshEnabled = msg.buddyMeshEnabled;
@@ -3059,6 +3123,7 @@ export class SimulationWorkerManager {
       let ok = false;
       if (demUrl && self.location?.origin === 'null') { const r = await fetch(demUrl); if (r.ok) { const b = await r.arrayBuffer(); if (b.byteLength >= 512 * 512 * 4) ok = this.terrainEngine.loadCustomDem(new Float32Array(b, 0, 512 * 512)); } } else { ok = await this.terrainEngine.loadRealSatelliteDem(demUrl); }
       if (ok) {
+        this.builtinAlpineDemBackup = this.terrainEngine.realDemGrid;
         console.log('[Worker] Real satellite DEM loaded successfully.');
         // Loading the DEM changes elevation samples while the nodes still carry
         // constructor-time fallback altitudes. Resample before starting the ticker.

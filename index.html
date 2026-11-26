@@ -3163,6 +3163,29 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
 
       <div id="doc-subview-diag">
       <section id="tab-diagnostics" class="tab-diagnostics-workspace">
+      <details id="system-health-hud" class="panel system-health-hud">
+        <summary class="panel-head" style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px">
+            <h3 style="margin:0;font-size:13px;font-weight:600;letter-spacing:0.04em">System Health &amp; Determinism HUD</h3>
+            <span id="syshealth-summary-kernel" class="kpi-badge badge-neutral">TS FALLBACK</span>
+          </div>
+          <span class="badge-sub" style="font-size:11px;opacity:0.75">Click to expand WASM / Air-Gap / State-Hash</span>
+        </summary>
+        <div class="diag-live-grid" aria-label="Live system health, air-gap, and determinism metrics" style="margin-top:10px">
+          <div class="diag-card"><span>Compute Kernel</span><strong id="syshealth-kernel-badge" class="kpi-badge badge-neutral">TS FALLBACK</strong></div>
+          <div class="diag-card"><span>Worker Pacing (p50 / p95)</span><strong id="syshealth-pacing">-- / -- ms</strong></div>
+          <div class="diag-card"><span>Runtime &amp; JS Heap</span><strong id="syshealth-runtime">Browser PWA · N/A</strong></div>
+          <div class="diag-card"><span>Network Posture</span><strong id="syshealth-airgap">AIR-GAP LOCKED (0 ext)</strong></div>
+          <div class="diag-card"><span>Determinism State Hash</span><strong id="syshealth-digest" style="font-family:var(--mono)">0x0000000000000000</strong></div>
+          <div class="diag-card">
+            <span>Flight Recorder</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <strong id="syshealth-rec-status">REC: 0 events</strong>
+              <button id="btn-syshealth-export-rec" type="button" class="btn" style="font-size:11px;padding:3px 8px">Export .stratos.json</button>
+            </div>
+          </div>
+        </div>
+      </details>
       <div class="diagnostics-panel panel" aria-labelledby="diagnostics-heading">
         <div class="panel-head">
           <h3 id="diagnostics-heading">Runtime diagnostics</h3>
@@ -4260,10 +4283,22 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
           <button id="btn-browse-terrain-file" type="button">Browse single file</button>
           <button id="btn-browse-terrain-folder" type="button" class="btn-primary">Select HGT folder…</button>
+          <button id="btn-cancel-hgt-load" type="button" hidden>Cancel Load</button>
+          <button id="btn-unload-custom-dem" type="button" hidden>Unload Custom DEM / Free RAM</button>
         </div>
       </div>
       <div id="upload-status" class="upload-status-box" style="display:none"></div>
       <div id="folder-patch-controls" style="display:none;margin-top:12px;padding:12px;background:var(--hi-void);border:1px solid var(--hi-line-strong);border-radius:6px;font-size:12px"></div>
+      <div id="offline-pack-controls" style="margin-top:12px;padding:10px 12px;background:var(--hi-void);border:1px solid var(--hi-line-strong);border-radius:6px;font-size:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-weight:600;color:var(--text)">Offline Mission Packs (Persistent Local Store)</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span id="offline-pack-summary" style="font-size:11px;color:var(--text-muted)">0 cached</span>
+            <button id="btn-clear-offline-packs" type="button" class="btn-sm">Clear Offline Packs</button>
+          </div>
+        </div>
+        <div id="offline-pack-list" style="margin-top:6px;font-size:11px;color:var(--text-muted)"></div>
+      </div>
     </div>
   </div>
 </div>

@@ -459,6 +459,7 @@ export class WorldTileLayer {
   private originLonDeg: number;
   private readonly cache = new Map<string, CachedTileEntry>();
   private accessTick = 0;
+  private loadGeneration = 0;
   private pendingNotify = false;
 
   constructor(options: WorldTileLayerOptions = {}) {
@@ -524,16 +525,21 @@ export class WorldTileLayer {
     const clampedLat = Math.max(-MAX_MERCATOR_LAT_DEG, Math.min(MAX_MERCATOR_LAT_DEG, latDeg));
     this.originLatDeg = clampedLat;
     this.originLonDeg = lonDeg;
+    this.loadGeneration++;
   }
 
   public getOrigin(): { latDeg: number; lonDeg: number } {
     return { latDeg: this.originLatDeg, lonDeg: this.originLonDeg };
   }
 
+  public getLoadGeneration(): number {
+    return this.loadGeneration;
+  }
+
   public setTileUrlTemplate(template: string): void {
     if (template && template !== this.tileUrlTemplate) {
       this.tileUrlTemplate = template;
-      this.cache.clear();
+      this.clear();
     }
   }
 
@@ -549,11 +555,49 @@ export class WorldTileLayer {
     return count;
   }
 
+  private releaseEntryMemory(entry: CachedTileEntry | undefined): void {
+    if (!entry) return;
+    const src = entry.source as unknown as {
+      width?: number;
+      height?: number;
+      getContext?: unknown;
+      src?: string;
+      onload?: unknown;
+      onerror?: unknown;
+    };
+    const isCanvasLike =
+      typeof src.getContext === 'function' ||
+      (typeof HTMLCanvasElement !== 'undefined' && entry.source instanceof HTMLCanvasElement) ||
+      (!('src' in src) && typeof src.width === 'number' && typeof src.height === 'number');
+    if (isCanvasLike) {
+      src.width = 0;
+      src.height = 0;
+    } else if ('src' in src) {
+      try {
+        src.onload = null;
+        src.onerror = null;
+      } catch {
+        // Ignore read-only mock properties
+      }
+    }
+    entry.width = 0;
+    entry.height = 0;
+  }
+
+  public clear(): void {
+    this.loadGeneration++;
+    for (const entry of this.cache.values()) {
+      this.releaseEntryMemory(entry);
+    }
+    this.cache.clear();
+  }
+
   private evictIfNeeded(): void {
     if (this.cache.size <= this.maxCacheSize) return;
     const entries = Array.from(this.cache.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed);
     const excess = this.cache.size - Math.floor(this.maxCacheSize * 0.8);
     for (let i = 0; i < excess && i < entries.length; i++) {
+      this.releaseEntryMemory(entries[i][1]);
       this.cache.delete(entries[i][0]);
     }
   }
@@ -666,8 +710,28 @@ export class WorldTileLayer {
         const capturedEntry = entry;
         const capturedZ = tile.z;
         const capturedTy = tile.ty;
+        const capturedKey = tile.key;
+        const capturedGeneration = this.loadGeneration;
         img.onload = () => {
+          if (
+            capturedGeneration !== this.loadGeneration ||
+            this.cache.get(capturedKey) !== capturedEntry
+          ) {
+            img.onload = null;
+            img.onerror = null;
+            return;
+          }
           const rendered = this.buildRadarTileCanvas(img, capturedZ, capturedTy);
+          if (
+            capturedGeneration !== this.loadGeneration ||
+            this.cache.get(capturedKey) !== capturedEntry
+          ) {
+            if (rendered !== img && 'width' in rendered) {
+              (rendered as HTMLCanvasElement).width = 0;
+              (rendered as HTMLCanvasElement).height = 0;
+            }
+            return;
+          }
           capturedEntry.source = rendered;
           capturedEntry.width = img.naturalWidth || 256;
           capturedEntry.height = img.naturalHeight || 256;
@@ -676,6 +740,12 @@ export class WorldTileLayer {
           triggerNotify();
         };
         img.onerror = () => {
+          if (
+            capturedGeneration !== this.loadGeneration ||
+            this.cache.get(capturedKey) !== capturedEntry
+          ) {
+            return;
+          }
           capturedEntry.status = 'error';
           capturedEntry.errorTimestampMs = Date.now();
         };

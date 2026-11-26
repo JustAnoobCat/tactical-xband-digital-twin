@@ -66,6 +66,14 @@ import type {
   TelemetryFrame,
   WorkerInboundCommand,
 } from '../../shared/workerProtocol';
+import {
+  EventSourcedFlightRecorder,
+  parseFlightRecordingJson,
+  replayFlightRecordingHeadless,
+  type FlightRecordingV1,
+  type FlightReplayResult,
+  type ReplayableSimulationManager,
+} from '../../core/flightRecorder';
 
 // ============================================================================
 // Types & Contracts
@@ -74,6 +82,13 @@ import type {
 export interface MissionTelemetrySnapshot {
   readonly sim_time_s?: number;
   readonly frame_index?: number;
+  readonly trajectory_config?: {
+    readonly trajectory_mode?: 'ellipse' | 'waypoints';
+    readonly loiter_speed_mps?: number;
+    readonly current_speed_mps?: number;
+    readonly acn_altitude_m?: number;
+    readonly waypoints?: ReadonlyArray<{ readonly x_m?: number; readonly y_m?: number; readonly z_m?: number }>;
+  };
   readonly acn_telemetry?: {
     readonly pos_x?: number;
     readonly pos_y?: number;
@@ -81,6 +96,8 @@ export interface MissionTelemetrySnapshot {
     readonly lat_deg?: number;
     readonly lon_deg?: number;
     readonly altitude_msl_m?: number;
+    readonly target_speed_mps?: number;
+    readonly current_speed_mps?: number;
     readonly flight_path?: ReadonlyArray<readonly [number, number]>;
     readonly flight_path_3d?: ReadonlyArray<readonly [number, number, number]>;
   };
@@ -104,6 +121,7 @@ export interface MissionTelemetrySnapshot {
     readonly sinr_db?: number;
     readonly tactical_priority?: number;
     readonly priority?: number;
+    readonly tx_power_dbm?: number;
     readonly is_transmitting?: boolean;
     readonly active_sector_id?: number;
     readonly sector_id?: number;
@@ -115,9 +133,17 @@ export interface MissionTelemetrySnapshot {
     readonly status?: string;
     readonly in_outage?: boolean;
   }>;
+  readonly selected_link_budget?: {
+    readonly channel_bandwidth_hz?: number;
+  };
   readonly active_gantt_allocations?: ReadonlyArray<unknown>;
   readonly jammer_enabled?: boolean;
+  readonly jammer_eirp_dbm?: number;
   readonly jammer_pos_enu?: readonly [number, number, number];
+  readonly rain_rate_mmh?: number;
+  readonly traffic_load_multiplier?: number;
+  readonly rician_fading_enabled?: boolean;
+  readonly active_relay_enabled?: boolean;
   readonly flight_path?: ReadonlyArray<{ readonly x?: number; readonly y?: number; readonly alt?: number } | readonly [number, number, number] | readonly [number, number]>;
   readonly comparative_kpi_dashboard?: {
     readonly static_goodput_mb?: number;
@@ -164,7 +190,13 @@ export interface MissionIoControllerDeps {
   readonly onDrawRadar?: () => void;
   readonly onLoadCustomDem?: (elevations: Float32Array, meta: unknown) => void;
   readonly postWorkerCommand?: (cmd: WorkerInboundCommand) => void;
+  readonly getFlightRecorder?: () => EventSourcedFlightRecorder | null;
   readonly documentRef?: Document;
+}
+
+export interface FlightImportReplayOutcome extends FlightReplayResult {
+  readonly recording?: FlightRecordingV1;
+  readonly error?: string;
 }
 
 export interface MissionIoController {
@@ -180,6 +212,11 @@ export interface MissionIoController {
   readonly exportScenarioJson: () => string;
   readonly exportKml: () => string;
   readonly exportCotXml: () => string;
+  readonly exportFlightRecording: (pretty?: boolean) => string;
+  readonly importAndReplayFlightRecording: (
+    rawJson: string,
+    managerFactory: (recording: FlightRecordingV1) => ReplayableSimulationManager
+  ) => FlightImportReplayOutcome;
   readonly initAarExporterUI: () => void;
   readonly buildCurrentAarSnapshot: (frameOverride?: MissionTelemetryInput | null) => AarMissionSnapshot;
   readonly exportAarMarkdown: () => string;
@@ -193,6 +230,10 @@ export interface MissionIoController {
 // ============================================================================
 // Controller Factory
 // ============================================================================
+
+const MAX_CALIBRATION_CSV_BYTES = 25 * 1024 * 1024; // 25 MB upload cap
+let activeCalibrationScopeRenderer: (() => void) | null = null;
+let cvdListenerRegistered = false;
 
 export function triggerDownload(
   content: string,
@@ -361,8 +402,16 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
       fileInput.addEventListener('change', () => {
         const file = fileInput.files?.[0];
         if (!file) return;
+        if (file.size > MAX_CALIBRATION_CSV_BYTES) {
+          if (statusEl) {
+            statusEl.textContent = `CSV file "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds 25 MB upload cap.`;
+          }
+          fileInput.value = '';
+          return;
+        }
         const reader = new FileReader();
         reader.onload = (e) => {
+          fileInput.value = '';
           const text = e.target?.result;
           if (typeof text !== 'string') return;
           const parseRes = parseFlightTestTraceCsv(text);
@@ -386,6 +435,12 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
             } skipped). RMSE: ${activeCalReport.rmseDb.toFixed(2)} dB [${
               activeCalReport.verdict
             }].`;
+          }
+        };
+        reader.onerror = () => {
+          fileInput.value = '';
+          if (statusEl) {
+            statusEl.textContent = `Failed to read CSV file "${file.name}".`;
           }
         };
         reader.readAsText(file);
@@ -473,9 +528,11 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
       });
     }
 
-    if (typeof window !== 'undefined') {
+    activeCalibrationScopeRenderer = renderTwinCalibrationScope;
+    if (typeof window !== 'undefined' && !cvdListenerRegistered) {
+      cvdListenerRegistered = true;
       window.addEventListener('c2:cvd-mode-change', () => {
-        renderTwinCalibrationScope();
+        activeCalibrationScopeRenderer?.();
       });
     }
 
@@ -695,27 +752,61 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
     const rawNodes: readonly MissionSnapshotNode[] = Array.isArray(frame?.nodes_telemetry)
       ? (frame.nodes_telemetry as readonly MissionSnapshotNode[])
       : [];
-    const nodes = rawNodes.map((n, idx) => ({
-      id: n.node_id ?? n.id ?? idx + 1,
-      callsign: n.name || n.callsign || `NODE-${idx + 1}`,
-      xM: n.x_m ?? 0,
-      yM: n.y_m ?? 0,
-      aglM: n.agl_m ?? 2.5,
-      tacticalPriority: n.tactical_priority ?? n.priority ?? 3,
-    }));
+    const nodes = rawNodes.map((n, idx) => {
+      const nid = n.node_id ?? n.id ?? idx + 1;
+      const rawRole = (
+        typeof n.node_type === 'string' && n.node_type.trim().length > 0
+          ? n.node_type
+          : typeof n.role === 'string'
+            ? n.role
+            : ''
+      )
+        .trim()
+        .toLowerCase();
+      const role =
+        rawRole === 'mcp' || rawRole === 'convoy' || rawRole === 'soldier'
+          ? rawRole
+          : nid === MCP_ID
+            ? 'mcp'
+            : 'soldier';
+      const txPowerDbm =
+        typeof (n as { tx_power_dbm?: unknown }).tx_power_dbm === 'number' &&
+        Number.isFinite((n as { tx_power_dbm: number }).tx_power_dbm)
+          ? (n as { tx_power_dbm: number }).tx_power_dbm
+          : role === 'mcp' || role === 'convoy'
+            ? 43.0
+            : 36.0;
+      return {
+        id: nid,
+        callsign: n.name || n.callsign || `NODE-${idx + 1}`,
+        role,
+        xM: n.x_m ?? 0,
+        yM: n.y_m ?? 0,
+        aglM: n.agl_m ?? 2.5,
+        tacticalPriority: n.tactical_priority ?? n.priority ?? 3,
+        tx_power_dbm: txPowerDbm,
+      };
+    });
 
+    const trajCfg = (frame as MissionTelemetrySnapshot | null | undefined)?.trajectory_config;
     const acnPath =
-      (frame?.acn_telemetry as { readonly flight_path_3d?: ReadonlyArray<readonly [number, number, number]>; readonly flight_path?: ReadonlyArray<readonly [number, number]> } | undefined)?.flight_path_3d ??
-      (frame?.acn_telemetry as { readonly flight_path?: ReadonlyArray<readonly [number, number]> } | undefined)?.flight_path ??
-      (frame as MissionTelemetrySnapshot | null | undefined)?.flight_path;
+      Array.isArray(trajCfg?.waypoints) && trajCfg.waypoints.length > 0
+        ? trajCfg.waypoints
+        : (frame?.acn_telemetry as { readonly flight_path_3d?: ReadonlyArray<readonly [number, number, number]>; readonly flight_path?: ReadonlyArray<readonly [number, number]> } | undefined)?.flight_path_3d ??
+          (frame?.acn_telemetry as { readonly flight_path?: ReadonlyArray<readonly [number, number]> } | undefined)?.flight_path ??
+          (frame as MissionTelemetrySnapshot | null | undefined)?.flight_path;
 
     const waypoints = Array.isArray(acnPath)
       ? acnPath.map((wp) => {
           if (Array.isArray(wp)) {
             return { xM: wp[0] ?? 0, yM: wp[1] ?? 0, altM: wp[2] ?? frame?.acn_telemetry?.altitude_msl_m ?? 5000 };
           }
-          const obj = wp as { readonly x?: number; readonly y?: number; readonly alt?: number };
-          return { xM: obj.x ?? 0, yM: obj.y ?? 0, altM: obj.alt ?? 5000 };
+          const obj = wp as { readonly x_m?: number; readonly y_m?: number; readonly z_m?: number; readonly x?: number; readonly y?: number; readonly alt?: number };
+          return {
+            xM: obj.x_m ?? obj.x ?? 0,
+            yM: obj.y_m ?? obj.y ?? 0,
+            altM: obj.z_m ?? obj.alt ?? frame?.acn_telemetry?.altitude_msl_m ?? 5000,
+          };
         })
       : [];
 
@@ -740,11 +831,68 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
 
     const patternSelect = $('fp-pattern-select') as HTMLSelectElement | null;
     const { biomeId, centerLatDeg, centerLonDeg } = resolveBiomeCenter(
-      deps?.getActiveBiomeId ? deps.getActiveBiomeId() : undefined
+      (frame as MissionTelemetrySnapshot | null | undefined)?.biome_id ??
+        (deps?.getActiveBiomeId ? deps.getActiveBiomeId() : undefined)
     );
+    const biomeDef = THEATER_BIOMES[biomeId] ?? THEATER_BIOMES.alpine_mountain;
+
+    const rawSpeed =
+      trajCfg?.loiter_speed_mps ??
+      (frame?.acn_telemetry as { readonly target_speed_mps?: number } | undefined)?.target_speed_mps ??
+      (frame?.acn_telemetry as { readonly current_speed_mps?: number } | undefined)?.current_speed_mps;
+    const cruiseAirspeedMs =
+      typeof rawSpeed === 'number' && Number.isFinite(rawSpeed) ? rawSpeed : 50;
+
+    const freqInput = $('param-freq') as HTMLInputElement | null;
+    const rainInput = $('param-rain') as HTMLInputElement | null;
+    const bwInput = $('param-bw') as HTMLInputElement | null;
+    const trafficSelect = $('sci-traffic-scale-select') as HTMLSelectElement | null;
+
+    const freqGhz = freqInput ? parseFloat(freqInput.value) : Number.NaN;
+    const carrierFreqHz = Number.isFinite(freqGhz) && freqGhz > 0 ? freqGhz * 1e9 : 8.0e9;
+
+    const snapRain = (frame as MissionTelemetrySnapshot | null | undefined)?.rain_rate_mmh;
+    const domRain = rainInput ? parseFloat(rainInput.value) : Number.NaN;
+    const rainRateMmh =
+      typeof snapRain === 'number' && Number.isFinite(snapRain)
+        ? snapRain
+        : Number.isFinite(domRain) && domRain >= 0
+          ? domRain
+          : 0.0;
+
+    const snapBw = (frame?.selected_link_budget as { readonly channel_bandwidth_hz?: number } | undefined)?.channel_bandwidth_hz;
+    const domBwMhz = bwInput ? parseFloat(bwInput.value) : Number.NaN;
+    const channelBandwidthHz =
+      typeof snapBw === 'number' && Number.isFinite(snapBw) && snapBw > 0
+        ? snapBw
+        : Number.isFinite(domBwMhz) && domBwMhz > 0
+          ? domBwMhz * 1e6
+          : 1.0e6;
+
+    const snapTraffic = (frame as MissionTelemetrySnapshot | null | undefined)?.traffic_load_multiplier;
+    const domTraffic = trafficSelect ? parseFloat(trafficSelect.value) : Number.NaN;
+    const trafficScale =
+      typeof snapTraffic === 'number' && Number.isFinite(snapTraffic)
+        ? snapTraffic
+        : Number.isFinite(domTraffic)
+          ? domTraffic
+          : 1.0;
+
+    const jammerEnabled = Boolean((frame as MissionTelemetrySnapshot | null | undefined)?.jammer_enabled);
+    const snapJammerEirp = (frame as MissionTelemetrySnapshot | null | undefined)?.jammer_eirp_dbm;
+    const jammerEirpDbm =
+      typeof snapJammerEirp === 'number' && Number.isFinite(snapJammerEirp) ? snapJammerEirp : 65.0;
+    const enableRicianFading = Boolean((frame as MissionTelemetrySnapshot | null | undefined)?.rician_fading_enabled);
+    const enableActiveRelay = Boolean((frame as MissionTelemetrySnapshot | null | undefined)?.active_relay_enabled);
+
+    const orbitPattern =
+      trajCfg?.trajectory_mode === 'waypoints'
+        ? 'waypoints'
+        : patternSelect?.value || 'ellipse_orbit';
+
     const scenario: MissionScenarioV3 = {
       schemaVersion: 'xband-dt-scenario-v3',
-      title: 'Tactical Ladakh Sector Mission',
+      title: `Tactical ${biomeDef.name} Mission`,
       timestamp: new Date().toISOString(),
       theater: {
         biomeId,
@@ -754,15 +902,21 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
       acn: {
         callsign: 'VIPER-01',
         cruiseAltMslM: frame?.acn_telemetry?.altitude_msl_m ?? 5000,
-        cruiseAirspeedMs: 50,
-        orbitPattern: patternSelect?.value || 'ellipse_orbit',
+        cruiseAirspeedMs,
+        orbitPattern,
         waypoints,
       },
       nodes,
       obstacles,
       rfConfig: {
-        carrier_freq_hz: 8.0e9,
-        traffic_scale: 1.0,
+        carrier_freq_hz: carrierFreqHz,
+        channel_bandwidth_hz: channelBandwidthHz,
+        rain_rate_mmh: rainRateMmh,
+        traffic_scale: trafficScale,
+        jammer_enabled: jammerEnabled,
+        jammer_eirp_dbm: jammerEirpDbm,
+        enable_rician_fading: enableRicianFading,
+        enable_active_relay: enableActiveRelay,
       },
     };
 
@@ -1065,17 +1219,17 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
         Number.isFinite(v)
       ) {
         trafficLoadMultiplier = v;
-      } else if (k === 'jammerEnabled' && typeof v === 'boolean') {
+      } else if ((k === 'jammerEnabled' || k === 'jammer_enabled') && typeof v === 'boolean') {
         jammerEnabled = v;
-      } else if (k === 'jammerEirpDbm' && typeof v === 'number' && Number.isFinite(v)) {
+      } else if ((k === 'jammerEirpDbm' || k === 'jammer_eirp_dbm') && typeof v === 'number' && Number.isFinite(v)) {
         jammerEirpDbm = v;
-      } else if (k === 'ricianFadingEnabled' && typeof v === 'boolean') {
+      } else if ((k === 'ricianFadingEnabled' || k === 'enable_rician_fading') && typeof v === 'boolean') {
         ricianFadingEnabled = v;
       } else if (k === 'cqiFeedbackDelayMs' && typeof v === 'number' && Number.isFinite(v)) {
         cqiFeedbackDelayMs = v;
       } else if (k === 'earthRadiusFactorK' && typeof v === 'number' && Number.isFinite(v)) {
         earthRadiusFactorK = v;
-      } else if (k === 'activeRelayEnabled' && typeof v === 'boolean') {
+      } else if ((k === 'activeRelayEnabled' || k === 'enable_active_relay') && typeof v === 'boolean') {
         activeRelayEnabled = v;
       } else {
         unsupportedFields.push(`rfConfig.${k}`);
@@ -1192,6 +1346,16 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
 
     for (const sn of scenario.nodes) {
       const clampedPriority = Math.max(0.1, Math.min(5.0, sn.tacticalPriority));
+      const rawNodeRole = typeof sn.role === 'string' ? sn.role.trim().toLowerCase() : undefined;
+      const explicitRole =
+        rawNodeRole === 'soldier' || rawNodeRole === 'mcp' || rawNodeRole === 'convoy'
+          ? rawNodeRole
+          : undefined;
+      const rawTx = sn.tx_power_dbm ?? sn.txPowerDbm;
+      const txPowerDbm =
+        typeof rawTx === 'number' && Number.isFinite(rawTx)
+          ? Math.max(10.0, Math.min(50.0, rawTx))
+          : undefined;
       if (liveIds.has(sn.id)) {
         commands.push({
           type: 'NODE_UPDATE',
@@ -1200,11 +1364,14 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
           y_m: sn.yM,
           agl_m: sn.aglM,
           callsign: sn.callsign,
+          ...(explicitRole !== undefined ? { role: explicitRole } : {}),
+          ...(txPowerDbm !== undefined ? { tx_power_dbm: txPowerDbm } : {}),
           tactical_priority: clampedPriority,
         });
       } else {
         const inferredRole =
-          sn.id === MCP_ID || sn.callsign.trim().toUpperCase() === 'MCP' ? 'mcp' : 'soldier';
+          explicitRole ??
+          (sn.id === MCP_ID || sn.callsign.trim().toUpperCase() === 'MCP' ? 'mcp' : 'soldier');
         commands.push({
           type: 'NODE_ADD',
           role: inferredRole,
@@ -1212,6 +1379,7 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
           y_m: sn.yM,
           agl_m: sn.aglM,
           callsign: sn.callsign,
+          ...(txPowerDbm !== undefined ? { tx_power_dbm: txPowerDbm } : {}),
           tactical_priority: clampedPriority,
         });
       }
@@ -1296,6 +1464,7 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (e) => {
+          fileInput.value = '';
           const text = e.target?.result;
           if (typeof text !== 'string') return;
           const applyRes = applyScenarioJson(text);
@@ -1317,6 +1486,13 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
               `Loaded "${applyRes.title}" (${applyRes.nodeCount} nodes, ${applyRes.waypointCount} WPs; ` +
               `dispatched ${applyRes.dispatchedCount} worker cmd(s)).${unappliedNote}`;
             statusEl.style.color = applyRes.unsupportedFields.length > 0 ? '#f59e0b' : '#38bdf8';
+          }
+        };
+        reader.onerror = () => {
+          fileInput.value = '';
+          if (statusEl) {
+            statusEl.textContent = `Scenario Load Failed: Could not read file "${file.name}".`;
+            statusEl.style.color = '#ef4444';
           }
         };
         reader.readAsText(file);
@@ -1396,6 +1572,36 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
     }
   }
 
+  function exportFlightRecording(pretty: boolean = false): string {
+    const recorder = deps?.getFlightRecorder?.();
+    if (!recorder) {
+      throw new Error('Flight recorder is not initialized.');
+    }
+    return recorder.toJson(pretty);
+  }
+
+  function importAndReplayFlightRecording(
+    rawJson: string,
+    managerFactory: (recording: FlightRecordingV1) => ReplayableSimulationManager
+  ): FlightImportReplayOutcome {
+    try {
+      const recording = parseFlightRecordingJson(rawJson);
+      const replayRes = replayFlightRecordingHeadless(recording, managerFactory);
+      return {
+        ...replayRes,
+        recording,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        expectedDigest: '',
+        actualDigest: '',
+        totalTicks: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   return {
     initDigitalTwinCalibrationUI,
     renderTwinCalibrationScope,
@@ -1409,6 +1615,8 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
     exportScenarioJson,
     exportKml,
     exportCotXml,
+    exportFlightRecording,
+    importAndReplayFlightRecording,
     initAarExporterUI,
     buildCurrentAarSnapshot,
     exportAarMarkdown,

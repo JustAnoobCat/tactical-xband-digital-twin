@@ -14,10 +14,10 @@ import {
   TerrainMeshResolution,
 } from './threeTypes';
 import {
-  APPROVED_SKIRT_BASE_MSL_M,
   buildBalancedDemGeometry,
   buildNativeDemGeometry,
   buildPerimeterSkirtGeometry,
+  computeDynamicSkirtBaseMslM,
   sampleDemBilinear,
 } from './terrainBuilder';
 
@@ -147,7 +147,8 @@ export function buildOptimizedTerrainGeometrySet(
     meshGeometry = buildBalancedDemGeometry(data);
   }
 
-  const skirtGeometry = buildPerimeterSkirtGeometry(data, resolution, APPROVED_SKIRT_BASE_MSL_M);
+  const skirtBaseMslM = computeDynamicSkirtBaseMslM(data.minElevationM);
+  const skirtGeometry = buildPerimeterSkirtGeometry(data, resolution, skirtBaseMslM);
   const vertexCount = meshGeometry.getAttribute('position').count;
   const triangleCount = meshGeometry.getIndex() ? meshGeometry.getIndex()!.count / 3 : 0;
 

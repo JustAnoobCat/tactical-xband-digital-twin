@@ -11,6 +11,7 @@
 import initWasm, {
   initSync,
   wasm_compute_polar_viewshed,
+  wasm_compute_polar_viewshed_slice,
   wasm_evaluate_batch_rays,
   wasm_generate_hillshade_rgba,
   wasm_knife_edge_loss_db,
@@ -171,17 +172,7 @@ export interface WasmPolarViewshedParams {
 
 const SHARED_VIEWSHED_PARAMS = new Float64Array(31);
 
-export function wasmComputePolarViewshed(
-  dem: Float32Array,
-  cols: number,
-  rows: number,
-  minX: number,
-  maxX: number,
-  minY: number,
-  maxY: number,
-  p: WasmPolarViewshedParams
-): Float32Array | null {
-  if (!wasmReady) return null;
+function packViewshedParams(p: WasmPolarViewshedParams): Float64Array {
   const arr = SHARED_VIEWSHED_PARAMS;
   arr[0] = p.rMinM;
   arr[1] = p.rStepM;
@@ -215,6 +206,21 @@ export function wasmComputePolarViewshed(
   arr[28] = jb ? jb[1] : -150.0;
   arr[29] = jb ? jb[2] : -150.0;
   arr[30] = jb ? jb[3] : -150.0;
+  return arr;
+}
+
+export function wasmComputePolarViewshed(
+  dem: Float32Array,
+  cols: number,
+  rows: number,
+  minX: number,
+  maxX: number,
+  minY: number,
+  maxY: number,
+  p: WasmPolarViewshedParams
+): Float32Array | null {
+  if (!wasmReady) return null;
+  const arr = packViewshedParams(p);
 
   return wasm_compute_polar_viewshed(
     dem,
@@ -226,6 +232,41 @@ export function wasmComputePolarViewshed(
     maxY,
     p.numBearings,
     p.numRanges,
+    arr
+  );
+}
+
+export function wasmComputePolarViewshedSlice(
+  dem: Float32Array,
+  cols: number,
+  rows: number,
+  minX: number,
+  maxX: number,
+  minY: number,
+  maxY: number,
+  startBearing: number,
+  bearingCount: number,
+  p: WasmPolarViewshedParams
+): Float32Array | null {
+  if (!wasmReady) return null;
+  const nb = Math.max(0, Math.trunc(p.numBearings));
+  const count = Math.max(0, Math.trunc(bearingCount));
+  if (nb === 0 || count === 0) return new Float32Array(0);
+  const normStart = ((Math.trunc(startBearing) % nb) + nb) % nb;
+  const arr = packViewshedParams(p);
+
+  return wasm_compute_polar_viewshed_slice(
+    dem,
+    cols,
+    rows,
+    minX,
+    maxX,
+    minY,
+    maxY,
+    nb,
+    p.numRanges,
+    normStart,
+    count,
     arr
   );
 }

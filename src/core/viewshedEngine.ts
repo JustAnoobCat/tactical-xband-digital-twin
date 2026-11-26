@@ -16,7 +16,12 @@ import { TerrainEngine, TerrainObstruction } from './terrain';
 import { QuadSectorAntennaEngine, AcnAttitudeState, worldLosToBodyFrame } from './antennaArray';
 import { LinkBudgetEngine, LinkStatus } from './linkBudget';
 import { THEATER_BIOMES } from './biomePhysics';
-import { isWasmPhysicsReady, wasmComputePolarViewshed } from './wasmPhysicsBridge';
+import {
+  isWasmPhysicsReady,
+  wasmComputePolarViewshed,
+  wasmComputePolarViewshedSlice,
+  type WasmPolarViewshedParams,
+} from './wasmPhysicsBridge';
 import type { ACNTrajectory } from './trajectory';
 
 export const NUM_AZIMUTHS = 36; // 10° angular steps: 0°, 10°, ..., 350°
@@ -472,6 +477,68 @@ export class PolarViewshedEngine {
     }
   }
 
+  private canUseWasmViewshed(
+    terrain: TerrainEngine,
+    env: EnvironmentConfig,
+    fidelityMode: 'fast' | 'link-budget-parity'
+  ): boolean {
+    return (
+      isWasmPhysicsReady() &&
+      fidelityMode === 'fast' &&
+      terrain.terrainMode === 'real' &&
+      terrain.hasRealDem &&
+      Boolean(terrain.realDemGrid) &&
+      terrain.obstacleField.all.length === 0 &&
+      !((terrain as unknown as { customElevationFn?: unknown }).customElevationFn) &&
+      (env.demLookaheadErrorStdM ?? 0) <= 0
+    );
+  }
+
+  private buildWasmViewshedParams(
+    acnPos: Position3D,
+    acnVel: Position3D,
+    terrain: TerrainEngine,
+    rf: RFConfig,
+    env: EnvironmentConfig,
+    attitudeOverride?: AcnAttitudeState,
+    jammerInterferenceBySector?: readonly [number, number, number, number]
+  ): WasmPolarViewshedParams {
+    const attitude = attitudeOverride ?? this.antennaEngine.computeAcnAttitude(acnVel);
+    const { txPowerDbm: soldierTxPowerDbm, antennaGainDbi: soldierAntennaGainDbi } =
+      rf.getTransmitterParams('soldier');
+    const freezingIsothermM = THEATER_BIOMES[terrain.activeBiomeId]?.freezingIsothermM ?? 4800.0;
+    return {
+      numBearings: NUM_AZIMUTHS,
+      numRanges: NUM_RANGES,
+      rMinM: R_MIN_M,
+      rStepM: R_STEP_M,
+      acnPos,
+      headingDeg: attitude.headingDeg,
+      pitchDeg: attitude.pitchDeg,
+      bankDeg: attitude.bankDeg,
+      carrierFreqHz: rf.carrierFrequencyHz,
+      speedOfLight: rf.speedOfLight,
+      channelBandwidthHz: rf.channelBandwidthHz,
+      acnAntennaGainDbi: rf.acnAntennaGainDbi,
+      acnNoiseFigureDb: rf.acnNoiseFigureDb,
+      soldierTxPowerDbm,
+      soldierAntennaGainDbi,
+      cableLossDb: rf.cableLossDb,
+      implementationMarginDb: rf.implementationMarginDb,
+      boltzmannConstant: rf.boltzmannConstant,
+      hpbwAzDeg: rf.acnSectorHpbwAzDeg ?? 90.0,
+      hpbwElDeg: rf.acnSectorHpbwElDeg ?? 65.0,
+      downtiltDeg: rf.acnSectorDowntiltDeg ?? -15.0,
+      rEffM: env.effectiveEarthRadiusM,
+      atmosphericTempK: env.atmosphericTemperatureK,
+      rainRateMmH: env.rainRateMmH ?? 0.0,
+      rainCellLengthKm: env.rainCellLengthKm ?? 10.0,
+      freezingIsothermM,
+      jammerEnabled: Boolean(env.jammerEnabled),
+      jammerBySector: jammerInterferenceBySector,
+    };
+  }
+
   private tryComputeWasmSweep(
     acnPos: Position3D,
     acnVel: Position3D,
@@ -482,25 +549,10 @@ export class PolarViewshedEngine {
     jammerInterferenceBySector?: readonly [number, number, number, number],
     fidelityMode: 'fast' | 'link-budget-parity' = 'fast'
   ): Float32Array | null {
-    if (
-      !isWasmPhysicsReady() ||
-      fidelityMode !== 'fast' ||
-      terrain.terrainMode !== 'real' ||
-      !terrain.hasRealDem ||
-      !terrain.realDemGrid ||
-      terrain.obstacleField.all.length > 0 ||
-      Boolean((terrain as unknown as { customElevationFn?: unknown }).customElevationFn) ||
-      (env.demLookaheadErrorStdM ?? 0) > 0
-    ) {
+    if (!this.canUseWasmViewshed(terrain, env, fidelityMode) || !terrain.realDemGrid) {
       return null;
     }
-
     const bounds = terrain.getTerrainBoundsTelemetry();
-    const attitude = attitudeOverride ?? this.antennaEngine.computeAcnAttitude(acnVel);
-    const { txPowerDbm: soldierTxPowerDbm, antennaGainDbi: soldierAntennaGainDbi } =
-      rf.getTransmitterParams('soldier');
-    const freezingIsothermM = THEATER_BIOMES[terrain.activeBiomeId]?.freezingIsothermM ?? 4800.0;
-
     return wasmComputePolarViewshed(
       terrain.realDemGrid,
       bounds.rasterWidth,
@@ -509,37 +561,106 @@ export class PolarViewshedEngine {
       bounds.maxX,
       bounds.minY,
       bounds.maxY,
-      {
-        numBearings: NUM_AZIMUTHS,
-        numRanges: NUM_RANGES,
-        rMinM: R_MIN_M,
-        rStepM: R_STEP_M,
-        acnPos,
-        headingDeg: attitude.headingDeg,
-        pitchDeg: attitude.pitchDeg,
-        bankDeg: attitude.bankDeg,
-        carrierFreqHz: rf.carrierFrequencyHz,
-        speedOfLight: rf.speedOfLight,
-        channelBandwidthHz: rf.channelBandwidthHz,
-        acnAntennaGainDbi: rf.acnAntennaGainDbi,
-        acnNoiseFigureDb: rf.acnNoiseFigureDb,
-        soldierTxPowerDbm,
-        soldierAntennaGainDbi,
-        cableLossDb: rf.cableLossDb,
-        implementationMarginDb: rf.implementationMarginDb,
-        boltzmannConstant: rf.boltzmannConstant,
-        hpbwAzDeg: rf.acnSectorHpbwAzDeg ?? 90.0,
-        hpbwElDeg: rf.acnSectorHpbwElDeg ?? 65.0,
-        downtiltDeg: rf.acnSectorDowntiltDeg ?? -15.0,
-        rEffM: env.effectiveEarthRadiusM,
-        atmosphericTempK: env.atmosphericTemperatureK,
-        rainRateMmH: env.rainRateMmH ?? 0.0,
-        rainCellLengthKm: env.rainCellLengthKm ?? 10.0,
-        freezingIsothermM,
-        jammerEnabled: Boolean(env.jammerEnabled),
-        jammerBySector: jammerInterferenceBySector,
-      }
+      this.buildWasmViewshedParams(acnPos, acnVel, terrain, rf, env, attitudeOverride, jammerInterferenceBySector)
     );
+  }
+
+  private tryComputeWasmSlice(
+    startBearing: number,
+    bearingCount: number,
+    acnPos: Position3D,
+    acnVel: Position3D,
+    terrain: TerrainEngine,
+    rf: RFConfig,
+    env: EnvironmentConfig,
+    attitudeOverride?: AcnAttitudeState,
+    jammerInterferenceBySector?: readonly [number, number, number, number],
+    fidelityMode: 'fast' | 'link-budget-parity' = 'fast'
+  ): Float32Array | null {
+    if (!this.canUseWasmViewshed(terrain, env, fidelityMode) || !terrain.realDemGrid || bearingCount <= 0) {
+      return null;
+    }
+    const bounds = terrain.getTerrainBoundsTelemetry();
+    return wasmComputePolarViewshedSlice(
+      terrain.realDemGrid,
+      bounds.rasterWidth,
+      bounds.rasterHeight,
+      bounds.minX,
+      bounds.maxX,
+      bounds.minY,
+      bounds.maxY,
+      startBearing,
+      bearingCount,
+      this.buildWasmViewshedParams(acnPos, acnVel, terrain, rf, env, attitudeOverride, jammerInterferenceBySector)
+    );
+  }
+
+  /**
+   * Amortized discrete-event viewshed sweep. Evaluates ONLY `sliceCount` bearings starting at
+   * `startBearingOverride` (or the rolling internal cursor) using `wasmComputePolarViewshedSlice`
+   * when WASM is ready, with transparent pure-TS fallback.
+   */
+  public computeIncrementalSlice(
+    acnPos: Position3D,
+    acnVel: Position3D,
+    terrain: TerrainEngine,
+    rf: RFConfig,
+    env: EnvironmentConfig,
+    sliceCount: number = 6,
+    attitudeOverride?: AcnAttitudeState,
+    jammerInterferenceBySector?: readonly [number, number, number, number],
+    fidelityMode: 'fast' | 'link-budget-parity' = 'fast',
+    startBearingOverride?: number
+  ): Float32Array {
+    const count = Math.max(0, Math.trunc(sliceCount));
+    if (count === 0) return this.sinrGridDb;
+    const effCount = Math.min(count, NUM_AZIMUTHS);
+    const rawStart = startBearingOverride !== undefined ? Math.trunc(startBearingOverride) : this.nextAzimuthSliceIndex;
+    const startAz = ((rawStart % NUM_AZIMUTHS) + NUM_AZIMUTHS) % NUM_AZIMUTHS;
+
+    const wasmSlice = this.tryComputeWasmSlice(
+      startAz,
+      effCount,
+      acnPos,
+      acnVel,
+      terrain,
+      rf,
+      env,
+      attitudeOverride,
+      jammerInterferenceBySector,
+      fidelityMode
+    );
+    if (wasmSlice && wasmSlice.length >= effCount * NUM_RANGES) {
+      for (let k = 0; k < effCount; k++) {
+        const azIdx = (startAz + k) % NUM_AZIMUTHS;
+        const dstBase = azIdx * NUM_RANGES;
+        const srcBase = k * NUM_RANGES;
+        this.sinrGridDb.set(wasmSlice.subarray(srcBase, srcBase + NUM_RANGES), dstBase);
+      }
+      if (startBearingOverride === undefined) {
+        this.nextAzimuthSliceIndex = (startAz + count) % NUM_AZIMUTHS;
+      }
+      return this.sinrGridDb;
+    }
+
+    for (let k = 0; k < effCount; k++) {
+      const azIdx = (startAz + k) % NUM_AZIMUTHS;
+      this.computeAzimuthRay(
+        azIdx,
+        acnPos,
+        acnVel,
+        terrain,
+        rf,
+        env,
+        attitudeOverride,
+        jammerInterferenceBySector,
+        fidelityMode
+      );
+    }
+    if (startBearingOverride === undefined) {
+      this.nextAzimuthSliceIndex = (startAz + count) % NUM_AZIMUTHS;
+    }
+    return this.sinrGridDb;
   }
 
   /**
@@ -557,42 +678,17 @@ export class PolarViewshedEngine {
     jammerInterferenceBySector?: readonly [number, number, number, number],
     fidelityMode: 'fast' | 'link-budget-parity' = 'fast'
   ): void {
-    const startAz = this.nextAzimuthSliceIndex;
-    const wasmOut = this.tryComputeWasmSweep(
+    this.computeIncrementalSlice(
       acnPos,
       acnVel,
       terrain,
       rf,
       env,
+      sliceCount,
       attitudeOverride,
       jammerInterferenceBySector,
       fidelityMode
     );
-    if (wasmOut && wasmOut.length >= TOTAL_VIEWSHED_CELLS) {
-      for (let k = 0; k < sliceCount; k++) {
-        const azIdx = (startAz + k) % NUM_AZIMUTHS;
-        const base = azIdx * NUM_RANGES;
-        this.sinrGridDb.set(wasmOut.subarray(base, base + NUM_RANGES), base);
-      }
-      this.nextAzimuthSliceIndex = (startAz + sliceCount) % NUM_AZIMUTHS;
-      return;
-    }
-
-    for (let k = 0; k < sliceCount; k++) {
-      const azIdx = (startAz + k) % NUM_AZIMUTHS;
-      this.computeAzimuthRay(
-        azIdx,
-        acnPos,
-        acnVel,
-        terrain,
-        rf,
-        env,
-        attitudeOverride,
-        jammerInterferenceBySector,
-        fidelityMode
-      );
-    }
-    this.nextAzimuthSliceIndex = (startAz + sliceCount) % NUM_AZIMUTHS;
   }
 
   /**

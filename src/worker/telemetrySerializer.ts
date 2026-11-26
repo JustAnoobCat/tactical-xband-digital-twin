@@ -27,7 +27,10 @@ import type {
   ProfileFrameMessage,
   HiFiPhysicsTelemetry,
   TelemetryWeatherCellSummary,
+  TelemetrySubscriptionProfile,
 } from '../shared/workerProtocol';
+import { isWasmPhysicsReady } from '../core/wasmPhysicsBridge';
+import { computeTelemetryStateDigest } from '../core/flightRecorder';
 import type { AdvectingWeatherCell } from '../core/biomePhysics';
 import { cartesianToGeodetic, type GeodeticCoordinate } from '../core/geodesy';
 import {
@@ -184,6 +187,7 @@ export interface TelemetrySimulationState {
   readonly aiSkyShepherdDirective?: string;
   readonly hifiTelemetry?: HiFiPhysicsTelemetry;
   readonly weatherCells?: readonly AdvectingWeatherCell[];
+  readonly telemetrySubscriptions?: Required<TelemetrySubscriptionProfile>;
 }
 
 /**
@@ -312,6 +316,7 @@ export class TelemetrySerializer {
     state: TelemetrySimulationState,
     acnPos: [number, number, number]
   ): NodeTelemetryItem[] {
+    const includeVsa = state.telemetrySubscriptions?.vsaConstellation !== false;
     const activeNodes = state.schedulerMode === 'tac_tad' ? state.nodesTac : state.nodesStatic;
     return activeNodes.map((node) => {
       const obstruction = state.obstructionResults.get(node.nodeId);
@@ -441,7 +446,7 @@ export class TelemetrySerializer {
         body_azimuth_deg: ls?.bodyAzimuthDeg ?? 0.0,
         off_boresight_deg: ls?.offBoresightAzDeg ?? 0.0,
         pattern_rolloff_db: ls?.patternRollOffDb ?? 0.0,
-        sector_gains_dbi: ls?.allSectorGainsDbi,
+        ...(includeVsa ? { sector_gains_dbi: ls?.allSectorGainsDbi } : {}),
         is_crossover_zone: ls?.isCrossoverZone,
         handover_count: ls?.handoverCount,
         crest_radius_m: ls?.crestRadiusM ?? obstruction?.crestRadiusM ?? 2000.0,
@@ -457,9 +462,13 @@ export class TelemetrySerializer {
         is_relayed: ls?.isRelayed ?? false,
         relay_hop1_mbps: ls?.relayHop1BitrateMbps,
         relay_hop2_mbps: ls?.relayHop2BitrateMbps,
-        rician_k_db: ls?.ricianKFactorDb,
-        rician_fading_db: ls?.ricianFadingGainDb,
-        olla_margin_db: ls?.ollaMarginDb,
+        ...(includeVsa
+          ? {
+              rician_k_db: ls?.ricianKFactorDb,
+              rician_fading_db: ls?.ricianFadingGainDb,
+              olla_margin_db: ls?.ollaMarginDb,
+            }
+          : {}),
         ai_needs_reposition: state.aiRecommendations?.get(node.nodeId)?.needsReposition ?? false,
         ai_target_pos_enu: state.aiRecommendations?.get(node.nodeId)?.targetPos,
         ai_move_dist_m: state.aiRecommendations?.get(node.nodeId)?.moveDistanceM,
@@ -518,8 +527,12 @@ export class TelemetrySerializer {
   public buildTelemetryFrame(
     state: TelemetrySimulationState,
     acnPos: [number, number, number],
-    fresnelSlice: FresnelSliceTelemetry
+    fresnelSlice?: FresnelSliceTelemetry
   ): TelemetryFrame {
+    const subs = state.telemetrySubscriptions;
+    const includeLinkProfile = subs?.linkProfile !== false && fresnelSlice !== undefined;
+    const includePdu = subs?.pduDissector !== false;
+    const includeViewshed = subs?.viewshed !== false;
     const activeNodes = state.schedulerMode === 'tac_tad' ? state.nodesTac : state.nodesStatic;
     const [vx, vy, vzTraj] = state.trajectoryEngine.getAcnVelocity(state.simTimeS);
     const vz = state.liveVzMps !== undefined ? state.liveVzMps : (vzTraj ?? 0.0);
@@ -717,7 +730,7 @@ export class TelemetrySerializer {
 
     const mapAlloc = (a: SlotAllocation) =>
       normalizeSlotAllocationToFrame(a, activeReport?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
-    const allocations = (activeReport?.allocations ?? []).map(mapAlloc);
+    const allocations = includePdu ? (activeReport?.allocations ?? []).map(mapAlloc) : undefined;
 
     const mapAllocStatic = (a: SlotAllocation) =>
       normalizeSlotAllocationToFrame(a, state.lastReportStatic?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
@@ -725,6 +738,9 @@ export class TelemetrySerializer {
       normalizeSlotAllocationToFrame(a, state.lastReportTac?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
     const mapAllocReactive = (a: SlotAllocation) =>
       normalizeSlotAllocationToFrame(a, state.lastReportReactive?.timestampS ?? state.simTimeS, state.tdmaConfig.frameDurationS);
+    const staticAllocations = includePdu ? (state.lastReportStatic?.allocations ?? []).map(mapAllocStatic) : undefined;
+    const tacAllocations = includePdu ? (state.lastReportTac?.allocations ?? []).map(mapAllocTac) : undefined;
+    const reactiveAllocations = includePdu ? (state.lastReportReactive?.allocations ?? []).map(mapAllocReactive) : undefined;
     const acnGeo = state.terrainEngine.worldToLatLon(acnPos[0], acnPos[1]);
 
     let weatherCellsSummary: TelemetryWeatherCellSummary[] | undefined;
@@ -739,7 +755,7 @@ export class TelemetrySerializer {
       }));
     }
 
-    return {
+    const frame: TelemetryFrame = {
       frame_index: state.frameIndex,
       sim_time_s: state.simTimeS,
       speed: state.speed,
@@ -802,17 +818,25 @@ export class TelemetrySerializer {
       },
       nodes_telemetry: nodesTel,
       registration_telemetry: { nodes: state.registrationLifecycle.active(), events: state.registrationLifecycle.events() },
-      active_gantt_allocations: allocations,
-      static_gantt_allocations: (state.lastReportStatic?.allocations ?? []).map(mapAllocStatic),
-      tac_gantt_allocations: (state.lastReportTac?.allocations ?? []).map(mapAllocTac),
-      reactive_gantt_allocations: (state.lastReportReactive?.allocations ?? []).map(mapAllocReactive),
+      ...(includePdu
+        ? {
+            active_gantt_allocations: allocations,
+            static_gantt_allocations: staticAllocations,
+            tac_gantt_allocations: tacAllocations,
+            reactive_gantt_allocations: reactiveAllocations,
+          }
+        : {}),
       comparative_kpi_dashboard: kpi,
       static_p50_bps: state.staticGoodputTracker.p50Bps,
       static_p95_bps: state.staticGoodputTracker.p95Bps,
       tac_p50_bps: state.tacGoodputTracker.p50Bps,
       tac_p95_bps: state.tacGoodputTracker.p95Bps,
-      selected_node_fresnel: fresnelSlice,
-      selected_link_budget: fresnelSlice.link_budget,
+      ...(includeLinkProfile && fresnelSlice
+        ? {
+            selected_node_fresnel: fresnelSlice,
+            selected_link_budget: fresnelSlice.link_budget,
+          }
+        : {}),
       transfer_telemetry: transferTel,
       active_transfers: activeTransfers,
       downlink_telemetry: {
@@ -868,8 +892,12 @@ export class TelemetrySerializer {
       jammer_pos_enu: state.envConfig?.jammerPosEnu ?? [3200.0, -2800.0, 0.0],
       jammer_terrain_shield_db: state.jammerShieldLossDb ?? 0.0,
       jammer_sector_interference_dbm: state.jammerSectorInterferenceDbm ?? [0, 0, 0, 0],
-      viewshed_sinr_grid: state.viewshedSinrGrid,
-      relay_advisor: state.relayAdvisor,
+      ...(includeViewshed
+        ? {
+            viewshed_sinr_grid: state.viewshedSinrGrid,
+            relay_advisor: state.relayAdvisor,
+          }
+        : {}),
       active_relay_enabled: state.envConfig?.activeRelayEnabled ?? false,
       relayed_node_count: state.relayedNodeCount ?? 0,
       relay_backhaul_sector_id: state.relayBackhaulSectorId,
@@ -898,6 +926,10 @@ export class TelemetrySerializer {
       hifi_telemetry: state.hifiTelemetry,
       ...(weatherCellsSummary ? { weather_cells: weatherCellsSummary } : {}),
     };
+    const mutableMeta = frame as { wasm_active?: boolean; state_digest_hex?: string };
+    mutableMeta.wasm_active = isWasmPhysicsReady();
+    mutableMeta.state_digest_hex = computeTelemetryStateDigest(frame);
+    return frame;
   }
 
   /**

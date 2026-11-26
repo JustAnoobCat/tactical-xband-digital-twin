@@ -35,7 +35,7 @@ export {
   DEFAULT_ANTENNA_AGL_M,
   MAX_ACTIVE_GROUND_NODES,
 };
-import { TerrainEngine } from '../core/terrain';
+import { BIOME_DEM_METADATA, TerrainEngine } from '../core/terrain';
 import { GroundNodeTrafficSubsystem } from '../core/queues';
 import { RegistrationLifecycle } from '../core/registration';
 import { isFiniteNumber } from '../shared/utils';
@@ -108,6 +108,21 @@ export interface UpdateNodeOutcome {
   spatialChanged?: boolean;
 }
 
+function resolveBiomeFallbackMsl(terrainEngine: TerrainEngine): number {
+  const meta = terrainEngine.demMetadata;
+  if (Number.isFinite(meta?.minElevationM) && Number.isFinite(meta?.maxElevationM)) {
+    return ((meta.minElevationM as number) + (meta.maxElevationM as number)) * 0.5;
+  }
+  if (Number.isFinite(meta?.minElevationM)) {
+    return meta.minElevationM as number;
+  }
+  const biomeMeta = BIOME_DEM_METADATA[terrainEngine.activeBiomeId];
+  if (biomeMeta && Number.isFinite(biomeMeta.minElevationM) && Number.isFinite(biomeMeta.maxElevationM)) {
+    return ((biomeMeta.minElevationM as number) + (biomeMeta.maxElevationM as number)) * 0.5;
+  }
+  return terrainEngine.activeBiomeId === 'alpine_mountain' ? 3500 : 200;
+}
+
 export class NodeLifecycleManager {
   /**
    * Constructs an identical pair of [staticNode, tacNode] from an authoritative entity record.
@@ -118,7 +133,8 @@ export class NodeLifecycleManager {
   ): [GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem, GroundNodeTrafficSubsystem] {
     const nid = entity.identity.nodeId;
     const [x, y] = entity.position;
-    const terrainMsl = terrainEngine.getElevation(x, y);
+    const rawMsl = terrainEngine.getElevation(x, y);
+    const terrainMsl = Number.isFinite(rawMsl) ? rawMsl : resolveBiomeFallbackMsl(terrainEngine);
     const z = terrainMsl + entity.aglM;
 
     const staticNode = new GroundNodeTrafficSubsystem(
@@ -153,7 +169,8 @@ export class NodeLifecycleManager {
     tacNode.txPowerDbm = entity.txPowerDbm;
     reactiveNode.txPowerDbm = entity.txPowerDbm;
 
-    const defaultCapacity = entity.identity.role === 'mcp' ? 20000 : 5000;
+    const defaultCapacity =
+      entity.identity.role === 'mcp' || (entity.identity.role as string) === 'convoy' ? 20000 : 5000;
     staticNode.batteryCapacityMah = entity.batteryCapacityMah ?? defaultCapacity;
     tacNode.batteryCapacityMah = entity.batteryCapacityMah ?? defaultCapacity;
     reactiveNode.batteryCapacityMah = entity.batteryCapacityMah ?? defaultCapacity;
@@ -219,7 +236,7 @@ export class NodeLifecycleManager {
         const elev = terrainEngine.getElevation(x, y);
         const groundMsl = Number.isFinite(elev)
           ? elev
-          : (Number.isFinite(node.position[2]) ? node.position[2] - node.aglM : 3500);
+          : (Number.isFinite(node.position[2]) ? node.position[2] - node.aglM : resolveBiomeFallbackMsl(terrainEngine));
         node.position = [x, y, groundMsl + node.aglM];
         nodeRegistry.updateSpatial(node.nodeId, x, y, node.aglM);
       }
@@ -256,8 +273,8 @@ export class NodeLifecycleManager {
     if (!isFiniteNumber(aglM) || aglM < MIN_GROUND_AGL_M || aglM > MAX_GROUND_AGL_M) {
       return { accepted: false, reason: `NODE_ADD requires agl_m between ${MIN_GROUND_AGL_M} and ${MAX_GROUND_AGL_M} metres.` };
     }
-    if (msg.role !== undefined && msg.role !== 'soldier' && msg.role !== 'mcp') {
-      return { accepted: false, reason: "role must be 'soldier' or 'mcp'." };
+    if (msg.role !== undefined && msg.role !== 'soldier' && msg.role !== 'mcp' && msg.role !== 'convoy') {
+      return { accepted: false, reason: "role must be 'soldier' or 'mcp' (or 'convoy')." };
     }
     if (msg.callsign !== undefined && (typeof msg.callsign !== 'string' || msg.callsign.trim().length === 0)) {
       return { accepted: false, reason: 'callsign must be a non-empty string.' };
@@ -278,7 +295,7 @@ export class NodeLifecycleManager {
       return { accepted: false, reason: 'color_hex must be a valid hex color code (e.g. #38bdf8).' };
     }
 
-    const role: NodeType = msg.role ?? 'soldier';
+    const role: NodeType = (msg.role ?? 'soldier') as NodeType;
     const entity = nodeRegistry.createDynamicNode({
       callsign: msg.callsign ? msg.callsign.trim() : undefined,
       role,
@@ -444,8 +461,8 @@ export class NodeLifecycleManager {
     if (msg.agl_m !== undefined && (!isFiniteNumber(msg.agl_m) || msg.agl_m < MIN_GROUND_AGL_M || msg.agl_m > MAX_GROUND_AGL_M)) {
       return { accepted: false, reason: `agl_m must be between ${MIN_GROUND_AGL_M} and ${MAX_GROUND_AGL_M} metres.` };
     }
-    if (msg.role !== undefined && msg.role !== 'soldier' && msg.role !== 'mcp') {
-      return { accepted: false, reason: "role must be 'soldier' or 'mcp'." };
+    if (msg.role !== undefined && msg.role !== 'soldier' && msg.role !== 'mcp' && msg.role !== 'convoy') {
+      return { accepted: false, reason: "role must be 'soldier' or 'mcp' (or 'convoy')." };
     }
     if (msg.callsign !== undefined && (typeof msg.callsign !== 'string' || msg.callsign.trim().length === 0)) {
       return { accepted: false, reason: 'callsign must be a non-empty string.' };
@@ -469,7 +486,8 @@ export class NodeLifecycleManager {
     const nextX = msg.x_m !== undefined ? msg.x_m : staticNode.position[0];
     const nextY = msg.y_m !== undefined ? msg.y_m : staticNode.position[1];
     const nextAgl = msg.agl_m !== undefined ? msg.agl_m : staticNode.aglM;
-    const nextTerrainMsl = terrainEngine.getElevation(nextX, nextY);
+    const rawNextMsl = terrainEngine.getElevation(nextX, nextY);
+    const nextTerrainMsl = Number.isFinite(rawNextMsl) ? rawNextMsl : resolveBiomeFallbackMsl(terrainEngine);
     const nextZ = nextTerrainMsl + nextAgl;
 
     staticNode.position = [nextX, nextY, nextZ];
@@ -480,9 +498,10 @@ export class NodeLifecycleManager {
     if (reactiveNode) reactiveNode.aglM = nextAgl;
 
     if (msg.role !== undefined) {
-      staticNode.nodeType = msg.role;
-      tacNode.nodeType = msg.role;
-      if (reactiveNode) reactiveNode.nodeType = msg.role;
+      const nextRole = msg.role as NodeType;
+      staticNode.nodeType = nextRole;
+      tacNode.nodeType = nextRole;
+      if (reactiveNode) reactiveNode.nodeType = nextRole;
     }
     if (msg.tx_power_dbm !== undefined) {
       staticNode.txPowerDbm = msg.tx_power_dbm;
@@ -513,7 +532,7 @@ export class NodeLifecycleManager {
     nodeRegistry.updateEntity(nid, {
       position: [nextX, nextY],
       aglM: nextAgl,
-      role: msg.role,
+      role: msg.role as NodeType | undefined,
       callsign: msg.callsign ? msg.callsign.trim() : undefined,
       trafficOptions: msg.traffic_options,
       colorHex: msg.color_hex ? msg.color_hex.trim() : undefined,

@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (131 Total Suites)
+// Verification Suites Registry (133 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -189,7 +189,9 @@ REGISTERED_SUITES.push(
   { id: 'verify:remed06-e2e-release', name: 'REMED-06 Strict CSP, Live Scenario Wiring & Career Demo Flow Gate', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed06EndToEndRelease.ts'], category: 'remediation' },
   { id: 'verify:perf01-offline-efficiency', name: 'PERF-01 Offline Air-Gap Readiness & RAM/CPU/GPU Efficiency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPerf01OfflineAndEfficiency.ts'], category: 'performance' },
   { id: 'verify:tauri01-desktop-shell', name: 'TAURI-01 Cross-Platform Offline Tauri v2 Desktop Shell', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTauri01DesktopShell.ts'], category: 'desktop' },
-  { id: 'verify:rust-core01-wasm-parity', name: 'RUST-CORE-01 Shared Rust/WASM Terrain, Viewshed & Hillshade Parity', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRustCore01WasmParity.ts'], category: 'physics' }
+  { id: 'verify:rust-core01-wasm-parity', name: 'RUST-CORE-01 Shared Rust/WASM Terrain, Viewshed & Hillshade Parity', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRustCore01WasmParity.ts'], category: 'physics' },
+  { id: 'verify:upg01-flight-recorder-ipc', name: 'UPG-01 Slice WASM Viewshed, On-Demand IPC, Flight Recorder & HUD', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg01FlightRecorderAndIpc.ts'], category: 'architecture' },
+  { id: 'verify:upg02-offline-packs-hgt', name: 'UPG-02 Fast 500+ HGT Manager, Offline Mission Packs & Mentor Edge-Case Fixes', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg02OfflinePacksAndHgt.ts'], category: 'terrain' }
 );
 
 // -----------------------------------------------------------------------------

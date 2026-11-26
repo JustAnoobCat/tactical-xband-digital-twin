@@ -4,7 +4,7 @@
 /**
  * Computes polar viewshed SINR grid + per-bearing horizon elevation angles.
  *
- * `params` packs 29 scalars in fixed order:
+ * `params` packs 31 scalars in fixed order:
  * `[0] r_min_m, [1] r_step_m, [2..5] acn_x, acn_y, acn_z, [5..8] heading, pitch, bank,`
  * `[8] carrier_freq_hz, [9] speed_of_light, [10] bandwidth_hz, [11] acn_gain_dbi,`
  * `[12] acn_nf_db, [13] soldier_tx_dbm, [14] soldier_gain_dbi, [15] cable_loss_db,`
@@ -17,6 +17,14 @@
  */
 export function wasm_compute_polar_viewshed(dem: Float32Array | number[], cols: number, rows: number, min_x: number, max_x: number, min_y: number, max_y: number, num_bearings: number, num_ranges: number, params: Float64Array | number[]): Float32Array;
 
+/**
+ * Computes an incremental slice `[start_bearing, start_bearing + bearing_count)` (mod `num_bearings`)
+ * of the polar viewshed SINR grid + horizon elevation angles.
+ *
+ * Returns `Vec<f32>` of length `bearing_count * num_ranges + bearing_count`.
+ */
+export function wasm_compute_polar_viewshed_slice(dem: Float32Array | number[], cols: number, rows: number, min_x: number, max_x: number, min_y: number, max_y: number, num_bearings: number, num_ranges: number, start_bearing: number, bearing_count: number, params: Float64Array | number[]): Float32Array;
+
 export function wasm_evaluate_batch_rays(dem: Float32Array | number[], cols: number, rows: number, min_x: number, max_x: number, min_y: number, max_y: number, rays: Float64Array | number[], wavelength_m: number, r_eff_m: number, step_interval_m: number, pert_std_m: number): Float64Array;
 
 export function wasm_generate_hillshade_rgba(dem: Float32Array | number[], dem_cols: number, dem_rows: number, out_size: number, min_x: number, max_x: number, min_y: number, max_y: number, fallback_min_elev_m: number): Uint8Array;
@@ -28,6 +36,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly wasm_compute_polar_viewshed: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number];
+    readonly wasm_compute_polar_viewshed_slice: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => [number, number];
     readonly wasm_evaluate_batch_rays: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => [number, number];
     readonly wasm_generate_hillshade_rgba: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number];
     readonly wasm_knife_edge_loss_db: (a: number) => number;

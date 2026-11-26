@@ -3,7 +3,7 @@
 /**
  * Computes polar viewshed SINR grid + per-bearing horizon elevation angles.
  *
- * `params` packs 29 scalars in fixed order:
+ * `params` packs 31 scalars in fixed order:
  * `[0] r_min_m, [1] r_step_m, [2..5] acn_x, acn_y, acn_z, [5..8] heading, pitch, bank,`
  * `[8] carrier_freq_hz, [9] speed_of_light, [10] bandwidth_hz, [11] acn_gain_dbi,`
  * `[12] acn_nf_db, [13] soldier_tx_dbm, [14] soldier_gain_dbi, [15] cable_loss_db,`
@@ -49,6 +49,53 @@ export function wasm_compute_polar_viewshed(dem, cols, rows, min_x, max_x, min_y
     var v11 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v11;
+}
+
+/**
+ * Computes an incremental slice `[start_bearing, start_bearing + bearing_count)` (mod `num_bearings`)
+ * of the polar viewshed SINR grid + horizon elevation angles.
+ *
+ * Returns `Vec<f32>` of length `bearing_count * num_ranges + bearing_count`.
+ * @param {Float32Array | number[]} dem
+ * @param {number} cols
+ * @param {number} rows
+ * @param {number} min_x
+ * @param {number} max_x
+ * @param {number} min_y
+ * @param {number} max_y
+ * @param {number} num_bearings
+ * @param {number} num_ranges
+ * @param {number} start_bearing
+ * @param {number} bearing_count
+ * @param {Float64Array | number[]} params
+ * @returns {Float32Array}
+ */
+export function wasm_compute_polar_viewshed_slice(dem, cols, rows, min_x, max_x, min_y, max_y, num_bearings, num_ranges, start_bearing, bearing_count, params) {
+    const val3 = +cols;
+    const val4 = +rows;
+    const val5 = +min_x;
+    const val6 = +max_x;
+    const val7 = +min_y;
+    const val8 = +max_y;
+    const val9 = +num_bearings;
+    const val10 = +num_ranges;
+    const val11 = +start_bearing;
+    const val12 = +bearing_count;
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passArrayF32ToWasm0(dem, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passArrayF64ToWasm0(params, wasm.__wbindgen_malloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 8, 8); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 4, 4); }
+        throw e;
+    }
+    const ret = wasm.wasm_compute_polar_viewshed_slice(ptr0, len0, val3, val4, val5, val6, val7, val8, val9, val10, val11, val12, ptr1, len1);
+    var v13 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v13;
 }
 
 /**

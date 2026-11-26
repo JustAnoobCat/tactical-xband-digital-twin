@@ -417,17 +417,17 @@ export interface TelemetryFrame {
   readonly acn_telemetry: AcnTelemetry;
   readonly nodes_telemetry: readonly NodeTelemetryItem[];
   readonly registration_telemetry: RegistrationTelemetry;
-  readonly active_gantt_allocations: readonly TelemetryGanttAllocation[];
-  readonly static_gantt_allocations: readonly TelemetryGanttAllocation[];
-  readonly tac_gantt_allocations: readonly TelemetryGanttAllocation[];
+  readonly active_gantt_allocations?: readonly TelemetryGanttAllocation[];
+  readonly static_gantt_allocations?: readonly TelemetryGanttAllocation[];
+  readonly tac_gantt_allocations?: readonly TelemetryGanttAllocation[];
   readonly reactive_gantt_allocations?: readonly TelemetryGanttAllocation[];
   readonly comparative_kpi_dashboard: ComparativeKpiDashboard;
   readonly static_p50_bps: number | null;
   readonly static_p95_bps: number | null;
   readonly tac_p50_bps: number | null;
   readonly tac_p95_bps: number | null;
-  readonly selected_node_fresnel: FresnelSliceTelemetry;
-  readonly selected_link_budget: SelectedLinkBudgetTelemetry;
+  readonly selected_node_fresnel?: FresnelSliceTelemetry;
+  readonly selected_link_budget?: SelectedLinkBudgetTelemetry;
   readonly transfer_telemetry: ActiveTransferTelemetry;
   readonly active_transfers: readonly ActiveTransferTelemetry[];
   readonly downlink_telemetry: DownlinkTelemetry;
@@ -511,6 +511,8 @@ export interface TelemetryFrame {
   readonly transport_abr_telemetry?: TransportAbrTelemetry;
   readonly ew_eccm_telemetry?: EwEccmTelemetry;
   readonly constellation_mobility_telemetry?: ConstellationMobilityTelemetry;
+  readonly wasm_active?: boolean;
+  readonly state_digest_hex?: string;
 }
 
 export type SpreadSpectrumEccmMode = 'NONE' | 'FHSS' | 'DSSS';
@@ -832,7 +834,7 @@ export interface NodeMoveCommand extends BaseWorkerInboundCommand {
 
 export interface NodeAddCommand extends BaseWorkerInboundCommand {
   readonly type: 'NODE_ADD';
-  readonly role?: NodeType;
+  readonly role?: NodeType | 'convoy';
   readonly x_m?: number;
   readonly y_m?: number;
   readonly position?: readonly [number, number] | [number, number];
@@ -869,7 +871,7 @@ export interface NodeUpdateCommand extends BaseWorkerInboundCommand {
   readonly y_m?: number;
   readonly agl_m?: number;
   readonly callsign?: string;
-  readonly role?: 'soldier' | 'mcp';
+  readonly role?: 'soldier' | 'mcp' | 'convoy';
   readonly color_hex?: string;
   readonly tx_power_dbm?: number;
   readonly battery_capacity_mah?: number;
@@ -1027,6 +1029,10 @@ export interface LoadCustomDemCommand extends BaseWorkerInboundCommand {
   readonly metadata?: DemGeographicMetadata;
 }
 
+export interface UnloadCustomTerrainCommand extends BaseWorkerInboundCommand {
+  readonly type: 'UNLOAD_CUSTOM_TERRAIN';
+}
+
 export interface GetHillshadeCommand extends BaseWorkerInboundCommand {
   readonly type: 'GET_HILLSHADE';
 }
@@ -1129,6 +1135,19 @@ export interface SetBiomeCommand extends BaseWorkerInboundCommand {
   readonly enableAutoCfitPullUp?: boolean;
 }
 
+export interface TelemetrySubscriptionProfile {
+  readonly linkProfile?: boolean;
+  readonly vsaConstellation?: boolean;
+  readonly pduDissector?: boolean;
+  readonly viewshed?: boolean;
+}
+
+export interface SetTelemetryProfileCommand extends BaseWorkerInboundCommand {
+  readonly type: 'SET_TELEMETRY_PROFILE';
+  readonly subscriptions?: TelemetrySubscriptionProfile;
+  readonly uiPublishIntervalTicks?: number;
+}
+
 export type WorkerInboundCommand =
   | SimControlCommand
   | SetSpeedCommand
@@ -1137,6 +1156,7 @@ export type WorkerInboundCommand =
   | SetSpatialLockCommand
   | SetScientificParamsCommand
   | SetViewshedConfigCommand
+  | SetTelemetryProfileCommand
   | TriggerAiNodeRepositionCommand
   | SetAiAutoHealCommand
   | TriggerAiSkyShepherdCommand
@@ -1154,6 +1174,7 @@ export type WorkerInboundCommand =
   | SetTerrainModeCommand
   | SetBiomeCommand
   | LoadCustomDemCommand
+  | UnloadCustomTerrainCommand
   | GetHillshadeCommand
   | GetTerrainBoundsCommand
   | GetTerrainMeshDataCommand;

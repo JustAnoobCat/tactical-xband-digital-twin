@@ -80,10 +80,13 @@ export interface MissionScenarioV3 {
   readonly nodes: ReadonlyArray<{
     readonly id: number;
     readonly callsign: string;
+    readonly role?: string;
     readonly xM: number;
     readonly yM: number;
     readonly aglM: number;
     readonly tacticalPriority: number;
+    readonly tx_power_dbm?: number;
+    readonly txPowerDbm?: number;
   }>;
   readonly obstacles: ReadonlyArray<{
     readonly id: string;
@@ -538,6 +541,8 @@ export const mgrsToLatLon = mgrsToGeodetic;
 // 3. Uncompressed Baseline GeoTIFF DEM Parser
 // ============================================================================
 
+export const MAX_GEOTIFF_PIXELS = 16_777_216; // 4096 x 4096 OOM guard
+
 /**
  * Parses uncompressed baseline GeoTIFF elevation DEM files (16-bit or 32-bit).
  * Never throws on invalid or compressed data; returns clean error diagnostics.
@@ -673,9 +678,20 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
     }
 
     const totalPixels = width * height;
+    if (!Number.isSafeInteger(totalPixels) || totalPixels > MAX_GEOTIFF_PIXELS) {
+      return {
+        ok: false,
+        error: `GeoTIFF dimensions ${width}x${height} (${totalPixels.toLocaleString()} pixels) exceed MAX_GEOTIFF_PIXELS (${MAX_GEOTIFF_PIXELS.toLocaleString()}).`,
+      };
+    }
+
     const elevations = new Float32Array(totalPixels);
+    elevations.fill(Number.NaN);
     let minElev = Infinity;
     let maxElev = -Infinity;
+    let validSum = 0;
+    let validCount = 0;
+    const voidIndices: number[] = [];
     let pixelIndex = 0;
 
     for (let s = 0; s < stripOffsets.length; s++) {
@@ -697,14 +713,56 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
           elev = view.getUint8(bytePos);
         }
 
-        // Mask standard NoData values (-32768, -9999, NaN)
+        // Mask standard NoData values (-32768, -9999, NaN) for neighbor void-fill interpolation
         if (elev <= -9999 || !Number.isFinite(elev)) {
-          elev = 0.0;
+          elevations[pixelIndex] = Number.NaN;
+          voidIndices.push(pixelIndex);
+          pixelIndex++;
+        } else {
+          elevations[pixelIndex++] = elev;
+          validSum += elev;
+          validCount++;
+          if (elev < minElev) minElev = elev;
+          if (elev > maxElev) maxElev = elev;
         }
+      }
+    }
 
-        elevations[pixelIndex++] = elev;
-        if (elev < minElev) minElev = elev;
-        if (elev > maxElev) maxElev = elev;
+    // Fill any unpopulated trailing pixels as voids too
+    for (let i = pixelIndex; i < totalPixels; i++) {
+      voidIndices.push(i);
+    }
+
+    if (voidIndices.length > 0) {
+      const fallbackElev = validCount > 0 ? validSum / validCount : 0.0;
+      const snapshot = new Float32Array(elevations);
+      for (const idx of voidIndices) {
+        const r = Math.floor(idx / width);
+        const c = idx % width;
+        let filled = fallbackElev;
+        let found = false;
+        for (let rad = 1; rad <= 4 && !found; rad++) {
+          let nSum = 0;
+          let nCount = 0;
+          const rStart = Math.max(0, r - rad);
+          const rEnd = Math.min(height - 1, r + rad);
+          const cStart = Math.max(0, c - rad);
+          const cEnd = Math.min(width - 1, c + rad);
+          for (let nr = rStart; nr <= rEnd; nr++) {
+            for (let nc = cStart; nc <= cEnd; nc++) {
+              const v = snapshot[nr * width + nc];
+              if (Number.isFinite(v)) {
+                nSum += v;
+                nCount++;
+              }
+            }
+          }
+          if (nCount > 0) {
+            filled = nSum / nCount;
+            found = true;
+          }
+        }
+        elevations[idx] = filled;
       }
     }
 
@@ -779,8 +837,14 @@ function resolveCotType(role: string): string {
  * Serializes tactical simulation state to ATAK Cursor-on-Target (CoT) XML v2.0.
  */
 export function exportMissionToAtakCotXml(snapshot: TacticalMissionSnapshot): string {
-  const time = snapshot.timestampIso || new Date().toISOString();
-  const staleDate = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  const parsedMs = snapshot.timestampIso ? Date.parse(snapshot.timestampIso) : Number.NaN;
+  const baseMs = Number.isFinite(parsedMs) ? parsedMs : Date.now();
+  const time = escapeXml(
+    Number.isFinite(parsedMs) && snapshot.timestampIso
+      ? snapshot.timestampIso
+      : new Date(baseMs).toISOString()
+  );
+  const staleDate = new Date(baseMs + 5 * 60 * 1000).toISOString();
 
   const eventsXml = snapshot.entities.map(e => {
     const uid = escapeXml(String(e.id));
@@ -927,7 +991,7 @@ export function parseMissionScenarioJson(jsonText: string): ScenarioParseResult 
   // ACN
   const acnCallsign = typeof raw.acn?.callsign === 'string' ? raw.acn.callsign.slice(0, 30) : 'VIPER-01';
   const cruiseAlt = Number.isFinite(raw.acn?.cruiseAltMslM) ? Math.min(12000, Math.max(1000, raw.acn.cruiseAltMslM)) : 5000.0;
-  const cruiseSpeed = Number.isFinite(raw.acn?.cruiseAirspeedMs) ? Math.min(250, Math.max(20, raw.acn.cruiseAirspeedMs)) : 50.0;
+  const cruiseSpeed = Number.isFinite(raw.acn?.cruiseAirspeedMs) ? Math.min(250, Math.max(0, raw.acn.cruiseAirspeedMs)) : 50.0;
   const pattern = typeof raw.acn?.orbitPattern === 'string' ? raw.acn.orbitPattern : 'ellipse_orbit';
 
   const rawWaypoints = Array.isArray(raw.acn?.waypoints) ? raw.acn.waypoints : [];
@@ -945,14 +1009,30 @@ export function parseMissionScenarioJson(jsonText: string): ScenarioParseResult 
   if (rawNodes.length > MAX_SCENARIO_NODES) {
     warnings.push(`Nodes truncated to ${MAX_SCENARIO_NODES} items`);
   }
-  const nodes = rawNodes.slice(0, MAX_SCENARIO_NODES).map((n: any, idx: number) => ({
-    id: Number.isInteger(n?.id) ? n.id : idx + 1,
-    callsign: typeof n?.callsign === 'string' ? n.callsign.slice(0, 24) : `NODE-${idx + 1}`,
-    xM: Number.isFinite(n?.xM) ? n.xM : 0,
-    yM: Number.isFinite(n?.yM) ? n.yM : 0,
-    aglM: Number.isFinite(n?.aglM) ? Math.min(200, Math.max(1, n.aglM)) : 2.5,
-    tacticalPriority: Number.isInteger(n?.tacticalPriority) ? Math.min(5, Math.max(1, n.tacticalPriority)) : 3,
-  }));
+  const nodes = rawNodes.slice(0, MAX_SCENARIO_NODES).map((n: any, idx: number) => {
+    const rawRole = typeof n?.role === 'string' ? n.role.trim().toLowerCase() : undefined;
+    const role =
+      rawRole === 'soldier' || rawRole === 'mcp' || rawRole === 'convoy' ? rawRole : undefined;
+    const rawTx = Number.isFinite(n?.tx_power_dbm)
+      ? n.tx_power_dbm
+      : Number.isFinite(n?.txPowerDbm)
+        ? n.txPowerDbm
+        : undefined;
+    const txPower =
+      rawTx !== undefined ? Math.min(50, Math.max(10, rawTx)) : undefined;
+    return {
+      id: Number.isInteger(n?.id) ? n.id : idx + 1,
+      callsign: typeof n?.callsign === 'string' ? n.callsign.slice(0, 24) : `NODE-${idx + 1}`,
+      ...(role !== undefined ? { role } : {}),
+      xM: Number.isFinite(n?.xM) ? n.xM : 0,
+      yM: Number.isFinite(n?.yM) ? n.yM : 0,
+      aglM: Number.isFinite(n?.aglM) ? Math.min(200, Math.max(1, n.aglM)) : 2.5,
+      tacticalPriority: Number.isFinite(n?.tacticalPriority)
+        ? Math.min(5, Math.max(0.1, n.tacticalPriority))
+        : 3,
+      ...(txPower !== undefined ? { tx_power_dbm: txPower } : {}),
+    };
+  });
 
   // 3D Obstacles
   const rawObstacles = Array.isArray(raw.obstacles) ? raw.obstacles : [];

@@ -4,7 +4,9 @@ use wasm_bindgen::prelude::*;
 
 use crate::dem_raymarch::{evaluate_batch_rays, itu_knife_edge_loss_db, DemGridSpec};
 use crate::hillshade::generate_hillshade_rgba;
-use crate::viewshed::{compute_polar_viewshed_into, ViewshedParams};
+use crate::viewshed::{
+    compute_polar_viewshed_into, compute_polar_viewshed_slice_into, ViewshedParams,
+};
 
 #[wasm_bindgen]
 pub fn wasm_knife_edge_loss_db(v: f64) -> f64 {
@@ -76,36 +78,15 @@ pub fn wasm_generate_hillshade_rgba(
     )
 }
 
-/// Computes polar viewshed SINR grid + per-bearing horizon elevation angles.
-///
-/// `params` packs 29 scalars in fixed order:
-/// `[0] r_min_m, [1] r_step_m, [2..5] acn_x, acn_y, acn_z, [5..8] heading, pitch, bank,`
-/// `[8] carrier_freq_hz, [9] speed_of_light, [10] bandwidth_hz, [11] acn_gain_dbi,`
-/// `[12] acn_nf_db, [13] soldier_tx_dbm, [14] soldier_gain_dbi, [15] cable_loss_db,`
-/// `[16] impl_margin_db, [17] k_b, [18] hpbw_az, [19] hpbw_el, [20] downtilt,`
-/// `[21] r_eff_m, [22] temp_k, [23] rain_mmh, [24] rain_cell_km, [25] freezing_iso_m,`
-/// `[26] jammer_enabled (0/1), [27..31] jammer_sector_0..3` (length 31).
-///
-/// Returns `Vec<f32>` of length `num_bearings * num_ranges + num_bearings`:
-/// first `num_bearings * num_ranges` entries = `sinr_db`, trailing `num_bearings` = `horizon_elev_deg`.
-#[wasm_bindgen]
-#[allow(clippy::too_many_arguments)]
-pub fn wasm_compute_polar_viewshed(
-    dem: &[f32],
-    cols: usize,
-    rows: usize,
-    min_x: f64,
-    max_x: f64,
-    min_y: f64,
-    max_y: f64,
+fn unpack_viewshed_params(
     num_bearings: usize,
     num_ranges: usize,
     params: &[f64],
-) -> Vec<f32> {
+) -> Option<ViewshedParams> {
     if params.len() < 31 || num_bearings == 0 || num_ranges == 0 {
-        return Vec::new();
+        return None;
     }
-    let vp = ViewshedParams {
+    Some(ViewshedParams {
         num_bearings,
         num_ranges,
         r_min_m: params[0],
@@ -134,6 +115,37 @@ pub fn wasm_compute_polar_viewshed(
         freezing_isotherm_m: params[25],
         jammer_enabled: params[26] > 0.5,
         jammer_by_sector: [params[27], params[28], params[29], params[30]],
+    })
+}
+
+/// Computes polar viewshed SINR grid + per-bearing horizon elevation angles.
+///
+/// `params` packs 31 scalars in fixed order:
+/// `[0] r_min_m, [1] r_step_m, [2..5] acn_x, acn_y, acn_z, [5..8] heading, pitch, bank,`
+/// `[8] carrier_freq_hz, [9] speed_of_light, [10] bandwidth_hz, [11] acn_gain_dbi,`
+/// `[12] acn_nf_db, [13] soldier_tx_dbm, [14] soldier_gain_dbi, [15] cable_loss_db,`
+/// `[16] impl_margin_db, [17] k_b, [18] hpbw_az, [19] hpbw_el, [20] downtilt,`
+/// `[21] r_eff_m, [22] temp_k, [23] rain_mmh, [24] rain_cell_km, [25] freezing_iso_m,`
+/// `[26] jammer_enabled (0/1), [27..31] jammer_sector_0..3` (length 31).
+///
+/// Returns `Vec<f32>` of length `num_bearings * num_ranges + num_bearings`:
+/// first `num_bearings * num_ranges` entries = `sinr_db`, trailing `num_bearings` = `horizon_elev_deg`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn wasm_compute_polar_viewshed(
+    dem: &[f32],
+    cols: usize,
+    rows: usize,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    num_bearings: usize,
+    num_ranges: usize,
+    params: &[f64],
+) -> Vec<f32> {
+    let Some(vp) = unpack_viewshed_params(num_bearings, num_ranges, params) else {
+        return Vec::new();
     };
     let grid_len = num_bearings * num_ranges;
     let mut out = vec![0.0f32; grid_len + num_bearings];
@@ -148,5 +160,54 @@ pub fn wasm_compute_polar_viewshed(
         max_y,
     };
     compute_polar_viewshed_into(&spec, &vp, sinr_slice, horizon_slice);
+    out
+}
+
+/// Computes an incremental slice `[start_bearing, start_bearing + bearing_count)` (mod `num_bearings`)
+/// of the polar viewshed SINR grid + horizon elevation angles.
+///
+/// Returns `Vec<f32>` of length `bearing_count * num_ranges + bearing_count`.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn wasm_compute_polar_viewshed_slice(
+    dem: &[f32],
+    cols: usize,
+    rows: usize,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    num_bearings: usize,
+    num_ranges: usize,
+    start_bearing: usize,
+    bearing_count: usize,
+    params: &[f64],
+) -> Vec<f32> {
+    if bearing_count == 0 {
+        return Vec::new();
+    }
+    let Some(vp) = unpack_viewshed_params(num_bearings, num_ranges, params) else {
+        return Vec::new();
+    };
+    let slice_len = bearing_count * num_ranges;
+    let mut out = vec![0.0f32; slice_len + bearing_count];
+    let (sinr_slice, horizon_slice) = out.split_at_mut(slice_len);
+    let spec = DemGridSpec {
+        data: dem,
+        cols,
+        rows,
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+    };
+    compute_polar_viewshed_slice_into(
+        &spec,
+        &vp,
+        start_bearing,
+        bearing_count,
+        sinr_slice,
+        horizon_slice,
+    );
     out
 }
