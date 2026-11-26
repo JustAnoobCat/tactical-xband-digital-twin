@@ -8,6 +8,7 @@ dist/
 dist-ssr/
 build/
 release/
+coverage/
 *.local
 
 # Logs & Environment

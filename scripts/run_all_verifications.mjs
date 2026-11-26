@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (134 Total Suites)
+// Verification Suites Registry (135 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -145,11 +145,11 @@ const REGISTERED_SUITES = [
   { id: 'verify:wgs84', name: 'Canonical WGS-84 ECEF / ENU / Vincenty Geodesy Engine (WGS-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWgs84Geodesy.ts'], category: 'geodesy' },
   { id: 'verify:multiedge-diffraction', name: 'ITU-R P.526-15 Multi-Edge Diffraction Engine (MED-T1–T8)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMultiEdgeDiffraction.ts'], category: 'physics' },
   { id: 'verify:attitude-channel', name: 'Airframe Attitude & Channel Dynamics (AAD-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyAttitudeAndChannelDynamics.ts'], category: 'physics' },
-  { id: 'verify:mac-phy-feedback', name: 'MAC/PHY Feedback Dynamics & Dynamic TDMA Overhead (MPF-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMacPhyFeedback.ts'], category: 'mac' },
+  { id: 'verify:mac-phy-feedback', name: 'MAC/PHY Feedback Dynamics & Dynamic TDMA Overhead (MPF-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyMacPhyFeedback.ts'], category: 'mac', serial: true },
   { id: 'verify:kinematic-pathfinder', name: 'Kinematic Dubins Path Smoothing & 3D Flight Feasibility (KPF-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyKinematicPathfinder.ts'], category: 'pathfinding' },
   { id: 'verify:worker-transfer-replay', name: 'Worker Transferables & Bounded Adaptive Replay (WTR-T1–T6)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWorkerTransferAndReplayBounds.ts'], category: 'worker' },
   { id: 'verify:dom-safety-modularity', name: 'DOM/XSS Safety Layer & Pure Worker Modular Decomposition (DSM-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyDomSafetyAndModularity.ts'], category: 'ui' },
-  { id: 'verify:viewshed-accessibility', name: 'Viewshed Physics Parity & Accessible Status Encoding (VPA-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyViewshedParityAndAccessibility.ts'], category: 'ui' },
+  { id: 'verify:viewshed-accessibility', name: 'Viewshed Physics Parity & Accessible Status Encoding (VPA-T1–T5)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyViewshedParityAndAccessibility.ts'], category: 'ui', serial: true },
   { id: 'verify:scientific-rigor', name: 'Scientific Benchmarking Rigor & Physics Ablation (SBR-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyScientificBenchmarkRigor.ts'], category: 'benchmark' },
   { id: 'verify:tactical-design-system', name: 'Tactical Obsidian Design System & UI Architecture (TDS-T1–T4)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTacticalDesignSystem.ts'], category: 'ui' },
   { id: 'verify:workbench-cutover', name: 'Workbench Cutover, Stitch Removal & Zero-Emoji Purge (WKC-T1–T3)', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyWorkbenchCutover.ts'], category: 'ui' },
@@ -186,13 +186,14 @@ REGISTERED_SUITES.push(
   { id: 'verify:remed03-physics-unification', name: 'REMED-03 RF Propagation, DCM & Calibration Unification', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed03PhysicsUnification.ts'], category: 'remediation' },
   { id: 'verify:remed04-mac-qos-telemetry', name: 'REMED-04 MAC Fairness, 5QI SLA & PDU Dissector', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed04MacQosTelemetry.ts'], category: 'remediation' },
   { id: 'verify:remed05-metrics-perf', name: 'REMED-05 Timeline Performance, Metrics & Scientific Transparency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed05MetricsAndPerf.ts'], category: 'remediation' },
-  { id: 'verify:remed06-e2e-release', name: 'REMED-06 Strict CSP, Live Scenario Wiring & Career Demo Flow Gate', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed06EndToEndRelease.ts'], category: 'remediation' },
+  { id: 'verify:remed06-e2e-release', name: 'REMED-06 Strict CSP, Live Scenario Wiring & Career Demo Flow Gate', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed06EndToEndRelease.ts'], category: 'remediation', serial: true },
   { id: 'verify:perf01-offline-efficiency', name: 'PERF-01 Offline Air-Gap Readiness & RAM/CPU/GPU Efficiency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPerf01OfflineAndEfficiency.ts'], category: 'performance' },
   { id: 'verify:tauri01-desktop-shell', name: 'TAURI-01 Cross-Platform Offline Tauri v2 Desktop Shell', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTauri01DesktopShell.ts'], category: 'desktop' },
   { id: 'verify:rust-core01-wasm-parity', name: 'RUST-CORE-01 Shared Rust/WASM Terrain, Viewshed & Hillshade Parity', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRustCore01WasmParity.ts'], category: 'physics' },
   { id: 'verify:upg01-flight-recorder-ipc', name: 'UPG-01 Slice WASM Viewshed, On-Demand IPC, Flight Recorder & HUD', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg01FlightRecorderAndIpc.ts'], category: 'architecture' },
   { id: 'verify:upg02-offline-packs-hgt', name: 'UPG-02 Fast 500+ HGT Manager, Offline Mission Packs & Mentor Edge-Case Fixes', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg02OfflinePacksAndHgt.ts'], category: 'terrain' },
-  { id: 'verify:upg03-lan-bridge-batch-cli', name: 'UPG-03 Air-Gapped LAN UDP Bridge (ATAK CoT / MAVLink v2) & Multi-Core Batch CLI', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg03LanBridgeAndBatchCli.ts'], category: 'desktop' }
+  { id: 'verify:upg03-lan-bridge-batch-cli', name: 'UPG-03 Air-Gapped LAN UDP Bridge (ATAK CoT / MAVLink v2) & Multi-Core Batch CLI', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg03LanBridgeAndBatchCli.ts'], category: 'desktop', serial: true },
+  { id: 'verify:upg04-vitest-runner', name: 'UPG-04 Fast Parallel Vitest Pooled Runner, V8 Coverage & Serial-Lane Runner', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg04VitestAndRunner.ts'], category: 'architecture' }
 );
 
 // -----------------------------------------------------------------------------
@@ -236,7 +237,7 @@ function runSuite(suite, timeout) {
 
     const child = spawn(suite.command, suite.args, {
       cwd: process.cwd(),
-      env: { ...process.env, FORCE_COLOR: '0' },
+      env: { ...process.env, FORCE_COLOR: '0', STRATOS_VERIFY_ALL: '1' },
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
@@ -381,8 +382,9 @@ async function main() {
     console.log(` ${indexStr} ${suite.id.padEnd(28)} ${formatStatus(result.status)} in ${durSec.padStart(5, ' ')}s  ${result.error_message ? `— ${ANSI.red}${result.error_message}${ANSI.reset}` : ''}`);
   }
 
-  // Partition: Gatekeeper, heavy allocation, and wall-clock microbenchmark suites execute first in sequence
-  // to avoid CPU context-switching starvation during microbenchmarks and prevent multi-core thrashing.
+  // Partition: Parallelizable suites (!suite.serial) execute first across the worker pool,
+  // followed sequentially (concurrency = 1) by suite.serial === true / wall-clock timing & multi-core suites
+  // so they never oversubscribe a 4-thread laptop or CI runner.
   const serialSuiteIds = new Set([
     'verify-project',
     'typecheck',
@@ -419,7 +421,7 @@ async function main() {
 
   for (let i = 0; i < suitesToRun.length; i++) {
     const s = suitesToRun[i];
-    if (serialSuiteIds.has(s.id)) {
+    if (s.serial === true || serialSuiteIds.has(s.id)) {
       serialTasks.push({ suite: s, originalIndex: i });
     } else {
       poolTasks.push({ suite: s, originalIndex: i });
@@ -435,34 +437,13 @@ async function main() {
 
   let shouldBail = false;
 
-  // Execute serial / gatekeeper suites first
-  for (const item of serialTasks) {
-    let res = await runSuite(item.suite, timeoutMs);
-    if (res.status !== 'PASSED' && !bailOnError) {
-      // Retry once to absorb transient OS context-switch / CPU thermal spikes
-      const retry = await runSuite(item.suite, timeoutMs);
-      if (retry.status === 'PASSED') {
-        res = retry;
-      }
-    }
-    results[item.originalIndex] = res;
-    printProgress(item.suite, res);
-
-    if (bailOnError && res.status !== 'PASSED') {
-      shouldBail = true;
-      console.log(`\n[!] Bailing immediately after failure in suite: ${item.suite.id}`);
-      break;
-    }
-  }
-
-  // Execute remaining suites across bounded parallel worker pool
-  if (!shouldBail && poolTasks.length > 0) {
+  // Phase 1: Execute parallelizable suites (!suite.serial) across bounded worker pool
+  if (poolTasks.length > 0) {
     const queue = [...poolTasks];
-    let poolBailed = false;
 
     async function worker() {
       while (queue.length > 0) {
-        if (poolBailed) break;
+        if (shouldBail) break;
         const item = queue.shift();
         if (!item) break;
 
@@ -478,7 +459,7 @@ async function main() {
         printProgress(item.suite, res);
 
         if (bailOnError && res.status !== 'PASSED') {
-          poolBailed = true;
+          shouldBail = true;
           console.log(`\n[!] Bailing immediately after failure in suite: ${item.suite.id}`);
           break;
         }
@@ -488,6 +469,28 @@ async function main() {
     const workerCount = Math.min(concurrency, poolTasks.length);
     const workers = Array.from({ length: workerCount }, () => worker());
     await Promise.all(workers);
+  }
+
+  // Phase 2: Execute serial suites (suite.serial === true) sequentially (concurrency = 1)
+  if (!shouldBail && serialTasks.length > 0) {
+    for (const item of serialTasks) {
+      let res = await runSuite(item.suite, timeoutMs);
+      if (res.status !== 'PASSED' && !bailOnError) {
+        // Retry once to absorb transient OS context-switch / CPU thermal spikes
+        const retry = await runSuite(item.suite, timeoutMs);
+        if (retry.status === 'PASSED') {
+          res = retry;
+        }
+      }
+      results[item.originalIndex] = res;
+      printProgress(item.suite, res);
+
+      if (bailOnError && res.status !== 'PASSED') {
+        shouldBail = true;
+        console.log(`\n[!] Bailing immediately after failure in suite: ${item.suite.id}`);
+        break;
+      }
+    }
   }
 
   const overallDurationMs = Math.round(performance.now() - overallStart);

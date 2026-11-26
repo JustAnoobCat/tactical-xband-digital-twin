@@ -596,14 +596,14 @@ try {
 }
 
 // -----------------------------------------------------------------------------
-// 4. README.md & 134-Suite Count Sync Audit
+// 4. README.md & 135-Suite Count Sync Audit
 // -----------------------------------------------------------------------------
-runStep('4. README.md technical reconciliation & 134-suite count sync check', () => {
+runStep('4. README.md technical reconciliation & 135-suite count sync check', () => {
   const readme = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
   assert.ok(readme.includes('16.0'), 'README.md must document 16.0 dBi quad-sector peak gain');
   assert.ok(readme.includes('90^\\circ') || readme.includes('90°'), 'README.md must document 90 deg azimuth HPBW');
   assert.ok(readme.includes('6.0'), 'README.md must document 6.0 km dry O2 scale height');
-  assert.ok(readme.includes('134'), 'README.md must document 134 TypeScript verification suites');
+  assert.ok(readme.includes('135'), 'README.md must document 135 TypeScript verification suites');
   assert.ok(readme.includes('AWS Terrarium') && readme.includes('.hgt'), 'README.md must document Terrarium DEM + SRTM .hgt');
   assert.ok(
     readme.includes('core/*.py') && readme.includes('server/app.py') && readme.includes('ts_parity_server.ts'),
