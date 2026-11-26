@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 import { buildLinkProfile } from '../core/linkProfile';
 import { BIOME_DEM_METADATA, TerrainEngine } from '../core/terrain';
@@ -26,6 +27,12 @@ let passedChecks = 0;
 
 function check(label: string, fn: () => void): void {
   fn();
+  passedChecks++;
+  console.log(`  ✓ ${label}`);
+}
+
+async function checkAsync(label: string, fn: () => Promise<void>): Promise<void> {
+  await fn();
   passedChecks++;
   console.log(`  ✓ ${label}`);
 }
@@ -61,6 +68,205 @@ check('public/manifest.webmanifest and public/sw.js exist with zero external URL
   assert.equal(/https?:\/\//i.test(swRaw), false, 'sw.js must contain zero external URLs');
   assert.ok(swRaw.includes('url.origin !== self.location.origin'), 'sw.js must ignore cross-origin requests');
   assert.ok(swRaw.includes('real_ladakh_dem.bin'), 'sw.js must precache bundled DEM binary');
+});
+
+check('SW-FIX-01: public/sw.js enforces Network-First HTML navigation, activate cache purge, and 200-OK only caching', () => {
+  const swRaw = readFileSync(resolve(ROOT_DIR, 'public/sw.js'), 'utf8');
+  assert.equal(/https?:\/\//i.test(swRaw), false, 'sw.js must contain zero external URLs');
+  assert.ok(swRaw.includes("CACHE_NAME = 'xband-twin-offline-v2'"), 'sw.js must bump CACHE_NAME beyond stale v1');
+  assert.ok(swRaw.includes("request.mode === 'navigate'"), 'sw.js must detect navigation requests via request.mode === navigate');
+  assert.ok(swRaw.includes("url.pathname.endsWith('/')"), 'sw.js must match directory root HTML requests');
+  assert.ok(swRaw.includes("url.pathname.endsWith('.html')"), 'sw.js must match .html requests');
+  assert.ok(swRaw.includes("url.pathname.endsWith('manifest.webmanifest')"), 'sw.js must match manifest.webmanifest requests');
+  assert.ok(swRaw.includes("cache: 'no-cache'"), 'sw.js must bypass HTTP cache with no-cache on Network-First navigation fetch');
+  assert.ok(swRaw.includes('caches.delete('), 'sw.js activate handler must purge stale caches');
+  assert.ok(swRaw.includes('self.clients.claim()'), 'sw.js activate handler must claim clients');
+  assert.ok(swRaw.includes('self.skipWaiting()'), 'sw.js install handler must call skipWaiting()');
+  assert.ok(swRaw.includes('response.status === 200'), 'sw.js must cache 200 OK responses only (never 404)');
+});
+
+await checkAsync('SW-FIX-01: runtime behavior verifies Network-First HTML, stale v1 purge, and 404 exclusion', async () => {
+  const swRaw = readFileSync(resolve(ROOT_DIR, 'public/sw.js'), 'utf8');
+  const origin = 'http://localhost:4173';
+  const cacheStore = new Map<string, Map<string, MockResponse>>();
+  const listeners = new Map<string, (event: any) => void>();
+
+  class MockRequest {
+    url: string;
+    method: string;
+    mode: string;
+    cache: string;
+    constructor(input: string | MockRequest, init: { method?: string; mode?: string; cache?: string } = {}) {
+      if (typeof input === 'string') {
+        this.url = new URL(input, `${origin}/`).href;
+        this.method = init.method ?? 'GET';
+        this.mode = init.mode ?? 'same-origin';
+        this.cache = init.cache ?? 'default';
+      } else {
+        this.url = input.url;
+        this.method = init.method ?? input.method;
+        this.mode = init.mode ?? (Object.keys(init).length > 0 ? 'cors' : input.mode);
+        this.cache = init.cache ?? input.cache;
+      }
+    }
+  }
+
+  class MockResponse {
+    body: string;
+    status: number;
+    statusText: string;
+    ok: boolean;
+    type: string;
+    constructor(body = '', init: { status?: number; statusText?: string; type?: string } = {}) {
+      this.body = body;
+      this.status = init.status ?? 200;
+      this.statusText = init.statusText ?? 'OK';
+      this.ok = this.status >= 200 && this.status < 300;
+      this.type = init.type ?? 'basic';
+    }
+    clone() {
+      return new MockResponse(this.body, { status: this.status, statusText: this.statusText, type: this.type });
+    }
+  }
+
+  const normalizeKey = (reqOrUrl: string | MockRequest) =>
+    new URL(typeof reqOrUrl === 'string' ? reqOrUrl : reqOrUrl.url, `${origin}/`).href;
+
+  const mockCaches = {
+    async open(name: string) {
+      let bucket = cacheStore.get(name);
+      if (!bucket) {
+        bucket = new Map();
+        cacheStore.set(name, bucket);
+      }
+      return {
+        async put(reqOrUrl: string | MockRequest, resp: MockResponse) {
+          bucket!.set(normalizeKey(reqOrUrl), resp);
+        },
+        async add(reqOrUrl: string | MockRequest) {
+          const resp = await mockFetch(reqOrUrl);
+          if (resp.ok) bucket!.set(normalizeKey(reqOrUrl), resp);
+        },
+        async match(reqOrUrl: string | MockRequest) {
+          return bucket!.get(normalizeKey(reqOrUrl));
+        },
+      };
+    },
+    async keys() {
+      return Array.from(cacheStore.keys());
+    },
+    async delete(name: string) {
+      return cacheStore.delete(name);
+    },
+    async match(reqOrUrl: string | MockRequest) {
+      const key = normalizeKey(reqOrUrl);
+      for (const bucket of cacheStore.values()) {
+        if (bucket.has(key)) return bucket.get(key);
+      }
+      return undefined;
+    },
+  };
+
+  let fetchCalls: Array<{ url: string; cache: string }> = [];
+  let mockFetchImpl: (req: MockRequest) => Promise<MockResponse> = async () => new MockResponse('ok', { status: 200 });
+  const mockFetch = async (input: string | MockRequest, init?: { cache?: string }) => {
+    const req = input instanceof MockRequest && !init ? input : new MockRequest(input, init);
+    fetchCalls.push({ url: req.url, cache: req.cache });
+    return mockFetchImpl(req);
+  };
+
+  let skipWaitingCalled = false;
+  let clientsClaimCalled = false;
+  const mockSelf: any = {
+    location: { origin },
+    addEventListener: (type: string, fn: (event: any) => void) => listeners.set(type, fn),
+    skipWaiting: async () => {
+      skipWaitingCalled = true;
+    },
+    clients: {
+      claim: async () => {
+        clientsClaimCalled = true;
+      },
+    },
+  };
+
+  runInNewContext(swRaw, {
+    self: mockSelf,
+    caches: mockCaches,
+    fetch: mockFetch,
+    Request: MockRequest,
+    Response: MockResponse,
+    URL,
+  });
+
+  // 1. Install precaches core URLs and invokes skipWaiting()
+  let waitPromise: Promise<unknown> | undefined;
+  listeners.get('install')!({ waitUntil: (p: Promise<unknown>) => { waitPromise = p; } });
+  await waitPromise;
+  assert.equal(skipWaitingCalled, true, 'install must call self.skipWaiting()');
+  assert.equal(cacheStore.has('xband-twin-offline-v2'), true, 'install must open xband-twin-offline-v2');
+
+  // 2. Activate purges stale v1 cache and calls clients.claim()
+  cacheStore.set('stratos-xband-offline-v1', new Map([[`${origin}/`, new MockResponse('stale-v1')]]));
+  listeners.get('activate')!({ waitUntil: (p: Promise<unknown>) => { waitPromise = p; } });
+  await waitPromise;
+  assert.equal(cacheStore.has('stratos-xband-offline-v1'), false, 'activate must delete stale v1 cache');
+  assert.equal(cacheStore.has('xband-twin-offline-v2'), true, 'activate must keep active v2 cache');
+  assert.equal(clientsClaimCalled, true, 'activate must call self.clients.claim()');
+
+  const dispatchFetch = async (req: MockRequest): Promise<MockResponse | undefined> => {
+    let responsePromise: Promise<MockResponse> | undefined;
+    listeners.get('fetch')!({
+      request: req,
+      respondWith: (p: Promise<MockResponse>) => {
+        responsePromise = p;
+      },
+    });
+    if (!responsePromise) return undefined;
+    const res = await responsePromise;
+    await new Promise((r) => setTimeout(r, 0));
+    return res;
+  };
+
+  // 3. Navigation uses Network-First with cache: 'no-cache' even when stale HTML is cached
+  cacheStore.get('xband-twin-offline-v2')!.set(`${origin}/`, new MockResponse('<html>stale</html>'));
+  cacheStore.get('xband-twin-offline-v2')!.set(`${origin}/index.html`, new MockResponse('<html>precached-index</html>'));
+  fetchCalls = [];
+  mockFetchImpl = async () => new MockResponse('<html>fresh-deploy</html>', { status: 200 });
+  const navRes = await dispatchFetch(new MockRequest(`${origin}/`, { mode: 'navigate' }));
+  assert.equal(navRes?.body, '<html>fresh-deploy</html>', 'Navigation must serve fresh network HTML over stale cache');
+  assert.equal(fetchCalls[0]?.cache, 'no-cache', 'Navigation fetch must use cache: no-cache');
+  assert.equal(cacheStore.get('xband-twin-offline-v2')!.get(`${origin}/`)?.body, '<html>fresh-deploy</html>', '200 OK navigation response must update cache');
+
+  // 4. Offline navigation falls back to cache / ./index.html only when network fails
+  mockFetchImpl = async () => {
+    throw new Error('offline');
+  };
+  const offlineNav = await dispatchFetch(new MockRequest(`${origin}/app.html`, { mode: 'navigate' }));
+  assert.equal(offlineNav?.body, '<html>precached-index</html>', 'Offline navigation must fall back to precached ./index.html');
+
+  // 5. Non-OK (404) static or HTML responses must NEVER be cached
+  mockFetchImpl = async () => new MockResponse('Not Found', { status: 404, statusText: 'Not Found' });
+  const missAssetRes = await dispatchFetch(new MockRequest(`${origin}/assets/missing-deadbeef.js`, { mode: 'cors' }));
+  assert.equal(missAssetRes?.status, 404);
+  assert.equal(cacheStore.get('xband-twin-offline-v2')!.has(`${origin}/assets/missing-deadbeef.js`), false, '404 response must never be cached');
+
+  // 6. Static asset 200 OK backfills cache then serves Cache-First
+  mockFetchImpl = async () => new MockResponse('console.log("v2")', { status: 200 });
+  const assetRes = await dispatchFetch(new MockRequest(`${origin}/assets/index-abc123.js`, { mode: 'cors' }));
+  assert.equal(assetRes?.body, 'console.log("v2")');
+  assert.equal(cacheStore.get('xband-twin-offline-v2')!.has(`${origin}/assets/index-abc123.js`), true, '200 OK asset must backfill cache');
+
+  fetchCalls = [];
+  const cachedAssetRes = await dispatchFetch(new MockRequest(`${origin}/assets/index-abc123.js`, { mode: 'cors' }));
+  assert.equal(cachedAssetRes?.body, 'console.log("v2")');
+  assert.equal(fetchCalls.length, 0, 'Cached hashed asset must be served Cache-First without network fetch');
+
+  // 7. Cross-origin requests are strictly ignored
+  fetchCalls = [];
+  const extRes = await dispatchFetch(new MockRequest('http://external.invalid/tile.png', { mode: 'cors' }));
+  assert.equal(extRes, undefined, 'Cross-origin requests must be ignored by sw.js');
+  assert.equal(fetchCalls.length, 0);
 });
 
 check('index.html declares manifest link and maintains strict CSP (0 inline scripts/handlers)', () => {
