@@ -15,7 +15,79 @@ import {
   METERS_PER_DEG_LAT,
   METERS_PER_DEG_LON,
 } from '../core/geodesy';
+import type { BiomeId } from '../core/biomePhysics';
+import { BIOME_DEM_METADATA } from '../core/terrain';
 import type { RadarViewport } from './controllers/radar2dRenderer';
+
+export interface SectorTheaterTarget {
+  readonly sectorKey: string;
+  readonly biomeId: BiomeId;
+  readonly terrainMode: 'real' | 'synthetic';
+  readonly centerLatDeg: number;
+  readonly centerLonDeg: number;
+  readonly isCustomOrigin: boolean;
+}
+
+/**
+ * Resolves a `#dem-sector-select` option value into authoritative theater biome,
+ * terrain mode, and WGS-84 origin coordinates across 2D Radar, Geo, and 3D views.
+ */
+export function resolveSectorTheaterTarget(sectorVal: string): SectorTheaterTarget {
+  const normalized = String(sectorVal || 'ladakh').trim().toLowerCase();
+  if (normalized === 'synthetic') {
+    const meta = BIOME_DEM_METADATA.alpine_mountain;
+    return {
+      sectorKey: 'synthetic',
+      biomeId: 'alpine_mountain',
+      terrainMode: 'synthetic',
+      centerLatDeg: meta.centerLatDeg,
+      centerLonDeg: meta.centerLonDeg,
+      isCustomOrigin: false,
+    };
+  }
+  if (normalized === 'kargil' || normalized === 'kargil_corridor') {
+    return {
+      sectorKey: 'kargil',
+      biomeId: 'alpine_mountain',
+      terrainMode: 'synthetic',
+      centerLatDeg: 34.5,
+      centerLonDeg: 76.1,
+      isCustomOrigin: true,
+    };
+  }
+  if (normalized === 'ladakh' || normalized === 'alpine_mountain') {
+    const meta = BIOME_DEM_METADATA.alpine_mountain;
+    return {
+      sectorKey: 'ladakh',
+      biomeId: 'alpine_mountain',
+      terrainMode: 'real',
+      centerLatDeg: meta.centerLatDeg,
+      centerLonDeg: meta.centerLonDeg,
+      isCustomOrigin: false,
+    };
+  }
+  if (normalized in BIOME_DEM_METADATA) {
+    const biomeId = normalized as BiomeId;
+    const meta = BIOME_DEM_METADATA[biomeId];
+    return {
+      sectorKey: biomeId,
+      biomeId,
+      terrainMode: 'synthetic',
+      centerLatDeg: meta.centerLatDeg,
+      centerLonDeg: meta.centerLonDeg,
+      isCustomOrigin: false,
+    };
+  }
+  const fallback = BIOME_DEM_METADATA.alpine_mountain;
+  return {
+    sectorKey: 'ladakh',
+    biomeId: 'alpine_mountain',
+    terrainMode: 'real',
+    centerLatDeg: fallback.centerLatDeg,
+    centerLonDeg: fallback.centerLonDeg,
+    isCustomOrigin: false,
+  };
+}
 
 export const DEFAULT_WORLD_SATELLITE_TILE_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
@@ -29,7 +101,8 @@ export const DEFAULT_WORLD_RADAR_DEM_TILE_URL =
 const MAX_MERCATOR_LAT_DEG = 85.05112878;
 const MAX_VISIBLE_TILES_PER_FRAME = 120;
 const MIN_WORLD_TILE_ZOOM = 2;
-const MAX_WORLD_TILE_ZOOM = 15;
+export const DEFAULT_MAX_NATIVE_TILE_ZOOM = 15;
+const MAX_WORLD_TILE_ZOOM = 18;
 const TILE_ERROR_RETRY_COOLDOWN_MS = 30_000;
 const DEFAULT_WORLD_TILE_CACHE_SIZE = 64;
 const DEFAULT_TERRARIUM_SCRATCH_PIXELS = 65536;
@@ -432,10 +505,76 @@ interface CachedTileEntry {
   errorTimestampMs?: number;
 }
 
+export interface OverzoomTilePlan {
+  readonly targetZ: number;
+  readonly targetX: number;
+  readonly targetY: number;
+  readonly fetchZ: number;
+  readonly fetchX: number;
+  readonly fetchY: number;
+  readonly sx: number;
+  readonly sy: number;
+  readonly sw: number;
+  readonly sh: number;
+}
+
+/**
+ * Computes parent-tile fetch coordinates and exact sub-quadrant crop rectangle
+ * when target zoom exceeds `maxNativeZoom` (e.g. Z17 overzooming Z15).
+ */
+export function computeOverzoomTilePlan(
+  targetZ: number,
+  targetX: number,
+  targetY: number,
+  maxNativeZoom: number = DEFAULT_MAX_NATIVE_TILE_ZOOM,
+  tileWidth: number = 256,
+  tileHeight: number = tileWidth
+): OverzoomTilePlan {
+  const safeTargetZ = Math.max(0, Math.floor(targetZ));
+  const safeMaxZ = Math.max(0, Math.floor(maxNativeZoom));
+  if (safeTargetZ <= safeMaxZ) {
+    return {
+      targetZ: safeTargetZ,
+      targetX,
+      targetY,
+      fetchZ: safeTargetZ,
+      fetchX: targetX,
+      fetchY: targetY,
+      sx: 0,
+      sy: 0,
+      sw: tileWidth,
+      sh: tileHeight,
+    };
+  }
+
+  const dz = safeTargetZ - safeMaxZ;
+  const fetchX = targetX >> dz;
+  const fetchY = targetY >> dz;
+  const scaleDiv = 1 << dz;
+  const subX = targetX - (fetchX << dz);
+  const subY = targetY - (fetchY << dz);
+  const sw = tileWidth / scaleDiv;
+  const sh = tileHeight / scaleDiv;
+
+  return {
+    targetZ: safeTargetZ,
+    targetX,
+    targetY,
+    fetchZ: safeMaxZ,
+    fetchX,
+    fetchY,
+    sx: subX * sw,
+    sy: subY * sh,
+    sw,
+    sh,
+  };
+}
+
 export interface WorldTileLayerOptions {
   readonly tileUrlTemplate?: string;
   readonly renderMode?: WorldTileRenderMode;
   readonly maxCacheSize?: number;
+  readonly maxNativeZoom?: number;
   readonly opacity?: number;
   readonly allowExternalTiles?: boolean;
   readonly airGapOfflineOnly?: boolean;
@@ -452,6 +591,7 @@ export class WorldTileLayer {
   private tileUrlTemplate: string;
   private readonly renderMode: WorldTileRenderMode;
   private readonly maxCacheSize: number;
+  private maxNativeZoom: number;
   private readonly opacity: number;
   private allowExternalTilesOption: boolean | undefined;
   private airGapOfflineOnlyOption: boolean | undefined;
@@ -470,6 +610,10 @@ export class WorldTileLayer {
         ? DEFAULT_WORLD_RADAR_DEM_TILE_URL
         : DEFAULT_WORLD_SATELLITE_TILE_URL);
     this.maxCacheSize = options.maxCacheSize ?? DEFAULT_WORLD_TILE_CACHE_SIZE;
+    this.maxNativeZoom =
+      options.maxNativeZoom !== undefined && Number.isFinite(options.maxNativeZoom)
+        ? Math.max(MIN_WORLD_TILE_ZOOM, Math.min(20, Math.floor(options.maxNativeZoom)))
+        : DEFAULT_MAX_NATIVE_TILE_ZOOM;
     this.opacity = options.opacity ?? 0.96;
     this.allowExternalTilesOption = options.allowExternalTiles;
     this.airGapOfflineOnlyOption = options.airGapOfflineOnly;
@@ -520,12 +664,31 @@ export class WorldTileLayer {
     this.allowExternalTilesOption = allow;
   }
 
+  public getMaxNativeZoom(): number {
+    return this.maxNativeZoom;
+  }
+
+  public setMaxNativeZoom(maxNativeZoom: number): void {
+    if (!Number.isFinite(maxNativeZoom)) return;
+    const clamped = Math.max(MIN_WORLD_TILE_ZOOM, Math.min(20, Math.floor(maxNativeZoom)));
+    if (clamped !== this.maxNativeZoom) {
+      this.maxNativeZoom = clamped;
+      this.clear();
+    }
+  }
+
   public setOrigin(latDeg: number, lonDeg: number): void {
     if (!Number.isFinite(latDeg) || !Number.isFinite(lonDeg)) return;
     const clampedLat = Math.max(-MAX_MERCATOR_LAT_DEG, Math.min(MAX_MERCATOR_LAT_DEG, latDeg));
+    const changed =
+      Math.abs(clampedLat - this.originLatDeg) > 1e-9 || Math.abs(lonDeg - this.originLonDeg) > 1e-9;
     this.originLatDeg = clampedLat;
     this.originLonDeg = lonDeg;
-    this.loadGeneration++;
+    if (changed) {
+      this.clear();
+    } else {
+      this.loadGeneration++;
+    }
   }
 
   public getOrigin(): { latDeg: number; lonDeg: number } {
@@ -631,8 +794,12 @@ export class WorldTileLayer {
     }
   }
 
-  private drawParentFallback(ctx: CanvasRenderingContext2D, tile: VisibleWorldTile): boolean {
-    for (let pz = tile.z - 1; pz >= MIN_WORLD_TILE_ZOOM; pz--) {
+  private drawParentFallback(
+    ctx: CanvasRenderingContext2D,
+    tile: VisibleWorldTile,
+    startParentZoom: number = tile.z - 1
+  ): boolean {
+    for (let pz = Math.min(tile.z - 1, startParentZoom); pz >= MIN_WORLD_TILE_ZOOM; pz--) {
       const shift = tile.z - pz;
       const ptx = tile.tx >> shift;
       const pty = tile.ty >> shift;
@@ -695,7 +862,9 @@ export class WorldTileLayer {
     };
 
     for (const tile of tiles) {
-      let entry = this.cache.get(tile.key);
+      const plan = computeOverzoomTilePlan(tile.z, tile.tx, tile.ty, this.maxNativeZoom, 256);
+      const fetchKey = `${plan.fetchZ}/${plan.fetchX}/${plan.fetchY}`;
+      let entry = this.cache.get(fetchKey);
       const canRetryError =
         entry?.status === 'error' &&
         typeof entry.errorTimestampMs === 'number' &&
@@ -705,12 +874,12 @@ export class WorldTileLayer {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         entry = { status: 'loading', source: img, width: 0, height: 0, lastUsed: ++this.accessTick };
-        this.cache.set(tile.key, entry);
+        this.cache.set(fetchKey, entry);
         this.evictIfNeeded();
         const capturedEntry = entry;
-        const capturedZ = tile.z;
-        const capturedTy = tile.ty;
-        const capturedKey = tile.key;
+        const capturedZ = plan.fetchZ;
+        const capturedTy = plan.fetchY;
+        const capturedKey = fetchKey;
         const capturedGeneration = this.loadGeneration;
         img.onload = () => {
           if (
@@ -749,15 +918,37 @@ export class WorldTileLayer {
           capturedEntry.status = 'error';
           capturedEntry.errorTimestampMs = Date.now();
         };
-        img.src = formatSlippyTileUrl(this.tileUrlTemplate, tile.z, tile.tx, tile.ty);
+        img.src = formatSlippyTileUrl(this.tileUrlTemplate, plan.fetchZ, plan.fetchX, plan.fetchY);
       } else if (entry) {
         entry.lastUsed = ++this.accessTick;
       }
 
       if (entry && entry.status === 'loaded' && entry.width > 0) {
-        ctx.drawImage(entry.source, tile.dx, tile.dy, tile.dw + 0.75, tile.dh + 0.75);
+        if (plan.fetchZ < tile.z) {
+          const crop = computeOverzoomTilePlan(
+            tile.z,
+            tile.tx,
+            tile.ty,
+            this.maxNativeZoom,
+            entry.width,
+            entry.height || entry.width
+          );
+          ctx.drawImage(
+            entry.source,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+            tile.dx,
+            tile.dy,
+            tile.dw + 0.75,
+            tile.dh + 0.75
+          );
+        } else {
+          ctx.drawImage(entry.source, tile.dx, tile.dy, tile.dw + 0.75, tile.dh + 0.75);
+        }
         drawnCount++;
-      } else if (this.drawParentFallback(ctx, tile)) {
+      } else if (this.drawParentFallback(ctx, tile, plan.fetchZ - 1)) {
         drawnCount++;
       }
     }

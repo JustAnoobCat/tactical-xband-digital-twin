@@ -1,5 +1,6 @@
 // 2D Radar renderer integration, MapLibre kinetic overlay, hillshade/cursor readout & pointer interactions
 import type { AppContext } from './appContext.ts';
+import { MIN_RADAR_RANGE_M } from './appContext.ts';
 import type { TerrainBoundsLike } from './windowBindings.d.ts';
 import type { NodeTelemetryItem, TelemetryFrame } from '../shared/workerProtocol.ts';
 import type { ObstacleShapeMode } from '../ui/terrainAnalysisController.ts';
@@ -34,6 +35,9 @@ import {
 } from '../ui/worldTileLayer.ts';
 import { createRadarNodeMarkerLayer } from '../ui/radarNodeMarkerLayer.ts';
 import { computeBarrierWallRotationDeg } from '../ui/toolboxPrecisionSuite.ts';
+import { computeWebMercatorZoomLevel } from '../ui/cartographyRenderer.ts';
+
+export { computeWebMercatorZoomLevel };
 
 export function initRadar2dAndInteractionController(ctx: AppContext) {
   const { state, engines, canvases, dom, actions } = ctx;
@@ -84,6 +88,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
         getTerrainMode: () => state.activeTerrainMode,
         getWorldTileLayer: () => getRadarWorldTileLayer(),
         getNodeMarkerLayer: () => getRadarNodeMarkerLayer(),
+        getSweepTimeS: () => state.radarSweepPhaseS,
         projectEnuToScreen: (xM, yM) => state.mapController?.projectEnuToContainerPoint(xM, yM) ?? null,
         getLatestTelemetry: () => state.latestTelemetry,
         getHistoricalSnapshot: () =>
@@ -777,6 +782,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
       return;
     }
     getRadar2dRenderer().renderRadar();
+    actions.syncZoomHudReadout?.();
   }
 
   function radarLinkHit(px: number, py: number, _w: number, _h: number, radiusPx = 6): number | null {
@@ -1711,7 +1717,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
     (e) => {
       e.preventDefault();
       state.currentRadarRangeM = Math.max(
-        15000,
+        MIN_RADAR_RANGE_M,
         Math.min(actions.getMaxRadarRangeM(), state.currentRadarRangeM * (e.deltaY < 0 ? 0.82 : 1.22))
       );
       actions.setRadarRange(state.currentRadarRangeM);

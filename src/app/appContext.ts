@@ -75,6 +75,7 @@ import type { TwinEvaluationReport } from '../core/digitalTwinCalibrationEngine.
 import type { QosNetworkSlaReport } from '../core/qosSlaEngine.ts';
 
 export const UNAVAILABLE = '—';
+export const MIN_RADAR_RANGE_M = 120;
 export const MONO = '"IBM Plex Mono", ui-monospace, Consolas, monospace';
 export const TAU = Math.PI * 2;
 export const TRANSPARENT_1X1_PNG =
@@ -209,6 +210,8 @@ export interface AppState {
   schedulerNeedsRender: boolean;
   terrainNeedsRender: boolean;
   animationLoopRafId: number | null;
+  radarSweepPhaseS: number;
+  pendingThreeRecenter: boolean;
   selectedNodeId: number;
   inspectorDismissed: boolean;
   nodeMoveModeActive: boolean;
@@ -557,6 +560,7 @@ export interface AppActions {
   experimentObserve: (frame: TelemetryFrame) => void;
   initializeExperimentCapture: () => void;
   updateDashboardDOM: (frame: TelemetryFrame, forceImmediate?: boolean) => void;
+  syncZoomHudReadout: () => void;
 
   // scientificScopesAndTimelineController
   drawNetworkCharts: () => void;
@@ -652,6 +656,7 @@ export interface AppActions {
   syncNodeDropdowns: (nodeId: number) => void;
   resizeCanvases: () => void;
   scheduleResizeCanvases: () => void;
+  openResearchDocsWindow: () => void;
 }
 
 export interface AppContext {
@@ -770,6 +775,8 @@ export function createAppContext(worker: Worker): AppContext {
     schedulerNeedsRender: true,
     terrainNeedsRender: true,
     animationLoopRafId: null,
+    radarSweepPhaseS: 0,
+    pendingThreeRecenter: false,
     selectedNodeId: -1,
     inspectorDismissed: false,
     nodeMoveModeActive: false,

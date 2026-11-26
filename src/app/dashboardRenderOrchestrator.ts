@@ -48,6 +48,8 @@ import {
 import { initMissionIoController } from '../ui/controllers/missionIoController.ts';
 import { initCommandPaletteController } from '../ui/controllers/commandPaletteController.ts';
 import { createDashboardAndAuthoringController } from '../ui/controllers/dashboardAndAuthoringController.ts';
+import { computeWebMercatorZoomLevel } from '../ui/cartographyRenderer.ts';
+import { BIOME_DEM_METADATA } from '../core/terrain.ts';
 
 export function initDashboardRenderOrchestrator(ctx: AppContext) {
   const { state, engines, dom, actions } = ctx;
@@ -2078,6 +2080,65 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
   let lastDomUpdateMs = 0;
   const DOM_UPDATE_INTERVAL_MS = 100; // 10 Hz cadence (100 ms interval)
 
+  let lastZoomHudText = '';
+  function syncZoomHudReadout(): void {
+    const badge = $('radar-zoom-badge');
+    if (!badge) return;
+    const originLat =
+      state.mapController?.getOrigin()?.latDeg ??
+      BIOME_DEM_METADATA[state.activeBiomeId]?.centerLatDeg ??
+      34.5;
+    let z = 0;
+
+    if (state.stageViewMode === '3d') {
+      const threeCtrl = state.threeController;
+      const camera = threeCtrl?.camera;
+      if (camera) {
+        const controls = typeof threeCtrl.getControls === 'function' ? threeCtrl.getControls() : null;
+        const target = controls?.target;
+        const distM = target
+          ? camera.position.distanceTo(target)
+          : Math.hypot(camera.position.x, camera.position.y - 3500, camera.position.z);
+        const fovRad = ((camera.fov || 50) * Math.PI) / 180;
+        const threeCanvas = $('three-canvas');
+        const vh = Math.max(
+          1,
+          threeCanvas?.parentElement?.clientHeight || threeCanvas?.clientHeight || 600
+        );
+        const visibleHeightM = Math.max(1, 2 * Math.max(10, distM) * Math.tan(fovRad * 0.5));
+        const mPerPx = visibleHeightM / vh;
+        z = computeWebMercatorZoomLevel(mPerPx, originLat);
+      } else {
+        const rangeM = Number.isFinite(state.currentRadarRangeM) ? state.currentRadarRangeM : 60000;
+        const mPerPx = rangeM / 282;
+        z = computeWebMercatorZoomLevel(mPerPx, originLat);
+      }
+    } else if (state.terrainMapMode === 'maplibre') {
+      const mapZoom = state.mapController?.getZoom();
+      if (typeof mapZoom === 'number' && Number.isFinite(mapZoom)) {
+        z = Math.max(0, Math.min(22, mapZoom));
+      } else {
+        const radarCanvas = $('radar-canvas');
+        const rw = radarCanvas?.parentElement?.clientWidth || radarCanvas?.clientWidth || 800;
+        const rh = radarCanvas?.parentElement?.clientHeight || radarCanvas?.clientHeight || 600;
+        const geom = actions.getRadarGeometry(rw, rh);
+        z = computeWebMercatorZoomLevel(1 / Math.max(1e-6, geom.scale), originLat);
+      }
+    } else {
+      const radarCanvas = $('radar-canvas');
+      const rw = radarCanvas?.parentElement?.clientWidth || radarCanvas?.clientWidth || 800;
+      const rh = radarCanvas?.parentElement?.clientHeight || radarCanvas?.clientHeight || 600;
+      const geom = actions.getRadarGeometry(rw, rh);
+      z = computeWebMercatorZoomLevel(1 / Math.max(1e-6, geom.scale), originLat);
+    }
+
+    const nextText = `ZOOM Z${z.toFixed(1)}`;
+    if (nextText !== lastZoomHudText) {
+      lastZoomHudText = nextText;
+      badge.textContent = nextText;
+    }
+  }
+
   function updateDashboardDOM(frame: TelemetryFrame, force = false) {
     if (!frame) return;
     experimentObserve(frame);
@@ -2144,6 +2205,12 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       renderOpsFleetRegistry(frame.nodes_telemetry);
       renderQosSlaAnalyzer(frame);
     }
+
+    const simTimeNum = typeof frame.sim_time_s === 'number' && Number.isFinite(frame.sim_time_s) ? frame.sim_time_s : 0;
+    if (state.isPaused || Math.abs(state.radarSweepPhaseS - simTimeNum) > 0.35) {
+      state.radarSweepPhaseS = simTimeNum;
+    }
+    syncZoomHudReadout();
 
     if (isTimelineHist) return;
 
@@ -2901,5 +2968,6 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     experimentObserve,
     initializeExperimentCapture,
     updateDashboardDOM,
+    syncZoomHudReadout,
   });
 }

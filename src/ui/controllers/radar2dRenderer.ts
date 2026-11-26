@@ -97,6 +97,7 @@ export interface Radar2dRendererDeps {
   readonly getTerrainMode?: () => string;
   readonly getWorldTileLayer?: () => WorldTileLayer | null;
   readonly getNodeMarkerLayer?: () => RadarNodeMarkerLayer | null;
+  readonly getSweepTimeS?: () => number;
   readonly projectEnuToScreen?: (xM: number, yM: number) => RadarPoint2D | null;
   readonly getLatestTelemetry: () => any;
   readonly getHistoricalSnapshot: () => any;
@@ -119,6 +120,191 @@ export interface Radar2dRendererDeps {
 
 const TAU = Math.PI * 2;
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+
+export interface AcnSectorWedgeSpec {
+  readonly index: 0 | 1 | 2 | 3;
+  readonly code: 'S0' | 'S1' | 'S2' | 'S3';
+  readonly label: 'FWD' | 'STBD' | 'AFT' | 'PORT';
+  readonly startRad: number;
+  readonly endRad: number;
+  readonly midRad: number;
+  readonly rgb: readonly [number, number, number];
+  readonly hex: string;
+}
+
+export interface AcnSectorSweepState {
+  readonly headingDeg: number;
+  readonly sweepAngleRad: number;
+  readonly tailArcRad: number;
+  readonly wedges: readonly AcnSectorWedgeSpec[];
+}
+
+const ACN_SECTOR_PALETTE: ReadonlyArray<{
+  readonly index: 0 | 1 | 2 | 3;
+  readonly code: 'S0' | 'S1' | 'S2' | 'S3';
+  readonly label: 'FWD' | 'STBD' | 'AFT' | 'PORT';
+  readonly boresightOffsetDeg: number;
+  readonly rgb: readonly [number, number, number];
+  readonly hex: string;
+}> = Object.freeze([
+  { index: 0, code: 'S0', label: 'FWD', boresightOffsetDeg: 0, rgb: [56, 189, 248], hex: '#38bdf8' },
+  { index: 1, code: 'S1', label: 'STBD', boresightOffsetDeg: 90, rgb: [245, 158, 11], hex: '#f59e0b' },
+  { index: 2, code: 'S2', label: 'AFT', boresightOffsetDeg: 180, rgb: [96, 165, 250], hex: '#60a5fa' },
+  { index: 3, code: 'S3', label: 'PORT', boresightOffsetDeg: 270, rgb: [192, 132, 252], hex: '#c084fc' },
+]);
+
+/**
+ * Computes pure 2D canvas angular geometry for the ACN 4-sector footprint
+ * and rotating radar sweep beam.
+ */
+export function computeAcnSectorSweepState(
+  acnHeadingDeg: number,
+  simTimeS: number
+): AcnSectorSweepState {
+  const headingDeg = Number.isFinite(acnHeadingDeg) ? ((acnHeadingDeg % 360) + 360) % 360 : 0;
+  const safeTime = Number.isFinite(simTimeS) && simTimeS >= 0 ? simTimeS : 0;
+  const sweepAngleRad = (safeTime * 1.4) % TAU;
+  const tailArcRad = (35 * Math.PI) / 180;
+
+  const wedges: AcnSectorWedgeSpec[] = ACN_SECTOR_PALETTE.map((sec) => {
+    const centerDeg = headingDeg + sec.boresightOffsetDeg;
+    const startRad = ((centerDeg - 45 - 90) * Math.PI) / 180;
+    const endRad = ((centerDeg + 45 - 90) * Math.PI) / 180;
+    const midRad = ((centerDeg - 90) * Math.PI) / 180;
+    return {
+      index: sec.index,
+      code: sec.code,
+      label: sec.label,
+      startRad,
+      endRad,
+      midRad,
+      rgb: sec.rgb,
+      hex: sec.hex,
+    };
+  });
+
+  return {
+    headingDeg,
+    sweepAngleRad,
+    tailArcRad,
+    wedges,
+  };
+}
+
+function drawAcn4SectorAndSweepOverlay(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  coverageRadiusPx: number,
+  viewportW: number,
+  viewportH: number,
+  acnHeadingDeg: number,
+  simTimeS: number,
+  activeSectorId: number | null
+): void {
+  const sweepState = computeAcnSectorSweepState(acnHeadingDeg, simTimeS);
+  const wedgeRadiusPx = Math.max(42, coverageRadiusPx);
+  const hudRingRadiusPx = Math.max(48, Math.min(wedgeRadiusPx, Math.min(viewportW, viewportH) * 0.43));
+
+  ctx.save();
+
+  // 1. Translucent 4-sector wedges rotated by ACN heading
+  for (const wedge of sweepState.wedges) {
+    const isServing = activeSectorId === wedge.index;
+    const fillAlpha = isServing ? 0.22 : 0.09;
+    const [r, g, b] = wedge.rgb;
+
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, wedgeRadiusPx, wedge.startRad, wedge.endRad);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${fillAlpha})`;
+    ctx.fill();
+
+    if (isServing) {
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.55)`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  // 2. Thin quadrant divider radials & outer coverage ring
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.28)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  for (const wedge of sweepState.wedges) {
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos(wedge.startRad) * wedgeRadiusPx,
+      centerY + Math.sin(wedge.startRad) * wedgeRadiusPx
+    );
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, wedgeRadiusPx, 0, TAU);
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+  ctx.lineWidth = 1.1;
+  ctx.stroke();
+
+  if (wedgeRadiusPx > hudRingRadiusPx * 1.15) {
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, hudRingRadiusPx, 0, TAU);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // 3. Rotating radar sweep phosphor trail (~35 deg fan) + leading beam
+  const beamAngle = sweepState.sweepAngleRad - Math.PI / 2;
+  const tailStart = beamAngle - sweepState.tailArcRad;
+  ctx.beginPath();
+  ctx.moveTo(centerX, centerY);
+  ctx.arc(centerX, centerY, hudRingRadiusPx, tailStart, beamAngle);
+  ctx.closePath();
+
+  if (typeof ctx.createRadialGradient === 'function') {
+    const grad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, hudRingRadiusPx);
+    grad.addColorStop(0, 'rgba(56, 189, 248, 0.34)');
+    grad.addColorStop(0.65, 'rgba(56, 189, 248, 0.16)');
+    grad.addColorStop(1, 'rgba(56, 189, 248, 0.03)');
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.16)';
+  }
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(centerX, centerY);
+  ctx.lineTo(
+    centerX + Math.cos(beamAngle) * hudRingRadiusPx,
+    centerY + Math.sin(beamAngle) * hudRingRadiusPx
+  );
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  // 4. Compact FWD / STBD / AFT / PORT sector labels inside the scope
+  const labelR = Math.max(30, hudRingRadiusPx * 0.72);
+  ctx.font = `600 10px ${MONO}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const wedge of sweepState.wedges) {
+    const lx = centerX + Math.cos(wedge.midRad) * labelR;
+    const ly = centerY + Math.sin(wedge.midRad) * labelR;
+    if (lx < 16 || lx > viewportW - 16 || ly < 16 || ly > viewportH - 16) continue;
+    const isServing = activeSectorId === wedge.index;
+    const [r, g, b] = wedge.rgb;
+    ctx.fillStyle = isServing ? `rgba(${r}, ${g}, ${b}, 0.98)` : `rgba(${r}, ${g}, ${b}, 0.72)`;
+    ctx.fillText(wedge.label, lx, ly);
+  }
+
+  ctx.restore();
+}
 
 const BIOME_AO_LABELS: Readonly<Record<string, string>> = Object.freeze({
   alpine_mountain: 'LADAKH AO',
@@ -611,8 +797,8 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       metersPerPixel: 1.0 / (geometry.scale || 1.0),
       showMgrsGrid: deps.isMgrsGridActive(),
       biomeId: activeBiomeIdForCarto,
-      originLatDeg: activeBoundsForCarto?.centerLatDeg,
-      originLonDeg: activeBoundsForCarto?.centerLonDeg,
+      originLatDeg: activeBoundsForCarto?.centerLatDeg ?? worldTileLayer?.getOrigin?.()?.latDeg,
+      originLonDeg: activeBoundsForCarto?.centerLonDeg ?? worldTileLayer?.getOrigin?.()?.lonDeg,
       screenToWorld: (sx, sy) => {
         const pt = screenToWorld(sx, sy, w, h);
         return { x: pt.xM, y: pt.yM };
@@ -652,6 +838,47 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
         }));
 
     const selectedNodeId = deps.getSelectedNodeId();
+
+    // 5a. ACN 4-Sector Footprint & Rotating Radar Sweep Overlay
+    const visAcnSectors = mapLayers?.getEffectiveVisibility('rf.acnSectors', focusCtx) ?? true;
+    if (visAcnSectors && Number.isFinite(acnPosWorld.x) && Number.isFinite(acnPosWorld.y)) {
+      const acnPt = worldToScreen(acnPosWorld.x, acnPosWorld.y, w, h);
+      const rawHeadingDeg = histSnap?.acn_heading_deg ?? liveTelemetry?.acn_heading_deg;
+      const rawHeadingRad = histSnap?.acn?.headingRad ?? liveTelemetry?.acn_telemetry?.heading_rad;
+      const headingDeg =
+        typeof rawHeadingDeg === 'number' && Number.isFinite(rawHeadingDeg)
+          ? rawHeadingDeg
+          : typeof rawHeadingRad === 'number' && Number.isFinite(rawHeadingRad)
+            ? ((Math.PI / 2 - rawHeadingRad) * 180) / Math.PI
+            : 0;
+      const covKm = Number(
+        histSnap?.acn?.coverageRadiusKm ?? liveTelemetry?.acn_telemetry?.coverage_radius_km ?? 35
+      );
+      const covRadiusM = Number.isFinite(covKm) && covKm > 0 ? covKm * 1000 : 35000;
+      const sweepTimeS =
+        deps.getSweepTimeS?.() ??
+        Number(histSnap?.simulationTimeS ?? liveTelemetry?.sim_time_s ?? 0);
+      const selNodeObj = nodes.find((n: any) => String(n.nodeId) === String(selectedNodeId));
+      const rawSector =
+        selNodeObj?.raw?.active_sector ??
+        selNodeObj?.raw?.serving_sector ??
+        selNodeObj?.raw?.active_sector_id;
+      const activeSectorId =
+        typeof rawSector === 'number' && Number.isFinite(rawSector) ? rawSector : null;
+
+      drawAcn4SectorAndSweepOverlay(
+        ctx,
+        acnPt.x,
+        acnPt.y,
+        covRadiusM * geometry.scale,
+        w,
+        h,
+        headingDeg,
+        sweepTimeS,
+        activeSectorId
+      );
+    }
+
     const visLinks = mapLayers?.getEffectiveVisibility('comm.links', focusCtx) ?? true;
     if (visLinks && Number.isFinite(acnPosWorld.x) && Number.isFinite(acnPosWorld.y)) {
       const acnPt = worldToScreen(acnPosWorld.x, acnPosWorld.y, w, h);

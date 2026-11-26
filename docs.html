@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research &amp; Mathematical Reference — Tactical X-Band Digital Twin</title>
+  <link rel="stylesheet" href="./frontend/c2-console-theme.css">
+</head>
+<body class="docs-standalone-body">
+  <header class="docs-standalone-topbar">
+    <div class="docs-standalone-brand">
+      <span class="brand-band">STRATOS</span>
+      <span class="brand-freq">8.0 GHz</span>
+      <span class="docs-standalone-title">Research &amp; Mathematical Reference (v4.1.0 · Offline)</span>
+    </div>
+    <div class="docs-standalone-toolbar">
+      <label class="sr-only" for="docs-filter-input">Filter documentation sections</label>
+      <input id="docs-filter-input" class="docs-filter-input" type="search" placeholder="Filter equations, ITU-R, 5QI, Tac-TAD… (/)" autocomplete="off">
+      <button type="button" id="btn-docs-clear-filter" hidden>Clear</button>
+      <span id="docs-filter-count" class="docs-filter-count">14 / 14 sections</span>
+      <button type="button" id="btn-docs-top">Top</button>
+      <button type="button" id="btn-docs-print" class="primary">Print / PDF</button>
+    </div>
+  </header>
+
+  <div class="docs-standalone-shell">
+    <aside class="docs-sidebar" aria-label="Reference Table of Contents">
+      <h2 class="docs-sidebar-heading">Contents</h2>
+      <nav class="docs-sidebar-nav">
+        <a class="docs-toc-link" href="#doc-overview">1. Project Overview</a>
+        <a class="docs-toc-link" href="#doc-architecture">2. System &amp; Rust/WASM Architecture</a>
+        <a class="docs-toc-link" href="#doc-flight">3. UAV Trajectory &amp; Kinematics</a>
+        <a class="docs-toc-link" href="#doc-terrain">4. Multi-Biome Terrain &amp; Overzoom</a>
+        <a class="docs-toc-link" href="#doc-antenna">5. 4-Sector ITU-R F.1336 Array</a>
+        <a class="docs-toc-link" href="#doc-propagation">6. Propagation, Diffraction &amp; Sky Noise</a>
+        <a class="docs-toc-link" href="#doc-tdma">7. 3-Way TDMA &amp; Predictive Tac-TAD</a>
+        <a class="docs-toc-link" href="#doc-qos">8. 3GPP 5QI &amp; FQ-CoDel Queues</a>
+        <a class="docs-toc-link" href="#doc-appendix">9. Mathematical Appendix (A-1..A-28)</a>
+        <a class="docs-toc-link" href="#doc-benchmark">10. v4.1.0 Benchmark Methodology</a>
+        <a class="docs-toc-link" href="#doc-standards">11. Technical Standards Register</a>
+        <a class="docs-toc-link" href="#doc-verification">12. Verification &amp; Boundaries</a>
+      </nav>
+    </aside>
+
+    <main class="docs-main">
+      <header class="research-header">
+        <p class="research-kicker">TECHNICAL REFERENCE · TACTICAL X-BAND · TYPESCRIPT + RUST/WASM ENGINE</p>
+        <h1>X-Band Air-to-Ground Network Digital Twin</h1>
+        <p class="research-subtitle">Detached Offline Reference: ITU-R Propagation Physics, 4-Sector Array, 3GPP 5QI QoS, 3-Way TDMA Ablation, and Hybrid Rust/WASM Kernel</p>
+        <div class="research-meta">
+          <span>Authoritative loop: 20 ms / 50 Hz</span>
+          <span>Runtime: TypeScript Worker + Rust/WASM</span>
+          <span>Air-Gap Ready: 100% Offline</span>
+        </div>
+      </header>
+
+      <aside class="research-notice">
+        <strong>Scope &amp; Evidence Boundary.</strong> This platform is a deterministic simulation-backed digital twin for controlled research evaluations, RF/TDMA ablation studies, and empirical flight-test trace calibration. All live simulation state resides exclusively in the 50 Hz Web Worker; historical scrubbing and detached documentation remain read-only.
+      </aside>
+
+      <section class="report-section" id="doc-overview">
+        <h3>1. Project Overview</h3>
+        <p>The Tactical X-Band Digital Twin simulates an airborne communication node (ACN) at 8.0 GHz serving sixteen registered ground terminals across mountainous, desert, plains, jungle, and maritime littoral theaters. Ground terminals include dismounted soldier EUDs and a mobile command post (MCP). Traffic enters strict-priority 3GPP 5QI FQ-CoDel queues, links are evaluated from first-principles propagation and DEM ray-marching, and a 4-channel parallel TDMA scheduler allocates uplink airtime.</p>
+        <div class="report-callout"><strong>3-Way Lockstep Ablation:</strong> Every simulation tick evaluates <code>Legacy_Static_TDMA</code>, <code>Reactive_M_LWDF</code> (look-ahead disabled, &Phi;<sub>evac</sub> &equiv; 1.0), and <code>Predictive_Tac_TAD</code> under identical terrain, trajectory, and traffic arrivals.</div>
+      </section>
+
+      <section class="report-section" id="doc-architecture">
+        <h3>2. System &amp; Hybrid Rust/WASM Architecture</h3>
+        <div class="formula-card">UI Controls &rarr; Typed Worker Command &rarr; 50 Hz SimulationWorkerManager (+ xband_physics WASM) &rarr; TelemetryFrame &rarr; 2D / Geo / 3D Renderers</div>
+        <table class="doc-table-clean">
+          <thead><tr><th>Layer / Module</th><th>Responsibility</th><th>Authoritative Implementation</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/worker/simWorker.ts</code></td><td>50 Hz (&Delta;t = 20 ms) authoritative discrete-event simulation loop owning positions, velocities, queues, and TDMA slots.</td><td><code>SimulationWorkerManager</code></td></tr>
+            <tr><td><code>crates/xband-physics</code></td><td>SIMD-friendly Rust/WASM compute kernel accelerating DEM ray-marching, ITU-R P.526 diffraction, hillshade, and polar viewsheds.</td><td><code>xband_physics_bg.wasm</code></td></tr>
+            <tr><td><code>src/core/antennaArray.ts</code></td><td>Body-fixed 4-sector quadrant array (0&deg;, 90&deg;, 180&deg;, 270&deg;), ITU-R F.1336 roll-off, 1.5 dB hysteresis, centripetal bank coupling.</td><td><code>QuadSectorAntennaEngine</code></td></tr>
+            <tr><td><code>src/core/terrain.ts</code></td><td>4/3 Earth curvature (ITU-R P.834), ITU-R P.526-15 &sect;4.5.1 Bullington diffraction, &sect;4.2 crest curvature cylinder loss, stepped ray marching.</td><td><code>TerrainEngine</code></td></tr>
+            <tr><td><code>src/core/linkBudget.ts</code></td><td>FSPL, ITU-R P.676-13 gas absorption, P.838-3 + P.839-4 rain &amp; freezing isotherm, P.618-14 sky noise, DVB-S2X 8-tier ACM.</td><td><code>LinkBudgetEngine</code></td></tr>
+            <tr><td><code>src/core/scheduler.ts</code></td><td>4-channel parallel per-sector TDMA across Static, Reactive M-LWDF, and Predictive Tac-TAD with deficit drainage.</td><td><code>TerrainAwareDynamicScheduler</code></td></tr>
+            <tr><td><code>src/ui/spatialSnapshotBuffer.ts</code></td><td>Bit-packed 3,000-frame (60 s) zero-allocation timeline ring buffer and superframe epoch store.</td><td><code>SpatialSnapshotBuffer</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="report-section" id="doc-flight">
+        <h3>3. UAV Trajectory &amp; Kinematics</h3>
+        <p>Ellipse mode follows a rotated, arc-length-parameterized orbit. Closed waypoint mode validates routes, builds a cubic Hermite spline with bounded tangents, and evaluates position by arc length at the configured true airspeed (default 60 m/s, 0 m/s stationary hold). Playback speed (0.1&times;&ndash;10&times;) changes frame-request cadence only and never alters &Delta;t = 20 ms.</p>
+      </section>
+
+      <section class="report-section" id="doc-terrain">
+        <h3>4. Multi-Biome Terrain &amp; Tile Overzoom</h3>
+        <p>The baseline real-terrain raster is a 512&times;512 Ladakh SRTM DEM centered at 34.5&deg;N, 76.5&deg;E (~359.45 m &times; 434.17 m ground resolution), complemented by five multi-biome presets (Ladakh Alpine, Thar Arid Desert, Indo-Gangetic Plains, Northeast Tropical Jungle, Arabian Sea Littoral) plus offline SRTM <code>.hgt</code> and GeoTIFF ingestion.</p>
+        <p>For Web Mercator basemaps (Geo and 2D Radar SAT), remote Esri/Terrarium sources are clamped at <code>maxNativeZoom = 15</code> while the camera supports <code>Z4</code> through <code>Z18</code> via clean parent-tile sub-quadrant cropping: at target <code>z &gt; 15</code>, tile <code>(15, x &gt;&gt; dz, y &gt;&gt; dz)</code> is sub-cropped and scaled onto the viewport without missing-tile errors.</p>
+      </section>
+
+      <section class="report-section" id="doc-antenna">
+        <h3>5. 4-Sector ITU-R F.1336 Antenna Array</h3>
+        <p>The airborne relay carries four body-fixed directional quadrant antennas at boresights 0&deg; (S0 FWD), 90&deg; (S1 STBD), 180&deg; (S2 AFT), and 270&deg; (S3 PORT) relative to aircraft heading &psi;<sub>heading</sub>, with peak gain G<sub>0</sub> = 16.0 dBi, 3 dB beamwidth &theta;<sub>3dB</sub> = 65&deg;, and 1.5 dB crossover handover hysteresis at &plusmn;45&deg; boundaries.</p>
+        <div class="formula-card">(A-10) &nbsp; G<sub>sector</sub>(&theta;) = G<sub>0</sub> &minus; min[12(&theta;/&theta;<sub>3dB</sub>)&sup2;, G<sub>sidelobe</sub>], &nbsp;&nbsp; &psi;<sub>sector</sub> &isin; {0&deg;, 90&deg;, 180&deg;, 270&deg;}</div>
+      </section>
+
+      <section class="report-section" id="doc-propagation">
+        <h3>6. Propagation, Diffraction &amp; Sky Noise Coupling</h3>
+        <p>Each link sums transmit power and directional antenna gain, then subtracts FSPL, multi-ridge Bullington + spherical crest diffraction (ITU-R P.526-15), altitude-integrated oxygen/water-vapor absorption (ITU-R P.676-13), rain attenuation capped at the 4,800 m freezing isotherm (ITU-R P.838-3 / P.839-4), and receiver sky-noise temperature degradation (ITU-R P.618-14). Instantaneous SNR maps to an 8-tier DVB-S2X / 3GPP Rel-17 NTN ACM table (&minus;1.5 dB to 22.0 dB; 0.33 to 4.95 bit/s/Hz).</p>
+      </section>
+
+      <section class="report-section" id="doc-tdma">
+        <h3>7. 3-Way TDMA Ablation &amp; Predictive Tac-TAD</h3>
+        <p>Each 20 ms superframe allocates 1 ms control, 3&ndash;5 ms downlink broadcast, and 16 ms uplink per quadrant (64 ms aggregate spatial-reuse uplink capacity across 4 concurrent sectors, &tau;<sub>guard</sub> = 12 &mu;s, minimum slot quantum 200 &mu;s).</p>
+        <table class="doc-table-clean">
+          <thead><tr><th>Scheduler Arm</th><th>Look-Ahead &amp; Policy</th><th>Operational Behavior</th></tr></thead>
+          <tbody>
+            <tr><td><code>Legacy_Static_TDMA</code></td><td>Equal static slicing, oblivious to SNR/terrain.</td><td>Transmits into shadowed links, incurring outage waste and delay drops.</td></tr>
+            <tr><td><code>Reactive_M_LWDF</code></td><td>Channel-aware M-LWDF with &Phi;<sub>evac</sub> &equiv; 1.0.</td><td>Adapts to instantaneous SNR and HoL delay without occlusion foresight.</td></tr>
+            <tr><td><code>Predictive_Tac_TAD</code></td><td>Two-pass urgency + deficit drainage + &Phi;<sub>evac</sub> &ge; 1.0.</td><td>Compresses deadlines via &tau;<sub>eff-TTL</sub> = min(&tau;<sub>TTL</sub>, t<sub>occ</sub>) with imminent-expiry peer protection.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="report-section" id="doc-qos">
+        <h3>8. 3GPP TS 23.501 5QI Bearers &amp; FQ-CoDel Queues</h3>
+        <ul>
+          <li><strong>5QI 69 (Emergency C2):</strong> Strict priority, 60 ms PDB, 120-packet reserved buffer ceiling, protected against shadow pruning.</li>
+          <li><strong>5QI 65 (Mission-Critical PTT Voice):</strong> High priority, 75 ms PDB.</li>
+          <li><strong>5QI 67 (Mission-Critical Real-Time Video):</strong> Medium priority, 100 ms PDB, Poisson packet arrivals.</li>
+          <li><strong>5QI 70 (Reconnaissance Photo):</strong> Background priority, 300 ms PDB; total terminal queue bounded at 400 packets.</li>
+        </ul>
+      </section>
+
+      <section class="report-section" id="doc-appendix">
+        <h3>9. Mathematical Appendix (Equations A-1 .. A-28)</h3>
+        <h4>A.1 Link Geometry &amp; 4/3 Earth Refraction</h4>
+        <div class="formula-card">(A-1) &nbsp; d<sub>2D</sub> = &radic;(&Delta;x&sup2; + &Delta;y&sup2;), &nbsp;&nbsp; d<sub>3D</sub> = &radic;(&Delta;x&sup2; + &Delta;y&sup2; + &Delta;z&sup2;)<br>(A-2) &nbsp; &tau;<sub>prop</sub> = d<sub>3D</sub> / c, &nbsp;&nbsp; &tau;<sub>TA</sub> = 2d<sub>3D</sub> / c<br>(A-3) &nbsp; &phi; = d<sub>2D</sub> / R&prime;<sub>e</sub>, &nbsp;&nbsp; R&prime;<sub>e</sub> = (4/3) R<sub>e</sub> = 8,494,667 m</div>
+        <h4>A.2 Fresnel Clearance &amp; ITU-R P.526-15 Diffraction</h4>
+        <div class="formula-card">(A-5) &nbsp; h<sub>clear</sub>(d<sub>1</sub>) = z<sub>LOS</sub>(d<sub>1</sub>) &minus; [h<sub>DEM</sub>(d<sub>1</sub>) + d<sub>1</sub>d<sub>2</sub>/(2R&prime;<sub>e</sub>)]<br>(A-6) &nbsp; r<sub>1</sub>(d<sub>1</sub>,d<sub>2</sub>) = &radic;(&lambda;d<sub>1</sub>d<sub>2</sub>/D), &nbsp;&nbsp; &rho; = h<sub>clear</sub> / r<sub>1</sub><br>(A-8) &nbsp; d<sub>b</sub> = [z<sub>Rx</sub> &minus; z<sub>Tx</sub> + &theta;<sub>Rx</sub>D] / [&theta;<sub>Tx</sub> + &theta;<sub>Rx</sub>], &nbsp;&nbsp; &nu;<sub>b</sub> = h<sub>b</sub>&radic;[(2/&lambda;)(1/d<sub>b</sub> + 1/(D &minus; d<sub>b</sub>))]<br>(A-9) &nbsp; L<sub>Bullington</sub> = 6.9 + 20log<sub>10</sub>(&radic;[(&nu;<sub>b</sub> &minus; 0.1)&sup2; + 1] + &nu;<sub>b</sub> &minus; 0.1), &nbsp;&nbsp; L<sub>diff</sub> = L<sub>Bullington</sub> + T(m,n)</div>
+        <h4>A.3 Atmospheric, Rain, Sky-Noise &amp; Thermal Noise</h4>
+        <div class="formula-card">(A-11) &nbsp; FSPL = 20log<sub>10</sub>(d<sub>3D</sub>) + 20log<sub>10</sub>(f<sub>c</sub>) + 20log<sub>10</sub>(4&pi;/c)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;L<sub>gas</sub> = &int;<sub>0</sub><sup>D</sup> &gamma;<sub>gas</sub>(z(s)) ds, &nbsp;&nbsp; L<sub>rain</sub> = &gamma;<sub>R</sub> min(d<sub>3D</sub>/1000, max(0, (h<sub>freeze</sub> &minus; z<sub>node</sub>)/sin(e)))<br>(A-12) &nbsp; T<sub>sky</sub> = T<sub>cosmic</sub>10<sup>&minus;A/10</sup> + T<sub>atm</sub>(1 &minus; 10<sup>&minus;A/10</sup>), &nbsp;&nbsp; SNR<sub>dB</sub> = P<sub>rx,dBm</sub> &minus; (P<sub>noise,dBm</sub> + &Delta;N<sub>sky</sub>)</div>
+        <h4>A.4 TDMA Framing &amp; Predictive Tac-TAD</h4>
+        <div class="formula-card">(A-16) &nbsp; T<sub>UL,avail</sub> = T<sub>frame</sub> &minus; T<sub>ctrl</sub> &minus; T<sub>DL</sub> &nbsp; (T<sub>frame</sub> = 20 ms)<br>(A-22) &nbsp; &Psi;<sub>i</sub> = &Phi;<sub>evac,i</sub> &middot; U<sub>i</sub> &middot; (R<sub>i</sub> / max(1000, R&#772;<sub>i</sub>)) &middot; max[1, log<sub>2</sub>(1 + Q<sub>i</sub>/8000)] &middot; P<sub>tactical,i</sub><br>(A-23) &nbsp; &tau;<sub>eff-TTL,i</sub> = min(&tau;<sub>TTL,i</sub>, t<sub>occ,i</sub>), &nbsp;&nbsp; &zeta;<sub>i</sub> = (Q<sub>i</sub>/R<sub>i</sub>) / max(t<sub>occ,i</sub>, 0.020 s)<br>(A-24) &nbsp; Critical Peer Gate: if maxHolRatio<sub>j</sub> &ge; 0.82 &and; &tau;<sub>TTL,j</sub> &le; 30 ms &and; &tau;<sub>TTL,j</sub> &lt; t<sub>occ,i</sub> &rArr; &Phi;<sub>evac,i</sub> = 1.0</div>
+        <h4>A.5 Discrete-Event Loop &amp; Statistical Evaluation</h4>
+        <div class="formula-card">(A-25) &nbsp; t<sub>n+1</sub> = t<sub>n</sub> + &Delta;t, &nbsp;&nbsp; &Delta;t = 0.020 s (50 Hz)<br>(A-28) &nbsp; &Delta;<sub>j</sub> = m<sub>Tac,j</sub> &minus; m<sub>Static,j</sub>, &nbsp;&nbsp; CI<sub>&alpha;</sub>(&Delta;&#772;) = &Delta;&#772; &plusmn; t<sub>1&minus;&alpha;/2,n&minus;1</sub> s<sub>&Delta;</sub> / &radic;n</div>
+      </section>
+
+      <section class="report-section" id="doc-benchmark">
+        <h3>10. v4.1.0 Benchmark Methodology &amp; Statistical Evaluation</h3>
+        <p>Paired ablation comparisons evaluate <code>Legacy_Static_TDMA</code>, <code>Reactive_M_LWDF</code>, and <code>Predictive_Tac_TAD</code> across identical seeds, terrain models, trajectories, and traffic profiles. Primary endpoints track delivered goodput, outage waste, delay drops vs. overflow drops by 5QI class, and worker 50 Hz step latency (p50/p95 well under the 20 ms deadline).</p>
+        <p>Correlated frames within one run are never treated as independent replicates; paired scenario/seed differences form the unit of statistical inference using paired t-intervals or Wilcoxon signed-rank / bootstrap intervals.</p>
+      </section>
+
+      <section class="report-section" id="doc-standards">
+        <h3>11. Technical Standards Register</h3>
+        <table class="doc-table-clean">
+          <thead><tr><th>Reference</th><th>Engineering Basis in Digital Twin</th></tr></thead>
+          <tbody>
+            <tr><td>ITU-R P.834</td><td>4/3 effective Earth radius atmospheric refraction geometry (R&prime;<sub>e</sub> = 8,494.7 km).</td></tr>
+            <tr><td>ITU-R P.526-15 (&sect;4.5.1 &amp; &sect;4.2)</td><td>Bullington double-horizon diffraction &amp; physical DEM crest radius of curvature T(m, n).</td></tr>
+            <tr><td>ITU-R F.1336 / 3GPP TR 38.901</td><td>4-sector quadrant array parabolic roll-off (&minus;3 dB at &plusmn;45&deg;), roll coupling, 1.5 dB hysteresis.</td></tr>
+            <tr><td>ITU-R P.676-13, P.838-3, P.839-4, P.618-14</td><td>Oxygen/water-vapor slant absorption, rain loss with 4,800 m isotherm, sky-noise coupling.</td></tr>
+            <tr><td>DVB-S2X / 3GPP Rel-17 NTN / TS 23.501</td><td>8-tier ACM modulation/coding table and 5QI 69/65/67/70 delay budgets.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="report-section" id="doc-verification">
+        <h3>12. Verification &amp; Operational Boundaries</h3>
+        <p>All runtime verification suites (physics invariants, worker determinism, strict TypeScript typechecking, Rust/WASM parity, strict CSP audits, and Playwright browser UX checks) validate implementation invariants and do not substitute for live airborne SDR flight-test certification.</p>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/src/docsWindow.ts"></script>
+</body>
+</html>

@@ -4,6 +4,8 @@ import type { TerrainBoundsLike } from './windowBindings.d.ts';
 import type { TerrainMeshDataReadyMessage } from '../shared/workerProtocol.ts';
 import type { StageViewMode } from '../ui/three/threeTypes.ts';
 import { getLatticeCanvasPalette } from '../ui/canvasTheme.ts';
+import { BIOME_DEM_METADATA } from '../core/terrain.ts';
+import { THEATER_BIOMES } from '../core/biomePhysics.ts';
 import {
   DEFAULT_WORLD_SATELLITE_TILE_URL,
   DEFAULT_WORLD_SATELLITE_ATTRIBUTION,
@@ -29,6 +31,7 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
   let threeInitPromise: Promise<void> | null = null;
   let mapLibreDepsPromise: Promise<MapLibreDependenciesBundle> | null = null;
   let threeSelectedThisClick = false;
+  let lastSweepWallMs = 0;
   const wiredElements = new WeakSet<HTMLElement>();
 
   async function loadThreeStageModule(): Promise<typeof import('../ui/three/threeSceneController.ts')> {
@@ -75,7 +78,7 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
         DEFAULT_WORLD_SATELLITE_ATTRIBUTION;
       const rasterMaxZoom = Number.isFinite(Number(rasterConfig.maxzoom))
         ? Number(rasterConfig.maxzoom)
-        : 19;
+        : undefined;
       if (state.mapController && typeof state.mapController.buildMapLibreStyle === 'function') {
         const style = state.mapController.buildMapLibreStyle({
           airGapOfflineOnly: next,
@@ -187,13 +190,25 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
     if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
       return null;
     }
+    const biomeMeta = BIOME_DEM_METADATA[state.activeBiomeId];
+    const biomeDef = THEATER_BIOMES[state.activeBiomeId];
+    const minElevationM =
+      b.minElevationM ??
+      state.cachedTerrainMeshData?.minElevationM ??
+      biomeMeta?.minElevationM ??
+      biomeDef?.baseElevationM;
+    const maxElevationM =
+      b.maxElevationM ??
+      state.cachedTerrainMeshData?.maxElevationM ??
+      biomeMeta?.maxElevationM ??
+      (biomeDef ? biomeDef.baseElevationM + biomeDef.reliefAmplitudeM : undefined);
     return {
       minX,
       maxX,
       minY,
       maxY,
-      minElevationM: b.minElevationM,
-      maxElevationM: b.maxElevationM,
+      minElevationM,
+      maxElevationM,
     };
   }
 
@@ -244,7 +259,11 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
           });
           canvas.addEventListener('wheel', () => {
             threeWheelUsed = true;
+            requestAnimationFrame(() => actions.syncZoomHudReadout?.());
           }, { passive: true });
+          canvas.addEventListener('pointerup', () => {
+            requestAnimationFrame(() => actions.syncZoomHudReadout?.());
+          });
           canvas.addEventListener('click', (e: MouseEvent) => {
             const wasDown = threeDownActive;
             const wasWheel = threeWheelUsed;
@@ -278,6 +297,8 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
             const tb = toThreeBounds(state.activeTerrainBounds);
             if (tb) state.threeController.centerOnBounds(tb);
           }
+          state.pendingThreeRecenter = false;
+          actions.syncZoomHudReadout?.();
         }
         console.log('[StageController] Three.js 3D subsystem initialized lazily.');
       } catch (err) {
@@ -380,10 +401,20 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
 
   function requestTerrainMeshData(force = false): void {
     const currentMode = state.activeTerrainMode || 'real';
-    if (!force && state.cachedTerrainMeshData && state.cachedTerrainMeshData.terrainMode === currentMode) {
+    const cachedBiomeId = (state.cachedTerrainMeshData?.bounds as { biomeId?: string } | undefined)?.biomeId;
+    if (
+      !force &&
+      state.cachedTerrainMeshData &&
+      state.cachedTerrainMeshData.terrainMode === currentMode &&
+      (!cachedBiomeId || cachedBiomeId === state.activeBiomeId)
+    ) {
       return;
     }
-    if (state.inFlightTerrainMeshRequest && state.inFlightTerrainMeshRequest.terrainMode === currentMode) {
+    if (
+      !force &&
+      state.inFlightTerrainMeshRequest &&
+      state.inFlightTerrainMeshRequest.terrainMode === currentMode
+    ) {
       return;
     }
 
@@ -438,6 +469,16 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
       state.threeController.loadTerrainMeshData(state.cachedTerrainMeshData);
       if (state.hillshadeCanvas) {
         state.threeController.setHillshadeCanvas(state.hillshadeCanvas);
+      }
+      if (state.pendingThreeRecenter || state.stageViewMode === '3d') {
+        const tb = toThreeBounds({
+          ...msg.bounds,
+          minElevationM: msg.min_elevation_m,
+          maxElevationM: msg.max_elevation_m,
+        });
+        if (tb) state.threeController.centerOnBounds(tb);
+        state.pendingThreeRecenter = false;
+        actions.syncZoomHudReadout?.();
       }
     }
   }
@@ -533,8 +574,22 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
         if (state.activeTerrainBounds) {
           const tb = toThreeBounds(state.activeTerrainBounds);
           if (tb) state.threeController.centerOnBounds(tb);
+        } else if (state.pendingThreeRecenter) {
+          const meta = BIOME_DEM_METADATA[state.activeBiomeId];
+          if (meta) {
+            state.threeController.centerOnBounds({
+              minX: meta.minX ?? -meta.halfWidthM,
+              maxX: meta.maxX ?? meta.halfWidthM,
+              minY: meta.minY ?? -meta.halfHeightM,
+              maxY: meta.maxY ?? meta.halfHeightM,
+              minElevationM: meta.minElevationM,
+              maxElevationM: meta.maxElevationM,
+            });
+          }
         }
+        state.pendingThreeRecenter = false;
       }
+      actions.syncZoomHudReadout?.();
       scheduleAnimationLoop();
     } else {
       actions.updateRadarCursorReadout(0, 0, false);
@@ -586,11 +641,13 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
     }
     actions.syncRadarHudMode();
     actions.syncFloatingOverlayLayout();
+    actions.syncZoomHudReadout?.();
   };
 
   function animationLoop(timestampMs: number): void {
     state.animationLoopRafId = null;
     if (typeof document !== 'undefined' && document.hidden) {
+      lastSweepWallMs = 0;
       return;
     }
     try {
@@ -600,6 +657,14 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
       const stageViewMode = state.stageViewMode;
       const is3dMode = stageViewMode === '3d';
       const allowSecondaryRedraw = !is3dMode || now - state.last3dSecondaryCanvasThrottleMs >= 125; // 8 Hz (125 ms) throttling in 3D mode
+
+      if (!state.isPaused && !isPlayingHistory) {
+        const dtSweepS = lastSweepWallMs > 0 ? Math.min(0.1, Math.max(0, (now - lastSweepWallMs) / 1000)) : 0;
+        state.radarSweepPhaseS += dtSweepS * Math.max(0.2, state.currentSimSpeed || 1);
+        lastSweepWallMs = now;
+      } else {
+        lastSweepWallMs = 0;
+      }
 
       if (simTimelineController) {
         if (state.lastTimelineAnimTimeMs > 0 && isPlayingHistory) {
@@ -613,11 +678,12 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
       state.lastTimelineAnimTimeMs = now;
       if (allowSecondaryRedraw && is3dMode) {
         state.last3dSecondaryCanvasThrottleMs = now;
+        actions.syncZoomHudReadout?.();
       }
 
       // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty or active playback (skips when in 3D mode)
       if (stageViewMode !== '3d' &&
-        (state.radarNeedsRender || isPlayingHistory || (state.terrainMapMode === 'maplibre' && !state.isPaused))
+        (state.radarNeedsRender || isPlayingHistory || !state.isPaused)
       ) {
         actions.drawRadar();
         state.radarNeedsRender = false;

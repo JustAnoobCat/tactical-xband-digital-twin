@@ -4,6 +4,34 @@ pub mod lan_bridge;
 pub mod tile_protocol;
 
 use serde::Serialize;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+pub const RESEARCH_DOCS_WINDOW_LABEL: &str = "research-docs";
+pub const RESEARCH_DOCS_URL_PATH: &str = "docs.html";
+pub const RESEARCH_DOCS_WINDOW_TITLE: &str =
+    "Research & Mathematical Reference — Tactical X-Band Digital Twin";
+pub const RESEARCH_DOCS_WINDOW_SIZE: (f64, f64) = (1100.0, 820.0);
+pub const RESEARCH_DOCS_WINDOW_MIN_SIZE: (f64, f64) = (760.0, 560.0);
+
+pub fn research_docs_window_config() -> (
+    &'static str,
+    &'static str,
+    &'static str,
+    f64,
+    f64,
+    f64,
+    f64,
+) {
+    (
+        RESEARCH_DOCS_WINDOW_LABEL,
+        RESEARCH_DOCS_URL_PATH,
+        RESEARCH_DOCS_WINDOW_TITLE,
+        RESEARCH_DOCS_WINDOW_SIZE.0,
+        RESEARCH_DOCS_WINDOW_SIZE.1,
+        RESEARCH_DOCS_WINDOW_MIN_SIZE.0,
+        RESEARCH_DOCS_WINDOW_MIN_SIZE.1,
+    )
+}
 
 #[derive(Debug, Serialize)]
 pub struct RuntimeDiagnostics {
@@ -69,6 +97,24 @@ fn send_mavlink_telemetry_udp(
     lan_bridge::send_mavlink_telemetry_udp_payload(&target_addr, &params)
 }
 
+#[tauri::command]
+fn open_research_docs_window(app: tauri::AppHandle) -> Result<(), String> {
+    let (label, url_path, title, width, height, min_w, min_h) = research_docs_window_config();
+    if let Some(existing) = app.get_webview_window(label) {
+        let _ = existing.unminimize();
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, label, WebviewUrl::App(url_path.into()))
+        .title(title)
+        .inner_size(width, height)
+        .min_inner_size(min_w, min_h)
+        .resizable(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -83,8 +129,27 @@ pub fn run() {
             save_offline_tile,
             delete_offline_tile,
             send_atak_cot_udp,
-            send_mavlink_telemetry_udp
+            send_mavlink_telemetry_udp,
+            open_research_docs_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tactical X-Band Digital Twin desktop shell");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::research_docs_window_config;
+
+    #[test]
+    fn research_docs_window_config_is_valid() {
+        let (label, url_path, title, width, height, min_w, min_h) = research_docs_window_config();
+        assert_eq!(label, "research-docs");
+        assert_eq!(url_path, "docs.html");
+        assert!(title.contains("Research & Mathematical Reference"));
+        assert_eq!(width, 1100.0);
+        assert_eq!(height, 820.0);
+        assert_eq!(min_w, 760.0);
+        assert_eq!(min_h, 560.0);
+        assert!(width >= min_w && height >= min_h);
+    }
 }

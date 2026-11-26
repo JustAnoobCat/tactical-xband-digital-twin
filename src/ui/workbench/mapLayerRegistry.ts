@@ -29,6 +29,7 @@ export type MapLayerId =
   | 'rf.fresnelZone'
   | 'rf.obstructionPoints'
   | 'rf.signalQuality'
+  | 'rf.acnSectors'
   | 'eng.measurements';
 
 export type MapLayerPresetId = 'operational' | 'rf_analysis' | 'minimal' | 'all';
@@ -268,6 +269,17 @@ export const MAP_LAYER_DEFINITIONS: readonly MapLayerDefinition[] = [
     scopeTag: '2D',
     swatchColor: HIGHLAND_THEME.signal.ochre,
   },
+  {
+    id: 'rf.acnSectors',
+    category: 'rf',
+    label: 'ACN 4-Sector Footprint & Sweep',
+    defaultVisible: true,
+    supportsOpacity: false,
+    defaultOpacity: 1.0,
+    targets: ['radar'],
+    scopeTag: '2D',
+    swatchColor: '#38bdf8',
+  },
   // Category E — Engineering Overlays
   {
     id: 'eng.measurements',
@@ -323,6 +335,7 @@ export const MAP_LAYER_PRESETS: Record<MapLayerPresetId, {
       'rf.fresnelZone': false,
       'rf.obstructionPoints': false,
       'rf.signalQuality': false,
+      'rf.acnSectors': true,
       'eng.measurements': true,
     },
   },
@@ -346,6 +359,7 @@ export const MAP_LAYER_PRESETS: Record<MapLayerPresetId, {
       'rf.fresnelZone': true,
       'rf.obstructionPoints': true,
       'rf.signalQuality': false,
+      'rf.acnSectors': true,
       'eng.measurements': true,
     },
   },
@@ -369,6 +383,7 @@ export const MAP_LAYER_PRESETS: Record<MapLayerPresetId, {
       'rf.fresnelZone': false,
       'rf.obstructionPoints': false,
       'rf.signalQuality': false,
+      'rf.acnSectors': false,
       'eng.measurements': false,
     },
   },
@@ -392,6 +407,7 @@ export const MAP_LAYER_PRESETS: Record<MapLayerPresetId, {
       'rf.fresnelZone': true,
       'rf.obstructionPoints': true,
       'rf.signalQuality': true,
+      'rf.acnSectors': true,
       'eng.measurements': true,
     },
   },

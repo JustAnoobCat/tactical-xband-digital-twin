@@ -104,14 +104,14 @@ function runVerification(): void {
   console.log('================================================================================');
 
   // --------------------------------------------------------------------------
-  // 1. All 17 Layers & Default Operational Preset
+  // 1. All 18 Layers & Default Operational Preset
   // --------------------------------------------------------------------------
-  console.log('\n[1/8] Verifying 17 layers & default Operational preset...');
+  console.log('\n[1/8] Verifying 18 layers & default Operational preset...');
   assert.equal(MAP_LAYER_CATEGORIES.length, 5, 'Must define exactly 5 categories');
-  assert.equal(MAP_LAYER_DEFINITIONS.length, 17, 'Must define exactly 17 map layers');
+  assert.equal(MAP_LAYER_DEFINITIONS.length, 18, 'Must define exactly 18 map layers');
 
   const reg = new MapLayerRegistry(createMemoryStorage());
-  assert.equal(reg.getTotalCount(), 17);
+  assert.equal(reg.getTotalCount(), 18);
   assert.equal(reg.getActivePresetId(), 'operational');
 
   const expectedOffByDefault: readonly MapLayerId[] = [
@@ -128,7 +128,7 @@ function runVerification(): void {
     const expectedOn = !expectedOffByDefault.includes(def.id);
     assert.equal(reg.isLayerVisible(def.id), expectedOn, `Layer ${def.id} default mismatch`);
   }
-  assert.equal(reg.getEnabledCount(), 9, 'Operational default must enable 9 of 17 layers');
+  assert.equal(reg.getEnabledCount(), 10, 'Operational default must enable 10 of 18 layers');
 
   const opacityCapable = MAP_LAYER_DEFINITIONS.filter((d) => d.supportsOpacity);
   assert.equal(opacityCapable.length, 5, 'Exactly 5 layers support user opacity sliders');
@@ -137,7 +137,7 @@ function runVerification(): void {
   assert.ok(Math.abs(reg.getLayerOpacity('comm.transmissions') - 0.90) < 1e-6);
   assert.ok(Math.abs(reg.getLayerOpacity('comm.coverage') - 0.35) < 1e-6);
   assert.ok(Math.abs(reg.getLayerOpacity('rf.fresnelZone') - 0.45) < 1e-6);
-  console.log('  -> PASS: All 17 layers and defaults verified.');
+  console.log('  -> PASS: All 18 layers and defaults verified.');
 
   // --------------------------------------------------------------------------
   // 2. Category Master Toggles, Indeterminate, Opacity Clamping & Persistence
@@ -153,7 +153,7 @@ function runVerification(): void {
   const rfAllState = reg.getCategoryState('rf');
   assert.equal(rfAllState.checked, true);
   assert.equal(rfAllState.indeterminate, false);
-  assert.equal(rfAllState.enabledCount, 4);
+  assert.equal(rfAllState.enabledCount, 5);
 
   reg.setCategoryVisible('rf', false);
   const rfNoneState = reg.getCategoryState('rf');
@@ -192,11 +192,11 @@ function runVerification(): void {
 
   rehydrated.applyPreset('all');
   assert.equal(rehydrated.getActivePresetId(), 'all');
-  assert.equal(rehydrated.getEnabledCount(), 17);
+  assert.equal(rehydrated.getEnabledCount(), 18);
 
   rehydrated.resetDefaults();
   assert.equal(rehydrated.getActivePresetId(), 'operational');
-  assert.equal(rehydrated.getEnabledCount(), 9);
+  assert.equal(rehydrated.getEnabledCount(), 10);
   assert.equal(rehydrated.isContextualFocusEnabled(), true);
   console.log('  -> PASS: Presets, indeterminate states, opacity clamping & storage round-trip verified.');
 

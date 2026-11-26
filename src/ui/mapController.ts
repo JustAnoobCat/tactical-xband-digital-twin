@@ -23,6 +23,10 @@ import {
   isExternalHttpUrl,
 } from './worldTileLayer';
 
+export const DEFAULT_REMOTE_RASTER_MAXZOOM = 15;
+export const DEFAULT_MAPLIBRE_MIN_ZOOM = 4;
+export const DEFAULT_MAPLIBRE_MAX_ZOOM = 18;
+
 export interface MapLibreStyleOptions {
   readonly airGapOfflineOnly?: boolean;
   readonly rasterTiles?: readonly string[];
@@ -53,6 +57,14 @@ export function buildOfflineSafeMapStyle(options: MapLibreStyleOptions = {}): Re
     };
   }
 
+  const hasRemoteTiles = allowedTiles.some((t) => isExternalHttpUrl(t));
+  const requestedMaxZoom = Number.isFinite(Number(options.maxzoom))
+    ? Number(options.maxzoom)
+    : undefined;
+  const resolvedMaxZoom = hasRemoteTiles
+    ? Math.min(DEFAULT_REMOTE_RASTER_MAXZOOM, requestedMaxZoom ?? DEFAULT_REMOTE_RASTER_MAXZOOM)
+    : (requestedMaxZoom ?? DEFAULT_MAPLIBRE_MAX_ZOOM);
+
   return {
     version: 8,
     sources: {
@@ -60,7 +72,7 @@ export function buildOfflineSafeMapStyle(options: MapLibreStyleOptions = {}): Re
         type: 'raster',
         tiles: [...allowedTiles],
         tileSize: 256,
-        maxzoom: Number.isFinite(Number(options.maxzoom)) ? Number(options.maxzoom) : 19,
+        maxzoom: resolvedMaxZoom,
         attribution: options.attribution || DEFAULT_WORLD_SATELLITE_ATTRIBUTION,
       },
     },
@@ -94,6 +106,22 @@ export class MapController {
 
   public getMapInstance(): any {
     return this.map;
+  }
+
+  public getMinZoom(): number {
+    return DEFAULT_MAPLIBRE_MIN_ZOOM;
+  }
+
+  public getMaxZoom(): number {
+    return DEFAULT_MAPLIBRE_MAX_ZOOM;
+  }
+
+  public getZoom(): number | null {
+    if (!this.map || typeof this.map.getZoom !== 'function') {
+      return null;
+    }
+    const z = Number(this.map.getZoom());
+    return Number.isFinite(z) ? z : null;
   }
 
   public setBiome(biomeId: BiomeId): void {

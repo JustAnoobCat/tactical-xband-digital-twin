@@ -4,9 +4,12 @@
  * Zero inline event handlers / strict Electron CSP compliant.
  */
 import type { AppContext } from './appContext.ts';
+import { MIN_RADAR_RANGE_M } from './appContext.ts';
 import type { MapLayerId } from '../ui/workbench/mapLayerRegistry.ts';
 import type { BiomeId, PolarizationMode } from '../shared/workerProtocol.ts';
 import { PLAYBACK_SPEED } from '../shared/constants.ts';
+import { resolveSectorTheaterTarget } from '../ui/worldTileLayer.ts';
+import { BIOME_DEM_METADATA } from '../core/terrain.ts';
 import {
   buildNodeAddCommand,
   buildNodeDeleteCommand,
@@ -984,7 +987,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
 
   function setRadarRange(rangeM: number, options: any = { duration: 200 }) {
     state.currentRadarRangeM = Math.max(
-      15000,
+      MIN_RADAR_RANGE_M,
       Math.min(actions.getMaxRadarRangeM(), Number.isFinite(rangeM) ? rangeM : 60000)
     );
     actions.syncRangeButtonHighlights(state.currentRadarRangeM);
@@ -1004,6 +1007,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     } else {
       actions.drawRadar();
     }
+    actions.syncZoomHudReadout?.();
   }
   (window as any).setRadarRange = setRadarRange;
 
@@ -1232,26 +1236,63 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   };
 
   (window as any).onDemSectorChange = function (sectorVal: string) {
-    if (sectorVal === 'synthetic') {
-      actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' });
-    } else if (sectorVal === 'ladakh' || sectorVal === 'alpine_mountain') {
-      state.activeBiomeId = 'alpine_mountain';
-      state.mapController?.setBiome('alpine_mountain');
-      actions.sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' });
-      actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
-    } else if (sectorVal === 'kargil') {
-      state.activeBiomeId = 'alpine_mountain';
-      state.mapController?.setBiome('alpine_mountain');
-      actions.sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' });
-      actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' });
-    } else {
-      const biomeVal = sectorVal as BiomeId;
-      state.activeBiomeId = biomeVal;
-      state.mapController?.setBiome(biomeVal);
-      actions.sendCommand({ type: 'SET_BIOME', biomeId: biomeVal });
-      actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' });
+    const target = resolveSectorTheaterTarget(sectorVal);
+    state.activeBiomeId = target.biomeId;
+    state.activeTerrainMode = target.terrainMode;
+
+    const btnReal = $('btnRealTerrain');
+    const btnSynth = $('btnSynthTerrain');
+    if (btnReal) btnReal.classList.toggle('active', target.terrainMode === 'real');
+    if (btnSynth) btnSynth.classList.toggle('active', target.terrainMode === 'synthetic');
+
+    engines.mainTerrainEngine.setBiome(target.biomeId);
+
+    // 1. 2D Radar WorldTileLayer + pan reset onto new theater origin
+    actions.getRadarWorldTileLayer()?.setOrigin(target.centerLatDeg, target.centerLonDeg);
+    state.panOffsetX_m = 0;
+    state.panOffsetY_m = 0;
+
+    // 2. MapController origin & MapLibre Geo camera jump
+    if (state.mapController) {
+      state.mapController.setBiome(target.biomeId);
+      if (target.isCustomOrigin) {
+        state.mapController.setOrigin(target.centerLatDeg, target.centerLonDeg);
+      }
     }
+    state.mapLibreTravelledPath = [];
+    actions.clearMapLibreSourceHashes?.();
+
+    if (state.mapLibreInstance && state.mapLibreInitialized) {
+      actions.updateMapLibreOverlay();
+      actions.syncMapLibreCameraFromRadarState(300, true);
+    }
+
+    // 3. 3D terrain mesh refresh & OrbitControls camera recenter
+    state.cachedTerrainMeshData = null;
+    state.pendingThreeRecenter = true;
+    if (state.threeController && state.stageViewMode === '3d') {
+      const meta = BIOME_DEM_METADATA[target.biomeId];
+      if (meta) {
+        state.threeController.centerOnBounds({
+          minX: meta.minX ?? -meta.halfWidthM,
+          maxX: meta.maxX ?? meta.halfWidthM,
+          minY: meta.minY ?? -meta.halfHeightM,
+          maxY: meta.maxY ?? meta.halfHeightM,
+          minElevationM: meta.minElevationM,
+          maxElevationM: meta.maxElevationM,
+        });
+      }
+    }
+
+    // 4. Authoritative worker biome & terrain mode commands
+    actions.sendCommand({ type: 'SET_BIOME', biomeId: target.biomeId });
+    actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: target.terrainMode });
+    actions.requestTerrainMeshData(true);
+
     (window as any).syncDemQuickPresetButtons?.(sectorVal);
+    actions.updateTerrainHudBadge?.();
+    actions.syncZoomHudReadout?.();
+    actions.drawRadar();
     actions.markRadarDirty();
   };
 
@@ -2950,6 +2991,41 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       });
     });
 
+    let docsPopupRef: Window | null = null;
+    const openResearchDocsWindow = () => {
+      const tauriInvoke = window?.__TAURI_INTERNALS__?.invoke;
+      if (typeof tauriInvoke === 'function') {
+        void tauriInvoke('open_research_docs_window').catch((err) => {
+          console.warn('[DocsWindow] Failed to open native Tauri Research Docs window:', err);
+        });
+        return;
+      }
+      if (docsPopupRef && !docsPopupRef.closed) {
+        docsPopupRef.focus();
+        return;
+      }
+      const docsUrl = resolveBundledAssetUrl('docs.html');
+      const popup = window.open(
+        docsUrl,
+        'stratos-research-docs',
+        'popup=yes,width=1100,height=820,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no'
+      );
+      if (popup) {
+        docsPopupRef = popup;
+        popup.focus();
+      } else {
+        actions.setTerrainToolStatus(
+          'Pop-up window blocked by browser — allow pop-ups for this site to open Research Docs in a separate window.'
+        );
+      }
+    };
+    actions.openResearchDocsWindow = openResearchDocsWindow;
+
+    byId('btn-open-docs-window')?.addEventListener('click', openResearchDocsWindow);
+    document.querySelectorAll('[data-open-docs-window]').forEach((btn) => {
+      btn.addEventListener('click', openResearchDocsWindow);
+    });
+
     byId('btn-doc-subview-diag')?.addEventListener('click', () =>
       (window as any).switchDocSubview?.('diag')
     );
@@ -3141,6 +3217,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     initNodeInventoryToolbar();
     syncTabWithLocationHash();
     bindExtractedDomListeners();
+    actions.syncZoomHudReadout?.();
   }
 
   return { finalizeDomSetup };

@@ -1,4 +1,5 @@
 
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -27,6 +28,10 @@ export default defineConfig({
     target: "esnext",
     sourcemap: process.env.VITE_SOURCEMAP === "true",
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        docs: resolve(__dirname, "docs.html"),
+      },
       output: {
         manualChunks: {
           'vendor-three': ['three'],

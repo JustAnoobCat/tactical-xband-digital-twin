@@ -135,15 +135,15 @@ export function initMapLibreController(ctx: AppContext): void {
     const ch = Math.max(100, container?.clientHeight || 500);
     const limitingSpan = Math.min(cw, ch) * 0.94;
     const token = beginMapLibreCameraSync(duration);
-    const centerGeo = cartesianToGeodetic(state.panOffsetX_m, state.panOffsetY_m);
+    const centerCoord = mapLibreCoordinate(state.panOffsetX_m, state.panOffsetY_m);
     const clampedCenter: [number, number] = [
-      Math.max(-180, Math.min(180, (((centerGeo.lonDeg + 180) % 360) + 360) % 360 - 180)),
-      Math.max(-80, Math.min(80, centerGeo.latDeg)),
+      Math.max(-180, Math.min(180, (((centerCoord[0] + 180) % 360) + 360) % 360 - 180)),
+      Math.max(-80, Math.min(80, centerCoord[1])),
     ];
     if (state.currentRadarRangeM >= 2500000) {
       const scale = (limitingSpan * 0.5) / state.currentRadarRangeM;
       const spanLonDeg = Math.max(1, cw / scale / METERS_PER_DEG_LON);
-      const zoom = Math.max(0.4, Math.min(14, Math.log2((360 * cw) / (512 * spanLonDeg))));
+      const zoom = Math.max(0.4, Math.min(18, Math.log2((360 * cw) / (512 * spanLonDeg))));
       const camOpts = {
         center: clampedCenter,
         zoom,
@@ -176,7 +176,7 @@ export function initMapLibreController(ctx: AppContext): void {
     const fitOpts = {
       padding: { top: padV, bottom: padV, left: padH, right: padH },
       duration,
-      maxZoom: 14,
+      maxZoom: 18,
       ...(resetOrientation ? { bearing: 0, pitch: 0 } : {}),
     };
     if (duration <= 0) {
@@ -216,7 +216,8 @@ export function initMapLibreController(ctx: AppContext): void {
     const center = map.getCenter();
     const wrappedLng = (((center.lng + 180) % 360) + 360) % 360 - 180;
     const clampedLat = Math.max(-85, Math.min(85, center.lat));
-    const localCenter = geodeticToUnwrappedEnu(clampedLat, wrappedLng);
+    const origin = state.mapController?.getOrigin();
+    const localCenter = geodeticToUnwrappedEnu(clampedLat, wrappedLng, origin?.latDeg, origin?.lonDeg);
     if (Number.isFinite(localCenter.xM) && Number.isFinite(localCenter.yM)) {
       state.panOffsetX_m = localCenter.xM;
       state.panOffsetY_m = localCenter.yM;
@@ -229,13 +230,16 @@ export function initMapLibreController(ctx: AppContext): void {
       const leftGeo = map.unproject([cw / 2 - halfSpanPx, ch / 2]);
       const rightGeo = map.unproject([cw / 2 + halfSpanPx, ch / 2]);
       const deltaLon = Math.abs(rightGeo.lng - leftGeo.lng);
-      const estRangeM = (deltaLon * METERS_PER_DEG_LON) / 2;
+      const cosLat = Math.max(0.1, Math.cos((clampedLat * Math.PI) / 180));
+      const mPerDegLonAtLat = 111320.0 * cosLat;
+      const estRangeM = (deltaLon * mPerDegLonAtLat) / 2;
       if (Number.isFinite(estRangeM) && estRangeM > 0) {
-        state.currentRadarRangeM = Math.max(15000, Math.min(getMaxRadarRangeM(), estRangeM));
+        state.currentRadarRangeM = Math.max(120, Math.min(getMaxRadarRangeM(), estRangeM));
         syncRangeButtonHighlights(state.currentRadarRangeM);
         applyMapLibreLayerState();
       }
     }
+    actions.syncZoomHudReadout?.();
   }
 
   function mapLibreCoordinate(xM: number, yM: number): [number, number] {
@@ -255,7 +259,10 @@ export function initMapLibreController(ctx: AppContext): void {
     const longitude = Number(coordinate?.[0]);
     const latitude = Number(coordinate?.[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
-    const local = geodeticToCartesian(latitude, longitude);
+    const origin = state.mapController?.getOrigin();
+    const local = origin
+      ? geodeticToUnwrappedEnu(latitude, longitude, origin.latDeg, origin.lonDeg)
+      : geodeticToCartesian(latitude, longitude);
     return { lng: longitude, lat: latitude, x: local.xM, y: local.yM };
   }
 
@@ -1575,7 +1582,7 @@ export function initMapLibreController(ctx: AppContext): void {
           DEFAULT_WORLD_SATELLITE_ATTRIBUTION;
         const rasterMaxZoom = Number.isFinite(Number(rasterConfig.maxzoom))
           ? Number(rasterConfig.maxzoom)
-          : 19;
+          : undefined;
         const airGap = getAirGapOfflineOnly();
         const mapStyle = buildOfflineSafeMapStyle({
           airGapOfflineOnly: airGap,
@@ -1591,7 +1598,8 @@ export function initMapLibreController(ctx: AppContext): void {
           style: mapStyle as StyleSpecification,
           center: [originGeo.lonDeg, originGeo.latDeg],
           zoom: 6,
-          minZoom: 0,
+          minZoom: mapCtrl.getMinZoom(),
+          maxZoom: mapCtrl.getMaxZoom(),
           attributionControl: { compact: true },
           cooperativeGestures: false,
         });
@@ -1629,8 +1637,14 @@ export function initMapLibreController(ctx: AppContext): void {
           showOfflineMapLibreNotice();
           console.error('MapLibre map error', event.error || event);
         });
+        map.on('zoom', () => {
+          if (state.terrainMapMode === 'maplibre') actions.syncZoomHudReadout?.();
+        });
         map.on('move', () => {
-          if (state.terrainMapMode === 'maplibre') actions.drawRadar();
+          if (state.terrainMapMode === 'maplibre') {
+            actions.drawRadar();
+            actions.syncZoomHudReadout?.();
+          }
         });
         map.on('moveend', (event: { originalEvent?: Event }) => {
           if (event?.originalEvent) {
@@ -2761,6 +2775,7 @@ export function initMapLibreController(ctx: AppContext): void {
       actions.markUiDirtyAndWake();
       actions.drawRadar();
     }
+    actions.syncZoomHudReadout?.();
   }
 
   $('btnMapRadar')?.addEventListener('click', () => setMapMode('radar'));

@@ -83,12 +83,30 @@ function projectCartographicToGeodetic(
 
 /** Predefined 1-2-5 cartographic metric steps in metres. */
 const NICE_SCALE_STEPS_M = [
-  50, 100, 200, 500,
+  5, 10, 20, 50, 100, 200, 500,
   1000, 2000, 5000,
   10000, 20000, 50000,
   100000, 200000, 500000,
   1000000, 2000000, 5000000, 10000000,
 ];
+
+/**
+ * Computes standard Web Mercator slippy-tile zoom level Z from ground resolution
+ * (meters/pixel) and theater center latitude.
+ */
+export function computeWebMercatorZoomLevel(
+  metersPerPixel: number,
+  latitudeDeg: number = GEODESY_ORIGIN_LAT_DEG
+): number {
+  if (!Number.isFinite(metersPerPixel) || metersPerPixel <= 0) return 0;
+  const clampedLat = Number.isFinite(latitudeDeg)
+    ? Math.max(-85.05112878, Math.min(85.05112878, latitudeDeg))
+    : 0;
+  const latRad = (clampedLat * Math.PI) / 180.0;
+  const z = Math.log2((156543.03392 * Math.cos(latRad)) / Math.max(metersPerPixel, 1e-4));
+  if (!Number.isFinite(z)) return 0;
+  return Math.max(0, Math.min(22, z));
+}
 
 /**
  * Selects an aesthetically balanced 1-2-5 metric scale bar step so the bar
@@ -362,6 +380,32 @@ export function drawCartographicOverlays(
 
   ctx.textAlign = 'right';
   ctx.fillText(scaleStep.labelFull, barX + barW, barY - 2);
+
+  // ==========================================================================
+  // 4. Crisp Web Mercator Zoom Level Badge alongside Scale Bar
+  // ==========================================================================
+  const zoomZ = computeWebMercatorZoomLevel(mpp, originLatDeg ?? GEODESY_ORIGIN_LAT_DEG);
+  const zoomLabel = `ZOOM Z${zoomZ.toFixed(1)}`;
+  ctx.font = `600 10px ${MONO_FONT}`;
+  const labelW =
+    typeof ctx.measureText === 'function' ? ctx.measureText(zoomLabel).width : zoomLabel.length * 6;
+  const zoomTextW = Math.max(54, labelW || zoomLabel.length * 6);
+  const zoomPillW = Math.round(zoomTextW + 14);
+  const zoomPillH = barH + padY + 4;
+  const zoomPillX = barX - padX - zoomPillW - 8;
+  const zoomPillY = barY - padY;
+  if (zoomPillX >= 56) {
+    ctx.fillStyle = 'rgba(8, 10, 13, 0.85)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.fillRect(zoomPillX, zoomPillY, zoomPillW, zoomPillH);
+    ctx.strokeRect(zoomPillX, zoomPillY, zoomPillW, zoomPillH);
+
+    ctx.fillStyle = palette.accent;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(zoomLabel, zoomPillX + zoomPillW * 0.5, zoomPillY + zoomPillH * 0.5 + 0.5);
+  }
 
   ctx.restore();
 }
