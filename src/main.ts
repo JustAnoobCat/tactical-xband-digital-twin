@@ -465,14 +465,22 @@ function resolveBundledAssetUrl(relativePath) {
 
 window.resolveBundledDemUrl = () => resolveBundledAssetUrl('terrain/real_ladakh_dem.bin');
 
+const isTauriRuntime =
+  typeof window !== 'undefined' &&
+  (('__TAURI__' in window) ||
+    ('__TAURI_INTERNALS__' in window) ||
+    window.location?.protocol === 'tauri:' ||
+    (typeof window.location?.hostname === 'string' &&
+      (window.location.hostname === 'tauri.localhost' ||
+        window.location.hostname.endsWith('.tauri.localhost'))));
+
 if (
   typeof window !== 'undefined' &&
   typeof navigator !== 'undefined' &&
   'serviceWorker' in navigator &&
+  !isTauriRuntime &&
   (window.location.protocol === 'http:' || window.location.protocol === 'https:') &&
-  !(typeof navigator.userAgent === 'string' && navigator.userAgent.includes('Electron')) &&
-  !('__TAURI__' in window) &&
-  !('__TAURI_INTERNALS__' in window)
+  !(typeof navigator.userAgent === 'string' && navigator.userAgent.includes('Electron'))
 ) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});

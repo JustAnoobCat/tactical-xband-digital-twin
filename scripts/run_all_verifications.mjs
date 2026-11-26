@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (129 Total Suites)
+// Verification Suites Registry (130 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -187,7 +187,8 @@ REGISTERED_SUITES.push(
   { id: 'verify:remed04-mac-qos-telemetry', name: 'REMED-04 MAC Fairness, 5QI SLA & PDU Dissector', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed04MacQosTelemetry.ts'], category: 'remediation' },
   { id: 'verify:remed05-metrics-perf', name: 'REMED-05 Timeline Performance, Metrics & Scientific Transparency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed05MetricsAndPerf.ts'], category: 'remediation' },
   { id: 'verify:remed06-e2e-release', name: 'REMED-06 Strict CSP, Live Scenario Wiring & Career Demo Flow Gate', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRemed06EndToEndRelease.ts'], category: 'remediation' },
-  { id: 'verify:perf01-offline-efficiency', name: 'PERF-01 Offline Air-Gap Readiness & RAM/CPU/GPU Efficiency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPerf01OfflineAndEfficiency.ts'], category: 'performance' }
+  { id: 'verify:perf01-offline-efficiency', name: 'PERF-01 Offline Air-Gap Readiness & RAM/CPU/GPU Efficiency', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyPerf01OfflineAndEfficiency.ts'], category: 'performance' },
+  { id: 'verify:tauri01-desktop-shell', name: 'TAURI-01 Cross-Platform Offline Tauri v2 Desktop Shell', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTauri01DesktopShell.ts'], category: 'desktop' }
 );
 
 // -----------------------------------------------------------------------------

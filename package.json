@@ -92,7 +92,11 @@
     "verify:all": "node scripts/run_all_verifications.mjs",
     "typecheck": "tsc --noEmit",
     "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts",
-    "benchmark:scientific": "vite-node scripts/generate_scientific_dossier.ts"
+    "benchmark:scientific": "vite-node scripts/generate_scientific_dossier.ts",
+    "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "tauri:test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",

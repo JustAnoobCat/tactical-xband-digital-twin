@@ -50,13 +50,22 @@ export function isAirGapDefaultEnvironment(): boolean {
   if (typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string' && navigator.userAgent.includes('Electron')) {
     return true;
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && window !== null) {
     if ('__TAURI__' in window || '__TAURI_INTERNALS__' in window) {
       return true;
     }
   }
-  if (typeof location !== 'undefined' && typeof location.protocol === 'string') {
-    if (location.protocol === 'file:' || location.protocol === 'tauri:' || location.protocol === 'app:') {
+  if (typeof location !== 'undefined') {
+    if (
+      typeof location.protocol === 'string' &&
+      (location.protocol === 'file:' || location.protocol === 'tauri:' || location.protocol === 'app:')
+    ) {
+      return true;
+    }
+    if (
+      typeof location.hostname === 'string' &&
+      (location.hostname === 'tauri.localhost' || location.hostname.endsWith('.tauri.localhost'))
+    ) {
       return true;
     }
   }

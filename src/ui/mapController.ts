@@ -145,14 +145,24 @@ export class MapController {
       return { latDeg: geo.latDeg, lonDeg: geo.lonDeg };
     }
 
+    if (hasCustom) {
+      const centerLat = this.customOriginLatDeg as number;
+      const centerLon = this.customOriginLonDeg as number;
+      const mPerDegLat = METERS_PER_DEG_LAT;
+      const mPerDegLon = Math.max(
+        1000.0,
+        111320.0 * Math.cos((centerLat * Math.PI) / 180.0)
+      );
+      return {
+        latDeg: centerLat + yM / mPerDegLat,
+        lonDeg: centerLon + xM / mPerDegLon,
+      };
+    }
+
     const meta = BIOME_DEM_METADATA[this.biomeId];
     const def = THEATER_BIOMES[this.biomeId];
-    const centerLat = hasCustom
-      ? (this.customOriginLatDeg as number)
-      : (meta?.centerLatDeg ?? def?.centerLatDeg ?? GEODESY_ORIGIN_LAT_DEG);
-    const centerLon = hasCustom
-      ? (this.customOriginLonDeg as number)
-      : (meta?.centerLonDeg ?? def?.centerLonDeg ?? GEODESY_ORIGIN_LON_DEG);
+    const centerLat = meta?.centerLatDeg ?? def?.centerLatDeg ?? GEODESY_ORIGIN_LAT_DEG;
+    const centerLon = meta?.centerLonDeg ?? def?.centerLonDeg ?? GEODESY_ORIGIN_LON_DEG;
 
     const mPerDegLat = meta?.halfHeightM ?? METERS_PER_DEG_LAT;
     const mPerDegLon =
