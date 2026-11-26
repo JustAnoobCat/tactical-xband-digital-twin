@@ -34,11 +34,48 @@ jobs:
       - name: Run TypeScript typecheck
         run: npm run typecheck
 
+      - name: Build Vite project
+        run: npm run build
+
       - name: Run verification test suites
         run: npm run verify:all
 
-      - name: Build Vite project
-        run: npm run build
+  rust-verify:
+    name: Rust Verification (Physics & Tauri Shell)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust cargo artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/xband-physics
+            src-tauri
+
+      - name: Install Linux WebKitGTK & Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Run xband-physics Rust tests
+        run: cargo test --manifest-path crates/xband-physics/Cargo.toml
+
+      - name: Run src-tauri Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
   python-verify:
     name: Python Test Suite

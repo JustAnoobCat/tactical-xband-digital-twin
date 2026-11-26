@@ -598,15 +598,24 @@ mod tests {
         // 3. Symlink pointing outside tiles_root
         let escape_link = root.path.join("escape.png");
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&secret, &escape_link).unwrap();
+        {
+            std::os::unix::fs::symlink(&secret, &escape_link).unwrap();
+            let req_sym = make_req(Method::GET, "xband-tile://escape.png", None);
+            assert_eq!(
+                handle_tile_request(&root.path, &req_sym).status(),
+                StatusCode::FORBIDDEN
+            );
+        }
         #[cfg(windows)]
-        std::os::windows::fs::symlink_file(&secret, &escape_link).unwrap();
-
-        let req_sym = make_req(Method::GET, "xband-tile://escape.png", None);
-        assert_eq!(
-            handle_tile_request(&root.path, &req_sym).status(),
-            StatusCode::FORBIDDEN
-        );
+        {
+            if std::os::windows::fs::symlink_file(&secret, &escape_link).is_ok() {
+                let req_sym = make_req(Method::GET, "xband-tile://escape.png", None);
+                assert_eq!(
+                    handle_tile_request(&root.path, &req_sym).status(),
+                    StatusCode::FORBIDDEN
+                );
+            }
+        }
     }
 
     #[test]

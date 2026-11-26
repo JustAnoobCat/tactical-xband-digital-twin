@@ -29,10 +29,10 @@ jobs:
         run: npm ci
       - name: Run TypeScript typecheck
         run: npm run typecheck
-      - name: Run verification test suites
-        run: npm run verify:all
       - name: Build Vite project
         run: npm run build
+      - name: Run verification test suites
+        run: npm run verify:all
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
