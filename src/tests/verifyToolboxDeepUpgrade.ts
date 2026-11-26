@@ -11,7 +11,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as THREE from 'three';
 import { buildFastDemGeometry, buildPerimeterSkirtGeometry } from '../ui/three/terrainBuilder';
@@ -28,6 +28,14 @@ import {
   MATERIAL_PROFILES,
 } from '../ui/terrainAnalysisController';
 import type { Obstacle } from '../core/obstacles';
+
+function readMainAndAppSource(): string {
+  const appDir = resolve(process.cwd(), 'src/app');
+  const appSources = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf-8'))
+    : [];
+  return [readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8'), ...appSources].join('\n');
+}
 
 console.log('='.repeat(96));
 console.log('   3D MAPLIBRE FIX & DEEP TOOLBOX UPGRADE VERIFICATION SUITE');
@@ -81,8 +89,8 @@ console.log('\n[TBU-T1] Verifying 3D Zero-Lag Optimization (fast128 Decimation &
   const computeCalls = (entityMgrCode.match(/\.computeLineDistances\(\)/g) || []).length;
   assert.equal(computeCalls, 0, 'tacticalEntityManager.ts must have ZERO .computeLineDistances() calls to eliminate CPU-to-GPU overhead');
 
-  // 5. Verify src/main.ts throttles secondary canvases (including timeline) to 125ms (8Hz) in 3D mode
-  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  // 5. Verify src/main.ts + src/app/*.ts throttles secondary canvases (including timeline) to 125ms (8Hz) in 3D mode
+  const mainTs = readMainAndAppSource();
   assert.ok(mainTs.includes("stageViewMode === '3d'"), "src/main.ts must check stageViewMode === '3d'");
   assert.ok(mainTs.includes('last3dSecondaryCanvasThrottleMs') && mainTs.includes('125'), "src/main.ts must throttle timeline and secondary canvases to 125ms (8Hz) in 3D mode");
 
@@ -98,7 +106,7 @@ console.log('\n[TBU-T1] Verifying 3D Zero-Lag Optimization (fast128 Decimation &
 // =================================================================================================
 console.log('\n[TBU-T2] Verifying Scheduler-Synchronized MapLibre Kinetic Overlay & Static Outage Badging...');
 {
-  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  const mainTs = readMainAndAppSource();
 
   // 1. Verify scheduler mode and active Gantt extraction
   assert.ok(mainTs.includes('frame.scheduler_mode'), 'renderMapLibreKineticOverlay must inspect frame.scheduler_mode');

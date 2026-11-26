@@ -1,4 +1,4 @@
-# Tactical X-Band Air-to-Ground Network Digital Twin
+# Tactical X-Band Air-to-Ground Network Digital Twin (`v4.0.0`)
 
 [![CI Quality Gate](https://github.com/JustAnoobCat/tactical-xband-digital-twin/actions/workflows/ci.yml/badge.svg)](https://github.com/JustAnoobCat/tactical-xband-digital-twin/actions/workflows/ci.yml)
 [![Live Interactive Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue?logo=github)](https://justanoobcat.github.io/tactical-xband-digital-twin/)
@@ -28,7 +28,7 @@ This Digital Twin provides a real-time, browser-hosted laboratory to evaluate:
 
 ### 2.1 Authoritative 50 Hz Web Worker Discrete-Event Engine
 - **Strict Worker State Authority:** All mutable live simulation state (kinematics, propagation matrices, packet queues, TDMA slots) lives exclusively inside a background Web Worker (`src/worker/simWorker.ts`).
-- **50 Hz Discrete-Event Loop ($\Delta t = 20\text{ ms}$):** The worker advances on a strict 20 ms cadence, computing the complete 16-node RF state, multi-channel TDMA schedule, and queue updates within an average step time of $\sim 4.5\text{ ms}$ ($p95 < 8.0\text{ ms} \ll 20.0\text{ ms}$).
+- **50 Hz Discrete-Event Loop ($\Delta t = 20\text{ ms}$):** The worker advances on a strict 20 ms cadence, computing the complete 16-node RF state, multi-channel TDMA schedule, and queue updates within an average step time of $\sim 2.32\text{ ms}$ ($p95 < 8.0\text{ ms} \ll 20.0\text{ ms}$).
 - **Zero-Allocation Hot Loops:** Terrain ray-marching, geodetic transformations, and metric calculations utilize scalar iterations and coordinate caches with zero GC heap thrashing.
 
 ### 2.2 Multi-Theater Biomes & Adaptive EM Physics (`V3-01`)
@@ -103,8 +103,19 @@ tactical-xband-digital-twin/
 │   │   ├── terrain.ts              # TerrainEngine (P.834, P.526-15 Bullington / Deygout, SRTM DEM)
 │   │   └── viewshedEngine.ts       # Polar X-band SINR viewshed & relay advisor
 │   ├── worker/                     # Authoritative Discrete-Event Web Worker
-│   │   ├── simWorker.ts            # SimulationWorkerManager (50 Hz authoritative loop, 3,280 lines)
+│   │   ├── simWorker.ts            # SimulationWorkerManager (50 Hz authoritative loop, 3,240 lines)
 │   │   └── telemetrySerializer.ts  # Binary/typed telemetry serialization & caching
+│   ├── app/                        # Modular Composition Controllers Extracted from main.ts
+│   │   ├── appContext.ts           # Typed AppContext, shared engines, canvas handles & state
+│   │   ├── workerBridgeController.ts # Web Worker lifecycle, telemetry profile sync & IPC routing
+│   │   ├── terrainUploadController.ts # SRTM .hgt mosaic, GeoTIFF/PNG upload & OfflineMissionPackStore
+│   │   ├── viewModeAnd3dController.ts # Lazy Three.js/MapLibre loaders & dirty-flag idle rAF loop
+│   │   ├── mapLibreController.ts   # MapLibre GL sources, terrain raster, camera sync & pointer handlers
+│   │   ├── radar2dAndInteractionController.ts # 2D radar renderer, kinetic overlay, hillshade & mouse/pan
+│   │   ├── terrainToolboxCoordinator.ts # Transect/Probe/AO/CAD/Bridge precision toolbox coordinator
+│   │   ├── dashboardRenderOrchestrator.ts # 10 Hz DOM projection, VSA/QoS/NTN/Traffic/EUD/AAR/Palette
+│   │   ├── scientificScopesAndTimelineController.ts # Scopes, charts, path profiles & simulation timeline
+│   │   └── domEventBindings.ts     # Strict-CSP programmatic event bindings & destructive confirm guards
 │   ├── ui/                         # UI Presentation & Visualization Coordinators
 │   │   ├── controllers/            # Typed UI Controller Modules (delegating alongside primary HTML workbench)
 │   │   │   ├── commandPaletteController.ts       # Command Palette dialog controller
@@ -124,11 +135,11 @@ tactical-xband-digital-twin/
 │   ├── shared/                     # Shared IPC Contracts & Protocols
 │   │   ├── constants.ts            # Physical constants (c, FRAME_DT = 0.020s, 8 GHz)
 │   │   └── workerProtocol.ts       # Typed WorkerInboundCommand & WorkerOutboundMessage
-│   └── main.ts                     # Strict-CSP external ES module workbench orchestrator & DOM event bindings
+│   └── main.ts                     # Thin strict-CSP external ES module composition root (< 100 lines)
 ├── server/
 │   └── ts_parity_server.ts         # Canonical Node/TS headless parity server (node:http)
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Bounded parallel 135-suite runner (--concurrency=N, --serial, serial-lane)
+│   ├── run_all_verifications.mjs   # Bounded parallel 136-suite runner (--concurrency=N, --serial, serial-lane)
 │   ├── run_v8_coverage.mjs         # Native Node V8 code coverage reporter
 │   ├── verify-browser-ux.mjs       # Multi-viewport (4 viewports + 9 tabs) Playwright Chromium UX gate
 │   ├── stratos_cli.ts              # Multi-core Node worker_threads Monte Carlo batch CLI
@@ -200,13 +211,13 @@ npm run test:coverage
 
 ### Automated Verification Pipeline & Quality Gates
 The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
-- **`135` TypeScript verification suites** (`114` core V3.0 registered suites + `21` post-release hardening, UI/RF, REMED-01–06, PERF-01, TAURI-01, RUST-CORE-01, UPG-01, UPG-02, UPG-03, and UPG-04 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N`, `--serial` fallback, and a post-pool `serial: true` phase)
+- **`136` TypeScript verification suites** (`114` core V3.0 registered suites + `22` post-release hardening, UI/RF, REMED-01–06, PERF-01, TAURI-01, RUST-CORE-01, and UPG-01–05 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N`, `--serial` fallback, and a post-pool `serial: true` phase)
 - **`27` Python `pytest` suites (`pytest -v`)**
 - **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs` across 4 viewports + 9 rail tabs enforced in CI)**
 - **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
 
 ```bash
-# Run all 135 TypeScript verification suites (114 core V3.0 + 21 post-release suites)
+# Run all 136 TypeScript verification suites (114 core V3.0 + 22 post-release suites)
 npm run verify:all
 
 # Run with custom concurrency or serial fallback
@@ -292,7 +303,7 @@ If you utilize this Digital Twin platform, its mathematical formulations, or its
 @software{tactical_xband_digital_twin_2026,
   title = {Tactical X-Band Air-to-Ground Network Digital Twin},
   year = {2026},
-  version = {3.0.0},
+  version = {4.0.0},
   url = {https://github.com/JustAnoobCat/tactical-xband-digital-twin}
 }
 ```

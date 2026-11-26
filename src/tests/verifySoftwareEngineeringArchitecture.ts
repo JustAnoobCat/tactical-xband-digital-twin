@@ -259,17 +259,21 @@ assert.equal(bannerOptimal.badge, 'CLEAR LOS');
 assert.equal(bannerOptimal.titleColor, '#22c55e');
 console.log('  ✓ resolveSoldierAiNotificationBanner produces verified tactical alerts across all states');
 
-// 3. src/main.ts import & wrapper inspection (extracted from index.html)
+// 3. src/main.ts + src/app/*.ts import & wrapper inspection (extracted from index.html)
 const mainTsPath = path.resolve(process.cwd(), 'src/main.ts');
-const mainTsCode = fs.readFileSync(mainTsPath, 'utf8');
+const appDirPath = path.resolve(process.cwd(), 'src/app');
+const appFiles = fs.existsSync(appDirPath)
+  ? fs.readdirSync(appDirPath).filter((f) => f.endsWith('.ts')).sort().map((f) => fs.readFileSync(path.join(appDirPath, f), 'utf8'))
+  : [];
+const mainTsCode = [fs.readFileSync(mainTsPath, 'utf8'), ...appFiles].join('\n');
 
 assert(
-  mainTsCode.includes("from './ui/scientificScopesRenderer.ts'"),
-  'src/main.ts does not import from scientificScopesRenderer.ts',
+  /from ['"]\.\.?\/ui\/scientificScopesRenderer\.ts['"]/.test(mainTsCode),
+  'src/main.ts + src/app/*.ts do not import from scientificScopesRenderer.ts',
 );
 assert(
-  mainTsCode.includes("from './ui/soldierEudRenderer.ts'"),
-  'src/main.ts does not import from soldierEudRenderer.ts',
+  /from ['"]\.\.?\/ui\/soldierEudRenderer\.ts['"]/.test(mainTsCode),
+  'src/main.ts + src/app/*.ts do not import from soldierEudRenderer.ts',
 );
 assert(
   mainTsCode.includes('renderPolarAntennaScope(polarAntennaCanvas'),

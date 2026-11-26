@@ -13,7 +13,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -160,7 +160,11 @@ console.log('\n[UI05-T2] Verifying Zero-Lag CSS Hover Flyouts, Crosshair & Armed
 // =================================================================================================
 // [UI05-T3] Figma-Style Keyboard Shortcuts (V/R/P/A/B/Enter/Esc), Modifier & Input Element Guards
 // =================================================================================================
-const mainTs = readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8');
+const appDir = resolve(projectRoot, 'src/app');
+const appSources = existsSync(appDir)
+  ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf-8'))
+  : [];
+const mainTs = [readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8'), ...appSources].join('\n');
 console.log('\n[UI05-T3] Verifying Figma-Style Keyboard Shortcuts & Strict Input Guards...');
 {
   // 1. Strict editable keyboard target guard function must exist

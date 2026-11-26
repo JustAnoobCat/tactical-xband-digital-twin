@@ -10,7 +10,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as THREE from 'three';
 import { MapController } from '../ui/mapController';
@@ -61,8 +61,12 @@ console.log('\n[UMP-T1] Verifying MapLibre Kinetic Canvas Projection Seam...');
   assert.notEqual(offsetPt.x, originPt.x, 'East translation must shift container X');
   assert.notEqual(offsetPt.y, originPt.y, 'North translation must shift container Y');
 
-  // Verify src/main.ts defines renderMapLibreKineticOverlay and transparent radar-canvas overlay
-  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  // Verify src/main.ts + src/app/*.ts defines renderMapLibreKineticOverlay and transparent radar-canvas overlay
+  const appDir = resolve(process.cwd(), 'src/app');
+  const appSources = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf-8'))
+    : [];
+  const mainTs = [readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8'), ...appSources].join('\n');
   assert.ok(mainTs.includes('function renderMapLibreKineticOverlay'), 'src/main.ts must define renderMapLibreKineticOverlay');
   assert.ok(mainTs.includes('projectEnuToContainerPoint'), 'src/main.ts must invoke projectEnuToContainerPoint for kinetic animation');
   assert.ok(mainTs.includes("radar.style.pointerEvents = 'none'"), 'src/main.ts must set pointer-events: none on radar overlay');
@@ -155,8 +159,12 @@ console.log('\n[UMP-T2] Verifying 3D Zero-Lag Optimization, Overdraw Elimination
   const mat = createFastTerrainMaterial();
   assert.ok(mat instanceof THREE.MeshLambertMaterial || mat instanceof THREE.MeshBasicMaterial, 'Terrain material must be MeshLambertMaterial or MeshBasicMaterial');
 
-  // 5. Verify src/main.ts skips drawRadar() when stageViewMode === '3d'
-  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  // 5. Verify src/main.ts + src/app/*.ts skips drawRadar() when stageViewMode === '3d'
+  const appDir = resolve(process.cwd(), 'src/app');
+  const appSources = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf-8'))
+    : [];
+  const mainTs = [readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8'), ...appSources].join('\n');
   assert.ok(mainTs.includes("if (!cvs || stageViewMode === '3d') return;"), 'drawRadar() must return immediately when in 3D mode');
   assert.ok(mainTs.includes("if (stageViewMode !== '3d'"), 'animationLoop must guard drawRadar() from executing during 3D mode');
   assert.ok(mainTs.includes('const DOM_UPDATE_INTERVAL_MS = 100'), 'updateDashboardDOM must be throttled to 10 Hz (100 ms)');

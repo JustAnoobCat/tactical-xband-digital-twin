@@ -81,7 +81,7 @@ check('scripts/run_all_verifications.mjs supports serial: true phase after pool 
   assert.ok(phase1Idx !== -1 && phase2Idx !== -1 && phase1Idx < phase2Idx, 'Parallel pool must execute before serial phase');
 
   const readme = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
-  assert.ok(readme.includes('135'), 'README.md must document 135 suites');
+  assert.ok(readme.includes('136'), 'README.md must document 136 suites');
   assert.ok(readme.includes('npm run test:fast') && readme.includes('npm run test:coverage'));
 });
 

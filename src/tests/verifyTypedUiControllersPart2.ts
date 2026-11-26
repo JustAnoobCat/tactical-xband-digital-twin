@@ -10,7 +10,7 @@
  */
 
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   getRadarGeometry,
@@ -307,7 +307,11 @@ runCheck('Monolith reduction target: index.html net reduction >= 1,500 lines', (
 });
 
 runCheck('Preserves required static test assertions (isEditableKeyboardTarget, createLabelPlacer, 3D mode guard)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8');
+  const appDir = resolve(process.cwd(), 'src/app');
+  const appCode = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf8'))
+    : [];
+  const html = [readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8'), ...appCode].join('\n');
 
   // verifyDirectToolboxUx.ts checks
   assert.ok(html.includes('function isEditableKeyboardTarget(target)'), 'isEditableKeyboardTarget helper must exist in index.html');

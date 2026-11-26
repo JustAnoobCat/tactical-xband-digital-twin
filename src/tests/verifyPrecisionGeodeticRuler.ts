@@ -11,7 +11,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   computeGeodeticRulerMetrics,
@@ -191,7 +191,11 @@ console.log('\n[PGR-T3] Verifying DOM Controls, Global Layout Invariance & Spec 
 {
   const projectRoot = resolve(__dirname, '../..');
   const indexHtml = readFileSync(resolve(projectRoot, 'index.html'), 'utf-8');
-  const mainTs = readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8');
+  const appDir = resolve(projectRoot, 'src/app');
+  const appSources = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf-8'))
+    : [];
+  const mainTs = [readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8'), ...appSources].join('\n');
   const uiBundle = `${indexHtml}\n${mainTs}`;
 
   // 1. Required DOM Controls inside #tb-pane-transect

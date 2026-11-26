@@ -1,9 +1,14 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const mainTs = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
-const uiSource = `${html}\n${mainTs}`;
+const appModules = readdirSync(new URL('../src/app/', import.meta.url))
+  .filter((f) => f.endsWith('.ts'))
+  .sort()
+  .map((f) => readFileSync(new URL(`../src/app/${f}`, import.meta.url), 'utf8'))
+  .join('\n');
+const uiSource = `${html}\n${mainTs}\n${appModules}`;
 const worker = readFileSync(new URL('../src/worker/simWorker.ts', import.meta.url), 'utf8');
 const requiredFiles = [
   '../src/core/config.ts', '../src/core/terrain.ts', '../src/core/linkBudget.ts',

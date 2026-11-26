@@ -29,7 +29,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   runPhysicsRealismAblation,
@@ -242,10 +242,14 @@ console.log('\n[PDS-T2] Verifying Byte-for-Byte Zero-Drift Artifact Parity...');
 // =================================================================================================
 console.log('\n[PDS-T3] Verifying Live LAB Integration & Zero-Emoji Gate...');
 {
-  // 1. index.html & src/main.ts Live LAB Wiring
+  // 1. index.html & src/main.ts + src/app/*.ts Live LAB Wiring
   const indexPath = resolve(process.cwd(), 'index.html');
   const indexHtml = readFileSync(indexPath, 'utf-8');
-  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  const appDir = resolve(process.cwd(), 'src/app');
+  const appSources = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf-8'))
+    : [];
+  const mainTs = [readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8'), ...appSources].join('\n');
 
   assert.ok(
     mainTs.includes('buildScientificValidationMarkdown'),

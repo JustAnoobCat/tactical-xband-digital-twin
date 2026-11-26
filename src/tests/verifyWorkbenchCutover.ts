@@ -194,7 +194,11 @@ for (const line of sec5.split('\n')) {
 
 assert.equal(assertedIdsFromSpec.length, 273, `Expected 273 asserted DOM IDs in UI-01 Section 5, parsed ${assertedIdsFromSpec.length}`);
 
-const mainTsContent = fs.readFileSync(path.join(ROOT_DIR, 'src', 'main.ts'), 'utf-8');
+const appDir = path.join(ROOT_DIR, 'src', 'app');
+const appSources = fs.existsSync(appDir)
+  ? fs.readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => fs.readFileSync(path.join(appDir, f), 'utf-8'))
+  : [];
+const mainTsContent = [fs.readFileSync(path.join(ROOT_DIR, 'src', 'main.ts'), 'utf-8'), ...appSources].join('\n');
 const dynamicIds = new Set<string>(seenIds);
 const dynIdRegex = /(?<![\w-])id=["']([^"']+)["']/g;
 while ((match = dynIdRegex.exec(mainTsContent)) !== null) {

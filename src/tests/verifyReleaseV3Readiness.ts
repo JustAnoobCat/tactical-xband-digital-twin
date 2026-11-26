@@ -61,7 +61,7 @@ async function runAllTests(): Promise<void> {
     assert.deepEqual(brokenLinks, [], `Broken local markdown links found in README.md: ${JSON.stringify(brokenLinks)}`);
   });
 
-  await runCheck('README.md contains live GitHub Pages demo URL, Actions CI badge, and accurate 135 suite count', () => {
+  await runCheck('README.md contains live GitHub Pages demo URL, Actions CI badge, and accurate 136 suite count', () => {
     const readmeContent = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
 
     assert.ok(
@@ -73,8 +73,8 @@ async function runAllTests(): Promise<void> {
       'README.md must contain GitHub Actions CI badge'
     );
     assert.ok(
-      readmeContent.includes('135') && readmeContent.includes('TypeScript verification suites'),
-      'README.md must accurately document 135 TypeScript verification suites'
+      readmeContent.includes('136') && readmeContent.includes('TypeScript verification suites'),
+      'README.md must accurately document 136 TypeScript verification suites'
     );
     assert.ok(
       readmeContent.includes('27') && readmeContent.includes('Python `pytest` suites'),
@@ -114,7 +114,7 @@ async function runAllTests(): Promise<void> {
   // ============================================================================
   console.log('\n[REL-T2] Suite Registry & Package Parity...');
 
-  await runCheck('scripts/run_all_verifications.mjs registers exactly 135 verification suites', () => {
+  await runCheck('scripts/run_all_verifications.mjs registers exactly 136 verification suites', () => {
     const runnerPath = path.join(ROOT_DIR, 'scripts', 'run_all_verifications.mjs');
     assert.equal(fs.existsSync(runnerPath), true);
     const content = fs.readFileSync(runnerPath, 'utf8');
@@ -132,8 +132,8 @@ async function runAllTests(): Promise<void> {
 
     assert.equal(
       totalSuitesCount,
-      135,
-      `REGISTERED_SUITES must contain exactly 135 total suites (base=${baseEntries.length}, pushed=${pushedEntriesCount}), found ${totalSuitesCount}`
+      136,
+      `REGISTERED_SUITES must contain exactly 136 total suites (base=${baseEntries.length}, pushed=${pushedEntriesCount}), found ${totalSuitesCount}`
     );
 
     assert.ok(

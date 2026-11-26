@@ -235,22 +235,26 @@ runStep('1. Strict Electron CSP static audit on index.html (0 inline <script>, 0
 // -----------------------------------------------------------------------------
 // 2. Live postWorkerCommand Wiring Audit in src/main.ts
 // -----------------------------------------------------------------------------
-runStep('2. Live postWorkerCommand wiring audit in src/main.ts', () => {
+runStep('2. Live postWorkerCommand wiring audit in src/main.ts + src/app/*.ts', () => {
   const mainTsPath = path.join(ROOT_DIR, 'src', 'main.ts');
   assert.equal(fs.existsSync(mainTsPath), true, 'src/main.ts must exist');
-  const mainTs = fs.readFileSync(mainTsPath, 'utf8');
+  const appDir = path.join(ROOT_DIR, 'src', 'app');
+  const appSources = fs.existsSync(appDir)
+    ? fs.readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => fs.readFileSync(path.join(appDir, f), 'utf8'))
+    : [];
+  const mainTs = [fs.readFileSync(mainTsPath, 'utf8'), ...appSources].join('\n');
 
   const ioInitIdx = mainTs.indexOf('initMissionIoController({');
-  assert.ok(ioInitIdx !== -1, 'src/main.ts must call initMissionIoController({...})');
+  assert.ok(ioInitIdx !== -1, 'src/main.ts + src/app/*.ts must call initMissionIoController({...})');
   const ioSnippet = mainTs.slice(ioInitIdx, ioInitIdx + 600);
   assert.ok(
     ioSnippet.includes('postWorkerCommand:') && ioSnippet.includes('sendCommand('),
-    'getMissionIoController() in src/main.ts must wire postWorkerCommand -> sendCommand(cmd)'
+    'getMissionIoController() must wire postWorkerCommand -> sendCommand(cmd)'
   );
   assert.equal(
     /\bonclick\s*=\s*["']/i.test(mainTs),
     false,
-    'src/main.ts dynamic HTML templates must contain zero inline onclick="..." attributes'
+    'src/main.ts + src/app/*.ts dynamic HTML templates must contain zero inline onclick="..." attributes'
   );
 });
 
@@ -596,14 +600,14 @@ try {
 }
 
 // -----------------------------------------------------------------------------
-// 4. README.md & 135-Suite Count Sync Audit
+// 4. README.md & 136-Suite Count Sync Audit
 // -----------------------------------------------------------------------------
-runStep('4. README.md technical reconciliation & 135-suite count sync check', () => {
+runStep('4. README.md technical reconciliation & 136-suite count sync check', () => {
   const readme = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
   assert.ok(readme.includes('16.0'), 'README.md must document 16.0 dBi quad-sector peak gain');
   assert.ok(readme.includes('90^\\circ') || readme.includes('90°'), 'README.md must document 90 deg azimuth HPBW');
   assert.ok(readme.includes('6.0'), 'README.md must document 6.0 km dry O2 scale height');
-  assert.ok(readme.includes('135'), 'README.md must document 135 TypeScript verification suites');
+  assert.ok(readme.includes('136'), 'README.md must document 136 TypeScript verification suites');
   assert.ok(readme.includes('AWS Terrarium') && readme.includes('.hgt'), 'README.md must document Terrarium DEM + SRTM .hgt');
   assert.ok(
     readme.includes('core/*.py') && readme.includes('server/app.py') && readme.includes('ts_parity_server.ts'),

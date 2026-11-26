@@ -416,8 +416,8 @@ async function main() {
   const pkgJsonPath = path.resolve(ROOT_DIR, 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
-  await runCheck('package.json version matches 3.0.0', async () => {
-    assert.equal(pkg.version, '3.0.0');
+  await runCheck('package.json version matches 4.0.0', async () => {
+    assert.equal(pkg.version, '4.0.0');
   });
 
   await runCheck('package.json server:ts uses vite-node (no missing tsx dependency)', async () => {

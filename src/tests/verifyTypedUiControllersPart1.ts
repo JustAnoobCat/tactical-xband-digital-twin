@@ -9,7 +9,7 @@
  * - [TUC-T4] Monolith Reduction Audit (>= 700 Net Lines Removed from index.html & Static Contract Preservation)
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   createTelemetryDomUpdaters,
@@ -662,8 +662,12 @@ async function runSuite111(): Promise<void> {
     );
   }
 
-  // Verify global window bindings preserved in src/main.ts (extracted from index.html)
-  const mainTs = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8');
+  // Verify global window bindings preserved in src/main.ts + src/app/*.ts
+  const appDir = resolve(process.cwd(), 'src/app');
+  const appCode = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf-8'))
+    : [];
+  const mainTs = [readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf-8'), ...appCode].join('\n');
   const requiredGlobalBindings = [
     'window.updateHiFiPhysicsUI = updateHiFiPhysicsUI',
     'window.updateBiomePhysicsUI = updateBiomePhysicsUI',

@@ -12,7 +12,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,7 +23,11 @@ console.log('='.repeat(96));
 
 const projectRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
 const indexHtml = readFileSync(resolve(projectRoot, 'index.html'), 'utf-8');
-const mainTs = readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8');
+const appDir = resolve(projectRoot, 'src/app');
+const appSources = existsSync(appDir)
+  ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf-8'))
+  : [];
+const mainTs = [readFileSync(resolve(projectRoot, 'src/main.ts'), 'utf-8'), ...appSources].join('\n');
 
 // =================================================================================================
 // [ITU-T1] Human-Friendly Tool Names, Sub-labels & Dynamic Step Guide Banner

@@ -313,7 +313,11 @@ async function runSuite(): Promise<void> {
 
   // Verify 1-click button
   const mainTsPath = path.resolve(process.cwd(), 'src/main.ts');
-  const mainTs = fs.readFileSync(mainTsPath, 'utf-8');
+  const appDir = path.resolve(process.cwd(), 'src/app');
+  const appSources = fs.existsSync(appDir)
+    ? fs.readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => fs.readFileSync(path.join(appDir, f), 'utf-8'))
+    : [];
+  const mainTs = [fs.readFileSync(mainTsPath, 'utf-8'), ...appSources].join('\n');
   assert.ok(indexHtml.includes('id="btn-hifi-all-toggle"'), 'Button id="btn-hifi-all-toggle" must exist');
   assert.ok(mainTs.includes('btn-hifi-all-toggle') && mainTs.includes('toggleAllHiFiPhysics'), 'src/main.ts must wire #btn-hifi-all-toggle to toggleAllHiFiPhysics()');
 

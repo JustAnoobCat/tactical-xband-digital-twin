@@ -3,7 +3,7 @@
  * Covers TC-CORR-01 through TC-CORR-16.15.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FQCoDelQueue, GroundNodeTrafficSubsystem, Packet } from '../core/queues';
 import { LinkStatus } from '../core/linkBudget';
@@ -1384,9 +1384,13 @@ registerTest('TC-CORR-14', 'End-to-end dropped byte conservation holds identical
 // ----------------------------------------------------------------------------
 // TC-CORR-15: index.html Wiring, Style Invariance & Node Detail Isolation
 // ----------------------------------------------------------------------------
-registerTest('TC-CORR-15', 'index.html & src/main.ts wire pre-mutation run gates, visibility FSM & preserve lines 7-596 inline CSS', () => {
+registerTest('TC-CORR-15', 'index.html & src/main.ts + src/app/*.ts wire pre-mutation run gates, visibility FSM & preserve lines 7-596 inline CSS', () => {
   const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
-  const mainTs = readFileSync(join(process.cwd(), 'src', 'main.ts'), 'utf8');
+  const appDir = join(process.cwd(), 'src', 'app');
+  const appSources = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(join(appDir, f), 'utf8'))
+    : [];
+  const mainTs = [readFileSync(join(process.cwd(), 'src', 'main.ts'), 'utf8'), ...appSources].join('\n');
   assert(mainTs.includes('simTimelineController.prepareTelemetryRun(msg.frame)'), 'Pre-mutation telemetry gate wired');
   assert(mainTs.includes('simTimelineController.ingestCommandResult(msg)'), 'Command result gate wired');
   assert(mainTs.includes('transitionTimelineInspectorStatus(timelineInspectorVisibility, isLive)'), 'Inspector status FSM wired');

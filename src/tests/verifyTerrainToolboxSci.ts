@@ -71,9 +71,13 @@ function testAc1DemStatsAndNonClobber(): void {
   assert.equal(engine.demMetadata.voidCount, 1);
   assert.ok(Object.isFrozen(engine.demMetadata), 'demMetadata must be frozen');
 
-  // Verify index.html & src/main.ts M1 non-clobber & upload direct loadCustomDem & preset rain rule
+  // Verify index.html & src/main.ts + src/app/*.ts M1 non-clobber & upload direct loadCustomDem & preset rain rule
   const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
-  const mainTs = fs.readFileSync(path.join(process.cwd(), 'src', 'main.ts'), 'utf8');
+  const appDir = path.join(process.cwd(), 'src', 'app');
+  const appSources = fs.existsSync(appDir)
+    ? fs.readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => fs.readFileSync(path.join(appDir, f), 'utf8'))
+    : [];
+  const mainTs = [fs.readFileSync(path.join(process.cwd(), 'src', 'main.ts'), 'utf8'), ...appSources].join('\n');
   assert.ok(
     mainTs.includes('mainTerrainEngine.loadCustomDem(parseResult.elevations, parseResult.metadata)'),
     'HGT upload handler calls mainTerrainEngine.loadCustomDem directly',

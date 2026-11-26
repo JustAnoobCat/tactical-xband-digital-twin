@@ -3,7 +3,7 @@
  * Spec: docs/specs/v2-03-canvas-declutter-and-security.md (V2-03)
  */
 
-import { readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { createLabelPlacer, type CanvasLabelPlacer, type PlacedLabelBox } from '../ui/canvasLabelPlacer';
 import { isSafeUrl, createSafeElement } from '../ui/domSafety';
@@ -225,7 +225,11 @@ console.log('[CDS-T4] Verifying Integration & Zero-Slop Gate...');
 
 const root = process.cwd();
 const indexHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
-const mainTs = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
+const appDir = resolve(root, 'src/app');
+const appSources = existsSync(appDir)
+  ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf8'))
+  : [];
+const mainTs = [readFileSync(resolve(root, 'src/main.ts'), 'utf8'), ...appSources].join('\n');
 const placerTs = readFileSync(resolve(root, 'src/ui/canvasLabelPlacer.ts'), 'utf8');
 const domSafetyTs = readFileSync(resolve(root, 'src/ui/domSafety.ts'), 'utf8');
 

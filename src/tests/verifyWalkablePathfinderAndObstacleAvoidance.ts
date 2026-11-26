@@ -13,7 +13,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -267,8 +267,12 @@ assert.ok(readmeText.includes('SPEC-WALKABLE-TERRAIN-PATHFINDER-AND-OBSTACLE-AVO
 // 3. Verify c2-console-theme.css exists
 assert.ok(existsSync(path.join(ROOT_DIR, 'frontend/c2-console-theme.css')), 'frontend/c2-console-theme.css must exist');
 
-// 4. Verify src/main.ts multi-waypoint rendering and readout support
-const mainTs = readFileSync(path.join(ROOT_DIR, 'src', 'main.ts'), 'utf8');
+// 4. Verify src/main.ts + src/app/*.ts multi-waypoint rendering and readout support
+const appDirPath = path.join(ROOT_DIR, 'src', 'app');
+const appSources = existsSync(appDirPath)
+  ? readdirSync(appDirPath).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(path.join(appDirPath, f), 'utf8'))
+  : [];
+const mainTs = [readFileSync(path.join(ROOT_DIR, 'src', 'main.ts'), 'utf8'), ...appSources].join('\n');
 assert.ok(mainTs.includes('ai_walk_path_enu'), 'src/main.ts must process ai_walk_path_enu');
 assert.ok(mainTs.includes('Max Slope:'), 'src/main.ts must display Max Slope in #ai-directive-readout');
 

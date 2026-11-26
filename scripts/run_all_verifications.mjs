@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (135 Total Suites)
+// Verification Suites Registry (136 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -193,7 +193,8 @@ REGISTERED_SUITES.push(
   { id: 'verify:upg01-flight-recorder-ipc', name: 'UPG-01 Slice WASM Viewshed, On-Demand IPC, Flight Recorder & HUD', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg01FlightRecorderAndIpc.ts'], category: 'architecture' },
   { id: 'verify:upg02-offline-packs-hgt', name: 'UPG-02 Fast 500+ HGT Manager, Offline Mission Packs & Mentor Edge-Case Fixes', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg02OfflinePacksAndHgt.ts'], category: 'terrain' },
   { id: 'verify:upg03-lan-bridge-batch-cli', name: 'UPG-03 Air-Gapped LAN UDP Bridge (ATAK CoT / MAVLink v2) & Multi-Core Batch CLI', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg03LanBridgeAndBatchCli.ts'], category: 'desktop', serial: true },
-  { id: 'verify:upg04-vitest-runner', name: 'UPG-04 Fast Parallel Vitest Pooled Runner, V8 Coverage & Serial-Lane Runner', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg04VitestAndRunner.ts'], category: 'architecture' }
+  { id: 'verify:upg04-vitest-runner', name: 'UPG-04 Fast Parallel Vitest Pooled Runner, V8 Coverage & Serial-Lane Runner', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg04VitestAndRunner.ts'], category: 'architecture' },
+  { id: 'verify:upg05-modular-app-v4', name: 'UPG-05 Modular src/app Architecture & v4.0.0 Release Symmetry Gate', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg05ModularAppAndV4Release.ts'], category: 'release' }
 );
 
 // -----------------------------------------------------------------------------

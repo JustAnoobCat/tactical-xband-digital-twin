@@ -1,6 +1,6 @@
 {
   "name": "tactical-x-band-air-to-ground-network",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "TypeScript WebWorker digital twin for X-band air-to-ground TDMA research and simulation.",
   "main": "electron/main.cjs",
   "type": "module",
@@ -89,6 +89,7 @@
     "verify:probe-signal-heatmap": "vite-node src/tests/probeSignalHeatmap.test.ts",
     "verify:toolbox-precision": "vite-node src/tests/toolboxPrecisionSuite.test.ts",
     "verify:workspace-tiles": "vite-node src/tests/workspaceTilesManager.test.ts",
+    "verify:upg05-modular-app-v4": "vite-node src/tests/verifyUpg05ModularAppAndV4Release.ts",
     "verify:coverage": "node scripts/run_v8_coverage.mjs",
     "server:ts": "vite-node server/ts_parity_server.ts",
     "verify:browser": "node scripts/verify-browser-ux.mjs",

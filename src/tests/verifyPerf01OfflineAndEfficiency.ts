@@ -173,16 +173,27 @@ check('MapController projects non-Ladakh biomes using active biome origin and st
 // -----------------------------------------------------------------------------
 console.log('\n[3/5] Verifying Lazy Code-Splitting of three & maplibre-gl...');
 
-check('src/main.ts dynamically imports threeSceneController, maplibre-gl, and MapController', () => {
-  const mainSrc = readFileSync(resolve(ROOT_DIR, 'src/main.ts'), 'utf8');
-  assert.equal(/^import\s+[^;]*?from\s+['"]maplibre-gl['"]/m.test(mainSrc), false, 'No static maplibre-gl import in main.ts');
-  assert.equal(/^import\s+[^;]*?threeSceneController/m.test(mainSrc), false, 'No static threeSceneController import in main.ts');
-  assert.equal(/^import\s+[^;]*?mapController/m.test(mainSrc), false, 'No static mapController import in main.ts');
+function readMainAndAppFiles(): string[] {
+  const appDir = resolve(ROOT_DIR, 'src/app');
+  const appFiles = existsSync(appDir)
+    ? readdirSync(appDir).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(resolve(appDir, f), 'utf8'))
+    : [];
+  return [readFileSync(resolve(ROOT_DIR, 'src/main.ts'), 'utf8'), ...appFiles];
+}
+
+check('src/main.ts + src/app/*.ts dynamically import threeSceneController, maplibre-gl, and MapController', () => {
+  const allFiles = readMainAndAppFiles();
+  const mainSrc = allFiles.join('\n');
+  for (const src of allFiles) {
+    assert.equal(/^import\s+[^;]*?from\s+['"]maplibre-gl['"]/m.test(src), false, 'No static maplibre-gl import in main/app modules');
+    assert.equal(/^import\s+[^;]*?threeSceneController/m.test(src), false, 'No static threeSceneController import in main/app modules');
+    assert.equal(/^import\s+[^;]*?mapController/m.test(src), false, 'No static mapController import in main/app modules');
+  }
 
   assert.ok(mainSrc.includes("import('maplibre-gl')"), 'Must dynamically import maplibre-gl');
-  assert.ok(mainSrc.includes("import('./ui/three/threeSceneController.ts')"), 'Must dynamically import threeSceneController');
-  assert.ok(mainSrc.includes("import('./ui/mapController.ts')"), 'Must dynamically import mapController');
-  assert.ok(mainSrc.includes('window.releaseInactiveWebglContexts'), 'Must expose window.releaseInactiveWebglContexts');
+  assert.ok(/import\(['"]\.\.?\/ui\/three\/threeSceneController\.ts['"]\)/.test(mainSrc), 'Must dynamically import threeSceneController');
+  assert.ok(/import\(['"]\.\.?\/ui\/mapController\.ts['"]\)/.test(mainSrc), 'Must dynamically import mapController');
+  assert.ok(mainSrc.includes('releaseInactiveWebglContexts'), 'Must expose releaseInactiveWebglContexts');
 });
 
 check('dist/assets/ emits separate lazy chunks for three and maplibre-gl not statically loaded by dist/index.html', () => {
@@ -450,8 +461,8 @@ check('workspaceTilesManager skips redundant DOM rebuilds when telemetry state i
 // -----------------------------------------------------------------------------
 console.log('\n[5/5] Verifying Idle CPU Loop Gating & Deterministic Worker Ray-March Cache...');
 
-check('src/main.ts implements visibilitychange pause and dirty-flag idle rAF stop', () => {
-  const mainSrc = readFileSync(resolve(ROOT_DIR, 'src/main.ts'), 'utf8');
+check('src/main.ts + src/app/*.ts implement visibilitychange pause and dirty-flag idle rAF stop', () => {
+  const mainSrc = readMainAndAppFiles().join('\n');
   assert.ok(mainSrc.includes("document.addEventListener('visibilitychange'"), 'Must listen to visibilitychange');
   assert.ok(mainSrc.includes('function shouldContinueAnimationLoop()'), 'Must gate animation loop continuation');
   assert.ok(mainSrc.includes('function scheduleAnimationLoop()'), 'Must schedule rAF via dirty-flag scheduler');

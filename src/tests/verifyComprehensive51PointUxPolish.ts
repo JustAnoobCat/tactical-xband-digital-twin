@@ -13,7 +13,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,9 +27,13 @@ console.log('='.repeat(96));
 
 const htmlPath = path.join(ROOT_DIR, 'index.html');
 const mainTsPath = path.join(ROOT_DIR, 'src', 'main.ts');
+const appDirPath = path.join(ROOT_DIR, 'src', 'app');
 assert.ok(existsSync(htmlPath), 'index.html must exist');
 assert.ok(existsSync(mainTsPath), 'src/main.ts must exist');
-const htmlContent = `${readFileSync(htmlPath, 'utf8')}\n${readFileSync(mainTsPath, 'utf8')}`;
+const appSources = existsSync(appDirPath)
+  ? readdirSync(appDirPath).filter((f) => f.endsWith('.ts')).sort().map((f) => readFileSync(path.join(appDirPath, f), 'utf8'))
+  : [];
+const htmlContent = `${readFileSync(htmlPath, 'utf8')}\n${readFileSync(mainTsPath, 'utf8')}\n${appSources.join('\n')}`;
 
 // -----------------------------------------------------------------------------
 // UXP-T1: Cross-Tab Node Selection Sync & Pointer Mutual Exclusion (Areas E & F)
