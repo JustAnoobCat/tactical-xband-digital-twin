@@ -1,9 +1,16 @@
-// @ts-nocheck — Web Worker IPC lifecycle, telemetry subscription profile & inbound message router
+// Web Worker IPC lifecycle, telemetry subscription profile & inbound message router
 import type { AppContext } from './appContext.ts';
+import type { DemGeographicMetadata } from '../core/terrain.ts';
+import type {
+  TrajectoryConfigTelemetry,
+  WorkerInboundCommand,
+  WorkerOutboundMessage,
+} from '../shared/workerProtocol.ts';
+import type { ObstacleCommandResult } from '../ui/obstacleEditorState.ts';
 import { routeCommandResult } from '../ui/commandResultRouter.ts';
 import { SystemHealthHud } from '../ui/systemHealthHud.ts';
 
-export function initWorkerBridgeController(ctx: AppContext) {
+export function initWorkerBridgeController(ctx: AppContext): void {
   const { worker, state, engines, dom, actions } = ctx;
   const { $, setText } = dom;
   const {
@@ -17,8 +24,8 @@ export function initWorkerBridgeController(ctx: AppContext) {
     flightRecorder,
   } = engines;
 
-  let systemHealthHudInstance = null;
-  function getSystemHealthHud() {
+  let systemHealthHudInstance: SystemHealthHud | null = null;
+  function getSystemHealthHud(): SystemHealthHud {
     if (!systemHealthHudInstance) {
       systemHealthHudInstance = new SystemHealthHud({
         getWorldTileLayer: () => actions.getRadarWorldTileLayer(),
@@ -31,11 +38,8 @@ export function initWorkerBridgeController(ctx: AppContext) {
   /**
    * Authoritative typed helper for dispatching worker commands from the main UI thread.
    * Ensures consistent transfer list handling and command typing.
-   *
-   * @param {import('../shared/workerProtocol.ts').WorkerInboundCommand} msg
-   * @param {Transferable[]} [transferList]
    */
-  function sendCommand(msg, transferList) {
+  function sendCommand(msg: WorkerInboundCommand, transferList?: Transferable[]): void {
     flightRecorder.recordCommand(
       msg,
       Number(state.latestTelemetry?.frame_index ?? 0),
@@ -50,7 +54,7 @@ export function initWorkerBridgeController(ctx: AppContext) {
     }
   }
 
-  function syncTelemetrySubscriptionProfile(activeTabId) {
+  function syncTelemetrySubscriptionProfile(activeTabId: string): void {
     const linkProfile =
       activeTabId === 'tab-terrain' ||
       Boolean(mapLayerRegistry?.isLayerVisible?.('rf.fresnelZone'));
@@ -67,7 +71,7 @@ export function initWorkerBridgeController(ctx: AppContext) {
     });
   }
 
-  worker.onmessage = (event) => {
+  worker.onmessage = (event: MessageEvent<WorkerOutboundMessage>): void => {
     const msg = event.data;
     if (!msg) return;
     const simTimelineController = state.simTimelineController;
@@ -111,16 +115,18 @@ export function initWorkerBridgeController(ctx: AppContext) {
         if (tip) tip.style.display = 'none';
       }
       actions.renderSelectedNodeDetails();
-      const dashboardOption = Array.from($('network-node-select')?.options || []).find(
+      const dashboardSelect = $<HTMLSelectElement>('network-node-select');
+      const dashboardOption = Array.from(dashboardSelect?.options || []).find(
         option => Number(option.value) === state.selectedNodeId
       );
       if (dashboardOption && !dashboardOption.selected) {
         dashboardOption.selected = true;
         actions.drawNetworkCharts();
       }
-      if (state.activeMapHoverRenderer && state.mapHoverPoint) {
+      const hoverNodeId = state.hoveredLinkNodeId ?? state.hoveredNodeId;
+      if (state.activeMapHoverRenderer && state.mapHoverPoint && hoverNodeId !== null) {
         actions.renderNodeHoverTooltip(
-          state.hoveredLinkNodeId ?? state.hoveredNodeId,
+          hoverNodeId,
           state.mapHoverPoint,
           state.hoveredLinkNodeId !== null ? 'link' : 'node'
         );
@@ -208,35 +214,38 @@ export function initWorkerBridgeController(ctx: AppContext) {
       }
       // Splice the refreshed profile data into the telemetry snapshot so the Canvas
       // renderer picks it up on its next animation frame without any other change.
-      state.latestTelemetry = {
-        ...state.latestTelemetry,
-        selected_node_fresnel: msg.fresnel,
-        ...(msg.selected_link_budget ? { selected_link_budget: msg.selected_link_budget } : {}),
-        ...(msg.nodes_telemetry ? { nodes_telemetry: msg.nodes_telemetry } : {}),
-      };
+      state.latestTelemetry = state.latestTelemetry
+        ? {
+            ...state.latestTelemetry,
+            selected_node_fresnel: msg.fresnel,
+            ...(msg.selected_link_budget ? { selected_link_budget: msg.selected_link_budget } : {}),
+            ...(msg.nodes_telemetry ? { nodes_telemetry: msg.nodes_telemetry } : {}),
+          }
+        : null;
       state.terrainNeedsRender = true;
       actions.scheduleAnimationLoop();
-      if (state.isPaused && !historyController.isInspecting) {
+      if (state.isPaused && !historyController.isInspecting && state.latestTelemetry) {
         actions.updateDashboardDOM(state.latestTelemetry, true);
         actions.drawFresnel();
       }
     } else if (msg.type === 'CUSTOM_DEM_LOADED') {
       if (msg.bounds) {
         state.activeTerrainBounds = msg.bounds;
+        const geoBounds = msg.bounds as typeof msg.bounds & Partial<DemGeographicMetadata>;
         if (
           state.mapController &&
-          Number.isFinite(msg.bounds.centerLatDeg) &&
-          Number.isFinite(msg.bounds.centerLonDeg)
+          Number.isFinite(geoBounds.centerLatDeg) &&
+          Number.isFinite(geoBounds.centerLonDeg)
         ) {
-          state.mapController.setOrigin(msg.bounds.centerLatDeg, msg.bounds.centerLonDeg);
+          state.mapController.setOrigin(geoBounds.centerLatDeg!, geoBounds.centerLonDeg!);
         }
-        window.centerMapOnTerrain(msg.bounds);
+        window.centerMapOnTerrain?.(msg.bounds);
         state.pendingTerrainCenteringBounds = null;
       }
       actions.markUiDirtyAndWake();
     } else if (msg.type === 'HILLSHADE_READY') {
       actions.renderHillshadeFromWorker(
-        msg.data,
+        msg.data as number[][],
         msg.grid_size || 512,
         msg.bounds_km || 300,
         msg.terrain_mode,
@@ -249,7 +258,7 @@ export function initWorkerBridgeController(ctx: AppContext) {
       if (msg.bounds) {
         state.activeTerrainBounds = msg.bounds;
         if (state.pendingTerrainCenteringBounds) {
-          window.centerMapOnTerrain(msg.bounds);
+          window.centerMapOnTerrain?.(msg.bounds);
           state.pendingTerrainCenteringBounds = null;
         }
       }
@@ -259,7 +268,7 @@ export function initWorkerBridgeController(ctx: AppContext) {
       if (msg.bounds) {
         state.activeTerrainBounds = msg.bounds;
         if (state.pendingTerrainCenteringBounds) {
-          window.centerMapOnTerrain(msg.bounds);
+          window.centerMapOnTerrain?.(msg.bounds);
           state.pendingTerrainCenteringBounds = null;
         }
       }
@@ -267,7 +276,7 @@ export function initWorkerBridgeController(ctx: AppContext) {
       if (msg.bounds) {
         state.activeTerrainBounds = msg.bounds;
         if (state.pendingTerrainCenteringBounds) {
-          window.centerMapOnTerrain(msg.bounds);
+          window.centerMapOnTerrain?.(msg.bounds);
           state.pendingTerrainCenteringBounds = null;
         }
       }
@@ -279,7 +288,7 @@ export function initWorkerBridgeController(ctx: AppContext) {
         pendingObstacleRequestId: obstacleEditor.pendingRequestId,
         pendingTrajectoryRequestId: state.pendingTrajectoryRequest,
         reconcileObstacle: result => {
-          const reconciled = obstacleEditor.reconcile(result);
+          const reconciled = obstacleEditor.reconcile(result as ObstacleCommandResult);
           if (reconciled) {
             actions.syncObstacleFieldMirror(true);
             actions.refreshObstacleEditor();
@@ -300,7 +309,7 @@ export function initWorkerBridgeController(ctx: AppContext) {
             state.pendingTrajectoryRequest = null;
             state.pendingAltitudeMode = null;
             state.flightParamsDirty = false;
-            actions.syncTrajectoryEditorFromWorker(result.trajectory_config);
+            actions.syncTrajectoryEditorFromWorker(result.trajectory_config as TrajectoryConfigTelemetry);
             actions.setTrajectoryMessage('Path committed by the simulation worker.');
           }
         },

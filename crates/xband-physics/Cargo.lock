@@ -152,7 +152,7 @@ dependencies = [
 
 [[package]]
 name = "xband-physics"
-version = "4.0.0"
+version = "4.1.0"
 dependencies = [
  "rayon",
  "wasm-bindgen",

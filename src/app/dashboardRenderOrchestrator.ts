@@ -1,5 +1,14 @@
-// @ts-nocheck — Dashboard DOM updates (10 Hz + immediate node-list transition), Mission I/O, QoS/NTN/Traffic/Soldier EUD, Jitter Profiler & Experiment Capture
+// Dashboard DOM updates (10 Hz + immediate node-list transition), Mission I/O, QoS/NTN/Traffic/Soldier EUD, Jitter Profiler & Experiment Capture
 import type { AppContext } from './appContext.ts';
+import type {
+  AcnTelemetry,
+  NodeTelemetryItem,
+  TelemetryFrame,
+  WorkerInboundCommand,
+} from '../shared/workerProtocol.ts';
+import type { QosNetworkSlaReport } from '../core/qosSlaEngine.ts';
+import type { TwinEvaluationReport } from '../core/digitalTwinCalibrationEngine.ts';
+import type { NetworkTrafficFrame, TrafficFlowRecord } from '../ui/networkTrafficInventory.ts';
 import { obstacleFootprintPoints } from '../core/obstacles.ts';
 import { evaluate5QiBearerSlaMetrics } from '../core/qosSlaEngine.ts';
 import { evaluateNtnNodeSignaling } from '../core/ntnSignalingEngine.ts';
@@ -64,14 +73,17 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     flightRecorder,
   } = engines;
 
-  const sendCommand = (msg, transferList?) => actions.sendCommand(msg, transferList);
+  const sendCommand = (msg: WorkerInboundCommand, transferList?: Transferable[]) =>
+    actions.sendCommand(msg, transferList);
 
-  let dashboardAndAuthoringControllerInstance = null;
+  let dashboardAndAuthoringControllerInstance: ReturnType<
+    typeof createDashboardAndAuthoringController
+  > | null = null;
   function getDashboardAndAuthoringController() {
     if (!dashboardAndAuthoringControllerInstance) {
       dashboardAndAuthoringControllerInstance = createDashboardAndAuthoringController({
         getElementById: id => $(id),
-        sendCommand: cmd => sendCommand(cmd),
+        sendCommand: cmd => sendCommand(cmd as unknown as WorkerInboundCommand),
         getSpatialLocked: () => (typeof state.spatialLocked !== 'undefined' ? state.spatialLocked : false),
         isHistoricalInspecting: () =>
           Boolean(
@@ -129,7 +141,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     return dashboardAndAuthoringControllerInstance;
   }
 
-  let missionIoControllerInstance = null;
+  let missionIoControllerInstance: ReturnType<typeof initMissionIoController> | null = null;
   function getMissionIoController() {
     if (!missionIoControllerInstance) {
       missionIoControllerInstance = initMissionIoController({
@@ -152,7 +164,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     return missionIoControllerInstance;
   }
 
-  let commandPaletteControllerInstance = null;
+  let commandPaletteControllerInstance: ReturnType<typeof initCommandPaletteController> | null = null;
   function getCommandPaletteController() {
     if (!commandPaletteControllerInstance) {
       commandPaletteControllerInstance = initCommandPaletteController();
@@ -160,7 +172,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     return commandPaletteControllerInstance;
   }
 
-  function renderRegistration(frame) {
+  function renderRegistration(frame: TelemetryFrame) {
     if (!frame) return;
     const nodes = frame.nodes_telemetry || [];
     const states = nodes.map(n => n.registration_state || 'UNREGISTERED');
@@ -220,7 +232,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     renderNtnSignalingAnalyzer(frame);
   }
 
-  function renderNtnSignalingAnalyzer(frame) {
+  function renderNtnSignalingAnalyzer(frame: TelemetryFrame) {
     const panel = document.getElementById('ntn-signaling-panel');
     if (!panel) return;
 
@@ -457,34 +469,36 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const titleEl = panel?.querySelector('.map-node-header .sec-title');
     const simTimelineController = state.simTimelineController;
     const isTimelineHist = Boolean(simTimelineController && simTimelineController.isHistoricalInspecting);
-    const histSnap = isTimelineHist ? simTimelineController.getActiveSpatialSnapshot() : null;
+    const histSnap = isTimelineHist && simTimelineController ? simTimelineController.getActiveSpatialSnapshot() : null;
 
     if (state.inspectingAcn) {
       if (panel) panel.dataset.inspectTarget = 'acn';
       if (titleEl) titleEl.textContent = 'Selected Relay';
       setText('map-node-action-status', '');
-      const liveAcn = state.latestTelemetry?.acn_telemetry;
+      const liveAcn = state.latestTelemetry?.acn_telemetry as
+        | (AcnTelemetry & { velocity?: readonly [number, number, number] })
+        | undefined;
       const acnOk = histSnap ? Boolean(histSnap.acn) : !isTimelineHist && Boolean(liveAcn);
       if (!acnOk) {
         content.className = 'map-node-empty';
         content.innerHTML = 'No airborne relay telemetry available.';
-        panel?.querySelectorAll('button:not(#btn-close-node-details)').forEach(button => {
+        panel?.querySelectorAll<HTMLButtonElement>('button:not(#btn-close-node-details)').forEach(button => {
           button.disabled = true;
         });
         if (panel) panel.classList.add('is-empty');
         return;
       }
-      const ax = histSnap ? Number(histSnap.acn.posX ?? 0) : Number(liveAcn.pos_x ?? 0);
-      const ay = histSnap ? Number(histSnap.acn.posY ?? 0) : Number(liveAcn.pos_y ?? 0);
-      const altMsl = histSnap ? histSnap.acn.altitudeMslM : liveAcn.altitude_msl_m;
-      const altAgl = histSnap ? histSnap.acn.altitudeAglM : liveAcn.altitude_agl_m;
-      const vx = histSnap ? Number(histSnap.acn.velX ?? 0) : Number(liveAcn.velocity?.[0] ?? liveAcn.vel_x ?? 0);
-      const vy = histSnap ? Number(histSnap.acn.velY ?? 0) : Number(liveAcn.velocity?.[1] ?? liveAcn.vel_y ?? 0);
+      const ax = histSnap ? Number(histSnap.acn.posX ?? 0) : Number(liveAcn?.pos_x ?? 0);
+      const ay = histSnap ? Number(histSnap.acn.posY ?? 0) : Number(liveAcn?.pos_y ?? 0);
+      const altMsl = histSnap ? histSnap.acn.altitudeMslM : liveAcn?.altitude_msl_m;
+      const altAgl = histSnap ? histSnap.acn.altitudeAglM : liveAcn?.altitude_agl_m;
+      const vx = histSnap ? Number(histSnap.acn.velX ?? 0) : Number(liveAcn?.velocity?.[0] ?? liveAcn?.vel_x ?? 0);
+      const vy = histSnap ? Number(histSnap.acn.velY ?? 0) : Number(liveAcn?.velocity?.[1] ?? liveAcn?.vel_y ?? 0);
       const spdMs = Math.hypot(vx, vy);
       const hdgDeg = histSnap
         ? (((histSnap.acn.headingRad * 180) / Math.PI) % 360 + 360) % 360
-        : Number(liveAcn.heading_deg ?? (((Math.atan2(vx, vy) * 180) / Math.PI + 360) % 360));
-      const covKm = histSnap ? histSnap.acn.coverageRadiusKm : liveAcn.coverage_radius_km;
+        : Number(liveAcn?.heading_deg ?? (((Math.atan2(vx, vy) * 180) / Math.PI + 360) % 360));
+      const covKm = histSnap ? histSnap.acn.coverageRadiusKm : liveAcn?.coverage_radius_km;
       const geo = cartesianToGeodetic(ax, ay);
 
       const tallySrc = histSnap
@@ -539,16 +553,20 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     if (panel) panel.dataset.inspectTarget = 'node';
     if (titleEl) titleEl.textContent = 'Selected Node';
 
-    let node = null;
+    let node: NodeTelemetryItem | undefined | null = null;
     if (isTimelineHist) {
       const hNode = histSnap?.nodes?.find(n => n.nodeId === state.selectedNodeId);
       if (hNode) {
         const liveMeta = state.latestTelemetry?.nodes_telemetry?.find(item => item.node_id === state.selectedNodeId);
         const hGeo = cartesianToGeodetic(hNode.posX, hNode.posY);
         node = {
-          ...liveMeta,
+          ...(liveMeta || {}),
           node_id: hNode.nodeId,
-          name: liveMeta?.name,
+          name: liveMeta?.name || `Node ${hNode.nodeId}`,
+          node_type: liveMeta?.node_type || 'soldier',
+          pos_x: hNode.posX,
+          pos_y: hNode.posY,
+          pos_z: liveMeta?.pos_z ?? 0,
           x_m: hNode.posX,
           y_m: hNode.posY,
           lat_deg: Number.isFinite(hGeo.latDeg) ? hGeo.latDeg : liveMeta?.lat_deg,
@@ -559,9 +577,17 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
           snr_db: hNode.snrDb,
           state_name: hNode.currentState,
           is_transmitting: false,
-          active_sector_id: hNode.active_sector_id,
+          backlog_bytes: liveMeta?.backlog_bytes ?? 0,
+          tactical_priority: liveMeta?.tactical_priority ?? 1.0,
+          is_depleted: liveMeta?.is_depleted ?? false,
+          registration_state: liveMeta?.registration_state ?? 'UNREGISTERED',
+          registration_start_time_s: liveMeta?.registration_start_time_s ?? null,
+          registration_completion_time_s: liveMeta?.registration_completion_time_s ?? null,
+          registration_elapsed_s: liveMeta?.registration_elapsed_s ?? null,
+          communication_eligible: liveMeta?.communication_eligible ?? false,
+          active_sector_id: hNode.active_sector_id as NodeTelemetryItem['active_sector_id'],
           pattern_rolloff_db: hNode.pattern_rolloff_db,
-        };
+        } as NodeTelemetryItem;
       }
     } else {
       node = state.latestTelemetry?.nodes_telemetry?.find(item => item.node_id === state.selectedNodeId);
@@ -570,7 +596,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     if (!node) {
       content.className = 'map-node-empty';
       content.innerHTML = 'No ground node selected. Select a marker or choose a terminal from Node Inventory.';
-      panel?.querySelectorAll('button:not(#btn-close-node-details)').forEach(button => {
+      panel?.querySelectorAll<HTMLButtonElement>('button:not(#btn-close-node-details)').forEach(button => {
         button.disabled = true;
       });
       if (panel) panel.classList.add('is-empty');
@@ -611,7 +637,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         'Communication',
         node.is_transmitting
           ? 'Ground → ACN · transmitting'
-          : node.allocated_slot_ms > 0
+          : (node.allocated_slot_ms ?? 0) > 0
             ? 'Ground → ACN · slot allocated'
             : null,
       ],
@@ -637,15 +663,15 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       ],
       ['Sector handovers', typeof node.handover_count === 'number' ? `${node.handover_count}` : null],
     ].filter(([, value]) => value !== null && value !== undefined);
-    content.innerHTML = `<h3>${mapEscape(node.name || `Node ${node.node_id}`)} <span class="muted">#${node.node_id}</span></h3><div class="detail-sub">${mapEscape(isTimelineHist ? `Historical #${histSnap.frameIndex}` : node.registration_state || 'Registration unavailable')} · ${mapEscape(nodeLinkLabel(node))}</div><div class="detail-grid">${rows.map(([label, value]) => `<span>${mapEscape(label)}</span><span>${mapEscape(value)}</span>`).join('')}</div>`;
-    const moveButton = $('map-node-details')?.querySelector('[data-map-action="move"]');
+    content.innerHTML = `<h3>${mapEscape(node.name || `Node ${node.node_id}`)} <span class="muted">#${node.node_id}</span></h3><div class="detail-sub">${mapEscape(isTimelineHist && histSnap ? `Historical #${histSnap.frameIndex}` : node.registration_state || 'Registration unavailable')} · ${mapEscape(nodeLinkLabel(node))}</div><div class="detail-grid">${rows.map(([label, value]) => `<span>${mapEscape(label)}</span><span>${mapEscape(value)}</span>`).join('')}</div>`;
+    const moveButton = $('map-node-details')?.querySelector<HTMLButtonElement>('[data-map-action="move"]');
     if (moveButton) {
       moveButton.disabled = state.spatialLocked || isTimelineHist;
       moveButton.title =
         state.spatialLocked || isTimelineHist ? 'Disable Spatial Lock / exit historical view to move nodes' : '';
     }
     $('map-node-details')
-      ?.querySelectorAll('button:not([data-map-action="move"])')
+      ?.querySelectorAll<HTMLButtonElement>('button:not([data-map-action="move"])')
       .forEach(button => {
         button.disabled = false;
       });
@@ -653,7 +679,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     actions.syncFloatingOverlayLayout();
   }
 
-  function handleNodeSelection(nodeId) {
+  function handleNodeSelection(nodeId: number) {
     if (historyController.isInspecting) return;
     const rc = $('radar-container');
     const cw = rc?.getBoundingClientRect().width || rc?.clientWidth || 0;
@@ -666,11 +692,11 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       actions.syncEditModeBanner();
     }
     state.selectedNodeId = nodeId;
-    const networkSelect = $('network-node-select');
+    const networkSelect = $<HTMLSelectElement>('network-node-select');
     if (networkSelect) {
       const selectedCount = networkSelect.selectedOptions ? networkSelect.selectedOptions.length : 0;
       if (selectedCount < 2) {
-        Array.from(networkSelect.options).forEach((opt: any) => {
+        Array.from(networkSelect.options).forEach((opt: HTMLOptionElement) => {
           opt.selected = Number(opt.value) === nodeId;
         });
         networkSelect.dispatchEvent(new Event('change', { bubbles: true }));
@@ -690,15 +716,15 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       actions.drawSchedulerCharts();
     }
     if (state.latestTelemetry && state.latestTelemetry.nodes_telemetry) {
-      const search = $('terminal-search');
+      const search = $<HTMLInputElement>('terminal-search');
       renderTerminalInventory(state.latestTelemetry.nodes_telemetry, state.selectedNodeId, search ? search.value : '');
       const sel =
         state.latestTelemetry.nodes_telemetry.find(n => n.node_id === state.selectedNodeId) ||
         state.latestTelemetry.nodes_telemetry[0];
       renderVsaScope(sel, state.latestTelemetry);
       state.selectedTrafficNodeId = state.selectedNodeId;
-      const trafficSel = $('traffic-node-select');
-      if (trafficSel && Array.from(trafficSel.options).some((o: any) => Number(o.value) === state.selectedNodeId)) {
+      const trafficSel = $<HTMLSelectElement>('traffic-node-select');
+      if (trafficSel && Array.from(trafficSel.options).some((o: HTMLOptionElement) => Number(o.value) === state.selectedNodeId)) {
         trafficSel.value = String(state.selectedNodeId);
       }
       renderNetworkTrafficInventory(state.latestTelemetry);
@@ -727,7 +753,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         actions.syncNodeDropdowns(numId);
       }
     }
-    window.switchMainTab('tab-soldier');
+    window.switchMainTab?.('tab-soldier');
   };
 
   window.executeAiNodeReposition = function() {
@@ -759,6 +785,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
 
   window.togglePinShepherd = function() {
     if (state.selectedNodeId === null || state.selectedNodeId === undefined || state.selectedNodeId < 0) return;
+    if (!window.pinnedSoldierIds) window.pinnedSoldierIds = new Set<number>();
     const isPinned = !window.pinnedSoldierIds.has(state.selectedNodeId);
     if (isPinned) window.pinnedSoldierIds.add(state.selectedNodeId);
     else window.pinnedSoldierIds.delete(state.selectedNodeId);
@@ -790,14 +817,19 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     }
   };
 
-  function drawSoldierCompassCanvas(node, frame, rec) {
-    const canvas = $('soldier-phone-canvas');
+  function drawSoldierCompassCanvas(
+    node: NodeTelemetryItem | null | undefined,
+    frame: TelemetryFrame | null | undefined,
+    rec: Parameters<typeof drawSoldierCompassScope>[4]
+  ) {
+    const canvas = $<HTMLCanvasElement>('soldier-phone-canvas');
     if (!canvas) return;
     const ctx2d = canvas.getContext('2d');
+    if (!ctx2d) return;
     drawSoldierCompassScope(canvas, ctx2d, node, frame, rec);
   }
 
-  function renderSoldierPhoneWorkspace(frame) {
+  function renderSoldierPhoneWorkspace(frame: TelemetryFrame) {
     if (!frame) return;
     const nodes = frame.nodes_telemetry || [];
     if (nodes.length === 0) return;
@@ -805,7 +837,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const selNode = nodes.find(n => n.node_id === state.selectedNodeId) || nodes[0];
     if (!selNode) return;
 
-    const eudSel = $('eud-node-select');
+    const eudSel = $<HTMLSelectElement>('eud-node-select');
     if (eudSel && String(eudSel.value) !== String(selNode.node_id)) {
       eudSel.value = String(selNode.node_id);
     }
@@ -873,7 +905,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const bannerBadge = $('eud-banner-badge');
 
     const blackoutSec = selNode.ai_blackout_in_s;
-    const isPinned = window.pinnedSoldierIds.has(selNode.node_id) || Boolean(selNode.ai_is_pinned);
+    const isPinned = Boolean(window.pinnedSoldierIds?.has(selNode.node_id)) || Boolean(selNode.ai_is_pinned);
     const isBuddy = selNode.ai_buddy_node_id !== null && selNode.ai_buddy_node_id !== undefined;
     const needsMove = Boolean(selNode.ai_needs_reposition);
 
@@ -962,31 +994,43 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
 
     const lpiTx = selNode.ai_lpi_tx_dbm !== undefined ? selNode.ai_lpi_tx_dbm : 30.0;
     const lpiSaved = selNode.ai_lpi_saved_pct !== undefined ? selNode.ai_lpi_saved_pct : 0.0;
-    setText('badge-pillar-lpi-blackout', blackoutSec !== null ? 'BLACKOUT IMMINENT' : 'LPI ACTIVE');
+    setText(
+      'badge-pillar-lpi-blackout',
+      blackoutSec !== null && blackoutSec !== undefined ? 'BLACKOUT IMMINENT' : 'LPI ACTIVE'
+    );
     setText(
       'body-pillar-lpi-blackout',
-      `LPI TX: ${lpiTx.toFixed(1)} dBm (-${lpiSaved.toFixed(0)}% RF signature) holding target MODCOD with +2.5 dB margin.${blackoutSec !== null ? ` [WARN] BLACKOUT IN ${blackoutSec.toFixed(1)}s along current UAV heading!` : ' Next 15s clear.'}`
+      `LPI TX: ${lpiTx.toFixed(1)} dBm (-${lpiSaved.toFixed(0)}% RF signature) holding target MODCOD with +2.5 dB margin.${blackoutSec !== null && blackoutSec !== undefined ? ` [WARN] BLACKOUT IN ${blackoutSec.toFixed(1)}s along current UAV heading!` : ' Next 15s clear.'}`
     );
 
-    const fakeRec = {
+    const fakeRec: NonNullable<Parameters<typeof drawSoldierCompassScope>[4]> & {
+      pathDistanceM?: number;
+      walkPathWaypoints?: Array<[number, number, number]>;
+      directiveText?: string;
+    } = {
       needsReposition: needsMove,
-      targetPosEnu: selNode.ai_target_pos_enu,
+      targetPosEnu: selNode.ai_target_pos_enu ? [selNode.ai_target_pos_enu[0], selNode.ai_target_pos_enu[1], selNode.ai_target_pos_enu[2]] : undefined,
       pathDistanceM: selNode.ai_move_dist_m,
-      walkPathWaypoints: selNode.ai_walk_path_enu,
+      walkPathWaypoints: selNode.ai_walk_path_enu ? selNode.ai_walk_path_enu.map(p => [p[0], p[1], p[2]] as [number, number, number]) : undefined,
       directiveText: selNode.ai_directive_text,
     };
     drawSoldierCompassCanvas(selNode, frame, fakeRec);
   }
 
-  function renderOpsFleetRegistry(nodes) {
+  function renderOpsFleetRegistry(nodes: TelemetryFrame['nodes_telemetry'] | undefined) {
+    if (!nodes) return;
     telemetryUpdaters.renderOpsFleetRegistry(
-      nodes,
+      nodes as unknown as Parameters<typeof telemetryUpdaters.renderOpsFleetRegistry>[0],
       typeof state.selectedNodeId !== 'undefined' ? state.selectedNodeId : null
     );
   }
   window.renderOpsFleetRegistry = renderOpsFleetRegistry;
 
-  function renderTerminalInventory(nodes, selectedId, query = '') {
+  function renderTerminalInventory(
+    nodes: TelemetryFrame['nodes_telemetry'] | undefined,
+    selectedId: number,
+    query = ''
+  ) {
     const tbody = $('terminal-inventory-tbody');
     if (!tbody || !Array.isArray(nodes)) return;
 
@@ -1036,7 +1080,12 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       const statusObj = classifyLinkCommunicationStatus(n);
       let badge = getStatusBadgeInfo(statusObj.status);
       if (isDepleted) {
-        badge = { badgeClass: 'badge-danger', badgeText: 'BATTERY DEPLETED' };
+        badge = {
+          status: badge.status,
+          badgeClass: 'badge-danger',
+          badgeText: 'BATTERY DEPLETED',
+          badgeColor: '#ef4444',
+        };
       }
 
       const rawColor = n.color_hex || (n.node_type === 'mcp' ? '#e9c46a' : '#e09f3e');
@@ -1098,9 +1147,9 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     tbody.replaceChildren(...rows);
   }
 
-  function populateDropdownsOnce(nodes) {
+  function populateDropdownsOnce(nodes: TelemetryFrame['nodes_telemetry']) {
     ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select'].forEach(id => {
-      const sel = $(id);
+      const sel = $<HTMLSelectElement>(id);
       if (!sel || !Array.isArray(nodes)) return;
       if (nodes.length === 0) {
         if (sel.dataset.lastKey === 'empty' && sel.children.length === 1) return;
@@ -1116,28 +1165,31 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       nodes.forEach(n => {
         const role = getNodeRole(n.node_id, n.node_type);
         const opt = document.createElement('option');
-        opt.value = n.node_id;
+        opt.value = String(n.node_id);
         opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id} - ${role}`;
         sel.appendChild(opt);
       });
       if (nodes.some(n => n.node_id === state.selectedNodeId)) {
-        sel.value = state.selectedNodeId;
+        sel.value = String(state.selectedNodeId);
       } else if (nodes.length > 0) {
-        sel.value = nodes[0].node_id;
+        sel.value = String(nodes[0].node_id);
       }
     });
   }
 
-  function renderVsaScope(nodeTel, frame) {
+  function renderVsaScope(nodeTel: NodeTelemetryItem | null | undefined, frame: TelemetryFrame) {
     actions.getDashboardAndAuthoringController().renderVsaScope(nodeTel, frame);
   }
   window.renderVsaScope = renderVsaScope;
 
-  function updateOpsQosSlaUI(report, nodes) {
+  function updateOpsQosSlaUI(
+    report: QosNetworkSlaReport | null,
+    nodes: TelemetryFrame['nodes_telemetry']
+  ) {
     telemetryUpdaters.updateOpsQosSlaUI(report, nodes);
   }
 
-  function renderQosSlaAnalyzer(frame) {
+  function renderQosSlaAnalyzer(frame: TelemetryFrame) {
     const panel = $('qos-sla-panel');
     if (!panel) return;
 
@@ -1176,7 +1228,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
 
     const tbody = $('qos-sla-table-body');
     if (tbody) {
-      const colorMap = { 69: '#ef4444', 65: '#38bdf8', 67: '#10b981', 70: '#f59e0b' };
+      const colorMap: Record<number, string> = { 69: '#ef4444', 65: '#38bdf8', 67: '#10b981', 70: '#f59e0b' };
       let html = '';
       for (const b of report.bearers) {
         const color = colorMap[b.qos5qi] || 'var(--accent)';
@@ -1200,7 +1252,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const activeTabId = document.querySelector('.tab-content.active')?.id;
     if (activeTabId !== 'tab-network') return;
 
-    const canvas = $('qos-sla-canvas');
+    const canvas = $<HTMLCanvasElement>('qos-sla-canvas');
     if (!canvas) return;
     const ctx2d = canvas.getContext('2d');
     if (!ctx2d) return;
@@ -1220,7 +1272,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     ctx2d.fillStyle = '#090d13';
     ctx2d.fillRect(0, 0, width, height);
 
-    const bearerColors = { 69: '#ef4444', 65: '#38bdf8', 67: '#10b981', 70: '#f59e0b' };
+    const bearerColors: Record<number, string> = { 69: '#ef4444', 65: '#38bdf8', 67: '#10b981', 70: '#f59e0b' };
 
     const labelW = 125;
     const rightPad = 12;
@@ -1308,7 +1360,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
   }
   window.renderQosSlaAnalyzer = renderQosSlaAnalyzer;
 
-  function observeTelemetryTiming(frame) {
+  function observeTelemetryTiming(frame: TelemetryFrame | null) {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (state.lastTelemetryArrivalTs > 0) {
       const dt = now - state.lastTelemetryArrivalTs;
@@ -1332,7 +1384,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     state.lastTelemetryArrivalTs = now;
   }
 
-  function renderWorkerJitterProfiler(frame) {
+  function renderWorkerJitterProfiler(frame: TelemetryFrame | null) {
     const panel = document.getElementById('rt-profiler-panel');
     if (!panel) return;
 
@@ -1460,7 +1512,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
   }
   window.renderTwinCalibrationScope = renderTwinCalibrationScope;
 
-  function updateTwinCalibrationDOM(report) {
+  function updateTwinCalibrationDOM(report: TwinEvaluationReport | null) {
     getMissionIoController().updateTwinCalibrationDOM(report);
   }
 
@@ -1541,16 +1593,16 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
   };
 
   window.resetTrafficFilters = function() {
-    const search = $('traffic-search-input');
-    const dir = $('traffic-direction-filter');
-    const stat = $('traffic-status-filter');
+    const search = $<HTMLInputElement>('traffic-search-input');
+    const dir = $<HTMLSelectElement>('traffic-direction-filter');
+    const stat = $<HTMLSelectElement>('traffic-status-filter');
     if (search) search.value = '';
     if (dir) dir.value = 'all';
     if (stat) stat.value = 'all';
     if (state.latestTelemetry) renderNetworkTrafficInventory(state.latestTelemetry);
   };
 
-  window.sortTrafficTable = function(colName) {
+  window.sortTrafficTable = function(colName: string) {
     if (state.trafficSortColumn === colName) {
       state.trafficSortAscending = !state.trafficSortAscending;
     } else {
@@ -1560,19 +1612,23 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     if (state.latestTelemetry) renderNetworkTrafficInventory(state.latestTelemetry);
   };
 
-  function renderNetworkTrafficInventory(frame) {
-    if (!frame) return;
-    renderQosSlaAnalyzer(frame);
-    const nodes = frame.nodes_telemetry || [];
-    const trafficFrame = {
+  function toTrafficFrame(frame: TelemetryFrame): NetworkTrafficFrame {
+    return {
       frameIndex: Number(frame.frame_index ?? 0),
       simulationTimeS: Number(frame.sim_time_s ?? 0),
-      nodes,
+      nodes: (frame.nodes_telemetry || []) as unknown as NetworkTrafficFrame['nodes'],
       downlinkTelemetry: frame.downlink_telemetry,
       schedulerMode: frame.scheduler_mode,
     };
+  }
 
-    const nodeSel = $('traffic-node-select');
+  function renderNetworkTrafficInventory(frame: TelemetryFrame) {
+    if (!frame) return;
+    renderQosSlaAnalyzer(frame);
+    const nodes = frame.nodes_telemetry || [];
+    const trafficFrame = toTrafficFrame(frame);
+
+    const nodeSel = $<HTMLSelectElement>('traffic-node-select');
     if (nodeSel && nodes.length > 0) {
       const key = nodes.map(n => n.node_id).join(',');
       if (nodeSel.dataset.lastKey !== key) {
@@ -1580,15 +1636,15 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         nodeSel.innerHTML = '';
         nodes.forEach(n => {
           const opt = document.createElement('option');
-          opt.value = n.node_id;
+          opt.value = String(n.node_id);
           opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id}`;
           nodeSel.appendChild(opt);
         });
         if (nodes.some(n => n.node_id === state.selectedTrafficNodeId)) {
-          nodeSel.value = state.selectedTrafficNodeId;
+          nodeSel.value = String(state.selectedTrafficNodeId);
         } else {
           state.selectedTrafficNodeId = nodes[0].node_id;
-          nodeSel.value = state.selectedTrafficNodeId;
+          nodeSel.value = String(state.selectedTrafficNodeId);
         }
       }
     }
@@ -1711,9 +1767,9 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const tbody = $('network-traffic-tbody');
     if (!tbody) return;
 
-    const q = String($('traffic-search-input')?.value || '').trim().toLowerCase();
-    const dirFilter = $('traffic-direction-filter')?.value || 'all';
-    const statusFilter = $('traffic-status-filter')?.value || 'all';
+    const q = String($<HTMLInputElement>('traffic-search-input')?.value || '').trim().toLowerCase();
+    const dirFilter = $<HTMLSelectElement>('traffic-direction-filter')?.value || 'all';
+    const statusFilter = $<HTMLSelectElement>('traffic-status-filter')?.value || 'all';
 
     const filtered = flows.filter(f => {
       if (dirFilter !== 'all' && f.direction !== dirFilter) return false;
@@ -1735,14 +1791,17 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     });
 
     filtered.sort((a, b) => {
-      let va = a[state.trafficSortColumn];
-      let vb = b[state.trafficSortColumn];
+      const sortKey = state.trafficSortColumn as keyof TrafficFlowRecord;
+      let va: string | number | null | undefined = a[sortKey] as string | number | null | undefined;
+      let vb: string | number | null | undefined = b[sortKey] as string | number | null | undefined;
       if (va === null || va === undefined) va = -Infinity;
       if (vb === null || vb === undefined) vb = -Infinity;
       if (typeof va === 'string') {
         return state.trafficSortAscending ? va.localeCompare(String(vb)) : String(vb).localeCompare(va);
       }
-      return state.trafficSortAscending ? (va > vb ? 1 : va < vb ? -1 : 0) : va < vb ? 1 : va > vb ? -1 : 0;
+      const na = Number(va);
+      const nb = Number(vb);
+      return state.trafficSortAscending ? (na > nb ? 1 : na < nb ? -1 : 0) : na < nb ? 1 : na > nb ? -1 : 0;
     });
 
     setText('traffic-table-count', `${filtered.length} active communication flow${filtered.length === 1 ? '' : 's'}`);
@@ -1800,20 +1859,44 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
   }
 
   // Experiment capture utility
-  const experimentCapture = { active: false, observations: [], startedAt: null, stoppedAt: null, runId: null };
-  function experimentElement(id) {
+  interface ExperimentObservation {
+    [key: string]: unknown;
+    observation_index: number;
+    frame_index: number;
+    sim_time_s: number;
+    scheduler_mode: string;
+    selected_node_id: number | null;
+    static_goodput_mb_cumulative: number | null;
+    tac_tad_goodput_mb_cumulative: number | null;
+    static_drop_count_cumulative: number | null;
+    tac_tad_drop_count_cumulative: number | null;
+    static_waste_pct: number | null;
+    tac_tad_waste_pct: number | null;
+    uplink_utilization_pct: number | null;
+    scenario_snapshot: ReturnType<typeof experimentScenario>;
+  }
+  const experimentCapture: {
+    active: boolean;
+    observations: ExperimentObservation[];
+    startedAt: string | null;
+    stoppedAt: string | null;
+    runId: string | null;
+  } = { active: false, observations: [], startedAt: null, stoppedAt: null, runId: null };
+  function experimentElement(id: string) {
     return document.getElementById(id);
   }
-  function experimentSetText(id, value) {
+  function experimentSetText(id: string, value: string) {
     const el = experimentElement(id);
     if (el) el.textContent = value;
   }
   function experimentMode() {
     const active = document.querySelector('.nav-tab.active');
-    return active ? active.textContent.trim() : 'unavailable';
+    return active?.textContent ? active.textContent.trim() : 'unavailable';
   }
   function experimentScenario() {
-    const activeButtons = [...document.querySelectorAll('button.active')].map(b => b.textContent.trim()).filter(Boolean);
+    const activeButtons = Array.from(document.querySelectorAll('button.active'))
+      .map(b => (b.textContent || '').trim())
+      .filter(Boolean);
     return {
       active_view: experimentMode(),
       selected_node_id: typeof state.selectedNodeId === 'number' ? state.selectedNodeId : null,
@@ -1840,7 +1923,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       first && last ? `T+${first.sim_time_s.toFixed(2)}s → T+${last.sim_time_s.toFixed(2)}s` : 'No run recorded'
     );
   }
-  function experimentObserve(frame) {
+  function experimentObserve(frame: TelemetryFrame) {
     if (!experimentCapture.active || !frame) return;
     const frameIndex = Number(frame.frame_index),
       simTime = Number(frame.sim_time_s);
@@ -1848,7 +1931,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const prior = experimentCapture.observations[experimentCapture.observations.length - 1];
     if (prior && frameIndex <= prior.frame_index) return;
     const k = frame.comparative_kpi_dashboard || {};
-    const row = {
+    const row: ExperimentObservation = {
       observation_index: experimentCapture.observations.length,
       frame_index: frameIndex,
       sim_time_s: simTime,
@@ -1867,7 +1950,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     if (experimentCapture.observations.length > 50000) experimentCapture.observations.shift();
     experimentUpdateControls();
   }
-  function experimentDownload(filename, content, mime) {
+  function experimentDownload(filename: string, content: string, mime: string) {
     const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -1879,7 +1962,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  function experimentSafeName(value) {
+  function experimentSafeName(value: string | undefined | null) {
     return (value || 'experiment').trim().replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'experiment';
   }
   function experimentMetadata() {
@@ -1933,7 +2016,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       'tac_tad_waste_pct',
       'uplink_utilization_pct',
     ];
-    const quote = value => {
+    const quote = (value: unknown) => {
       const s = value == null ? '' : String(value);
       return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
@@ -1960,7 +2043,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     experimentElement('experiment-stop')?.addEventListener('click', experimentStop);
     experimentElement('experiment-export-csv')?.addEventListener('click', experimentExportCsv);
     experimentElement('experiment-export-json')?.addEventListener('click', experimentExportJson);
-    let experimentClearTimer = null;
+    let experimentClearTimer: ReturnType<typeof setTimeout> | null = null;
     const clearBtn = experimentElement('experiment-clear');
     clearBtn?.addEventListener('click', () => {
       if (!clearBtn.dataset.armed) {
@@ -1972,7 +2055,10 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         }, 3000);
         return;
       }
-      clearTimeout(experimentClearTimer);
+      if (experimentClearTimer !== null) {
+        clearTimeout(experimentClearTimer);
+        experimentClearTimer = null;
+      }
       delete clearBtn.dataset.armed;
       clearBtn.textContent = 'Clear capture';
       experimentCapture.active = false;
@@ -1992,17 +2078,11 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
   let lastDomUpdateMs = 0;
   const DOM_UPDATE_INTERVAL_MS = 100; // 10 Hz cadence (100 ms interval)
 
-  function updateDashboardDOM(frame, force = false) {
+  function updateDashboardDOM(frame: TelemetryFrame, force = false) {
     if (!frame) return;
     experimentObserve(frame);
     if (frame.nodes_telemetry) {
-      networkTrafficTracker.ingest({
-        frameIndex: Number(frame.frame_index ?? 0),
-        simulationTimeS: Number(frame.sim_time_s ?? 0),
-        nodes: frame.nodes_telemetry,
-        downlinkTelemetry: frame.downlink_telemetry,
-        schedulerMode: frame.scheduler_mode,
-      });
+      networkTrafficTracker.ingest(toTrafficFrame(frame));
     }
     const nodesKey = Array.isArray(frame.nodes_telemetry) ? frame.nodes_telemetry.map(n => n.node_id).join(',') : '';
     const hasNodeListTransition = Boolean(frame.nodes_telemetry && nodesKey !== state.lastRenderedNodesKey);
@@ -2046,9 +2126,9 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
 
       if ((activeTabId === 'tab-terminal' || nodesChanged || !hasRows || force) && !isTimelineHist) {
         state.lastRenderedNodesKey = nodesKey;
-        const search = $('terminal-search');
+        const search = $<HTMLInputElement>('terminal-search');
         const q = search ? search.value : '';
-        if (search) window.filterTerminalOptions(q);
+        if (search) window.filterTerminalOptions?.(q);
         renderTerminalInventory(frame.nodes_telemetry, state.selectedNodeId, q);
         actions.syncSelectedNodeAglUI();
         const sel =
@@ -2150,9 +2230,9 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const hasSelected = Number.isInteger(state.selectedNodeId) && state.selectedNodeId >= 0;
     const selNode = hasSelected ? nodes.find(n => n.node_id === state.selectedNodeId) : null;
 
-    const signed = (value, digits = 1) => `${value < 0 ? '−' : '+'}${Math.abs(value).toFixed(digits)}`;
-    const formatMb = v => `${v.toFixed(2)} Mb`;
-    const formatPct = v => `${v.toFixed(1)}%`;
+    const signed = (value: number, digits = 1) => `${value < 0 ? '−' : '+'}${Math.abs(value).toFixed(digits)}`;
+    const formatMb = (v: number) => `${v.toFixed(2)} Mb`;
+    const formatPct = (v: number) => `${v.toFixed(1)}%`;
 
     setMetricText('tbl-stat-tx', sGTable, formatMb);
     setMetricText('tbl-tac-tx', tGTable, formatMb);
@@ -2183,7 +2263,8 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const tDTable = isFiniteMetric(kpi.tac_drops) ? kpi.tac_drops : null;
     const sDpTable = isFiniteMetric(kpi.static_drop_pct) ? kpi.static_drop_pct : null;
     const tDpTable = isFiniteMetric(kpi.tac_drop_pct) ? kpi.tac_drop_pct : null;
-    const formatDrops = (count, pct) => (count === null || pct === null ? null : `${count} (${pct.toFixed(1)}%)`);
+    const formatDrops = (count: number | null, pct: number | null) =>
+      count === null || pct === null ? null : `${count} (${pct.toFixed(1)}%)`;
     setMetricText('tbl-stat-drops', formatDrops(sDTable, sDpTable), null);
     setMetricText('tbl-tac-drops', formatDrops(tDTable, tDpTable), null);
     setMetricText(
@@ -2249,14 +2330,14 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         ? kpi.rolling_window_capacity
         : 200;
 
-    const formatMbps = bps => {
+    const formatMbps = (bps: number) => {
       if (!isFiniteMetric(bps)) return null;
       const mbps = bps / 1e6;
       return sampleCount > 0 && sampleCount < sampleCapacity
         ? `${mbps.toFixed(2)} Mbps (${sampleCount}/${sampleCapacity})`
         : `${mbps.toFixed(2)} Mbps`;
     };
-    const formatGain = (tBps, sBps) => {
+    const formatGain = (tBps: number | null, sBps: number | null) => {
       if (!isFiniteMetric(tBps) || !isFiniteMetric(sBps)) return null;
       if (sBps > 0) {
         const gain = tBps / sBps;
@@ -2411,7 +2492,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       const vi = selNode.video_bytes ?? 0;
       const ph = selNode.photo_bytes ?? 0;
 
-      const setQBar = (id, bytes, maxB) => {
+      const setQBar = (id: string, bytes: number, maxB: number) => {
         const el = $('qbar-' + id);
         if (el) el.style.width = `${Math.min(100, (bytes / maxB) * 100)}%`;
         setText('qval-' + id, `${(bytes / 1024).toFixed(1)} KB`);
@@ -2463,7 +2544,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         setText('lb-gas', '--');
         setText('lb-rain', '--');
       }
-      const clearQBar = id => {
+      const clearQBar = (id: string) => {
         const el = $('qbar-' + id);
         if (el) el.style.width = '0%';
         setText('qval-' + id, '--');
@@ -2541,7 +2622,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         badge.textContent = rep.orbitAvailabilityPct >= 80.0 ? 'Optimal Ridge Found' : 'Sub-Optimal';
         badge.className = rep.orbitAvailabilityPct >= 80.0 ? 'kpi-badge badge-emerald' : 'kpi-badge badge-neutral';
       }
-      const recomputeBtn = $('btn-recompute-relay-advisor');
+      const recomputeBtn = $<HTMLButtonElement>('btn-recompute-relay-advisor');
       if (recomputeBtn && recomputeBtn.textContent === 'Computing…') {
         recomputeBtn.textContent = 'Recompute Optimal Ridge Relay';
         recomputeBtn.disabled = false;
@@ -2558,7 +2639,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
           : 'Deploy Active Two-Hop Ridge Relay [OFF]';
         btn.className = isOnline ? 'primary' : 'secondary';
       }
-      const schedSel = $('sci-relay-select');
+      const schedSel = $<HTMLSelectElement>('sci-relay-select');
       if (schedSel && document.activeElement !== schedSel) {
         schedSel.value = isOnline ? 'active' : 'disabled';
       }
@@ -2570,7 +2651,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     }
 
     if (frame.rician_fading_enabled !== undefined || frame.cqi_feedback_delay_ms !== undefined) {
-      const sel = $('sci-fading-cqi-select');
+      const sel = $<HTMLSelectElement>('sci-fading-cqi-select');
       if (sel && document.activeElement !== sel) {
         if (!frame.rician_fading_enabled) {
           sel.value = 'awgn-0ms';
@@ -2598,7 +2679,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const sampleCount = document.getElementById('overview-trend-sample-count');
     const eventList = document.getElementById('overview-event-list');
     if (!canvas || !sampleCount || !eventList) return;
-    const points = [];
+    const points: Array<{ value: number; time: number }> = [];
     const maxPoints = 90;
     let previousGoodput = '';
     let previousSituation = '';
@@ -2606,9 +2687,9 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     let previousScheduler = '';
     const clock = () => {
       const el = document.getElementById('clock-display');
-      return el ? el.textContent.trim() : 'simulation time unavailable';
+      return el?.textContent ? el.textContent.trim() : 'simulation time unavailable';
     };
-    const addEvent = message => {
+    const addEvent = (message: string) => {
       const empty = eventList.querySelector('.overview-event-empty');
       if (empty) empty.remove();
       const li = document.createElement('li');
@@ -2617,9 +2698,9 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       stamp.textContent = clock();
       li.append(stamp, document.createTextNode(message));
       eventList.prepend(li);
-      while (eventList.children.length > 8) eventList.lastElementChild.remove();
+      while (eventList.children.length > 8) eventList.lastElementChild?.remove();
     };
-    const parseMb = raw => {
+    const parseMb = (raw: string) => {
       const m = (raw || '').replace(/,/g, '').match(/(-?\d+(?:\.\d+)?)\s*Mb/i);
       return m ? Number(m[1]) : null;
     };
@@ -2635,6 +2716,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         canvas.height = h;
       }
       const ctx2d = canvas.getContext('2d');
+      if (!ctx2d) return;
       ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
       const cw = rect.width,
         ch = rect.height;
@@ -2698,31 +2780,32 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     };
     const sample = () => {
       const goodputEl = document.getElementById('kpi-tac-tx');
-      const raw = goodputEl ? goodputEl.textContent.trim() : '';
+      const raw = goodputEl?.textContent ? goodputEl.textContent.trim() : '';
       const value = parseMb(raw);
       if (value !== null) {
         points.push({ value, time: Date.now() });
         if (points.length > maxPoints) points.shift();
         sampleCount.textContent = points.length + ' samples';
-        if (previousGoodput && raw !== previousGoodput && value > parseMb(previousGoodput) + 0.001) {
+        const prevVal = previousGoodput ? parseMb(previousGoodput) : null;
+        if (prevVal !== null && raw !== previousGoodput && value > prevVal + 0.001) {
           if (points.length === 1 || points.length % 10 === 0) addEvent('Delivered goodput advanced to ' + raw + '.');
         }
         previousGoodput = raw;
       }
       const situationEl = document.querySelector('.situation-strip, #situation-strip, [id*="situation"]');
-      const situation = situationEl ? situationEl.textContent.replace(/\s+/g, ' ').trim() : '';
+      const situation = situationEl?.textContent ? situationEl.textContent.replace(/\s+/g, ' ').trim() : '';
       if (situation && situation !== previousSituation) {
         addEvent('Situation: ' + situation.slice(0, 180));
         previousSituation = situation;
       }
       const node = document.getElementById('quickNodeSelect') as HTMLSelectElement | null;
-      const selected = node ? node.options[node.selectedIndex]?.textContent.trim() : '';
+      const selected = node?.options[node.selectedIndex]?.textContent?.trim() || '';
       if (selected && selected !== previousTerminal) {
         addEvent('Inspection target changed: ' + selected + '.');
         previousTerminal = selected;
       }
       const mode = document.getElementById('scheduler-quick-toggle');
-      const scheduler = mode ? mode.textContent.trim() : '';
+      const scheduler = mode?.textContent ? mode.textContent.trim() : '';
       if (scheduler && scheduler !== previousScheduler) {
         if (previousScheduler) addEvent('Scheduler mode changed: ' + scheduler + '.');
         previousScheduler = scheduler;
@@ -2741,11 +2824,11 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
 
   // Analysis context sync
   (function installAnalysisContext() {
-    const text = id => {
+    const text = (id: string) => {
       const el = document.getElementById(id);
       return el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '';
     };
-    const firstText = ids => {
+    const firstText = (ids: string[]) => {
       for (const id of ids) {
         const v = text(id);
         if (v) return v;

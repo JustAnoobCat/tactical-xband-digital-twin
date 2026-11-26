@@ -314,7 +314,10 @@ runCheck('Preserves required static test assertions (isEditableKeyboardTarget, c
   const html = [readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8'), ...appCode].join('\n');
 
   // verifyDirectToolboxUx.ts checks
-  assert.ok(html.includes('function isEditableKeyboardTarget(target)'), 'isEditableKeyboardTarget helper must exist in index.html');
+  assert.ok(
+    /function\s+isEditableKeyboardTarget\s*\(\s*target(?:\s*:[^)]+)?\s*\)/.test(html),
+    'isEditableKeyboardTarget helper must exist in index.html'
+  );
   assert.ok(
     html.includes("target.closest('input, select, textarea, [contenteditable") ||
     html.includes("target.closest('input,select,textarea,[contenteditable"),
@@ -341,8 +344,7 @@ runCheck('Preserves required static test assertions (isEditableKeyboardTarget, c
 
   // Auto-arm assertions in verifyDirectToolboxUx.ts
   assert.ok(
-    html.includes('const setTbMode = (mode, autoArm = true) =>') ||
-    html.includes('function setTbMode(mode, autoArm = true)'),
+    /(?:const\s+setTbMode\s*=\s*|function\s+setTbMode\s*)\(\s*mode(?:\s*:[^,)]+)?\s*,\s*autoArm(?:\s*:[^=)]+)?\s*=\s*true/.test(html),
     'setTbMode must exist with autoArm parameter'
   );
   assert.ok(html.includes("terrainToolMode = 'transect-2pt';"), 'Auto-arm transect-2pt string must exist');

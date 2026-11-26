@@ -1,5 +1,8 @@
-// @ts-nocheck — Lazy 3D/MapLibre module loaders, WebGL context release, 2D<->3D stage switching & dirty-flag rAF scheduler
+// Lazy 3D/MapLibre module loaders, WebGL context release, 2D<->3D stage switching & dirty-flag rAF scheduler
 import type { AppContext } from './appContext.ts';
+import type { TerrainBoundsLike } from './windowBindings.d.ts';
+import type { TerrainMeshDataReadyMessage } from '../shared/workerProtocol.ts';
+import type { StageViewMode } from '../ui/three/threeTypes.ts';
 import { getLatticeCanvasPalette } from '../ui/canvasTheme.ts';
 import {
   DEFAULT_WORLD_SATELLITE_TILE_URL,
@@ -9,26 +12,33 @@ import {
   isExternalHttpUrl,
 } from '../ui/worldTileLayer.ts';
 
-export function initViewModeAnd3dController(ctx: AppContext) {
+export interface MapLibreDependenciesBundle {
+  MapLibreMap: typeof import('maplibre-gl').Map;
+  setWorkerUrl: typeof import('maplibre-gl').setWorkerUrl;
+  mapLibreWorkerUrl: string;
+  MapController: typeof import('../ui/mapController.ts').MapController;
+  buildOfflineSafeMapStyle: typeof import('../ui/mapController.ts').buildOfflineSafeMapStyle;
+}
+
+export function initViewModeAnd3dController(ctx: AppContext): void {
   const { state, engines, dom, actions } = ctx;
   const { $ } = dom;
   const { mainTerrainEngine, dataCommVisualizer } = engines;
 
-  let threeModulePromise = null;
-  let threeInitPromise = null;
-  let mapLibreDepsPromise = null;
+  let threeModulePromise: Promise<typeof import('../ui/three/threeSceneController.ts')> | null = null;
+  let threeInitPromise: Promise<void> | null = null;
+  let mapLibreDepsPromise: Promise<MapLibreDependenciesBundle> | null = null;
   let threeSelectedThisClick = false;
-  let lastTimelineAnimTimeMs = 0;
-  let last3dSecondaryCanvasThrottleMs = 0;
+  const wiredElements = new WeakSet<HTMLElement>();
 
-  async function loadThreeStageModule() {
+  async function loadThreeStageModule(): Promise<typeof import('../ui/three/threeSceneController.ts')> {
     if (!threeModulePromise) {
       threeModulePromise = import('../ui/three/threeSceneController.ts');
     }
     return threeModulePromise;
   }
 
-  async function loadMapLibreDependencies() {
+  async function loadMapLibreDependencies(): Promise<MapLibreDependenciesBundle> {
     if (!mapLibreDepsPromise) {
       mapLibreDepsPromise = Promise.all([
         import('maplibre-gl'),
@@ -46,11 +56,11 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     return mapLibreDepsPromise;
   }
 
-  window.isAirGapOfflineMode = function() {
+  window.isAirGapOfflineMode = function(): boolean {
     return getAirGapOfflineOnly();
   };
 
-  window.setAirGapOfflineMode = function(enabled) {
+  window.setAirGapOfflineMode = function(enabled: boolean): boolean {
     const next = setAirGapOfflineOnly(Boolean(enabled));
     actions.getRadarWorldTileLayer()?.setAirGapOfflineOnly(next);
     if (state.mapLibreInstance) {
@@ -74,7 +84,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
           maxzoom: rasterMaxZoom,
         });
         state.mapLibreInitialized = false;
-        state.mapLibreInstance.setStyle(style);
+        state.mapLibreInstance.setStyle(style as Parameters<typeof state.mapLibreInstance.setStyle>[0]);
       }
       if (notice) {
         if (next && rasterTiles.every(t => isExternalHttpUrl(t))) {
@@ -91,7 +101,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     return next;
   };
 
-  window.releaseInactiveWebglContexts = function() {
+  window.releaseInactiveWebglContexts = function(): { three: boolean; maplibre: boolean } {
     const released = { three: false, maplibre: false };
     if (state.stageViewMode !== '3d' && state.threeController) {
       try {
@@ -125,7 +135,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     return released;
   };
 
-  function shouldContinueAnimationLoop() {
+  function shouldContinueAnimationLoop(): boolean {
     if (typeof document !== 'undefined' && document.hidden) return false;
     const isPlayingHistory = Boolean(state.simTimelineController?.isPlayingHistory);
     const isSteppedPlaying = Boolean(
@@ -144,27 +154,52 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     );
   }
 
-  function scheduleAnimationLoop() {
+  function scheduleAnimationLoop(): void {
     if (typeof document !== 'undefined' && document.hidden) return;
     if (state.animationLoopRafId !== null || typeof requestAnimationFrame !== 'function') return;
     state.animationLoopRafId = requestAnimationFrame(animationLoop);
   }
 
-  function markRadarDirty() {
+  function markRadarDirty(): void {
     state.radarNeedsRender = true;
     scheduleAnimationLoop();
   }
 
-  function markUiDirtyAndWake() {
+  function markUiDirtyAndWake(): void {
     state.radarNeedsRender = true;
     state.schedulerNeedsRender = true;
     state.terrainNeedsRender = true;
     scheduleAnimationLoop();
   }
 
-  async function initThreeStage() {
+  function toThreeBounds(b: TerrainBoundsLike): {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    minElevationM?: number;
+    maxElevationM?: number;
+  } | null {
+    const minX = b.minX ?? (b.halfWidthM !== undefined ? -b.halfWidthM : NaN);
+    const maxX = b.maxX ?? (b.halfWidthM !== undefined ? b.halfWidthM : NaN);
+    const minY = b.minY ?? (b.halfHeightM !== undefined ? -b.halfHeightM : NaN);
+    const maxY = b.maxY ?? (b.halfHeightM !== undefined ? b.halfHeightM : NaN);
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+      return null;
+    }
+    return {
+      minX,
+      maxX,
+      minY,
+      maxY,
+      minElevationM: b.minElevationM,
+      maxElevationM: b.maxElevationM,
+    };
+  }
+
+  async function initThreeStage(): Promise<void> {
     const container = $('three-stage-container');
-    const canvas = $('three-canvas');
+    const canvas = $<HTMLCanvasElement>('three-canvas');
     if (!container || !canvas || state.threeController) return;
     if (threeInitPromise) return threeInitPromise;
 
@@ -183,12 +218,12 @@ export function initViewModeAnd3dController(ctx: AppContext) {
           clearColor: 0x080c10,
         });
         state.threeController.setSelectedNode(state.selectedNodeId);
-        state.threeController.onNodeSelected((nodeId) => {
+        state.threeController.onNodeSelected((nodeId: number) => {
           threeSelectedThisClick = true;
           actions.handleNodeSelection(nodeId);
         });
         if (typeof state.threeController.onNodePicked === 'function') {
-          state.threeController.onNodePicked((nodeId) => {
+          state.threeController.onNodePicked((nodeId: number) => {
             threeSelectedThisClick = true;
             actions.handleNodeSelection(nodeId);
           });
@@ -198,9 +233,9 @@ export function initViewModeAnd3dController(ctx: AppContext) {
         let threeDownY = 0;
         let threeDownActive = false;
         let threeWheelUsed = false;
-        if (!canvas.__threeClickWired) {
-          canvas.__threeClickWired = true;
-          canvas.addEventListener('pointerdown', (e) => {
+        if (!wiredElements.has(canvas)) {
+          wiredElements.add(canvas);
+          canvas.addEventListener('pointerdown', (e: PointerEvent) => {
             threeDownX = e.clientX;
             threeDownY = e.clientY;
             threeDownActive = e.button === 0;
@@ -210,7 +245,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
           canvas.addEventListener('wheel', () => {
             threeWheelUsed = true;
           }, { passive: true });
-          canvas.addEventListener('click', (e) => {
+          canvas.addEventListener('click', (e: MouseEvent) => {
             const wasDown = threeDownActive;
             const wasWheel = threeWheelUsed;
             const wasSelected = threeSelectedThisClick;
@@ -240,7 +275,8 @@ export function initViewModeAnd3dController(ctx: AppContext) {
             state.threeController.setHillshadeCanvas(state.hillshadeCanvas);
           }
           if (state.activeTerrainBounds) {
-            state.threeController.centerOnBounds(state.activeTerrainBounds);
+            const tb = toThreeBounds(state.activeTerrainBounds);
+            if (tb) state.threeController.centerOnBounds(tb);
           }
         }
         console.log('[StageController] Three.js 3D subsystem initialized lazily.');
@@ -284,14 +320,14 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     }
   }
 
-  function initVolumetricRfControls() {
+  function initVolumetricRfControls(): void {
     const btnFresnel = $('btn-3d-fresnel');
     const btnLobes = $('btn-3d-lobes');
     const btnVolumes = $('btn-3d-volumes');
 
-    if (btnFresnel && !btnFresnel.__wired) {
-      btnFresnel.__wired = true;
-      btnFresnel.addEventListener('click', (e) => {
+    if (btnFresnel && !wiredElements.has(btnFresnel)) {
+      wiredElements.add(btnFresnel);
+      btnFresnel.addEventListener('click', (e: MouseEvent) => {
         e.stopPropagation();
         const current = btnFresnel.getAttribute('aria-pressed') === 'true';
         const next = !current;
@@ -304,9 +340,9 @@ export function initViewModeAnd3dController(ctx: AppContext) {
       });
     }
 
-    if (btnLobes && !btnLobes.__wired) {
-      btnLobes.__wired = true;
-      btnLobes.addEventListener('click', (e) => {
+    if (btnLobes && !wiredElements.has(btnLobes)) {
+      wiredElements.add(btnLobes);
+      btnLobes.addEventListener('click', (e: MouseEvent) => {
         e.stopPropagation();
         const current = btnLobes.getAttribute('aria-pressed') === 'true';
         const next = !current;
@@ -319,9 +355,9 @@ export function initViewModeAnd3dController(ctx: AppContext) {
       });
     }
 
-    if (btnVolumes && !btnVolumes.__wired) {
-      btnVolumes.__wired = true;
-      btnVolumes.addEventListener('click', (e) => {
+    if (btnVolumes && !wiredElements.has(btnVolumes)) {
+      wiredElements.add(btnVolumes);
+      btnVolumes.addEventListener('click', (e: MouseEvent) => {
         e.stopPropagation();
         const current = btnVolumes.getAttribute('aria-pressed') === 'true';
         const next = !current;
@@ -342,7 +378,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
   }
   initVolumetricRfControls();
 
-  function requestTerrainMeshData(force = false) {
+  function requestTerrainMeshData(force = false): void {
     const currentMode = state.activeTerrainMode || 'real';
     if (!force && state.cachedTerrainMeshData && state.cachedTerrainMeshData.terrainMode === currentMode) {
       return;
@@ -359,7 +395,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     });
   }
 
-  function handleTerrainMeshDataResponse(msg) {
+  function handleTerrainMeshDataResponse(msg: TerrainMeshDataReadyMessage): void {
     if (state.inFlightTerrainMeshRequest) {
       if (msg.request_id !== undefined && msg.request_id !== state.inFlightTerrainMeshRequest.requestId) {
         console.warn(
@@ -406,7 +442,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     }
   }
 
-  function updateTerrainHudBadge() {
+  function updateTerrainHudBadge(): void {
     const statusEl = $('three-terrain-status-text');
     if (!statusEl) return;
     const modeLabel = state.activeTerrainMode === 'real' ? 'REAL DEM' : 'SYNTHETIC';
@@ -415,7 +451,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     statusEl.textContent = `3D TERRAIN — ${modeLabel} · ${resLabel}`;
   }
 
-  window.setTerrainMeshResolution = function(res) {
+  window.setTerrainMeshResolution = function(res: string): void {
     if (res !== 'native512' && res !== 'balanced256') return;
     state.currentTerrainResolution = res;
     $('btnRes512')?.classList.toggle('active', res === 'native512');
@@ -426,7 +462,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     }
   };
 
-  window.setStageViewMode = function(mode) {
+  window.setStageViewMode = function(mode: StageViewMode): void {
     if (mode === state.stageViewMode) return;
     state.stageViewMode = mode;
 
@@ -436,7 +472,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     if (btn3D) btn3D.classList.toggle('active', mode === '3d');
 
     ['zoom-30', 'zoom-60', 'zoom-100', 'zoom-200'].forEach(id => {
-      const b = $(id);
+      const b = $<HTMLButtonElement>(id);
       if (b) {
         b.disabled = mode !== '2d' || state.terrainMapMode === 'maplibre';
         b.title = b.disabled ? 'Range zoom — 2D Radar mode only' : 'Range zoom';
@@ -495,7 +531,8 @@ export function initViewModeAnd3dController(ctx: AppContext) {
           state.threeController.setHillshadeCanvas(state.hillshadeCanvas);
         }
         if (state.activeTerrainBounds) {
-          state.threeController.centerOnBounds(state.activeTerrainBounds);
+          const tb = toThreeBounds(state.activeTerrainBounds);
+          if (tb) state.threeController.centerOnBounds(tb);
         }
       }
       scheduleAnimationLoop();
@@ -551,7 +588,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
     actions.syncFloatingOverlayLayout();
   };
 
-  function animationLoop(timestampMs) {
+  function animationLoop(timestampMs: number): void {
     state.animationLoopRafId = null;
     if (typeof document !== 'undefined' && document.hidden) {
       return;
@@ -562,20 +599,20 @@ export function initViewModeAnd3dController(ctx: AppContext) {
       const isPlayingHistory = Boolean(simTimelineController?.isPlayingHistory);
       const stageViewMode = state.stageViewMode;
       const is3dMode = stageViewMode === '3d';
-      const allowSecondaryRedraw = !is3dMode || now - last3dSecondaryCanvasThrottleMs >= 125; // 8 Hz (125 ms) throttling in 3D mode
+      const allowSecondaryRedraw = !is3dMode || now - state.last3dSecondaryCanvasThrottleMs >= 125; // 8 Hz (125 ms) throttling in 3D mode
 
       if (simTimelineController) {
-        if (lastTimelineAnimTimeMs > 0 && isPlayingHistory) {
-          const dtS = Math.min((now - lastTimelineAnimTimeMs) / 1000, 0.1);
+        if (state.lastTimelineAnimTimeMs > 0 && isPlayingHistory) {
+          const dtS = Math.min((now - state.lastTimelineAnimTimeMs) / 1000, 0.1);
           simTimelineController.advanceHistoricalPlayback(dtS);
         }
         if (allowSecondaryRedraw) {
           simTimelineController.renderIfDirty();
         }
       }
-      lastTimelineAnimTimeMs = now;
+      state.lastTimelineAnimTimeMs = now;
       if (allowSecondaryRedraw && is3dMode) {
-        last3dSecondaryCanvasThrottleMs = now;
+        state.last3dSecondaryCanvasThrottleMs = now;
       }
 
       // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty or active playback (skips when in 3D mode)
@@ -637,7 +674,7 @@ export function initViewModeAnd3dController(ctx: AppContext) {
           state.threeController.stopAnimationLoop();
         }
       } else {
-        lastTimelineAnimTimeMs = 0;
+        state.lastTimelineAnimTimeMs = 0;
         if (
           state.stageViewMode === '3d' &&
           state.threeController &&

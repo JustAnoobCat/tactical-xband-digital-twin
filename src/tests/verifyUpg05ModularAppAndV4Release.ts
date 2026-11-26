@@ -1,12 +1,14 @@
 /**
  * src/tests/verifyUpg05ModularAppAndV4Release.ts
  *
- * UPG-05 (Final v4.0.0 Milestone) Verification Suite (Suite 136):
- * 1. Modularity: `src/main.ts` line count is strictly < 3,000 lines and `src/app/` contains
- *    >= 5 cohesive `.ts` modules with zero `eval(` / `new Function(` and zero circular imports.
+ * UPG-05 / V41-01 (v4.1.0 Milestone) Verification Suite (Suite 136):
+ * 1. Modularity & Strict Typing: `src/main.ts` line count is strictly < 3,000 lines, `src/app/` contains
+ *    >= 5 cohesive `.ts` modules with zero `eval(` / `new Function(`, zero circular imports,
+ *    and ZERO `@ts-nocheck` / `@ts-ignore` directives across `src/main.ts` & `src/app/*.ts`.
  * 2. Hardening: PNG/JPG heightmap FileReader in `src/app/terrainUploadController.ts` attaches `onerror`.
  * 3. Version symmetry: `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`,
- *    `src-tauri/Cargo.toml`, `crates/xband-physics/Cargo.toml`, and `README.md` all declare `4.0.0`.
+ *    `src-tauri/Cargo.toml`, `crates/xband-physics/Cargo.toml`, and `README.md` all declare `4.1.0`,
+ *    and `.github/workflows/ci.yml` invokes `npm run test:fast`.
  * 4. Strict CSP & Lazy Bundle Split: `index.html` retains strict CSP (0 inline `<script>` bodies,
  *    0 inline `on*=` attributes) and `dist/index.html` excludes eager `vendor-three` / `vendor-maplibre` chunks.
  * 5. Suite count & Documentation Sync: `scripts/run_all_verifications.mjs` registers 136 suites and
@@ -33,10 +35,10 @@ function check(name: string, fn: () => void): void {
 }
 
 console.log('================================================================================');
-console.log('  UPG-05 MODULAR src/app/* ARCHITECTURE & v4.0.0 RELEASE VERIFICATION (SUITE 136)');
+console.log('  UPG-05 / V41-01 STRICT TS src/app/* & v4.1.0 RELEASE VERIFICATION (SUITE 136)');
 console.log('================================================================================');
 
-check('1. src/main.ts composition root < 3,000 lines & src/app/ has >= 5 cohesive TS modules with zero eval/Function', () => {
+check('1. src/main.ts < 3,000 lines, src/app/ >= 5 modules, zero eval/Function/@ts-nocheck/@ts-ignore, zero circular imports', () => {
   const mainTsPath = path.join(ROOT_DIR, 'src', 'main.ts');
   const mainTs = fs.readFileSync(mainTsPath, 'utf8');
   const mainLines = mainTs.split('\n').length;
@@ -62,6 +64,8 @@ check('1. src/main.ts composition root < 3,000 lines & src/app/ has >= 5 cohesiv
     const src = fs.readFileSync(file, 'utf8');
     assert.equal(/\beval\s*\(/.test(src), false, `Forbidden eval( detected in ${file}`);
     assert.equal(/\bnew\s+Function\s*\(/.test(src), false, `Forbidden new Function( detected in ${file}`);
+    assert.equal(/@ts-nocheck/.test(src), false, `Forbidden @ts-nocheck detected in ${file}`);
+    assert.equal(/@ts-ignore/.test(src), false, `Forbidden @ts-ignore detected in ${file}`);
   }
 
   // Zero circular imports among src/app/*.ts and src/main.ts
@@ -104,29 +108,32 @@ check('2. PNG/JPG heightmap FileReader in src/app/terrainUploadController.ts att
   assert.ok(windowSlice.includes('img.onerror'), 'PNG/JPG Image loader handler must attach img.onerror');
 });
 
-check('3. Version 4.0.0 symmetry across package, Tauri, Rust crate, and README.md', () => {
+check('3. Version 4.1.0 symmetry across package, Tauri, Rust crate, README.md & CI Vitest gate', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
-  assert.equal(pkg.version, '4.0.0', 'package.json version must be 4.0.0');
+  assert.equal(pkg.version, '4.1.0', 'package.json version must be 4.1.0');
 
   const pkgLock = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package-lock.json'), 'utf8'));
-  assert.equal(pkgLock.version, '4.0.0', 'package-lock.json root version must be 4.0.0');
-  assert.equal(pkgLock.packages?.['']?.version, '4.0.0', 'package-lock.json packages[""] version must be 4.0.0');
+  assert.equal(pkgLock.version, '4.1.0', 'package-lock.json root version must be 4.1.0');
+  assert.equal(pkgLock.packages?.['']?.version, '4.1.0', 'package-lock.json packages[""] version must be 4.1.0');
 
   const tauriConf = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'src-tauri', 'tauri.conf.json'), 'utf8'));
-  assert.equal(tauriConf.version, '4.0.0', 'src-tauri/tauri.conf.json version must be 4.0.0');
+  assert.equal(tauriConf.version, '4.1.0', 'src-tauri/tauri.conf.json version must be 4.1.0');
 
   const tauriCargo = fs.readFileSync(path.join(ROOT_DIR, 'src-tauri', 'Cargo.toml'), 'utf8');
-  assert.match(tauriCargo, /^version\s*=\s*"4\.0\.0"/m, 'src-tauri/Cargo.toml version must be 4.0.0');
+  assert.match(tauriCargo, /^version\s*=\s*"4\.1\.0"/m, 'src-tauri/Cargo.toml version must be 4.1.0');
 
   const rustCargo = fs.readFileSync(path.join(ROOT_DIR, 'crates', 'xband-physics', 'Cargo.toml'), 'utf8');
-  assert.match(rustCargo, /^version\s*=\s*"4\.0\.0"/m, 'crates/xband-physics/Cargo.toml version must be 4.0.0');
+  assert.match(rustCargo, /^version\s*=\s*"4\.1\.0"/m, 'crates/xband-physics/Cargo.toml version must be 4.1.0');
 
   const readme = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
-  assert.ok(readme.includes('version = {4.0.0}'), 'README.md BibTeX citation must declare version = {4.0.0}');
-  assert.ok(readme.includes('v4.0.0'), 'README.md header must declare v4.0.0');
+  assert.ok(readme.includes('version = {4.1.0}'), 'README.md BibTeX citation must declare version = {4.1.0}');
+  assert.ok(readme.includes('v4.1.0'), 'README.md header must declare v4.1.0');
   assert.ok(readme.includes('2.32'), 'README.md must document updated ~2.32 ms step time');
   assert.ok(readme.includes('src/app/') || readme.includes('app/'), 'README.md must document modular src/app/ architecture');
   assert.ok(readme.includes('136'), 'README.md must document 136 verification suites');
+
+  const ciYml = fs.readFileSync(path.join(ROOT_DIR, '.github', 'workflows', 'ci.yml'), 'utf8');
+  assert.ok(ciYml.includes('npm run test:fast'), '.github/workflows/ci.yml must invoke npm run test:fast');
 });
 
 check('4. index.html retains strict CSP and dist/index.html excludes eager vendor-three / vendor-maplibre', () => {
@@ -164,4 +171,4 @@ check('5. scripts/run_all_verifications.mjs registers 136 suites including Suite
   assert.ok(runnerSrc.includes("'verify:upg05-modular-app-v4'"), 'Suite 136 id verify:upg05-modular-app-v4 must be registered');
 });
 
-console.log('\n[UPG-05] ALL CHECKS PASSED — Modular src/app/* architecture & v4.0.0 release verified.\n');
+console.log('\n[UPG-05 / V41-01] ALL CHECKS PASSED — Strict TypeScript src/app/* & v4.1.0 release verified.\n');

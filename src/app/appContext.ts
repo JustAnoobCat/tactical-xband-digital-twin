@@ -1,25 +1,53 @@
+/// <reference path="./windowBindings.d.ts" />
 /**
  * Shared typed application context for the Tactical X-Band Digital Twin UI.
  * Centralizes mutable UI state, core singletons, canvas references, DOM helpers,
  * and cross-module action dispatch with zero circular imports.
  */
+type MapLibreMap = import('maplibre-gl').Map;
 import { PLAYBACK_SPEED } from '../shared/constants.ts';
+import type {
+  TelemetryFrame,
+  NodeTelemetryItem,
+  WorkerInboundCommand,
+  WorkerCommandResult,
+  TerrainMeshDataReadyMessage,
+  TrajectoryConfigTelemetry,
+  ITdmaFrameConfig,
+  HiFiPhysicsTelemetry,
+  TransportAbrTelemetry,
+  EwEccmTelemetry,
+  ConstellationMobilityTelemetry,
+  TelemetryFrameMessage,
+  BiomeId,
+  AltitudeMode,
+  TelemetryGanttAllocation,
+} from '../shared/workerProtocol.ts';
+import type { TerrainBoundsLike } from './windowBindings.d.ts';
 import { DecodedTileCache, DEFAULT_LRU_CACHE_CAPACITY } from '../core/hgtMosaic.ts';
+import type { SrtmCatalogTile } from '../core/hgtMosaic.ts';
 import { OfflineMissionPackStore } from '../core/offlineMissionPackStore.ts';
 import { TerrainEngine } from '../core/terrain.ts';
+import type { DemGeographicMetadata } from '../core/terrain.ts';
 import { EventSourcedFlightRecorder } from '../core/flightRecorder.ts';
 import { TrajectoryEditorState } from '../ui/trajectoryEditorState.ts';
 import { ObstacleEditorState } from '../ui/obstacleEditorState.ts';
 import { ObstacleHistoryManager } from '../ui/terrainAnalysisController.ts';
 import { LinkProfileViewportState } from '../ui/linkProfileViewport.ts';
+import type { ProfileHoverInfo } from '../ui/linkProfileViewport.ts';
 import { TopViewViewportState } from '../ui/pathProfileTopView.ts';
 import { SimulationHistoryBuffer, SimulationHistoryController } from '../ui/simulationHistory.ts';
+import type { HistoricalFrameRecord } from '../ui/simulationHistory.ts';
 import { SchedulerHistoryBuffer, SchedulerHistoryController } from '../ui/schedulerHistory.ts';
+import type { SchedulerFrameRecord } from '../ui/schedulerHistory.ts';
 import { SpatialSnapshotBuffer } from '../ui/spatialSnapshotBuffer.ts';
 import { SuperframeEpochStore } from '../ui/superframeEpochStore.ts';
 import { createInitialTimelineInspectorVisibility } from '../ui/timelineFrameInspector.ts';
+import type { TimelineInspectorVisibilityState } from '../ui/timelineFrameInspector.ts';
 import { HistoricalSessionCoordinator } from '../ui/historicalSessionCoordinator.ts';
 import { MapLayerRegistry } from '../ui/workbench/mapLayerRegistry.ts';
+import type { ContextualMapContext } from '../ui/workbench/mapLayerRegistry.ts';
+import { MapLayersPanel } from '../ui/workbench/mapLayersPanel.ts';
 import { DataCommVisualizer } from '../ui/dataCommVisualization.ts';
 import { NetworkPerformanceHistory } from '../ui/networkPerformanceDashboard.ts';
 import { NetworkTrafficTracker } from '../ui/networkTrafficInventory.ts';
@@ -27,6 +55,24 @@ import { RadarLabelPlacer } from '../ui/workbench/radarLabelLayout.ts';
 import { DiagnosticsTracker } from '../ui/workbench/diagnosticsTelemetry.ts';
 import { initWorkbenchShell } from '../ui/workbenchShell.ts';
 import { createTelemetryDomUpdaters } from '../ui/controllers/telemetryDomUpdaters.ts';
+type ThreeSceneController = import('../ui/three/threeSceneController.ts').ThreeSceneController;
+import type { StageViewMode, TerrainMeshDataPayload, TerrainMeshResolution } from '../ui/three/threeTypes.ts';
+type MapController = import('../ui/mapController.ts').MapController;
+import type { SimulationTimelineRenderer } from '../ui/simulationTimelineRenderer.ts';
+import type { SimulationTimelineController } from '../ui/simulationTimelineController.ts';
+import type { SystemHealthHud } from '../ui/systemHealthHud.ts';
+import type { WorldTileLayer } from '../ui/worldTileLayer.ts';
+import type { RadarNodeMarkerLayer } from '../ui/radarNodeMarkerLayer.ts';
+import type { createRadar2dRenderer } from '../ui/controllers/radar2dRenderer.ts';
+import type { OfflineMissionPackKind } from '../core/offlineMissionPackStore.ts';
+import type { ProbeHeatmapLayerMode, ProbeHeatmapPalette } from '../ui/terrainToolboxCharts.ts';
+import type { ProbeHeatmapConfig } from '../ui/toolboxPrecisionSuite.ts';
+import type { createTerrainToolboxController } from '../ui/controllers/terrainToolboxController.ts';
+import type { DashboardAndAuthoringController } from '../ui/controllers/dashboardAndAuthoringController.ts';
+import type { MissionIoController } from '../ui/controllers/missionIoController.ts';
+import type { CommandPaletteController } from '../ui/controllers/commandPaletteController.ts';
+import type { TwinEvaluationReport } from '../core/digitalTwinCalibrationEngine.ts';
+import type { QosNetworkSlaReport } from '../core/qosSlaEngine.ts';
 
 export const UNAVAILABLE = '—';
 export const MONO = '"IBM Plex Mono", ui-monospace, Consolas, monospace';
@@ -34,10 +80,12 @@ export const TAU = Math.PI * 2;
 export const TRANSPARENT_1X1_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIAAAUAAeImBZsAAAAASUVORK5CYII=';
 
-export function $(id: string): any {
-  return id === 'profile-canvas'
-    ? document.getElementById('terrain-canvas') || document.getElementById('profile-canvas')
-    : document.getElementById(id);
+export function $<T extends HTMLElement = HTMLElement>(id: string): T | null {
+  const el =
+    id === 'profile-canvas'
+      ? document.getElementById('terrain-canvas') || document.getElementById('profile-canvas')
+      : document.getElementById(id);
+  return el as T | null;
 }
 
 export function setText(id: string, t: string): void {
@@ -54,8 +102,12 @@ export function isFiniteMetric(value: unknown): value is number {
  * a confirmed worker-produced zero (0). Accepts a number, or a preformatted
  * string for composite cells; null/undefined/non-finite numbers render as unavailable.
  */
-export function setMetricText(id: string, value: unknown, format?: (v: any) => string): void {
-  const el = $(id) as HTMLElement | null;
+export function setMetricText(
+  id: string,
+  value: unknown,
+  format?: ((v: any) => string | null) | null
+): void {
+  const el = $(id);
   if (!el) return;
   const unavailable =
     value === null ||
@@ -67,7 +119,7 @@ export function setMetricText(id: string, value: unknown, format?: (v: any) => s
     el.title = 'Unavailable — awaiting telemetry';
     return;
   }
-  el.textContent = format ? format(value) : String(value);
+  el.textContent = format ? (format(value) ?? UNAVAILABLE) : String(value);
   el.dataset.telemetryState = 'available';
   el.removeAttribute('title');
 }
@@ -128,14 +180,23 @@ export function mapEscape(value: unknown): string {
   );
 }
 
-export function nodeLinkLabel(node: any): string {
+export function nodeLinkLabel(
+  node: {
+    link_outage?: boolean;
+    obstacle_blocked?: boolean;
+    terrain_is_los?: boolean;
+    is_transmitting?: boolean;
+  } | null | undefined
+): string {
   if (!node) return 'Unavailable';
   if (node.link_outage) return 'RF OUTAGE';
   if (node.obstacle_blocked || node.terrain_is_los === false) return 'BLOCKED';
   return node.is_transmitting ? 'TRANSMITTING' : 'AVAILABLE';
 }
 
-export function nodeAchievedRate(node: any): string {
+export function nodeAchievedRate(
+  node: { transfer_state?: { current_rate_mbps?: number | null } | null } | null | undefined
+): string {
   const rate = node?.transfer_state?.current_rate_mbps;
   return typeof rate === 'number' && Number.isFinite(rate) ? `${rate.toFixed(2)} Mbps` : 'Unavailable';
 }
@@ -143,7 +204,7 @@ export function nodeAchievedRate(node: any): string {
 export interface AppState {
   THEATER_RADIUS_M: number;
   isPaused: boolean;
-  activeBiomeId: string;
+  activeBiomeId: BiomeId;
   radarNeedsRender: boolean;
   schedulerNeedsRender: boolean;
   terrainNeedsRender: boolean;
@@ -153,8 +214,8 @@ export interface AppState {
   nodeMoveModeActive: boolean;
   hoveredNodeId: number | null;
   hoveredLinkNodeId: number | null;
-  mapHoverPoint: any;
-  activeMapHoverRenderer: any;
+  mapHoverPoint: { x: number; y: number } | null;
+  activeMapHoverRenderer: string | null;
   draggedEntity: any;
   lastMoveSendTime: number;
   hillshadeCanvas: HTMLCanvasElement | null;
@@ -174,7 +235,7 @@ export interface AppState {
   tbOpen: boolean;
   tbShowRulerTicks: boolean;
   tbActiveMode: string;
-  tbBackdropMode: string;
+  tbBackdropMode: 'relief' | 'slope' | 'ridge';
   tbSlopeRidgeGrid: any;
   tbSlopeRidgeVersion: number;
   tbBackdropCanvas: HTMLCanvasElement | null;
@@ -201,8 +262,8 @@ export interface AppState {
   tbViewshedCanvas: HTMLCanvasElement | null;
   tbProbeHeatmapConfig: {
     enabled: boolean;
-    mode: string;
-    palette: string;
+    mode: ProbeHeatmapLayerMode;
+    palette: ProbeHeatmapPalette;
     opacity: number;
     showContours: boolean;
   };
@@ -221,7 +282,7 @@ export interface AppState {
   tbCadObstacleReport: any;
   tbObsDrawingAnchor: any;
   tbObsRubberBandPoint: any;
-  tbObsSelectedId: any;
+  tbObsSelectedId: string | null;
   tbObsHoverHandle: any;
   tbObsDraggedHandle: any;
   tbObsDragOrigin: any;
@@ -231,16 +292,23 @@ export interface AppState {
   tbBridgeCanvas: HTMLCanvasElement | null;
   tbBridgeNeedsMapLibreSync: boolean;
   activeSchedulerMode: string;
-  activeTerrainMode: string;
-  activeTerrainBounds: any;
-  pendingTerrainCenteringBounds: any;
-  terrainMapMode: string;
-  mapLibreInstance: any;
-  mapController: any;
+  activeTerrainMode: 'real' | 'synthetic';
+  activeTerrainBounds: TerrainBoundsLike | null;
+  pendingTerrainCenteringBounds: TerrainBoundsLike | null;
+  terrainMapMode: 'radar' | 'maplibre';
+  mapLibreInstance: MapLibreMap | null;
+  mapController: MapController | null;
   mapLibreInitialized: boolean;
   mapLibreErrorShown: boolean;
-  mapLibreTravelledPath: any[];
-  mapLibreTerrainRaster: any;
+  mapLibreTravelledPath: [number, number][];
+  mapLibreTerrainRaster: {
+    elevations: Float32Array;
+    width: number;
+    height: number;
+    metadata: TerrainBoundsLike;
+    dataUrl: string;
+    coordinates: [[number, number], [number, number], [number, number], [number, number]] | [];
+  } | null;
   mapLibreTerrainVisible: boolean;
   mapLibreTerrainOpacity: number;
   mapLibreTerrainMode: string;
@@ -256,15 +324,15 @@ export interface AppState {
   trajectoryConfigSignature: string;
   committedTrajectoryMode: string;
   trajectoryRequestSerial: number;
-  pendingTrajectoryRequest: any;
+  pendingTrajectoryRequest: string | null;
   waypointPlacementArmed: boolean;
   obstacleRequestSerial: number;
-  pendingAltitudeMode: any;
+  pendingAltitudeMode: AltitudeMode | null;
   flightParamsDirty: boolean;
   committedFlightParams: {
     loiter_speed_mps: number;
     acn_altitude_m: number;
-    altitude_mode: string;
+    altitude_mode: AltitudeMode | string;
     target_agl_m: number;
     max_climb_rate_mps: number;
     max_descent_rate_mps: number;
@@ -277,24 +345,24 @@ export interface AppState {
   toolboxCacheVersion: number;
   lastMirroredObstacleJson: string;
   lastMirroredObstacleRev: number;
-  latestTelemetry: any;
+  latestTelemetry: TelemetryFrame | null;
   latestProfileSerial: number;
   latestProfileNodeId: number;
-  stageViewMode: string;
-  threeController: any;
+  stageViewMode: StageViewMode;
+  threeController: ThreeSceneController | null;
   terrainMeshRequestId: number;
-  inFlightTerrainMeshRequest: any;
-  cachedTerrainMeshData: any;
-  currentTerrainResolution: string;
+  inFlightTerrainMeshRequest: { requestId: number; terrainMode: string } | null;
+  cachedTerrainMeshData: TerrainMeshDataPayload | null;
+  currentTerrainResolution: TerrainMeshResolution;
   currentOverviewSubview: string;
   currentAuthoringPane: string;
   currentDocSubview: string;
   bridgeHistoricalActive: boolean;
   bridgeHistoricalFrame: number | null;
-  bridgeHistSchedRec: any;
-  bridgeHistRfRec: any;
+  bridgeHistSchedRec: SchedulerFrameRecord | null;
+  bridgeHistRfRec: HistoricalFrameRecord | null;
   activeRadarLabelPlacer: any;
-  mapLayersPanel: any;
+  mapLayersPanel: MapLayersPanel | null;
   rollingWorkerStepSamples: number[];
   rollingWorkerInterFrameDeltas: number[];
   lastTelemetryArrivalTs: number;
@@ -306,18 +374,18 @@ export interface AppState {
   currentTrafficSubtab: string;
   activeSensitivityAxis: string;
   profMultiFresnelOrders: boolean;
-  profHoverInfo: any;
-  pendingAglUpdate: any;
-  aglFeedbackTimeout: any;
+  profHoverInfo: ProfileHoverInfo | null;
+  pendingAglUpdate: { nodeId: number; agl: number; reqId: string } | null;
+  aglFeedbackTimeout: ReturnType<typeof setTimeout> | null;
   nodeEditorMode: string;
   nodeEditorTargetId: number;
   currentSimSpeed: number;
-  activeRenderedGanttSlots: any[];
+  activeRenderedGanttSlots: Array<TelemetryGanttAllocation & { x?: number; y?: number; w?: number; h?: number }>;
   ganttHoverState: { active: boolean; x: number; y: number; hoveredSlot: any };
   pduDissectorState: { pinnedSlot: any; autoFollow: boolean };
-  simTimelineRenderer: any;
-  simTimelineController: any;
-  timelineInspectorVisibility: any;
+  simTimelineRenderer: SimulationTimelineRenderer | null;
+  simTimelineController: SimulationTimelineController | null;
+  timelineInspectorVisibility: TimelineInspectorVisibilityState;
   lastTimelineAnimTimeMs: number;
   last3dSecondaryCanvasThrottleMs: number;
   lastMapLibreOverlaySyncMs: number;
@@ -326,25 +394,272 @@ export interface AppState {
   networkGraphUpdatesEnabled: boolean;
   networkLastRenderTime: number;
   networkNodeOptionsSignature: string;
-  boundMapLibreOfflineHandler: any;
-  boundMapLibrePointerUp: any;
+  boundMapLibreOfflineHandler: (() => void) | null;
+  boundMapLibrePointerUp: ((e: PointerEvent) => void) | null;
   handleTimelineInspectorReset: () => void;
   lastRenderedNodesKey: string;
   lastOpsFleetSignature: string;
-  pendingNodeTarget?: any;
-  [key: string]: any;
+  pendingNodeTarget?: { mode: string; nodeId: number; name?: string; requestId?: string } | null;
 }
 
 export interface AppActions {
-  [key: string]: (...args: any[]) => any;
+  // workerBridgeController
+  sendCommand: (msg: WorkerInboundCommand, transferList?: Transferable[]) => void;
+  getSystemHealthHud: () => SystemHealthHud;
+  syncTelemetrySubscriptionProfile: (activeTabId: string) => void;
+
+  // terrainUploadController
+  setCustomDemControlsState: (opts?: { loading?: boolean; loaded?: boolean }) => void;
+  sendCustomDemZeroCopy: (elevations: Float32Array, metadata: DemGeographicMetadata) => void;
+  resetTerrainFileInputs: () => void;
+  invokeTauriOfflineIpc: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> | null;
+  persistOfflinePack: (name: string, kind: OfflineMissionPackKind, bufferOrBytes: ArrayBuffer | Uint8Array) => Promise<void>;
+  refreshOfflinePackList: () => Promise<void>;
+  getTerrainLayout: () => { width: number; height: number; padL: number; padR: number; padT: number; padB: number };
+  openUploadModal: () => void;
+  closeUploadModal: () => void;
+  onDragOver: (e: DragEvent) => void;
+  onDragLeave: (e: DragEvent) => void;
+  onDropFile: (e: DragEvent) => void;
+  decodeTileFile: (catalogTile: SrtmCatalogTile) => Promise<any>;
+
+  // viewModeAnd3dController
+  loadThreeStageModule: () => Promise<typeof import('../ui/three/threeSceneController.ts')>;
+  loadMapLibreDependencies: () => Promise<any>;
+  shouldContinueAnimationLoop: () => boolean;
+  scheduleAnimationLoop: () => void;
+  markRadarDirty: () => void;
+  markUiDirtyAndWake: () => void;
+  initThreeStage: () => Promise<void>;
+  syncVolumetricRfHudButtons: () => void;
+  initVolumetricRfControls: () => void;
+  requestTerrainMeshData: (force?: boolean) => void;
+  handleTerrainMeshDataResponse: (msg: TerrainMeshDataReadyMessage) => void;
+  updateTerrainHudBadge: () => void;
+
+  // mapLibreController
+  clearMapLibreSourceHashes: () => void;
+  isMapLibreDynamicSourceBusy: () => boolean;
+  setMapLibreSourceData: (id: string, data: unknown, onlyWhenChanged?: boolean) => void;
+  beginMapLibreCameraSync: (durationMs?: number) => number;
+  endMapLibreCameraSync: (token: number) => void;
+  syncRangeButtonHighlights: (rangeM: number) => void;
+  getMaxRadarRangeM: () => number;
+  syncMapLibreCameraFromRadarState: (duration?: number, resetOrientation?: boolean) => void;
+  easeMapLibreToLocalCenter: (xM: number, yM: number, duration?: number, resetOrientation?: boolean) => void;
+  syncRadarStateFromMapLibreCamera: () => void;
+  mapLibreCoordinate: (xM: number, yM: number) => [number, number];
+  geographicDistanceM: (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => number;
+  updateMapLibreToolSources: () => void;
+  updateMapLibreCursor: (point?: { x: number; y: number } | null) => void;
+  renderMapLibreTerrainRaster: () => void;
+  applyMapLibreTerrainRaster: () => void;
+  ensureMapLibreTerrainLayer: () => void;
+  setMapLibreTerrainRaster: (elevations: Float32Array, metadata: TerrainBoundsLike) => void;
+  applyMapLibreLayerState: () => void;
+  updateMapLibreOverlay: () => void;
+  fitMapLibreToTerrain: () => void;
+  initializeMapLibre: () => Promise<void>;
+  setMapMode: (mode: 'radar' | 'maplibre') => void;
+
+  // radar2dAndInteractionController
+  getRadarWorldTileLayer: () => WorldTileLayer;
+  getRadarNodeMarkerLayer: () => RadarNodeMarkerLayer | null;
+  getRadar2dRenderer: () => ReturnType<typeof createRadar2dRenderer>;
+  drawLabelLeaderTick: (ctx2d: CanvasRenderingContext2D, placed: any) => void;
+  invalidateToolboxCache: () => void;
+  syncObstacleFieldMirror: (force?: boolean) => void;
+  updateRadarCursorReadout: (worldX: number, worldY: number, visible: boolean) => void;
+  renderNodeHoverTooltip: (nodeId: number | null, pt: { x: number; y: number }, mode: 'node' | 'link') => void;
+  setSharedMapHover: (
+    renderer: string | null,
+    kind: 'node' | 'link',
+    nodeId: number | null,
+    pt: { x: number; y: number } | null
+  ) => void;
+  renderHillshadeFromWorker: (data: readonly (readonly number[])[] | number[][], gridSize: number, boundsKm: number, terrainMode?: string, bounds?: TerrainBoundsLike | null) => void;
+  getRadarGeometry: (w: number, h: number) => { centerX: number; centerY: number; scale: number };
+  worldToScreen: (wx: number, wy: number, w: number, h: number) => { x: number; y: number };
+  screenToWorld: (sx: number, sy: number, w: number, h: number) => { x: number; y: number };
+  renderMapLibreKineticOverlay: (ctx2d: CanvasRenderingContext2D, w: number, h: number, frame: TelemetryFrame) => void;
+  drawRadar: () => void;
+  radarLinkHit: (sx: number, sy: number, w: number, h: number, radiusPx?: number) => number | null;
+
+  // terrainToolboxCoordinator
+  getTerrainToolboxController: () => ReturnType<typeof createTerrainToolboxController>;
+  getRadarPointerWorld: (event: MouseEvent | PointerEvent) => { x: number; y: number };
+  terrainDistanceText: (distanceM: number) => string;
+  setTerrainToolStatus: (text: string) => void;
+  downloadTextBlob: (filename: string, content: string, mimeType: string) => void;
+  buildToolboxSimContext: () => any;
+  findMagneticSnapTarget: (px: number, py: number, w: number, h: number, snapThresholdPx?: number) => any;
+  recomputeTransect: (isPreview?: boolean) => void;
+  recomputeRubberBandPreview: (worldPoint: any) => void;
+  findNearestTransectSampleIndex: (xM: number, yM: number, maxDistM?: number) => number | null;
+  updateToolboxTransectHoverUi: () => void;
+  updateProbeUiReadouts: (analysis?: any) => void;
+  recomputeProbeAnalysis: () => void;
+  updateProbeHeatmapConfig: (partial: Partial<ProbeHeatmapConfig>) => void;
+  recomputeRegionZonal: () => void;
+  runBridgeFinder: () => void;
+  ensureBackdropCanvasSynced: () => void;
+  renderMode1Provenance: () => void;
+  recomputeActiveToolboxResults: () => void;
+  refreshToolboxActionGates: () => void;
+  renderToolboxDrawer: () => void;
+  addToolboxNodeAt: (xM: number, yM: number, aglM: number, callsign: string, role?: string) => void;
+  applyTransectAsAcnWaypoints: () => void;
+  finishTransectPolyline: () => void;
+  handleToolboxMapClick: (point: { x: number; y: number; lng?: number; lat?: number }) => boolean | void;
+  finishTerrainRegion: () => void;
+  cancelTerrainTool: () => void;
+  clearTerrainMeasurement: () => void;
+  refreshTerrainToolbox: () => void;
+  updateStepGuideBanner: () => void;
+  setTerrainToolboxExpanded: (expanded: boolean) => void;
+  closeTerrainToolbox: () => void;
+  setTbMode: (mode: string, autoArm?: boolean) => void;
+  setupTerrainToolbox: () => void;
+  syncToolboxPrecisionUi: (payload?: any) => void;
+
+  // dashboardRenderOrchestrator
+  getDashboardAndAuthoringController: () => DashboardAndAuthoringController;
+  getMissionIoController: () => MissionIoController;
+  getCommandPaletteController: () => CommandPaletteController;
+  renderRegistration: (frame: TelemetryFrame) => void;
+  renderNtnSignalingAnalyzer: (frame: TelemetryFrame) => void;
+  handleAcnSelection: () => void;
+  renderSelectedNodeDetails: () => void;
+  handleNodeSelection: (nodeId: number) => void;
+  renderSoldierPhoneWorkspace: (frame: TelemetryFrame) => void;
+  renderOpsFleetRegistry: (nodes: TelemetryFrame['nodes_telemetry'] | undefined) => void;
+  renderTerminalInventory: (
+    nodes: TelemetryFrame['nodes_telemetry'] | undefined,
+    selectedId: number,
+    query?: string
+  ) => void;
+  populateDropdownsOnce: (nodes: TelemetryFrame['nodes_telemetry']) => void;
+  renderVsaScope: (nodeTel: NodeTelemetryItem | null | undefined, frame: TelemetryFrame) => void;
+  updateOpsQosSlaUI: (
+    report: QosNetworkSlaReport | null,
+    nodes: TelemetryFrame['nodes_telemetry']
+  ) => void;
+  renderQosSlaAnalyzer: (frame: TelemetryFrame) => void;
+  observeTelemetryTiming: (frame: TelemetryFrame | null) => void;
+  renderWorkerJitterProfiler: (frame: TelemetryFrame | null) => void;
+  renderTwinCalibrationScope: () => void;
+  updateTwinCalibrationDOM: (report: TwinEvaluationReport | null) => void;
+  isMgrsGridActive: () => boolean;
+  openCommandPalette: () => void;
+  closeCommandPalette: () => void;
+  buildCurrentAarSnapshot: () => any;
+  renderNetworkTrafficInventory: (frame: TelemetryFrame) => void;
+  experimentObserve: (frame: TelemetryFrame) => void;
+  initializeExperimentCapture: () => void;
+  updateDashboardDOM: (frame: TelemetryFrame, forceImmediate?: boolean) => void;
+
+  // scientificScopesAndTimelineController
+  drawNetworkCharts: () => void;
+  ingestNetworkPerformance: (frame: TelemetryFrame) => void;
+  updateStepControlUI: (enabled?: boolean) => void;
+  updatePauseButtonUI: () => void;
+  recordHistoricalFrame: (frame: TelemetryFrame) => void;
+  updateScrubberUI: () => void;
+  syncHistoricalUIState: (rec?: HistoricalFrameRecord | null) => void;
+  syncLiveUIState: () => void;
+  recordSchedulerHistoricalFrame: (frame: TelemetryFrame) => void;
+  updateSchedulerScrubberUI: () => void;
+  syncSchedulerHistoricalUIState: (rec?: SchedulerFrameRecord | null) => void;
+  syncSchedulerLiveUIState: () => void;
+  returnSchedulerToLive: () => void;
+  drawSchedulerCharts: () => void;
+  drawPolarAntennaScope: (frame: TelemetryFrame) => void;
+  drawLinkWaterfallCanvas: (frame: TelemetryFrame) => void;
+  updateScientificAblationMatrix: (frame: TelemetryFrame) => void;
+  drawEcdfDelayScope: (frame: TelemetryFrame) => void;
+  drawSensitivitySweepScope: (frame: TelemetryFrame) => void;
+  drawWaterfall: () => void;
+  updatePduDissectorPanel: (frame: TelemetryFrame) => void;
+  drawFresnel: () => void;
+
+  // domEventBindings
+  isDiagnosticsPanelVisible: () => boolean;
+  isNeutralMapSelectionMode: () => boolean;
+  dismissNodeInspector: () => void;
+  disarmDestructiveButton: (btn: HTMLElement | null) => void;
+  disarmAllDestructiveConfirmations: (exceptBtn?: HTMLElement | null) => void;
+  armDestructiveConfirm: (
+    buttonEl: HTMLElement | null,
+    options: {
+      armedLabel?: string;
+      timeoutMs?: number;
+      canArm?: () => boolean;
+      onBlocked?: (() => void) | null;
+      onConfirm: () => void;
+    }
+  ) => void;
+  syncFloatingOverlayLayout: () => void;
+  syncEditModeBanner: () => void;
+  syncRadarHudMode: () => void;
+  getContextualMapContext: () => ContextualMapContext;
+  syncMapLegendVisibility: () => void;
+  syncRfQuickToggleButtons: () => void;
+  applyThreeLayerVisibility: () => void;
+  applyMapLayersToAllRenderers: () => void;
+  restoreFlightParamsFromCommitted: () => void;
+  updateSpatialLockControl: (locked: boolean) => void;
+  setTrajectoryMessage: (msg: string, isError?: boolean) => void;
+  updateAltitudeModeUI: () => void;
+  syncTrajectoryEditorFromWorker: (cfg: TrajectoryConfigTelemetry | null | undefined) => void;
+  setTrajectoryDraftMode: (mode: string) => void;
+  refreshTrajectoryEditor: () => void;
+  addWaypointAt: (xM: number, yM: number) => void;
+  applyTrajectoryDraft: () => void;
+  cancelTrajectoryDraft: () => void;
+  editEllipseFromInputs: () => void;
+  editSelectedWaypointFromInputs: () => void;
+  renderFlightPlanVerticalProfile: () => void;
+  getObstacleEndpoints: (obs: any) => any;
+  renderObstacleInventoryList: () => void;
+  applyObstacleHistoryChange: (nextObstacles: any[]) => void;
+  recomputeCadObstacleAnalysis: () => void;
+  refreshObstacleEditor: () => void;
+  editSelectedObstacleFromInputs: () => void;
+  createObstacleAt: (xM: number, yM: number) => void;
+  applyObstacleDraft: () => void;
+  cancelObstacleDraft: () => void;
+  activateObstacleMode: (mode: string) => void;
+  setTdmaMessage: (msg: string, isError?: boolean) => void;
+  updateTdmaLivePreview: () => void;
+  syncInputsFromDraft: () => void;
+  syncTdmaEditorFromWorker: (cfg: ITdmaFrameConfig | null | undefined) => void;
+  validateTdmaDraft: () => { ok: boolean; error?: string };
+  handleTdmaCommandResult: (msg: WorkerCommandResult) => void;
+  applyTdmaDraft: () => void;
+  resetTdmaToStandard: () => void;
+  setRadarRange: (rangeM: number, options?: { duration?: number; resetOrientation?: boolean }) => void;
+  updateHiFiPhysicsUI: (
+    hifi?: HiFiPhysicsTelemetry | null,
+    transportAbr?: TransportAbrTelemetry | null,
+    ewEccm?: EwEccmTelemetry | null,
+    constellationMobility?: ConstellationMobilityTelemetry | null
+  ) => void;
+  updateBiomePhysicsUI: (msg: TelemetryFrameMessage) => void;
+  syncSelectedNodeAglUI: () => void;
+  handleAglCommandResult: (msg: WorkerCommandResult) => void;
+  handleNodeCommandResult: (msg: WorkerCommandResult) => void;
+  initNodeInventoryToolbar: () => void;
+  syncNodeDropdowns: (nodeId: number) => void;
+  resizeCanvases: () => void;
+  scheduleResizeCanvases: () => void;
 }
 
 export interface AppContext {
   worker: Worker;
   state: AppState;
   engines: {
-    workbenchShell: any;
-    telemetryUpdaters: any;
+    workbenchShell: ReturnType<typeof initWorkbenchShell>;
+    telemetryUpdaters: ReturnType<typeof createTelemetryDomUpdaters>;
     mainTerrainEngine: TerrainEngine;
     trajectoryEditor: TrajectoryEditorState;
     obstacleEditor: ObstacleEditorState;
@@ -406,13 +721,13 @@ export interface AppContext {
 }
 
 export function createAppContext(worker: Worker): AppContext {
-  const actions: AppActions = {};
+  const actions = {} as AppActions;
 
   const workbenchShell = initWorkbenchShell();
   const telemetryUpdaters = createTelemetryDomUpdaters({
-    onSelectNode: (nid: any) => {
-      if (typeof (window as any).onTargetNodeChange === 'function') {
-        (window as any).onTargetNodeChange(Number(nid));
+    onSelectNode: (nid: string | number) => {
+      if (typeof window.onTargetNodeChange === 'function') {
+        window.onTargetNodeChange(Number(nid));
       }
     },
   });
@@ -602,7 +917,7 @@ export function createAppContext(worker: Worker): AppContext {
       comparative_kpi_dashboard: {},
       selected_node_fresnel: null,
       transfer_telemetry: null,
-    },
+    } as unknown as TelemetryFrame,
     latestProfileSerial: 0,
     latestProfileNodeId: -1,
     stageViewMode: '2d',

@@ -1,10 +1,11 @@
-// @ts-nocheck
 /**
  * Programmatic DOM Event Bindings, Window Compatibility API, Destructive Confirm Guard,
  * Authoring/Simulation/Biome Controls, Map Layers Panel & Tab/Resize Orchestration.
  * Zero inline event handlers / strict Electron CSP compliant.
  */
 import type { AppContext } from './appContext.ts';
+import type { MapLayerId } from '../ui/workbench/mapLayerRegistry.ts';
+import type { BiomeId, PolarizationMode } from '../shared/workerProtocol.ts';
 import { PLAYBACK_SPEED } from '../shared/constants.ts';
 import {
   buildNodeAddCommand,
@@ -202,7 +203,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   }
   (window as any).dismissNodeInspector = dismissNodeInspector;
 
-  const armedConfirmRegistry = new Map<HTMLElement, { timerId: any; originalLabel: string }>();
+  const armedConfirmRegistry = new Map<
+    HTMLElement,
+    { timerId: any; originalLabel: string; armedAtMs: number }
+  >();
   let destructiveConfirmListenersInstalled = false;
 
   function disarmDestructiveButton(buttonEl: HTMLElement) {
@@ -268,7 +272,9 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
           if (armedConfirmRegistry.size === 0) return;
           const target = e.target as Node | null;
           if (!target || target === (document as any) || target === (window as any)) return;
-          for (const btn of Array.from(armedConfirmRegistry.keys())) {
+          const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+          for (const [btn, entry] of Array.from(armedConfirmRegistry.entries())) {
+            if (nowMs - entry.armedAtMs < 50) continue;
             if (btn !== target && !btn.contains(target)) {
               disarmDestructiveButton(btn);
             }
@@ -296,10 +302,11 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       }
       disarmAllDestructiveConfirmations(buttonEl);
       const originalLabel = buttonEl.textContent ?? '';
+      const armedAtMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const timerId = setTimeout(() => {
         disarmDestructiveButton(buttonEl);
       }, timeoutMs);
-      armedConfirmRegistry.set(buttonEl, { timerId, originalLabel });
+      armedConfirmRegistry.set(buttonEl, { timerId, originalLabel, armedAtMs });
       buttonEl.setAttribute('data-confirm-armed', 'true');
       buttonEl.classList.add('is-confirm-armed');
       buttonEl.textContent = armedLabel;
@@ -492,7 +499,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     const mctx = getContextualMapContext();
     const spans = legend.querySelectorAll('span[data-legend-layer]');
     spans.forEach((span) => {
-      const layerId = span.getAttribute('data-legend-layer');
+      const layerId = span.getAttribute('data-legend-layer') as MapLayerId | null;
       const vis = layerId ? mapLayerRegistry.getEffectiveVisibility(layerId, mctx) : true;
       span.classList.toggle('is-legend-hidden', !vis);
     });
@@ -535,9 +542,9 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     actions.markRadarDirty();
     state.mapLibreTerrainVisible = mapLayerRegistry.isLayerVisible('base.terrainDem');
     state.mapLibreTerrainOpacity = mapLayerRegistry.getLayerOpacity('base.terrainDem');
-    const demCb = $('tb-toggle-dem-layer');
+    const demCb = $<HTMLInputElement>('tb-toggle-dem-layer');
     if (demCb) demCb.checked = state.mapLibreTerrainVisible;
-    const contCb = $('tb-toggle-contours-layer');
+    const contCb = $<HTMLInputElement>('tb-toggle-contours-layer');
     if (contCb) contCb.checked = mapLayerRegistry.isLayerVisible('base.contours');
     actions.applyMapLibreLayerState();
     if (state.terrainMapMode === 'maplibre') {
@@ -549,30 +556,30 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   }
 
   function restoreFlightParamsFromCommitted() {
-    const spdInp = $('traj-speed-mps');
-    const spdSlider = $('traj-speed-slider');
+    const spdInp = $<HTMLInputElement>('traj-speed-mps');
+    const spdSlider = $<HTMLInputElement>('traj-speed-slider');
     if (spdInp) spdInp.value = String(state.committedFlightParams.loiter_speed_mps);
     if (spdSlider)
       spdSlider.value = String(
         Math.min(300, Math.max(0, state.committedFlightParams.loiter_speed_mps))
       );
 
-    const altInp = $('traj-altitude-msl');
+    const altInp = $<HTMLInputElement>('traj-altitude-msl');
     if (altInp) altInp.value = String(state.committedFlightParams.acn_altitude_m);
 
-    const modeSel = $('traj-altitude-mode');
+    const modeSel = $<HTMLSelectElement>('traj-altitude-mode');
     if (modeSel) {
       modeSel.value = state.committedFlightParams.altitude_mode;
       updateAltitudeModeUI(state.committedFlightParams.altitude_mode);
     }
 
-    const aglInp = $('traj-target-agl');
+    const aglInp = $<HTMLInputElement>('traj-target-agl');
     if (aglInp) aglInp.value = String(state.committedFlightParams.target_agl_m);
 
-    const climbInp = $('traj-climb-rate');
+    const climbInp = $<HTMLInputElement>('traj-climb-rate');
     if (climbInp) climbInp.value = String(state.committedFlightParams.max_climb_rate_mps);
 
-    const descInp = $('traj-descent-rate');
+    const descInp = $<HTMLInputElement>('traj-descent-rate');
     if (descInp) descInp.value = String(state.committedFlightParams.max_descent_rate_mps);
   }
 
@@ -605,7 +612,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   function syncTrajectoryEditorFromWorker(config: any) {
     actions.getDashboardAndAuthoringController().syncTrajectoryEditorFromWorker(config);
   }
-  function setTrajectoryDraftMode(mode: string) {
+  function setTrajectoryDraftMode(mode: 'ellipse' | 'waypoints') {
     actions.getDashboardAndAuthoringController().setTrajectoryDraftMode(mode);
   }
   function refreshTrajectoryEditor() {
@@ -656,7 +663,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   function cancelObstacleDraft() {
     actions.getDashboardAndAuthoringController().cancelObstacleDraft();
   }
-  function activateObstacleMode(mode: string) {
+  function activateObstacleMode(mode: 'select' | 'navigate' | 'place') {
     actions.getDashboardAndAuthoringController().activateObstacleMode(mode);
   }
   function setTdmaMessage(text: string, isError = false) {
@@ -754,7 +761,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   };
 
   (window as any).recomputeRelayAdvisor = function () {
-    const btn = $('btn-recompute-relay-advisor');
+    const btn = $<HTMLButtonElement>('btn-recompute-relay-advisor');
     if (btn) {
       btn.textContent = 'Computing…';
       btn.disabled = true;
@@ -809,12 +816,12 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
 
     state.currentSimSpeed = num;
 
-    const slider = $('sim-speed-slider');
+    const slider = $<HTMLInputElement>('sim-speed-slider');
     if (slider && Math.abs(parseFloat(slider.value) - num) > 0.001) {
       slider.value = String(num);
     }
 
-    const input = $('sim-speed-input');
+    const input = $<HTMLInputElement>('sim-speed-input');
     if (input && Math.abs(parseFloat(input.value) - num) > 0.001) {
       input.value = num % 1 === 0 ? num.toFixed(1) : String(num);
     }
@@ -935,11 +942,11 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       }
     }
     if (id === 'PRESET_MONSOON') {
-      const rainInp = $('param-rain');
+      const rainInp = $<HTMLInputElement>('param-rain');
       if (rainInp) rainInp.value = '35';
       setText('lbl-rain', '35.0 mm/h');
     } else if (id === 'PRESET_AMBUSH') {
-      const rainInp = $('param-rain');
+      const rainInp = $<HTMLInputElement>('param-rain');
       if (rainInp) rainInp.value = '0';
       setText('lbl-rain', '0.0 mm/h');
     }
@@ -1004,7 +1011,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     const isTimelineHist = Boolean(
       state.simTimelineController && state.simTimelineController.isHistoricalInspecting
     );
-    const histSnap = isTimelineHist ? state.simTimelineController.getActiveSpatialSnapshot() : null;
+    const histSnap =
+      isTimelineHist && state.simTimelineController
+        ? state.simTimelineController.getActiveSpatialSnapshot()
+        : null;
     const acnX = Number(
       histSnap ? histSnap.acn.posX : state.latestTelemetry?.acn_telemetry?.pos_x ?? 0
     );
@@ -1026,9 +1036,9 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   };
 
   (window as any).onParamChange = function () {
-    const freq = parseFloat($('param-freq').value);
-    const rain = parseFloat($('param-rain').value);
-    const alt = parseFloat($('param-alt').value);
+    const freq = parseFloat($<HTMLInputElement>('param-freq')?.value || '0');
+    const rain = parseFloat($<HTMLInputElement>('param-rain')?.value || '0');
+    const alt = parseFloat($<HTMLInputElement>('param-alt')?.value || '0');
     setText('lbl-freq', `${freq.toFixed(1)} GHz`);
     setText('lbl-rain', `${rain.toFixed(1)} mm/h`);
     setText('lbl-alt', `${alt.toFixed(0)} m`);
@@ -1040,13 +1050,13 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   };
 
   (window as any).onCoverageParamChange = function () {
-    const km = parseFloat($('param-cov').value);
+    const km = parseFloat($<HTMLInputElement>('param-cov')?.value || '0');
     setText('lbl-cov', `${km.toFixed(0)} km`);
     actions.sendCommand({ type: 'CONFIG_UPDATE', params: { coverage_radius_km: km } });
   };
 
   (window as any).onBandwidthParamChange = function () {
-    const bw = parseFloat($('param-bw').value);
+    const bw = parseFloat($<HTMLInputElement>('param-bw')?.value || '0');
     if (!Number.isFinite(bw) || bw < 0.1 || bw > 50.0) return;
     setText('lbl-bw', `${bw.toFixed(1)} MHz`);
     actions.sendCommand({ type: 'CONFIG_UPDATE', params: { channel_bandwidth_mhz: bw } });
@@ -1054,9 +1064,9 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   };
 
   (window as any).onScientificParamChange = function () {
-    const demSlider = $('sci-dem-error-slider');
-    const trafficSelect = $('sci-traffic-scale-select');
-    const jammerSelect = $('sci-jammer-select');
+    const demSlider = $<HTMLInputElement>('sci-dem-error-slider');
+    const trafficSelect = $<HTMLSelectElement>('sci-traffic-scale-select');
+    const jammerSelect = $<HTMLSelectElement>('sci-jammer-select');
     const demVal = demSlider ? parseFloat(demSlider.value) : 0;
     const trafficVal = trafficSelect ? parseFloat(trafficSelect.value) : 1.0;
     const demLabel = $('sci-dem-error-val');
@@ -1074,12 +1084,12 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       }
     }
 
-    const relaySelect = $('sci-relay-select');
+    const relaySelect = $<HTMLSelectElement>('sci-relay-select');
     const activeRelayEnabled = relaySelect
       ? relaySelect.value === 'active'
       : state.latestTelemetry?.active_relay_enabled ?? false;
 
-    const fadingCqiSelect = $('sci-fading-cqi-select');
+    const fadingCqiSelect = $<HTMLSelectElement>('sci-fading-cqi-select');
     let ricianFadingEnabled = false;
     let cqiFeedbackDelayMs = 0;
     if (fadingCqiSelect) {
@@ -1122,7 +1132,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         : 'Deploy Active Two-Hop Ridge Relay [OFF]';
       btn.className = next ? 'primary' : 'secondary';
     }
-    const schedSel = $('sci-relay-select');
+    const schedSel = $<HTMLSelectElement>('sci-relay-select');
     if (schedSel) {
       schedSel.value = next ? 'active' : 'disabled';
     }
@@ -1141,12 +1151,12 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   };
 
   window.toggleAllHiFiPhysics = function() {
-    const att = $('toggle-hifi-attitude');
-    const ric = $('toggle-hifi-rician');
-    const harq = $('toggle-hifi-harq');
-    const dub = $('toggle-hifi-dubins');
-    const view = $('toggle-hifi-viewshed-parity');
-    const abr = $('toggle-hifi-abr');
+    const att = $<HTMLInputElement>('toggle-hifi-attitude');
+    const ric = $<HTMLInputElement>('toggle-hifi-rician');
+    const harq = $<HTMLInputElement>('toggle-hifi-harq');
+    const dub = $<HTMLInputElement>('toggle-hifi-dubins');
+    const view = $<HTMLInputElement>('toggle-hifi-viewshed-parity');
+    const abr = $<HTMLInputElement>('toggle-hifi-abr');
 
     const allOn = Boolean(
       att?.checked && ric?.checked && harq?.checked && dub?.checked && view?.checked && abr?.checked
@@ -1210,7 +1220,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   };
 
   (window as any).applyDemQuickPreset = function (presetId: string) {
-    const sel = $('dem-sector-select');
+    const sel = $<HTMLSelectElement>('dem-sector-select');
     if (sel) sel.value = presetId;
     (window as any).onDemSectorChange(presetId);
     const labels: Record<string, string> = {
@@ -1235,9 +1245,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       actions.sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' });
       actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' });
     } else {
-      state.activeBiomeId = sectorVal;
-      state.mapController?.setBiome(sectorVal);
-      actions.sendCommand({ type: 'SET_BIOME', biomeId: sectorVal });
+      const biomeVal = sectorVal as BiomeId;
+      state.activeBiomeId = biomeVal;
+      state.mapController?.setBiome(biomeVal);
+      actions.sendCommand({ type: 'SET_BIOME', biomeId: biomeVal });
       actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' });
     }
     (window as any).syncDemQuickPresetButtons?.(sectorVal);
@@ -1252,7 +1263,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     state.radarNeedsRender = true;
   };
   window.onBiomePolChange = function (pol: string) {
-    actions.sendCommand({ type: 'CONFIG_UPDATE', params: { polarizationMode: pol } });
+    actions.sendCommand({
+      type: 'CONFIG_UPDATE',
+      params: { polarizationMode: pol as PolarizationMode },
+    });
     state.radarNeedsRender = true;
   };
   window.onBiomeDustVisChange = function (visKm: string) {
@@ -1281,9 +1295,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   function updateBiomePhysicsUI(msg: any) {
     const nextBiome = msg?.biome_id || msg?.frame?.biome_id;
     if (typeof nextBiome === 'string' && nextBiome) {
-      state.activeBiomeId = nextBiome;
-      if (state.mapController && state.mapController.getBiome() !== nextBiome) {
-        state.mapController.setBiome(nextBiome);
+      const biomeVal = nextBiome as BiomeId;
+      state.activeBiomeId = biomeVal;
+      if (state.mapController && state.mapController.getBiome() !== biomeVal) {
+        state.mapController.setBiome(biomeVal);
       }
     }
     telemetryUpdaters.updateBiomePhysicsUI(msg);
@@ -1352,7 +1367,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
 
     const inputIds = ['node-agl-input', 'quick-node-agl-input', 'terrain-node-agl-input'];
     inputIds.forEach((id) => {
-      const inp = $(id);
+      const inp = $<HTMLInputElement>(id);
       if (!inp) return;
       inp.disabled = disabled;
       inp.title =
@@ -1376,7 +1391,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
 
     const revertInputs = () => {
       ['node-agl-input', 'quick-node-agl-input', 'terrain-node-agl-input'].forEach((id) => {
-        const inp = $(id);
+        const inp = $<HTMLInputElement>(id);
         if (inp) inp.value = authAgl.toFixed(1);
       });
     };
@@ -1428,14 +1443,14 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         if (node && typeof node.agl_m === 'number') authAgl = node.agl_m;
       }
       ['node-agl-input', 'quick-node-agl-input', 'terrain-node-agl-input'].forEach((id) => {
-        const inp = $(id);
+        const inp = $<HTMLInputElement>(id);
         if (inp) inp.value = authAgl.toFixed(1);
       });
       syncSelectedNodeAglUI();
     } else if (msg.accepted === true) {
       setAglFeedback(`AGL updated: ${state.pendingAglUpdate.agl.toFixed(1)} m`, false);
       ['node-agl-input', 'quick-node-agl-input', 'terrain-node-agl-input'].forEach((id) => {
-        const inp = $(id);
+        const inp = $<HTMLInputElement>(id);
         if (inp && state.pendingAglUpdate) inp.value = state.pendingAglUpdate.agl.toFixed(1);
       });
       state.pendingAglUpdate = null;
@@ -1532,25 +1547,25 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         state.nodeEditorTargetId = -1;
         const title = $('node-editor-title');
         if (title) title.textContent = 'Add New Ground Terminal';
-        const inputCallsign = $('node-input-callsign');
+        const inputCallsign = $<HTMLInputElement>('node-input-callsign');
         if (inputCallsign) inputCallsign.value = '';
-        const inputRole = $('node-input-role');
+        const inputRole = $<HTMLSelectElement>('node-input-role');
         if (inputRole) inputRole.value = 'soldier';
-        const inputX = $('node-input-x');
+        const inputX = $<HTMLInputElement>('node-input-x');
         if (inputX) inputX.value = '0';
-        const inputY = $('node-input-y');
+        const inputY = $<HTMLInputElement>('node-input-y');
         if (inputY) inputY.value = '0';
-        const inputAgl = $('node-input-agl');
+        const inputAgl = $<HTMLInputElement>('node-input-agl');
         if (inputAgl) inputAgl.value = '2.0';
-        const inputTx = $('node-input-tx-power');
+        const inputTx = $<HTMLInputElement>('node-input-tx-power');
         if (inputTx) inputTx.value = '36.0';
-        const inputBatCap = $('node-input-battery-capacity');
+        const inputBatCap = $<HTMLInputElement>('node-input-battery-capacity');
         if (inputBatCap) inputBatCap.value = '5000';
-        const inputBatLvl = $('node-input-battery-level');
+        const inputBatLvl = $<HTMLInputElement>('node-input-battery-level');
         if (inputBatLvl) inputBatLvl.value = '100';
-        const inputPri = $('node-input-priority');
+        const inputPri = $<HTMLInputElement>('node-input-priority');
         if (inputPri) inputPri.value = '1.0';
-        const inputCol = $('node-input-color');
+        const inputCol = $<HTMLInputElement>('node-input-color');
         if (inputCol) inputCol.value = '#e09f3e';
         if (form) form.style.display = 'block';
       };
@@ -1617,7 +1632,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       });
     }
 
-    const inspectorDelBtn = $('map-node-details')?.querySelector('[data-map-action="delete"]');
+    const inspectorDelBtn = $('map-node-details')?.querySelector<HTMLElement>('[data-map-action="delete"]');
     if (inspectorDelBtn) {
       armDestructiveConfirm(inspectorDelBtn, {
         armedLabel: 'Confirm Delete?',
@@ -1667,29 +1682,29 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         state.nodeEditorTargetId = state.selectedNodeId;
         const title = $('node-editor-title');
         if (title) title.textContent = `Edit Terminal ${state.selectedNodeId}`;
-        const inputCallsign = $('node-input-callsign');
+        const inputCallsign = $<HTMLInputElement>('node-input-callsign');
         if (inputCallsign) inputCallsign.value = node.name || `S${node.node_id}`;
-        const inputRole = $('node-input-role');
+        const inputRole = $<HTMLSelectElement>('node-input-role');
         if (inputRole) inputRole.value = node.node_type === 'mcp' ? 'mcp' : 'soldier';
-        const inputX = $('node-input-x');
+        const inputX = $<HTMLInputElement>('node-input-x');
         if (inputX) inputX.value = String(node.x_m ?? 0);
-        const inputY = $('node-input-y');
+        const inputY = $<HTMLInputElement>('node-input-y');
         if (inputY) inputY.value = String(node.y_m ?? 0);
-        const inputAgl = $('node-input-agl');
+        const inputAgl = $<HTMLInputElement>('node-input-agl');
         if (inputAgl) inputAgl.value = String(node.agl_m ?? 2.0);
-        const inputTx = $('node-input-tx-power');
+        const inputTx = $<HTMLInputElement>('node-input-tx-power');
         if (inputTx)
           inputTx.value = String(node.tx_power_dbm ?? (node.node_type === 'mcp' ? 43.0 : 36.0));
-        const inputBatCap = $('node-input-battery-capacity');
+        const inputBatCap = $<HTMLInputElement>('node-input-battery-capacity');
         if (inputBatCap)
           inputBatCap.value = String(
             node.battery_capacity_mah ?? (node.node_type === 'mcp' ? 20000 : 5000)
           );
-        const inputBatLvl = $('node-input-battery-level');
+        const inputBatLvl = $<HTMLInputElement>('node-input-battery-level');
         if (inputBatLvl) inputBatLvl.value = String(node.battery_level_pct ?? 100);
-        const inputPri = $('node-input-priority');
+        const inputPri = $<HTMLInputElement>('node-input-priority');
         if (inputPri) inputPri.value = String(node.tactical_priority ?? 1.0);
-        const inputCol = $('node-input-color');
+        const inputCol = $<HTMLInputElement>('node-input-color');
         if (inputCol)
           inputCol.value = node.color_hex || (node.node_type === 'mcp' ? '#e9c46a' : '#e09f3e');
         if (form) form.style.display = 'block';
@@ -1714,16 +1729,16 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
           );
           return;
         }
-        const callsign = $('node-input-callsign')?.value?.trim();
-        const role = $('node-input-role')?.value === 'mcp' ? 'mcp' : 'soldier';
-        const xM = Number($('node-input-x')?.value);
-        const yM = Number($('node-input-y')?.value);
-        const aglM = Number($('node-input-agl')?.value);
-        const txPowerDbm = Number($('node-input-tx-power')?.value);
-        const batteryCapacityMah = Number($('node-input-battery-capacity')?.value);
-        const batteryLevelPct = Number($('node-input-battery-level')?.value);
-        const tacticalPriority = Number($('node-input-priority')?.value);
-        const colorHex = $('node-input-color')?.value?.trim();
+        const callsign = $<HTMLInputElement>('node-input-callsign')?.value?.trim();
+        const role = $<HTMLSelectElement>('node-input-role')?.value === 'mcp' ? 'mcp' : 'soldier';
+        const xM = Number($<HTMLInputElement>('node-input-x')?.value);
+        const yM = Number($<HTMLInputElement>('node-input-y')?.value);
+        const aglM = Number($<HTMLInputElement>('node-input-agl')?.value);
+        const txPowerDbm = Number($<HTMLInputElement>('node-input-tx-power')?.value);
+        const batteryCapacityMah = Number($<HTMLInputElement>('node-input-battery-capacity')?.value);
+        const batteryLevelPct = Number($<HTMLInputElement>('node-input-battery-level')?.value);
+        const tacticalPriority = Number($<HTMLInputElement>('node-input-priority')?.value);
+        const colorHex = $<HTMLInputElement>('node-input-color')?.value?.trim();
 
         const coordVal = validateNodeCoordinates(xM, yM);
         if (!coordVal.valid) {
@@ -1809,7 +1824,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   function syncNodeDropdowns(nid: number) {
     ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'ntn-node-select', 'eud-node-select'].forEach(
       (id) => {
-        const sel = $(id);
+        const sel = $<HTMLSelectElement>(id);
         if (sel) sel.value = String(nid);
       }
     );
@@ -1841,7 +1856,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     actions.sendCommand({ type: 'SELECT_NODE', node_id: state.selectedNodeId });
     actions.updateSchedulerScrubberUI();
     if (state.latestTelemetry && state.latestTelemetry.nodes_telemetry) {
-      const search = $('terminal-search');
+      const search = $<HTMLInputElement>('terminal-search');
       actions.renderTerminalInventory(
         state.latestTelemetry.nodes_telemetry,
         state.selectedNodeId,
@@ -1853,10 +1868,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         ) || state.latestTelemetry.nodes_telemetry[0];
       actions.getDashboardAndAuthoringController().renderVsaScope(sel, state.latestTelemetry);
       state.selectedTrafficNodeId = state.selectedNodeId;
-      const trafficSel = $('traffic-node-select');
+      const trafficSel = $<HTMLSelectElement>('traffic-node-select');
       if (
         trafficSel &&
-        Array.from(trafficSel.options).some((o: any) => Number(o.value) === state.selectedNodeId)
+        Array.from(trafficSel.options).some((o: HTMLOptionElement) => Number(o.value) === state.selectedNodeId)
       ) {
         trafficSel.value = String(state.selectedNodeId);
       }
@@ -1873,14 +1888,14 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   };
 
   window.filterTerminalOptions = function(query) {
-    const sel = $('termNodeSelect');
+    const sel = $<HTMLSelectElement>('termNodeSelect');
     if (!sel) return;
     const q = String(query || '')
       .trim()
       .toLowerCase();
     let visible = 0;
-    Array.from(sel.options).forEach((option: any) => {
-      const match = !q || option.textContent.toLowerCase().includes(q);
+    Array.from(sel.options).forEach((option: HTMLOptionElement) => {
+      const match = !q || (option.textContent || '').toLowerCase().includes(q);
       option.hidden = !match;
       if (match) visible++;
     });
@@ -1950,7 +1965,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         if (state.currentTrafficSubtab === 'traffic') {
           actions.renderNetworkTrafficInventory(state.latestTelemetry);
         } else if (state.latestTelemetry.nodes_telemetry) {
-          const search = $('terminal-search');
+          const search = $<HTMLInputElement>('terminal-search');
           actions.renderTerminalInventory(
             state.latestTelemetry.nodes_telemetry,
             state.selectedNodeId,
@@ -2015,7 +2030,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     const activeTabId = document.querySelector('.tab-content.active')?.id || 'tab-overview';
     if (state.terrainMapMode === 'maplibre') {
       state.mapLibreInstance?.resize();
-    } else if (state.terrainMapMode === '3d') {
+    } else if ((state.terrainMapMode as string) === '3d') {
       state.threeController?.handleResize();
     } else if (radarCanvas) {
       syncCanvasDpr(radarCanvas);
@@ -2026,9 +2041,11 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       state.simTimelineRenderer.render();
     }
     if (activeTabId === 'tab-scheduler') {
-      [waterfallCanvas, $('sched-chart-utilization'), $('sched-chart-backlog')].forEach(
-        (c) => c && syncCanvasDpr(c)
-      );
+      [
+        waterfallCanvas,
+        $<HTMLCanvasElement>('sched-chart-utilization'),
+        $<HTMLCanvasElement>('sched-chart-backlog'),
+      ].forEach((c) => c && syncCanvasDpr(c));
       actions.drawWaterfall();
       actions.drawSchedulerCharts();
       if (state.latestTelemetry) {
@@ -2039,9 +2056,21 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       [terrainCanvas, polarAntennaCanvas, linkWaterfallCanvas].forEach(
         (c) => c && syncCanvasDpr(c)
       );
-      if (state.activeTerrainBounds && terrainTopViewport?.fitToBounds)
+      if (
+        state.activeTerrainBounds &&
+        typeof state.activeTerrainBounds.minX === 'number' &&
+        typeof state.activeTerrainBounds.maxX === 'number' &&
+        typeof state.activeTerrainBounds.minY === 'number' &&
+        typeof state.activeTerrainBounds.maxY === 'number' &&
+        terrainTopViewport?.fitToBounds
+      )
         terrainTopViewport.fitToBounds(
-          state.activeTerrainBounds,
+          {
+            minX: state.activeTerrainBounds.minX,
+            maxX: state.activeTerrainBounds.maxX,
+            minY: state.activeTerrainBounds.minY,
+            maxY: state.activeTerrainBounds.maxY,
+          },
           actions.getTerrainLayout(),
           0.08
         );
@@ -2054,11 +2083,11 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       actions.drawNetworkCharts();
       if (state.latestTelemetry) actions.renderQosSlaAnalyzer(state.latestTelemetry);
     } else if (activeTabId === 'tab-authoring') {
-      const fpCanvas = $('fp-vertical-profile-canvas');
+      const fpCanvas = $<HTMLCanvasElement>('fp-vertical-profile-canvas');
       if (fpCanvas) syncCanvasDpr(fpCanvas);
       renderFlightPlanVerticalProfile();
     } else if (activeTabId === 'tab-doc' && isDiagnosticsPanelVisible()) {
-      [$('worker-jitter-canvas'), $('twin-calibration-canvas')].forEach(
+      [$<HTMLCanvasElement>('worker-jitter-canvas'), $<HTMLCanvasElement>('twin-calibration-canvas')].forEach(
         (c) => c && syncCanvasDpr(c)
       );
       actions.renderWorkerJitterProfiler(
@@ -2066,7 +2095,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       );
       (window as any).renderTwinCalibrationScope?.();
     } else if (activeTabId === 'tab-soldier') {
-      const sc = $('soldier-phone-canvas');
+      const sc = $<HTMLCanvasElement>('soldier-phone-canvas');
       if (sc) syncCanvasDpr(sc);
     }
     syncFloatingOverlayLayout();
@@ -2108,7 +2137,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     }
     if (urlParams.has('view')) {
       const v = urlParams.get('view');
-      const select = $('network-view-mode');
+      const select = $<HTMLSelectElement>('network-view-mode');
       if (select && (v === 'individual' || v === 'aggregate')) {
         select.value = v;
         select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2121,7 +2150,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     const KEY = 'xband-tour-dismissed';
     if (welcome) welcome.hidden = true;
     $('welcome-dismiss')?.addEventListener('click', () => {
-      welcome.hidden = true;
+      if (welcome) welcome.hidden = true;
       try {
         localStorage.setItem(KEY, '1');
       } catch (_) {}
@@ -2299,9 +2328,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         const isTimelineHist = Boolean(
           state.simTimelineController && state.simTimelineController.isHistoricalInspecting
         );
-        const histSnap = isTimelineHist
-          ? state.simTimelineController.getActiveSpatialSnapshot()
-          : null;
+        const histSnap =
+          isTimelineHist && state.simTimelineController
+            ? state.simTimelineController.getActiveSpatialSnapshot()
+            : null;
         let targetXM = Number.NaN,
           targetYM = Number.NaN;
         if (histSnap) {
@@ -2401,13 +2431,15 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     );
     $('traj-speed-slider')?.addEventListener('input', (e: any) => {
       const v = e.target.value;
-      if ($('traj-speed-mps')) $('traj-speed-mps').value = v;
+      const spdMps = $<HTMLInputElement>('traj-speed-mps');
+      if (spdMps) spdMps.value = v;
       setTrajectoryMessage(`Draft speed: ${Number(v).toFixed(1)} m/s. Apply to commit.`);
     });
     $('traj-speed-mps')?.addEventListener('input', (e: any) => {
       const v = parseFloat(e.target.value);
-      if (Number.isFinite(v) && $('traj-speed-slider'))
-        $('traj-speed-slider').value = String(Math.min(300, Math.max(0, v)));
+      const spdSlider = $<HTMLInputElement>('traj-speed-slider');
+      if (Number.isFinite(v) && spdSlider)
+        spdSlider.value = String(Math.min(300, Math.max(0, v)));
       setTrajectoryMessage(
         `Draft speed: ${Number.isFinite(v) ? v.toFixed(1) : '--'} m/s. Apply to commit.`
       );
@@ -2427,7 +2459,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         return;
       }
       updateAltitudeModeUI(newMode);
-      const targetAgl = parseFloat($('traj-target-agl')?.value || '1500');
+      const targetAgl = parseFloat($<HTMLInputElement>('traj-target-agl')?.value || '1500');
       actions.sendCommand({
         type: 'CONFIG_UPDATE',
         params: {
@@ -2460,10 +2492,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     $('trajectory-add-point')?.addEventListener('click', () => {
       const draft = trajectoryEditor.preview;
       const count = draft.mode === 'waypoints' ? draft.points.length : 0;
-      const acn = state.latestTelemetry?.acn_telemetry || {};
+      const acn = state.latestTelemetry?.acn_telemetry;
       addWaypointAt(
-        state.isMouseInsideRadar ? state.mouseWorldX : (acn.pos_x || 0) + count * 1000,
-        state.isMouseInsideRadar ? state.mouseWorldY : acn.pos_y || 0
+        state.isMouseInsideRadar ? state.mouseWorldX : (acn?.pos_x || 0) + count * 1000,
+        state.isMouseInsideRadar ? state.mouseWorldY : acn?.pos_y || 0
       );
     });
     $('trajectory-place-point')?.addEventListener('click', () => {
@@ -2636,8 +2668,8 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   }
 
   function initPlaybackSpeedControls() {
-    const slider = $('sim-speed-slider');
-    const input = $('sim-speed-input');
+    const slider = $<HTMLInputElement>('sim-speed-slider');
+    const input = $<HTMLInputElement>('sim-speed-input');
     for (const el of [slider, input]) {
       if (!el) continue;
       el.min = String(PLAYBACK_SPEED.min);
@@ -3085,9 +3117,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   });
 
   function finalizeDomSetup() {
-    state.mapLayersPanel = $('radar-container')
+    const radarContainer = $('radar-container');
+    state.mapLayersPanel = radarContainer
       ? new MapLayersPanel({
-          container: $('radar-container'),
+          container: radarContainer,
           registry: mapLayerRegistry,
           onChanged: applyMapLayersToAllRenderers,
           onOpenChange: (open: boolean) => {

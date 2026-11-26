@@ -1,5 +1,16 @@
-// @ts-nocheck — MapLibre GL stage controller, GeoJSON/raster overlays, camera sync & map mode switching
+// MapLibre GL stage controller, GeoJSON/raster overlays, camera sync & map mode switching
+type DataDrivenPropertyValueSpecification<T> =
+  import('maplibre-gl').DataDrivenPropertyValueSpecification<T>;
+type ExpressionSpecification = import('maplibre-gl').ExpressionSpecification;
+type GeoJSONSource = import('maplibre-gl').GeoJSONSource;
+type ImageSource = import('maplibre-gl').ImageSource;
+type MapLibreMap = import('maplibre-gl').Map;
+type MapLayerMouseEvent = import('maplibre-gl').MapLayerMouseEvent;
+type MapMouseEvent = import('maplibre-gl').MapMouseEvent;
+type StyleSpecification = import('maplibre-gl').StyleSpecification;
 import type { AppContext } from './appContext.ts';
+import type { TerrainBoundsLike } from './windowBindings.d.ts';
+import type { AcnTelemetry, NodeTelemetryItem, TelemetryFrame } from '../shared/workerProtocol.ts';
 import { cartesianToGeodetic, geodeticToCartesian, METERS_PER_DEG_LON } from '../core/geodesy.ts';
 import { obstacleContainsPoint, obstacleFootprintPoints } from '../core/obstacles.ts';
 import { evaluateCursorRfProbe } from '../core/cursorProbeEngine.ts';
@@ -7,7 +18,7 @@ import { classifyAndStyleLink } from '../ui/mapLinkStyles.ts';
 import { getMapZoomLodTier } from '../ui/workbench/mapLayerRegistry.ts';
 import { computeRfOverlayGeometry, buildRfOverlayGeoJson } from '../ui/workbench/mapRfOverlay.ts';
 import { HIGHLAND_THEME } from '../ui/workbench/chartTheme.ts';
-import { sampleDemSafe } from '../ui/terrainToolboxAnalysis.ts';
+import { sampleDemSafe, type TransectSampleStatus } from '../ui/terrainToolboxAnalysis.ts';
 import { TRANSECT_STATUS_COLORS } from '../ui/terrainToolboxCharts.ts';
 import {
   DEFAULT_WORLD_SATELLITE_TILE_URL,
@@ -17,7 +28,7 @@ import {
   isExternalHttpUrl,
 } from '../ui/worldTileLayer.ts';
 
-export function initMapLibreController(ctx: AppContext) {
+export function initMapLibreController(ctx: AppContext): void {
   const { state, engines, dom, actions } = ctx;
   const { $, TRANSPARENT_1X1_PNG } = dom;
   const {
@@ -27,18 +38,19 @@ export function initMapLibreController(ctx: AppContext) {
     historyController,
   } = engines;
 
-  let mapLibreInitPromise = null;
+  let mapLibreInitPromise: Promise<void> | null = null;
   let mapSyncSeq = 0;
   let activeMapSyncToken = 0;
-  let activeMapSyncTimer = null;
-  const mapLibreSourceHashes = new Map();
+  let activeMapSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  const mapLibreSourceHashes = new Map<string, string>();
 
-  function clearMapLibreSourceHashes() {
+  function clearMapLibreSourceHashes(): void {
     mapLibreSourceHashes.clear();
   }
 
-  function isMapLibreDynamicSourceBusy() {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized) return false;
+  function isMapLibreDynamicSourceBusy(): boolean {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized) return false;
     const ids = [
       'maplibre-acn',
       'maplibre-acn-vector',
@@ -49,25 +61,28 @@ export function initMapLibreController(ctx: AppContext) {
       'maplibre-travelled',
     ];
     return ids.some(id => {
-      const src = state.mapLibreInstance.getSource(id);
+      const src = map.getSource(id) as
+        | { _workerUpdates?: { _sending?: boolean; isIdle?: () => boolean } }
+        | undefined;
       const q = src?._workerUpdates;
       return Boolean(q && (q._sending || (typeof q.isIdle === 'function' && !q.isIdle())));
     });
   }
 
-  function setMapLibreSourceData(id, data, onlyWhenChanged = false) {
-    if (!state.mapLibreInstance) return;
-    const source = state.mapLibreInstance.getSource(id);
+  function setMapLibreSourceData(id: string, data: unknown, onlyWhenChanged = false): void {
+    const map = state.mapLibreInstance;
+    if (!map) return;
+    const source = map.getSource(id) as GeoJSONSource | undefined;
     if (!source || typeof source.setData !== 'function') return;
     if (onlyWhenChanged) {
       const hash = JSON.stringify(data);
       if (mapLibreSourceHashes.get(id) === hash) return;
       mapLibreSourceHashes.set(id, hash);
     }
-    source.setData(data);
+    source.setData(data as Parameters<GeoJSONSource['setData']>[0]);
   }
 
-  function beginMapLibreCameraSync(durationMs = 0) {
+  function beginMapLibreCameraSync(durationMs = 0): number {
     if (activeMapSyncTimer !== null) {
       clearTimeout(activeMapSyncTimer);
       activeMapSyncTimer = null;
@@ -83,7 +98,7 @@ export function initMapLibreController(ctx: AppContext) {
     return token;
   }
 
-  function endMapLibreCameraSync(token) {
+  function endMapLibreCameraSync(token: number): void {
     if (activeMapSyncTimer !== null && activeMapSyncToken === token) {
       clearTimeout(activeMapSyncTimer);
       activeMapSyncTimer = null;
@@ -93,8 +108,8 @@ export function initMapLibreController(ctx: AppContext) {
     }
   }
 
-  function syncRangeButtonHighlights(rangeM) {
-    const presets = [
+  function syncRangeButtonHighlights(rangeM: number): void {
+    const presets: Array<[string, number]> = [
       ['zoom-30', 30000],
       ['zoom-60', 60000],
       ['zoom-100', 100000],
@@ -108,19 +123,20 @@ export function initMapLibreController(ctx: AppContext) {
     });
   }
 
-  function getMaxRadarRangeM() {
+  function getMaxRadarRangeM(): number {
     return state.activeTerrainMode === 'real' || state.terrainMapMode === 'maplibre' ? 16000000 : 300000;
   }
 
-  function syncMapLibreCameraFromRadarState(duration = 0, resetOrientation = false) {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized) return;
-    const container = state.mapLibreInstance.getContainer();
+  function syncMapLibreCameraFromRadarState(duration = 0, resetOrientation = false): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized) return;
+    const container = map.getContainer();
     const cw = Math.max(100, container?.clientWidth || 600);
     const ch = Math.max(100, container?.clientHeight || 500);
     const limitingSpan = Math.min(cw, ch) * 0.94;
     const token = beginMapLibreCameraSync(duration);
     const centerGeo = cartesianToGeodetic(state.panOffsetX_m, state.panOffsetY_m);
-    const clampedCenter = [
+    const clampedCenter: [number, number] = [
       Math.max(-180, Math.min(180, (((centerGeo.lonDeg + 180) % 360) + 360) % 360 - 180)),
       Math.max(-80, Math.min(80, centerGeo.latDeg)),
     ];
@@ -136,12 +152,12 @@ export function initMapLibreController(ctx: AppContext) {
       };
       if (duration <= 0) {
         try {
-          state.mapLibreInstance.jumpTo(camOpts);
+          map.jumpTo(camOpts);
         } finally {
           endMapLibreCameraSync(token);
         }
       } else {
-        state.mapLibreInstance.easeTo(camOpts);
+        map.easeTo(camOpts);
       }
       return;
     }
@@ -155,8 +171,8 @@ export function initMapLibreController(ctx: AppContext) {
       state.panOffsetX_m + state.currentRadarRangeM,
       state.panOffsetY_m + state.currentRadarRangeM
     );
-    const sw = [Math.max(-179.5, Math.min(179.5, swRaw[0])), Math.max(-84, Math.min(84, swRaw[1]))];
-    const ne = [Math.max(-179.5, Math.min(179.5, neRaw[0])), Math.max(-84, Math.min(84, neRaw[1]))];
+    const sw: [number, number] = [Math.max(-179.5, Math.min(179.5, swRaw[0])), Math.max(-84, Math.min(84, swRaw[1]))];
+    const ne: [number, number] = [Math.max(-179.5, Math.min(179.5, neRaw[0])), Math.max(-84, Math.min(84, neRaw[1]))];
     const fitOpts = {
       padding: { top: padV, bottom: padV, left: padH, right: padH },
       duration,
@@ -165,17 +181,18 @@ export function initMapLibreController(ctx: AppContext) {
     };
     if (duration <= 0) {
       try {
-        state.mapLibreInstance.fitBounds([sw, ne], fitOpts);
+        map.fitBounds([sw, ne], fitOpts);
       } finally {
         endMapLibreCameraSync(token);
       }
     } else {
-      state.mapLibreInstance.fitBounds([sw, ne], fitOpts);
+      map.fitBounds([sw, ne], fitOpts);
     }
   }
 
-  function easeMapLibreToLocalCenter(xM, yM, duration = 250, resetOrientation = false) {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized || !Number.isFinite(xM) || !Number.isFinite(yM)) return;
+  function easeMapLibreToLocalCenter(xM: number, yM: number, duration = 250, resetOrientation = false): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized || !Number.isFinite(xM) || !Number.isFinite(yM)) return;
     const token = beginMapLibreCameraSync(duration);
     const easeOpts = {
       center: mapLibreCoordinate(xM, yM),
@@ -184,18 +201,19 @@ export function initMapLibreController(ctx: AppContext) {
     };
     if (duration <= 0) {
       try {
-        state.mapLibreInstance.easeTo(easeOpts);
+        map.easeTo(easeOpts);
       } finally {
         endMapLibreCameraSync(token);
       }
     } else {
-      state.mapLibreInstance.easeTo(easeOpts);
+      map.easeTo(easeOpts);
     }
   }
 
-  function syncRadarStateFromMapLibreCamera() {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized) return;
-    const center = state.mapLibreInstance.getCenter();
+  function syncRadarStateFromMapLibreCamera(): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized) return;
+    const center = map.getCenter();
     const wrappedLng = (((center.lng + 180) % 360) + 360) % 360 - 180;
     const clampedLat = Math.max(-85, Math.min(85, center.lat));
     const localCenter = geodeticToUnwrappedEnu(clampedLat, wrappedLng);
@@ -203,13 +221,13 @@ export function initMapLibreController(ctx: AppContext) {
       state.panOffsetX_m = localCenter.xM;
       state.panOffsetY_m = localCenter.yM;
     }
-    const container = state.mapLibreInstance.getContainer();
+    const container = map.getContainer();
     const cw = container?.clientWidth || 600;
     const ch = container?.clientHeight || 500;
     const halfSpanPx = Math.min(cw, ch) * 0.47;
     if (cw >= 100 && ch >= 100 && halfSpanPx > 10) {
-      const leftGeo = state.mapLibreInstance.unproject([cw / 2 - halfSpanPx, ch / 2]);
-      const rightGeo = state.mapLibreInstance.unproject([cw / 2 + halfSpanPx, ch / 2]);
+      const leftGeo = map.unproject([cw / 2 - halfSpanPx, ch / 2]);
+      const rightGeo = map.unproject([cw / 2 + halfSpanPx, ch / 2]);
       const deltaLon = Math.abs(rightGeo.lng - leftGeo.lng);
       const estRangeM = (deltaLon * METERS_PER_DEG_LON) / 2;
       if (Number.isFinite(estRangeM) && estRangeM > 0) {
@@ -220,7 +238,7 @@ export function initMapLibreController(ctx: AppContext) {
     }
   }
 
-  function mapLibreCoordinate(xM, yM) {
+  function mapLibreCoordinate(xM: number, yM: number): [number, number] {
     if (state.mapController && typeof state.mapController.projectEnuToGeodetic === 'function') {
       const geo = state.mapController.projectEnuToGeodetic(xM, yM);
       return [geo.lonDeg, geo.latDeg];
@@ -230,10 +248,10 @@ export function initMapLibreController(ctx: AppContext) {
   }
 
   function emptyFeatureCollection() {
-    return { type: 'FeatureCollection', features: [] };
+    return { type: 'FeatureCollection' as const, features: [] };
   }
 
-  function mapLibrePointToLocal(coordinate) {
+  function mapLibrePointToLocal(coordinate: readonly number[] | null | undefined) {
     const longitude = Number(coordinate?.[0]);
     const latitude = Number(coordinate?.[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
@@ -241,7 +259,7 @@ export function initMapLibreController(ctx: AppContext) {
     return { lng: longitude, lat: latitude, x: local.xM, y: local.yM };
   }
 
-  function geographicDistanceM(a, b) {
+  function geographicDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
     const earthRadiusM = 6371008.8;
     const lat1 = (Number(a.lat) * Math.PI) / 180;
     const lat2 = (Number(b.lat) * Math.PI) / 180;
@@ -251,15 +269,18 @@ export function initMapLibreController(ctx: AppContext) {
     return 2 * earthRadiusM * Math.asin(Math.min(1, Math.sqrt(h)));
   }
 
-  function mapLibreToolPoint(featureOrCoordinate) {
+  function mapLibreToolPoint(featureOrCoordinate: readonly number[] | { geometry?: { coordinates?: readonly number[] } } | null) {
     const coordinate = Array.isArray(featureOrCoordinate)
       ? featureOrCoordinate
-      : featureOrCoordinate?.geometry?.coordinates;
+      : featureOrCoordinate && 'geometry' in featureOrCoordinate
+        ? featureOrCoordinate.geometry?.coordinates
+        : undefined;
     return mapLibrePointToLocal(coordinate);
   }
 
-  function updateMapLibreToolSources() {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized) return;
+  function updateMapLibreToolSources(): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized) return;
     const draftCoordinates = state.terrainRegionDraft.map(point => [point.lng, point.lat]);
     setMapLibreSourceData(
       'maplibre-measurement',
@@ -301,10 +322,10 @@ export function initMapLibreController(ctx: AppContext) {
     );
 
     // Mode 2 Segmented Transect
-    const segFeatures = [];
-    const markerFeatures = [];
+    const segFeatures: Array<Record<string, unknown>> = [];
+    const markerFeatures: Array<Record<string, unknown>> = [];
     if (state.tbTransectResult && state.tbTransectResult.samples.length >= 2) {
-      let curStatus = state.tbTransectResult.samples[0].status;
+      let curStatus: TransectSampleStatus = state.tbTransectResult.samples[0].status;
       let runCoords = [[state.tbTransectResult.samples[0].lonDeg, state.tbTransectResult.samples[0].latDeg]];
       for (let i = 1; i < state.tbTransectResult.samples.length; i++) {
         const s = state.tbTransectResult.samples[i];
@@ -438,7 +459,7 @@ export function initMapLibreController(ctx: AppContext) {
     );
 
     // M4: Image raster overlays for Viewshed & Bridge Heatmap
-    const vsSrc = state.mapLibreInstance.getSource('maplibre-probe-viewshed');
+    const vsSrc = map.getSource('maplibre-probe-viewshed') as ImageSource | undefined;
     if (vsSrc && typeof vsSrc.updateImage === 'function' && state.tbViewshedNeedsMapLibreSync) {
       state.tbViewshedNeedsMapLibreSync = false;
       if (state.tbViewshedResult?.isSiteWithinCoverage && state.tbViewshedCanvas) {
@@ -452,7 +473,7 @@ export function initMapLibreController(ctx: AppContext) {
         vsSrc.updateImage({ url: state.tbViewshedCanvas.toDataURL('image/png'), coordinates: [nw, ne, se, sw] });
       }
     }
-    const brSrc = state.mapLibreInstance.getSource('maplibre-bridge-heatmap');
+    const brSrc = map.getSource('maplibre-bridge-heatmap') as ImageSource | undefined;
     if (brSrc && typeof brSrc.updateImage === 'function' && state.tbBridgeNeedsMapLibreSync) {
       state.tbBridgeNeedsMapLibreSync = false;
       if (state.tbBridgeResult?.valid && state.tbBridgeCanvas) {
@@ -466,8 +487,9 @@ export function initMapLibreController(ctx: AppContext) {
     }
   }
 
-  function mapLibreToolClick(event) {
-    if (!state.mapLibreInstance) return;
+  function mapLibreToolClick(event: MapMouseEvent): void {
+    const map = state.mapLibreInstance;
+    if (!map) return;
     if (state.terrainToolMode === 'idle' && state.tbActiveMode !== 'probe') return;
     const point = mapLibreToolPoint(event.lngLat ? [event.lngLat.lng, event.lngLat.lat] : null);
     if (!point) return;
@@ -486,15 +508,16 @@ export function initMapLibreController(ctx: AppContext) {
     actions.handleToolboxMapClick(point);
   }
 
-  function findMapLibreObstacleIdAtPoint(point, padPx = 12) {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized || !point) return null;
+  function findMapLibreObstacleIdAtPoint(point: { x: number; y: number } | null | undefined, padPx = 12): string | null {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized || !point) return null;
     const mapCtx = actions.getContextualMapContext();
     if (!mapLayerRegistry.getEffectiveVisibility('entities.obstacles', mapCtx)) return null;
     const layers = ['maplibre-obstacles-fill', 'maplibre-obstacles-line'].filter(id =>
-      state.mapLibreInstance.getLayer(id)
+      map.getLayer(id)
     );
     if (layers.length) {
-      const renderedHits = state.mapLibreInstance.queryRenderedFeatures(
+      const renderedHits = map.queryRenderedFeatures(
         [
           [point.x - padPx, point.y - padPx],
           [point.x + padPx, point.y + padPx],
@@ -504,10 +527,10 @@ export function initMapLibreController(ctx: AppContext) {
       const renderedId = renderedHits[0]?.properties?.obstacleId;
       if (typeof renderedId === 'string' && renderedId) return renderedId;
     }
-    const coordinate = state.mapLibreInstance.unproject(point);
+    const coordinate = map.unproject([point.x, point.y]);
     const local = geodeticToCartesian(coordinate.lat, coordinate.lng);
     if (!Number.isFinite(local.xM) || !Number.isFinite(local.yM)) return null;
-    const edgeGeo = state.mapLibreInstance.unproject([point.x + padPx, point.y]);
+    const edgeGeo = map.unproject([point.x + padPx, point.y]);
     const edgeLocal = geodeticToCartesian(edgeGeo.lat, edgeGeo.lng);
     const toleranceM =
       Number.isFinite(edgeLocal.xM) && Number.isFinite(edgeLocal.yM)
@@ -515,7 +538,7 @@ export function initMapLibreController(ctx: AppContext) {
         : 500;
     const obsList =
       obstacleEditor.draft && obstacleEditor.draft.length > 0 ? obstacleEditor.draft : obstacleEditor.committed;
-    let bestId = null;
+    let bestId: string | null = null;
     let bestDist = Number.POSITIVE_INFINITY;
     for (const obs of obsList) {
       if (!obstacleContainsPoint(obs, local.xM, local.yM, toleranceM)) continue;
@@ -528,9 +551,10 @@ export function initMapLibreController(ctx: AppContext) {
     return bestId;
   }
 
-  function updateMapLibreCursor(point) {
-    if (!state.mapLibreInstance) return;
-    const canvas = state.mapLibreInstance.getCanvas();
+  function updateMapLibreCursor(point?: { x: number; y: number } | null): void {
+    const map = state.mapLibreInstance;
+    if (!map) return;
+    const canvas = map.getCanvas();
     const isHistBlocked = Boolean(
       historyController.isInspecting ||
         (state.simTimelineController && state.simTimelineController.isHistoricalInspecting)
@@ -559,14 +583,14 @@ export function initMapLibreController(ctx: AppContext) {
           return;
         }
       } else if (obstacleEditor.mode === 'navigate' && trajectoryEditor.activeMode !== 'waypoints') {
-        const queryLayers = [];
+        const queryLayers: string[] = [];
         if (mapLayerRegistry.getEffectiveVisibility('entities.groundNodes', mapCtx)) {
-          if (state.mapLibreInstance.getLayer('maplibre-nodes-circle')) queryLayers.push('maplibre-nodes-circle');
-          if (state.mapLibreInstance.getLayer('maplibre-nodes-mcp')) queryLayers.push('maplibre-nodes-mcp');
+          if (map.getLayer('maplibre-nodes-circle')) queryLayers.push('maplibre-nodes-circle');
+          if (map.getLayer('maplibre-nodes-mcp')) queryLayers.push('maplibre-nodes-mcp');
         }
         if (mapLayerRegistry.getEffectiveVisibility('entities.acn', mapCtx)) {
-          if (state.mapLibreInstance.getLayer('maplibre-acn-marker')) queryLayers.push('maplibre-acn-marker');
-          else if (state.mapLibreInstance.getLayer('maplibre-acn-circle')) queryLayers.push('maplibre-acn-circle');
+          if (map.getLayer('maplibre-acn-marker')) queryLayers.push('maplibre-acn-marker');
+          else if (map.getLayer('maplibre-acn-circle')) queryLayers.push('maplibre-acn-circle');
         }
         if (mapLayerRegistry.getEffectiveVisibility('comm.links', mapCtx)) {
           [
@@ -577,10 +601,10 @@ export function initMapLibreController(ctx: AppContext) {
             'maplibre-links-outage',
             'maplibre-links-unknown',
           ].forEach(id => {
-            if (state.mapLibreInstance.getLayer(id)) queryLayers.push(id);
+            if (map.getLayer(id)) queryLayers.push(id);
           });
         }
-        if (queryLayers.length && state.mapLibreInstance.queryRenderedFeatures(point, { layers: queryLayers }).length > 0) {
+        if (queryLayers.length && map.queryRenderedFeatures([point.x, point.y], { layers: queryLayers }).length > 0) {
           canvas.style.cursor = 'pointer';
           return;
         }
@@ -589,10 +613,10 @@ export function initMapLibreController(ctx: AppContext) {
     canvas.style.cursor = '';
   }
 
-  function terrainRamp(value, minElevation, maxElevation) {
+  function terrainRamp(value: number, minElevation: number, maxElevation: number): [number, number, number] {
     const span = Math.max(1, maxElevation - minElevation);
     const t = Math.max(0, Math.min(1, (value - minElevation) / span));
-    const stops = [
+    const stops: Array<[number, [number, number, number]]> = [
       [0.0, [26, 78, 121]],
       [0.2, [44, 129, 116]],
       [0.42, [117, 166, 90]],
@@ -604,13 +628,17 @@ export function initMapLibreController(ctx: AppContext) {
       if (t <= stops[i][0]) {
         const [a, b] = [stops[i - 1], stops[i]];
         const f = (t - a[0]) / (b[0] - a[0]);
-        return [0, 1, 2].map(channel => Math.round(a[1][channel] + (b[1][channel] - a[1][channel]) * f));
+        return [
+          Math.round(a[1][0] + (b[1][0] - a[1][0]) * f),
+          Math.round(a[1][1] + (b[1][1] - a[1][1]) * f),
+          Math.round(a[1][2] + (b[1][2] - a[1][2]) * f),
+        ];
       }
     }
     return stops[stops.length - 1][1];
   }
 
-  function renderMapLibreTerrainRaster() {
+  function renderMapLibreTerrainRaster(): void {
     if (!state.mapLibreTerrainRaster) return;
     const { elevations, width, height, metadata } = state.mapLibreTerrainRaster;
     const maxDimension = 1024;
@@ -625,7 +653,7 @@ export function initMapLibreController(ctx: AppContext) {
     const image = context.createImageData(outputWidth, outputHeight);
     const minElevation = Number(metadata.minElevationM);
     const maxElevation = Number(metadata.maxElevationM);
-    const sample = (row, column) => {
+    const sample = (row: number, column: number): number => {
       const r = Math.max(0, Math.min(height - 1, row));
       const c = Math.max(0, Math.min(width - 1, column));
       return elevations[r * width + c];
@@ -652,7 +680,11 @@ export function initMapLibreController(ctx: AppContext) {
             0.35,
             Math.min(1.25, 0.78 - ((dx + dy) / Math.max(1, maxElevation - minElevation)) * 5)
           );
-          color = color.map(channel => Math.round(Math.max(0, Math.min(255, channel * shade))));
+          color = [
+            Math.round(Math.max(0, Math.min(255, color[0] * shade))),
+            Math.round(Math.max(0, Math.min(255, color[1] * shade))),
+            Math.round(Math.max(0, Math.min(255, color[2] * shade))),
+          ];
         }
         image.data[pixel] = color[0];
         image.data[pixel + 1] = color[1];
@@ -671,9 +703,10 @@ export function initMapLibreController(ctx: AppContext) {
     applyMapLibreTerrainRaster();
   }
 
-  function applyMapLibreTerrainRaster() {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized) return;
-    const source = state.mapLibreInstance.getSource('maplibre-hgt');
+  function applyMapLibreTerrainRaster(): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized) return;
+    const source = map.getSource('maplibre-hgt') as ImageSource | undefined;
     if (!source) return;
     if (state.tbBackdropMode !== 'relief' && state.tbBackdropCanvas && state.tbSlopeRidgeGrid) {
       const b = state.tbSlopeRidgeGrid.bounds;
@@ -687,13 +720,17 @@ export function initMapLibreController(ctx: AppContext) {
           coordinates: [nw, ne, se, sw],
         });
       }
-    } else if (state.mapLibreTerrainRaster && typeof source.updateImage === 'function') {
+    } else if (
+      state.mapLibreTerrainRaster &&
+      state.mapLibreTerrainRaster.coordinates.length === 4 &&
+      typeof source.updateImage === 'function'
+    ) {
       source.updateImage({
         url: state.mapLibreTerrainRaster.dataUrl,
         coordinates: state.mapLibreTerrainRaster.coordinates,
       });
     }
-    if (state.mapLibreInstance.getLayer('maplibre-hgt-layer')) {
+    if (map.getLayer('maplibre-hgt-layer')) {
       const visTerrain = mapLayerRegistry.getEffectiveVisibility(
         'base.terrainDem',
         actions.getContextualMapContext()
@@ -701,8 +738,8 @@ export function initMapLibreController(ctx: AppContext) {
       const opTerrain = mapLayerRegistry.getLayerOpacity('base.terrainDem');
       state.mapLibreTerrainVisible = visTerrain;
       state.mapLibreTerrainOpacity = opTerrain;
-      state.mapLibreInstance.setPaintProperty('maplibre-hgt-layer', 'raster-opacity', visTerrain ? opTerrain : 0);
-      state.mapLibreInstance.setLayoutProperty(
+      map.setPaintProperty('maplibre-hgt-layer', 'raster-opacity', visTerrain ? opTerrain : 0);
+      map.setLayoutProperty(
         'maplibre-hgt-layer',
         'visibility',
         visTerrain ? 'visible' : 'none'
@@ -710,17 +747,19 @@ export function initMapLibreController(ctx: AppContext) {
     }
   }
 
-  function ensureMapLibreTerrainLayer() {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized || !state.mapLibreTerrainRaster) return;
-    if (!state.mapLibreInstance.getSource('maplibre-hgt')) {
-      state.mapLibreInstance.addSource('maplibre-hgt', {
+  function ensureMapLibreTerrainLayer(): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized || !state.mapLibreTerrainRaster) return;
+    if (state.mapLibreTerrainRaster.coordinates.length !== 4) return;
+    if (!map.getSource('maplibre-hgt')) {
+      map.addSource('maplibre-hgt', {
         type: 'image',
         url: state.mapLibreTerrainRaster.dataUrl,
         coordinates: state.mapLibreTerrainRaster.coordinates,
       });
     }
-    if (!state.mapLibreInstance.getLayer('maplibre-hgt-layer')) {
-      state.mapLibreInstance.addLayer({
+    if (!map.getLayer('maplibre-hgt-layer')) {
+      map.addLayer({
         id: 'maplibre-hgt-layer',
         type: 'raster',
         source: 'maplibre-hgt',
@@ -732,7 +771,7 @@ export function initMapLibreController(ctx: AppContext) {
     applyMapLibreTerrainRaster();
   }
 
-  function setMapLibreTerrainRaster(elevations, metadata) {
+  function setMapLibreTerrainRaster(elevations: Float32Array, metadata: TerrainBoundsLike): void {
     if (!(elevations instanceof Float32Array) || !metadata) return;
     const width = Number(metadata.rasterWidth);
     const height = Number(metadata.rasterHeight);
@@ -742,16 +781,22 @@ export function initMapLibreController(ctx: AppContext) {
     ensureMapLibreTerrainLayer();
   }
 
-  function setMapLibreLayerVisibility(layerId, visible) {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized) return;
-    if (!state.mapLibreInstance.getLayer(layerId)) return;
-    state.mapLibreInstance.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+  function setMapLibreLayerVisibility(layerId: string, visible: boolean): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized) return;
+    if (!map.getLayer(layerId)) return;
+    map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
   }
 
-  function setMapLibreLayerOpacity(layerId, prop, value) {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized) return;
-    if (!state.mapLibreInstance.getLayer(layerId)) return;
-    state.mapLibreInstance.setPaintProperty(layerId, prop, value);
+  function setMapLibreLayerOpacity(
+    layerId: string,
+    prop: Parameters<MapLibreMap['setPaintProperty']>[1],
+    value: Parameters<MapLibreMap['setPaintProperty']>[2]
+  ): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized) return;
+    if (!map.getLayer(layerId)) return;
+    map.setPaintProperty(layerId, prop, value);
   }
 
   function applyMapLibreLayerState() {
@@ -892,8 +937,8 @@ export function initMapLibreController(ctx: AppContext) {
     setMapLibreLayerVisibility('maplibre-bridge-heatmap-layer', visMeas && Boolean(state.tbBridgeResult?.valid));
   }
 
-  function buildGeoCircleRing(centerXM, centerYM, radiusM, segments = 64) {
-    const ring = [];
+  function buildGeoCircleRing(centerXM: number, centerYM: number, radiusM: number, segments = 64): [number, number][] {
+    const ring: [number, number][] = [];
     for (let i = 0; i <= segments; i++) {
       const theta = (2 * Math.PI * i) / segments;
       ring.push(mapLibreCoordinate(centerXM + Math.cos(theta) * radiusM, centerYM + Math.sin(theta) * radiusM));
@@ -901,19 +946,22 @@ export function initMapLibreController(ctx: AppContext) {
     return ring;
   }
 
-  function updateMapLibreOverlay() {
-    if (!state.mapLibreInstance || !state.mapLibreInitialized || !state.latestTelemetry) return;
+  function updateMapLibreOverlay(): void {
+    const map = state.mapLibreInstance;
+    if (!map || !state.mapLibreInitialized || !state.latestTelemetry) return;
     const mapCtx = actions.getContextualMapContext();
     const simTimelineController = state.simTimelineController;
     const isHist = Boolean(simTimelineController && simTimelineController.isHistoricalInspecting);
-    const histSnap = isHist ? simTimelineController.getActiveSpatialSnapshot() : null;
+    const histSnap = isHist && simTimelineController ? simTimelineController.getActiveSpatialSnapshot() : null;
 
-    const liveAcn = state.latestTelemetry.acn_telemetry || {};
-    const acnX = Number(histSnap ? histSnap.acn.posX : liveAcn.pos_x ?? 0);
-    const acnY = Number(histSnap ? histSnap.acn.posY : liveAcn.pos_y ?? 0);
+    const liveAcn = state.latestTelemetry.acn_telemetry as AcnTelemetry & {
+      velocity?: readonly [number, number, number];
+    };
+    const acnX = Number(histSnap ? histSnap.acn.posX : liveAcn?.pos_x ?? 0);
+    const acnY = Number(histSnap ? histSnap.acn.posY : liveAcn?.pos_y ?? 0);
     const acnCoordinate = mapLibreCoordinate(acnX, acnY);
-    const headingRad = Number(histSnap ? histSnap.acn.headingRad : liveAcn.heading_rad);
-    const covKm = Number(histSnap ? histSnap.acn.coverageRadiusKm : liveAcn.coverage_radius_km);
+    const headingRad = Number(histSnap ? histSnap.acn.headingRad : liveAcn?.heading_rad);
+    const covKm = Number(histSnap ? histSnap.acn.coverageRadiusKm : liveAcn?.coverage_radius_km);
 
     // Freeze live travelled path mutations during historical inspection
     if (
@@ -926,10 +974,18 @@ export function initMapLibreController(ctx: AppContext) {
       if (state.mapLibreTravelledPath.length > 512) state.mapLibreTravelledPath.shift();
     }
 
+    type MapNodeRecord = Partial<NodeTelemetryItem> & {
+      node_id: number;
+      x_m: number;
+      y_m: number;
+      nodeType?: string;
+      callsign?: string;
+      registration_state?: string;
+    };
     const liveNodesById = new Map((state.latestTelemetry.nodes_telemetry || []).map(n => [n.node_id, n]));
-    const rawNodes = histSnap
+    const rawNodes: MapNodeRecord[] = histSnap
       ? histSnap.nodes.map(hNode => {
-          const liveNode = liveNodesById.get(hNode.nodeId);
+          const liveNode = liveNodesById.get(hNode.nodeId) as (NodeTelemetryItem & { registration_state?: string }) | undefined;
           return {
             node_id: hNode.nodeId,
             name: liveNode?.name,
@@ -953,22 +1009,22 @@ export function initMapLibreController(ctx: AppContext) {
         })
       : isHist
         ? []
-        : state.latestTelemetry.nodes_telemetry || [];
+        : [...(state.latestTelemetry.nodes_telemetry || [])];
 
     const zoomLod = getMapZoomLodTier(state.currentRadarRangeM);
-    const vx = Number(histSnap ? histSnap.acn.velX : liveAcn.velocity?.[0] ?? liveAcn.vel_x ?? 0);
-    const vy = Number(histSnap ? histSnap.acn.velY : liveAcn.velocity?.[1] ?? liveAcn.vel_y ?? 0);
-    const vz = Number(histSnap ? histSnap.acn.velZ : liveAcn.vel_z ?? 0);
-    const acnAltM = Number(histSnap ? histSnap.acn.altitudeMslM : liveAcn.altitude_msl_m ?? 5000);
-    const acnAglM = Number(histSnap ? histSnap.acn.altitudeAglM : liveAcn.altitude_agl_m);
+    const vx = Number(histSnap ? histSnap.acn.velX : liveAcn?.velocity?.[0] ?? liveAcn?.vel_x ?? 0);
+    const vy = Number(histSnap ? histSnap.acn.velY : liveAcn?.velocity?.[1] ?? liveAcn?.vel_y ?? 0);
+    const vz = Number(histSnap ? histSnap.acn.velZ : liveAcn?.vel_z ?? 0);
+    const acnAltM = Number(histSnap ? histSnap.acn.altitudeMslM : liveAcn?.altitude_msl_m ?? 5000);
+    const acnAglM = Number(histSnap ? histSnap.acn.altitudeAglM : liveAcn?.altitude_agl_m);
     const headingDeg = Number.isFinite(headingRad) ? (((headingRad * 180) / Math.PI) % 360 + 360) % 360 : 0;
-    const isClamped = Boolean(histSnap ? histSnap.acn.isTerrainClamped : liveAcn.is_terrain_clamped);
+    const isClamped = Boolean(histSnap ? histSnap.acn.isTerrainClamped : liveAcn?.is_terrain_clamped);
 
     let acnText = 'ACN-1';
     if (zoomLod === 'medium') {
       acnText = Number.isFinite(acnAltM) && acnAltM > 0 ? `ACN-1 · ${Math.round(acnAltM)}m` : 'ACN-1';
     } else if (zoomLod === 'close') {
-      const acnParts = [];
+      const acnParts: string[] = [];
       if (Number.isFinite(acnAltM) && acnAltM > 0) acnParts.push(`${Math.round(acnAltM)}m MSL`);
       if (Number.isFinite(acnAglM) && acnAglM > 0) acnParts.push(`${Math.round(acnAglM)}m AGL`);
       if (Math.abs(vz) >= 0.1) acnParts.push(`${vz >= 0 ? '▲' : '▼'}${Math.abs(vz).toFixed(1)}m/s`);
@@ -1052,7 +1108,7 @@ export function initMapLibreController(ctx: AppContext) {
           ? state.latestTelemetry.acn_heading_deg
           : headingDeg;
 
-    const acnSectorFeatures = [];
+    const acnSectorFeatures: Array<Record<string, unknown>> = [];
     const rayLenM = 8000;
     const boreLenM = 5000;
     const lblLenM = 5600;
@@ -1100,7 +1156,7 @@ export function initMapLibreController(ctx: AppContext) {
         properties: { type: 'label', label: sec.label },
       });
     }
-    const transmissionFeatures = [];
+    const transmissionFeatures: Array<Record<string, unknown>> = [];
     const nowMs = performance.now();
     rawNodes.forEach(node => {
       if (!node.is_transmitting && !node.is_wasting_airtime) return;
@@ -1162,11 +1218,13 @@ export function initMapLibreController(ctx: AppContext) {
     const pathDraft = trajectoryEditor.preview;
     const usingDraftWaypoints = !isHist && trajectoryEditor.activeMode === 'waypoints';
     const activeWaypoints = usingDraftWaypoints
-      ? (trajectoryEditor.dirty
+      ? (trajectoryEditor.dirty && pathDraft.mode === 'waypoints'
           ? pathDraft.points
-          : trajectoryEditor.committedActive.points?.length
+          : trajectoryEditor.committedActive.mode === 'waypoints' && trajectoryEditor.committedActive.points.length
             ? trajectoryEditor.committedActive.points
-            : pathDraft.points
+            : pathDraft.mode === 'waypoints'
+              ? pathDraft.points
+              : []
         ).map(pt => ({ x_m: pt.xM, y_m: pt.yM }))
       : state.latestTelemetry.trajectory_config?.waypoints || [];
     const waypointPath = activeWaypoints
@@ -1193,7 +1251,7 @@ export function initMapLibreController(ctx: AppContext) {
       }));
     const regionFeatures = state.terrainRegions
       .map(region => {
-        const coordinates = region.points.map(point =>
+        const coordinates = region.points.map((point: { lng?: number; lat?: number; x: number; y: number }) =>
           point.lng !== undefined && point.lat !== undefined
             ? [point.lng, point.lat]
             : mapLibreCoordinate(point.x, point.y)
@@ -1323,11 +1381,11 @@ export function initMapLibreController(ctx: AppContext) {
     applyMapLibreLayerState();
   }
 
-  function fitMapLibreToTerrain() {
-    if (state.activeTerrainBounds) window.centerMapOnTerrain(state.activeTerrainBounds);
+  function fitMapLibreToTerrain(): void {
+    if (state.activeTerrainBounds) window.centerMapOnTerrain?.(state.activeTerrainBounds);
   }
 
-  function registerTacticalMapLibreImages(map) {
+  function registerTacticalMapLibreImages(map: MapLibreMap): void {
     if (!map) return;
 
     // 1. ACN Tactical Chevron Marker (size 11, outer keyline 3px, amber body, center dot, registration ring, heading arrow)
@@ -1498,11 +1556,12 @@ export function initMapLibreController(ctx: AppContext) {
           return;
         }
 
+        const mapCtrl = state.mapController ?? new MapController(null, state.activeBiomeId);
         if (!state.mapController) {
-          state.mapController = new MapController(null, state.activeBiomeId);
-          window.mapController = state.mapController;
+          state.mapController = mapCtrl;
+          window.mapController = mapCtrl;
         } else {
-          state.mapController.setBiome(state.activeBiomeId);
+          mapCtrl.setBiome(state.activeBiomeId);
         }
 
         const notice = $('map-renderer-notice');
@@ -1524,19 +1583,20 @@ export function initMapLibreController(ctx: AppContext) {
           attribution: rasterAttribution,
           maxzoom: rasterMaxZoom,
         });
-        const originGeo = state.mapController.getOrigin();
+        const originGeo = mapCtrl.getOrigin();
 
         setWorkerUrl(mapLibreWorkerUrl);
-        state.mapLibreInstance = new MapLibreMap({
+        const map = new MapLibreMap({
           container: 'maplibre-map',
-          style: mapStyle,
+          style: mapStyle as StyleSpecification,
           center: [originGeo.lonDeg, originGeo.latDeg],
           zoom: 6,
           minZoom: 0,
           attributionControl: { compact: true },
           cooperativeGestures: false,
         });
-        state.mapController.setMapInstance(state.mapLibreInstance);
+        state.mapLibreInstance = map;
+        mapCtrl.setMapInstance(map);
         requestAnimationFrame(() => {
           const attribEl = document.querySelector('#maplibre-map .maplibregl-ctrl-attrib');
           if (attribEl) {
@@ -1564,15 +1624,15 @@ export function initMapLibreController(ctx: AppContext) {
         }
         state.boundMapLibreOfflineHandler = showOfflineMapLibreNotice;
         window.addEventListener('offline', state.boundMapLibreOfflineHandler);
-        state.mapLibreInstance.on('error', event => {
+        map.on('error', (event: { error?: unknown }) => {
           if (state.mapLibreErrorShown) return;
           showOfflineMapLibreNotice();
           console.error('MapLibre map error', event.error || event);
         });
-        state.mapLibreInstance.on('move', () => {
+        map.on('move', () => {
           if (state.terrainMapMode === 'maplibre') actions.drawRadar();
         });
-        state.mapLibreInstance.on('moveend', event => {
+        map.on('moveend', (event: { originalEvent?: Event }) => {
           if (event?.originalEvent) {
             activeMapSyncToken = 0;
             if (activeMapSyncTimer !== null) {
@@ -1583,7 +1643,7 @@ export function initMapLibreController(ctx: AppContext) {
             return;
           }
           if (activeMapSyncToken !== 0) {
-            if (!state.mapLibreInstance.isMoving()) {
+            if (!map.isMoving()) {
               activeMapSyncToken = 0;
               if (activeMapSyncTimer !== null) {
                 clearTimeout(activeMapSyncTimer);
@@ -1594,7 +1654,7 @@ export function initMapLibreController(ctx: AppContext) {
           }
           syncRadarStateFromMapLibreCamera();
         });
-        state.mapLibreInstance.on('style.load', () => {
+        map.on('style.load', () => {
           if (state.mapLibreInitialized) return;
           state.mapLibreInitialized = true;
           mapLibreSourceHashes.clear();
@@ -1623,9 +1683,9 @@ export function initMapLibreController(ctx: AppContext) {
             'maplibre-transect-markers': emptyFeatureCollection(),
           };
           Object.entries(sourceDefinitions).forEach(([id, data]) =>
-            state.mapLibreInstance.addSource(id, { type: 'geojson', data })
+            map.addSource(id, { type: 'geojson', data })
           );
-          state.mapLibreInstance.addSource('maplibre-probe-viewshed', {
+          map.addSource('maplibre-probe-viewshed', {
             type: 'image',
             url: TRANSPARENT_1X1_PNG,
             coordinates: [
@@ -1635,7 +1695,7 @@ export function initMapLibreController(ctx: AppContext) {
               [76.0, 34.0],
             ],
           });
-          state.mapLibreInstance.addSource('maplibre-bridge-heatmap', {
+          map.addSource('maplibre-bridge-heatmap', {
             type: 'image',
             url: TRANSPARENT_1X1_PNG,
             coordinates: [
@@ -1647,30 +1707,30 @@ export function initMapLibreController(ctx: AppContext) {
           });
 
           // Register tactical procedural canvas images on MapLibre
-          registerTacticalMapLibreImages(state.mapLibreInstance);
+          registerTacticalMapLibreImages(map);
 
           // 1. Engineering Overlays
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-probe-viewshed-layer',
             type: 'raster',
             source: 'maplibre-probe-viewshed',
             layout: { visibility: 'none' },
             paint: { 'raster-opacity': 0.72, 'raster-resampling': 'linear' },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-bridge-heatmap-layer',
             type: 'raster',
             source: 'maplibre-bridge-heatmap',
             layout: { visibility: 'none' },
             paint: { 'raster-opacity': 0.85, 'raster-resampling': 'nearest' },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-coverage-fill',
             type: 'fill',
             source: 'maplibre-coverage',
             paint: { 'fill-color': HIGHLAND_THEME.signal.amber, 'fill-opacity': 0.08 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-coverage-line',
             type: 'line',
             source: 'maplibre-coverage',
@@ -1681,7 +1741,7 @@ export function initMapLibreController(ctx: AppContext) {
               'line-opacity': 0.45,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-obstacles-fill',
             type: 'fill',
             source: 'maplibre-obstacles',
@@ -1697,7 +1757,7 @@ export function initMapLibreController(ctx: AppContext) {
               'fill-opacity': 0.9,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-obstacles-line',
             type: 'line',
             source: 'maplibre-obstacles',
@@ -1720,14 +1780,14 @@ export function initMapLibreController(ctx: AppContext) {
               ],
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-rf-fresnel-fill',
             type: 'fill',
             source: 'maplibre-rf-analysis',
             filter: ['==', ['get', 'layerKind'], 'fresnel'],
             paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.22 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-rf-fresnel-line',
             type: 'line',
             source: 'maplibre-rf-analysis',
@@ -1739,21 +1799,21 @@ export function initMapLibreController(ctx: AppContext) {
               'line-opacity': 0.7,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-rf-los-line',
             type: 'line',
             source: 'maplibre-rf-analysis',
             filter: ['==', ['get', 'layerKind'], 'los'],
             paint: { 'line-color': ['get', 'color'], 'line-width': 2.6, 'line-opacity': 0.95 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-rf-obstacle-hits',
             type: 'line',
             source: 'maplibre-rf-analysis',
             filter: ['==', ['get', 'layerKind'], 'obstacle-hit'],
             paint: { 'line-color': HIGHLAND_THEME.signal.copper, 'line-width': 4.2, 'line-opacity': 0.95 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-rf-crest-point',
             type: 'circle',
             source: 'maplibre-rf-analysis',
@@ -1765,7 +1825,7 @@ export function initMapLibreController(ctx: AppContext) {
               'circle-stroke-width': 2,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-regions-fill',
             type: 'fill',
             source: 'maplibre-regions',
@@ -1774,7 +1834,7 @@ export function initMapLibreController(ctx: AppContext) {
               'fill-opacity': ['case', ['==', ['get', 'visible'], 1], 0.18, 0],
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-regions-line',
             type: 'line',
             source: 'maplibre-regions',
@@ -1784,25 +1844,25 @@ export function initMapLibreController(ctx: AppContext) {
               'line-opacity': ['case', ['==', ['get', 'visible'], 1], 1, 0],
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-measurement-line',
             type: 'line',
             source: 'maplibre-measurement',
             paint: { 'line-color': HIGHLAND_THEME.text.primary, 'line-width': 3, 'line-dasharray': [1, 1] },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-region-draft-line',
             type: 'line',
             source: 'maplibre-region-draft',
             paint: { 'line-color': HIGHLAND_THEME.signal.ochre, 'line-width': 2, 'line-dasharray': [1, 1] },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-transect-segments-line',
             type: 'line',
             source: 'maplibre-transect-segments',
             paint: { 'line-color': ['get', 'color'], 'line-width': 3.0, 'line-opacity': 0.95 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-transect-bridge-legs',
             type: 'line',
             source: 'maplibre-transect-markers',
@@ -1813,7 +1873,7 @@ export function initMapLibreController(ctx: AppContext) {
               'line-dasharray': [4, 3],
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-transect-markers-circle',
             type: 'circle',
             source: 'maplibre-transect-markers',
@@ -1825,7 +1885,7 @@ export function initMapLibreController(ctx: AppContext) {
               'circle-stroke-width': 1.5,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-transect-markers-label',
             type: 'symbol',
             source: 'maplibre-transect-markers',
@@ -1845,31 +1905,31 @@ export function initMapLibreController(ctx: AppContext) {
           });
 
           // 2. Trajectory & Waypoints
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-planned-casing',
             type: 'line',
             source: 'maplibre-planned',
             paint: { 'line-color': HIGHLAND_THEME.cartography.routeKeyline, 'line-width': 3.5, 'line-opacity': 0.95 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-planned-line',
             type: 'line',
             source: 'maplibre-planned',
             paint: { 'line-color': HIGHLAND_THEME.cartography.routeCore, 'line-width': 1.8, 'line-opacity': 0.95 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-travelled-casing',
             type: 'line',
             source: 'maplibre-travelled',
             paint: { 'line-color': HIGHLAND_THEME.cartography.routeKeyline, 'line-width': 4.0, 'line-opacity': 0.8 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-travelled-line',
             type: 'line',
             source: 'maplibre-travelled',
             paint: { 'line-color': HIGHLAND_THEME.cartography.routeCore, 'line-width': 2.2, 'line-opacity': 0.95 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-waypoints-outer',
             type: 'circle',
             source: 'maplibre-waypoints',
@@ -1880,13 +1940,13 @@ export function initMapLibreController(ctx: AppContext) {
               'circle-stroke-width': 1.2,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-waypoints-dot',
             type: 'circle',
             source: 'maplibre-waypoints',
             paint: { 'circle-radius': 1.8, 'circle-color': HIGHLAND_THEME.signal.amberBright },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-waypoints-selected',
             type: 'circle',
             source: 'maplibre-waypoints',
@@ -1898,7 +1958,7 @@ export function initMapLibreController(ctx: AppContext) {
               'circle-stroke-width': 1.2,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-waypoints-label',
             type: 'symbol',
             source: 'maplibre-waypoints',
@@ -1919,9 +1979,9 @@ export function initMapLibreController(ctx: AppContext) {
               ['==', ['get', 'selected'], 1],
               ['get', 'selectedColor'],
               ['get', 'color'],
-            ],
-            'line-width': ['case', ['==', ['get', 'selected'], 1], 3.5, ['==', ['get', 'hovered'], 1], 3.2, 2.0],
-            'line-opacity': ['case', ['==', ['get', 'selected'], 1], 0.95, ['==', ['get', 'hovered'], 1], 0.9, 0.75],
+            ] as ExpressionSpecification,
+            'line-width': ['case', ['==', ['get', 'selected'], 1], 3.5, ['==', ['get', 'hovered'], 1], 3.2, 2.0] as ExpressionSpecification,
+            'line-opacity': ['case', ['==', ['get', 'selected'], 1], 0.95, ['==', ['get', 'hovered'], 1], 0.9, 0.75] as ExpressionSpecification,
           };
           const selectableLinkLayers = [
             'maplibre-links-line',
@@ -1931,28 +1991,30 @@ export function initMapLibreController(ctx: AppContext) {
             'maplibre-links-outage',
             'maplibre-links-unknown',
           ];
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-links-selected-casing',
             type: 'line',
             source: 'maplibre-links',
             filter: ['==', ['get', 'selected'], 1],
             paint: { 'line-color': HIGHLAND_THEME.substrate.void, 'line-width': 5.5, 'line-opacity': 0.85 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-links-line',
             type: 'line',
             source: 'maplibre-links',
             filter: ['==', ['get', 'status'], 'CONNECTED'],
             paint: linkPaint,
           });
-          [
-            ['maplibre-links-degraded', 'DEGRADED', [7, 3]],
-            ['maplibre-links-terrain-blocked', 'BLOCKED_TERRAIN', [4, 4]],
-            ['maplibre-links-obstacle-blocked', 'BLOCKED_OBSTACLE', [2, 3]],
-            ['maplibre-links-outage', 'OUTAGE_DISCONNECTED', [3, 6]],
-            ['maplibre-links-unknown', 'UNKNOWN', [1, 5]],
-          ].forEach(([id, status, dash]) =>
-            state.mapLibreInstance.addLayer({
+          (
+            [
+              ['maplibre-links-degraded', 'DEGRADED', [7, 3]],
+              ['maplibre-links-terrain-blocked', 'BLOCKED_TERRAIN', [4, 4]],
+              ['maplibre-links-obstacle-blocked', 'BLOCKED_OBSTACLE', [2, 3]],
+              ['maplibre-links-outage', 'OUTAGE_DISCONNECTED', [3, 6]],
+              ['maplibre-links-unknown', 'UNKNOWN', [1, 5]],
+            ] as Array<[string, string, number[]]>
+          ).forEach(([id, status, dash]) =>
+            map.addLayer({
               id,
               type: 'line',
               source: 'maplibre-links',
@@ -1962,13 +2024,13 @@ export function initMapLibreController(ctx: AppContext) {
           );
 
           // 4. Dynamic TDMA In-Flight Transmission Bursts / Packets
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-transmissions-glow',
             type: 'circle',
             source: 'maplibre-transmissions',
             paint: { 'circle-radius': 4.5, 'circle-color': ['get', 'color'], 'circle-blur': 0.4, 'circle-opacity': 0.7 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-transmissions-core',
             type: 'circle',
             source: 'maplibre-transmissions',
@@ -1976,7 +2038,7 @@ export function initMapLibreController(ctx: AppContext) {
           });
 
           // 5. Ground Terminals
-          const nodeStrokeColor = [
+          const nodeStrokeColor: ExpressionSpecification = [
             'case',
             ['==', ['get', 'selected'], 1],
             '#ffffff',
@@ -1990,9 +2052,16 @@ export function initMapLibreController(ctx: AppContext) {
             HIGHLAND_THEME.signal.sage,
             HIGHLAND_THEME.substrate.void,
           ];
-          const nodeStrokeWidth = ['case', ['==', ['get', 'selected'], 1], 2.2, ['==', ['get', 'hovered'], 1], 1.8, 1.3];
+          const nodeStrokeWidth: ExpressionSpecification = [
+            'case',
+            ['==', ['get', 'selected'], 1],
+            2.2,
+            ['==', ['get', 'hovered'], 1],
+            1.8,
+            1.3,
+          ];
 
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-nodes-selection-inner',
             type: 'circle',
             source: 'maplibre-nodes',
@@ -2004,21 +2073,21 @@ export function initMapLibreController(ctx: AppContext) {
               'circle-stroke-width': 1.4,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-nodes-selection-outer',
             type: 'symbol',
             source: 'maplibre-nodes',
             filter: ['==', ['get', 'selected'], 1],
             layout: { 'icon-image': 'selection-ring-dashed', 'icon-allow-overlap': true, 'icon-ignore-placement': true },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-nodes-hover-reticle',
             type: 'symbol',
             source: 'maplibre-nodes',
             filter: ['==', ['get', 'hovered'], 1],
             layout: { 'icon-image': 'node-hover-reticle', 'icon-allow-overlap': true, 'icon-ignore-placement': true },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-nodes-circle',
             type: 'circle',
             source: 'maplibre-nodes',
@@ -2030,15 +2099,19 @@ export function initMapLibreController(ctx: AppContext) {
               'circle-stroke-width': nodeStrokeWidth,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-nodes-mcp',
             type: 'symbol',
             source: 'maplibre-nodes',
             filter: ['==', ['get', 'isMCP'], 1],
             layout: { 'icon-image': 'marker-mcp', 'icon-allow-overlap': true, 'icon-ignore-placement': true },
-            paint: { 'icon-color': ['get', 'color'], 'icon-halo-color': nodeStrokeColor, 'icon-halo-width': nodeStrokeWidth },
+            paint: {
+              'icon-color': ['get', 'color'],
+              'icon-halo-color': nodeStrokeColor,
+              'icon-halo-width': nodeStrokeWidth as DataDrivenPropertyValueSpecification<number>,
+            },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-labels',
             type: 'symbol',
             source: 'maplibre-nodes',
@@ -2056,7 +2129,7 @@ export function initMapLibreController(ctx: AppContext) {
               'text-halo-width': 2.0,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-labels-active',
             type: 'symbol',
             source: 'maplibre-nodes',
@@ -2081,7 +2154,7 @@ export function initMapLibreController(ctx: AppContext) {
           });
 
           // 6. ACN Airborne Relay
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-acn-vector-line',
             type: 'line',
             source: 'maplibre-acn-vector',
@@ -2091,7 +2164,7 @@ export function initMapLibreController(ctx: AppContext) {
               'line-dasharray': [4, 4],
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-acn-vector-tag',
             type: 'symbol',
             source: 'maplibre-acn-vector',
@@ -2102,21 +2175,21 @@ export function initMapLibreController(ctx: AppContext) {
               'text-halo-width': 1,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-acn-sectors-crossover',
             type: 'line',
             source: 'maplibre-acn-sectors',
             filter: ['==', ['get', 'type'], 'boundary'],
             paint: { 'line-color': 'rgba(224, 159, 62, 0.35)', 'line-width': 1.2, 'line-dasharray': [3, 3] },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-acn-sectors-boresight',
             type: 'line',
             source: 'maplibre-acn-sectors',
             filter: ['==', ['get', 'type'], 'boresight'],
             paint: { 'line-color': 'rgba(224, 159, 62, 0.65)', 'line-width': 1.5 },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-acn-sectors-label',
             type: 'symbol',
             source: 'maplibre-acn-sectors',
@@ -2128,7 +2201,7 @@ export function initMapLibreController(ctx: AppContext) {
               'text-halo-width': 2.0,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-acn-marker',
             type: 'symbol',
             source: 'maplibre-acn',
@@ -2140,7 +2213,7 @@ export function initMapLibreController(ctx: AppContext) {
               'icon-ignore-placement': true,
             },
           });
-          state.mapLibreInstance.addLayer({
+          map.addLayer({
             id: 'maplibre-acn-label',
             type: 'symbol',
             source: 'maplibre-acn',
@@ -2159,7 +2232,7 @@ export function initMapLibreController(ctx: AppContext) {
 
           const interactiveNodeLayers = ['maplibre-nodes-circle', 'maplibre-nodes-mcp'];
           interactiveNodeLayers.forEach(layerId => {
-            state.mapLibreInstance.on('mousedown', layerId, event => {
+            map.on('mousedown', layerId, (event: MapLayerMouseEvent) => {
               const feature = event.features?.[0];
               const nodeId = Number(feature?.properties?.nodeId);
               if (!Number.isInteger(nodeId)) return;
@@ -2177,8 +2250,8 @@ export function initMapLibreController(ctx: AppContext) {
               )
                 return;
               event.preventDefault();
-              const dragPanWasEnabled = state.mapLibreInstance.dragPan.isEnabled();
-              if (dragPanWasEnabled) state.mapLibreInstance.dragPan.disable();
+              const dragPanWasEnabled = map.dragPan.isEnabled();
+              if (dragPanWasEnabled) map.dragPan.disable();
               state.mapLibreNodeDrag = {
                 nodeId,
                 startPoint: { x: event.point.x, y: event.point.y },
@@ -2189,13 +2262,13 @@ export function initMapLibreController(ctx: AppContext) {
               };
               updateMapLibreCursor(event.point);
             });
-            state.mapLibreInstance.on('mousemove', layerId, event => {
+            map.on('mousemove', layerId, (event: MapLayerMouseEvent) => {
               if (state.mapLibreNodeDrag || state.mapLibreObstacleDrag) return;
               const id = Number(event.features?.[0]?.properties?.nodeId);
               if (Number.isInteger(id))
                 actions.setSharedMapHover('maplibre', 'node', id, { x: event.point.x, y: event.point.y });
             });
-            state.mapLibreInstance.on('mouseleave', layerId, () => {
+            map.on('mouseleave', layerId, () => {
               if (state.activeMapHoverRenderer === 'maplibre' && state.hoveredNodeId !== null) {
                 state.hoveredNodeId = null;
                 state.mapHoverPoint = null;
@@ -2207,7 +2280,7 @@ export function initMapLibreController(ctx: AppContext) {
             });
           });
 
-          state.mapLibreInstance.on('mousedown', event => {
+          map.on('mousedown', (event: MapMouseEvent) => {
             if (
               state.terrainToolMode === 'idle' &&
               state.tbActiveMode === 'transect' &&
@@ -2217,7 +2290,7 @@ export function initMapLibreController(ctx: AppContext) {
               let bestIdx = -1;
               let bestPx = 12;
               state.tbTransectWaypoints.forEach((wp, idx) => {
-                const proj = state.mapLibreInstance.project(mapLibreCoordinate(wp.xM, wp.yM));
+                const proj = map.project(mapLibreCoordinate(wp.xM, wp.yM));
                 const d = Math.hypot(event.point.x - proj.x, event.point.y - proj.y);
                 if (d <= bestPx) {
                   bestPx = d;
@@ -2226,10 +2299,10 @@ export function initMapLibreController(ctx: AppContext) {
               });
               if (bestIdx >= 0) {
                 event.preventDefault();
-                const dragPanWasEnabled = state.mapLibreInstance.dragPan.isEnabled();
-                if (dragPanWasEnabled) state.mapLibreInstance.dragPan.disable();
+                const dragPanWasEnabled = map.dragPan.isEnabled();
+                if (dragPanWasEnabled) map.dragPan.disable();
                 state.mapLibreToolboxVertexDrag = { index: bestIdx, dragPanWasEnabled, moved: false };
-                state.mapLibreInstance.getCanvas().style.cursor = 'grabbing';
+                map.getCanvas().style.cursor = 'grabbing';
                 return;
               }
             }
@@ -2245,8 +2318,8 @@ export function initMapLibreController(ctx: AppContext) {
             event.preventDefault();
             obstacleEditor.select(obsId);
             actions.refreshObstacleEditor();
-            const dragPanWasEnabled = state.mapLibreInstance.dragPan.isEnabled();
-            if (dragPanWasEnabled) state.mapLibreInstance.dragPan.disable();
+            const dragPanWasEnabled = map.dragPan.isEnabled();
+            if (dragPanWasEnabled) map.dragPan.disable();
             state.mapLibreObstacleDrag = {
               obstacleId: obsId,
               startPoint: { x: event.point.x, y: event.point.y },
@@ -2256,8 +2329,8 @@ export function initMapLibreController(ctx: AppContext) {
             updateMapLibreCursor(event.point);
           });
 
-          state.mapLibreInstance.on('mousemove', event => {
-            const coordinate = state.mapLibreInstance.unproject(event.point);
+          map.on('mousemove', (event: MapMouseEvent) => {
+            const coordinate = map.unproject(event.point);
             const local = geodeticToCartesian(coordinate.lat, coordinate.lng);
             actions.updateRadarCursorReadout(local.xM, local.yM, true);
             if (state.mapLibreToolboxVertexDrag) {
@@ -2297,15 +2370,25 @@ export function initMapLibreController(ctx: AppContext) {
             } else if (state.terrainToolMode === 'probe' || (state.tbActiveMode === 'probe' && !state.tbProbeSite)) {
               const mastM = Math.max(
                 1,
-                Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2)
+                Math.min(
+                  200,
+                  parseFloat(
+                    $<HTMLInputElement>('tb-probe-mast-input')?.value ||
+                      $<HTMLInputElement>('tb-probe-agl')?.value ||
+                      '2'
+                  ) || 2
+                )
               );
               const simCtx = actions.buildToolboxSimContext();
               const acnPos = simCtx.acnPositionMslM || [0, 0, 5000];
-              const acnHeading = Number.isFinite(state.latestTelemetry?.acn_heading_deg)
-                ? state.latestTelemetry.acn_heading_deg
-                : Number.isFinite(state.latestTelemetry?.acn_telemetry?.heading_rad)
-                  ? (((state.latestTelemetry.acn_telemetry.heading_rad * 180) / Math.PI) % 360 + 360) % 360
-                  : 0;
+              const acnHeadingRaw = state.latestTelemetry?.acn_heading_deg;
+              const acnHeadingRad = state.latestTelemetry?.acn_telemetry?.heading_rad;
+              const acnHeading =
+                typeof acnHeadingRaw === 'number' && Number.isFinite(acnHeadingRaw)
+                  ? acnHeadingRaw
+                  : typeof acnHeadingRad === 'number' && Number.isFinite(acnHeadingRad)
+                    ? (((acnHeadingRad * 180) / Math.PI) % 360 + 360) % 360
+                    : 0;
 
               state.tbCursorProbeLive = evaluateCursorRfProbe(
                 { xM: local.xM, yM: local.yM },
@@ -2360,7 +2443,7 @@ export function initMapLibreController(ctx: AppContext) {
                   obstacleEditor.move(state.mapLibreObstacleDrag.obstacleId, local.xM, local.yM);
                   actions.refreshObstacleEditor();
                 } catch (error) {
-                  obstacleEditor.message = error.message;
+                  obstacleEditor.message = error instanceof Error ? error.message : String(error);
                   actions.refreshObstacleEditor();
                 }
               }
@@ -2370,7 +2453,7 @@ export function initMapLibreController(ctx: AppContext) {
             updateMapLibreCursor(event.point);
           });
 
-          state.mapLibreInstance.on('mouseout', () => {
+          map.on('mouseout', () => {
             actions.updateRadarCursorReadout(0, 0, false);
           });
 
@@ -2429,7 +2512,7 @@ export function initMapLibreController(ctx: AppContext) {
               updateMapLibreOverlay();
             }
           };
-          state.mapLibreInstance.on('mouseup', finishMapLibreDrag);
+          map.on('mouseup', finishMapLibreDrag);
           if (state.boundMapLibrePointerUp) {
             window.removeEventListener('pointerup', state.boundMapLibrePointerUp);
             window.removeEventListener('pointercancel', state.boundMapLibrePointerUp);
@@ -2438,11 +2521,11 @@ export function initMapLibreController(ctx: AppContext) {
           window.addEventListener('pointerup', state.boundMapLibrePointerUp);
           window.addEventListener('pointercancel', state.boundMapLibrePointerUp);
 
-          state.mapLibreInstance.on('mousemove', selectableLinkLayers, event => {
+          map.on('mousemove', selectableLinkLayers, (event: MapLayerMouseEvent) => {
             if (state.mapLibreNodeDrag || state.mapLibreObstacleDrag) return;
             if (
-              state.mapLibreInstance.getLayer('maplibre-acn-marker') &&
-              state.mapLibreInstance.queryRenderedFeatures(
+              map.getLayer('maplibre-acn-marker') &&
+              map.queryRenderedFeatures(
                 [
                   [event.point.x - 12, event.point.y - 12],
                   [event.point.x + 12, event.point.y + 12],
@@ -2455,7 +2538,7 @@ export function initMapLibreController(ctx: AppContext) {
             if (Number.isInteger(id))
               actions.setSharedMapHover('maplibre', 'link', id, { x: event.point.x, y: event.point.y });
           });
-          state.mapLibreInstance.on('mouseleave', selectableLinkLayers, () => {
+          map.on('mouseleave', selectableLinkLayers, () => {
             if (state.activeMapHoverRenderer === 'maplibre' && state.hoveredLinkNodeId !== null) {
               state.hoveredLinkNodeId = null;
               state.mapHoverPoint = null;
@@ -2466,7 +2549,7 @@ export function initMapLibreController(ctx: AppContext) {
             }
           });
 
-          state.mapLibreInstance.on('click', event => {
+          map.on('click', (event: MapMouseEvent) => {
             if (state.suppressNextMapLibreClick) {
               state.suppressNextMapLibreClick = false;
               return;
@@ -2479,13 +2562,13 @@ export function initMapLibreController(ctx: AppContext) {
               historyController.isInspecting ||
                 (state.simTimelineController && state.simTimelineController.isHistoricalInspecting)
             );
-            const coordinate = state.mapLibreInstance.unproject(event.point);
+            const coordinate = map.unproject(event.point);
             const local = geodeticToCartesian(coordinate.lat, coordinate.lng);
             if (!Number.isFinite(local.xM) || !Number.isFinite(local.yM)) return;
 
             if (!state.spatialLocked && trajectoryEditor.activeMode === 'waypoints' && state.waypointPlacementArmed) {
               if (isHistEditBlocked) {
-                state.mapLibreInstance.getCanvas().style.cursor = 'not-allowed';
+                map.getCanvas().style.cursor = 'not-allowed';
                 actions.setTrajectoryMessage('Waypoint placement is disabled during historical playback.', true);
                 return;
               }
@@ -2497,7 +2580,7 @@ export function initMapLibreController(ctx: AppContext) {
             }
             if (obstacleEditor.mode === 'place' && !state.spatialLocked) {
               if (isHistEditBlocked) {
-                state.mapLibreInstance.getCanvas().style.cursor = 'not-allowed';
+                map.getCanvas().style.cursor = 'not-allowed';
                 obstacleEditor.message = 'Obstacle creation is disabled during historical playback.';
                 actions.refreshObstacleEditor();
                 return;
@@ -2519,10 +2602,10 @@ export function initMapLibreController(ctx: AppContext) {
             if (obstacleEditor.mode === 'navigate' && trajectoryEditor.activeMode !== 'waypoints') {
               if (mapLayerRegistry.getEffectiveVisibility('entities.groundNodes', mapCtx)) {
                 const activeNodeLayers = ['maplibre-nodes-circle', 'maplibre-nodes-mcp'].filter(id =>
-                  state.mapLibreInstance.getLayer(id)
+                  map.getLayer(id)
                 );
                 if (activeNodeLayers.length) {
-                  const nodeHits = state.mapLibreInstance.queryRenderedFeatures(event.point, {
+                  const nodeHits = map.queryRenderedFeatures(event.point, {
                     layers: activeNodeLayers,
                   });
                   const nodeId = Number(nodeHits[0]?.properties?.nodeId);
@@ -2534,10 +2617,10 @@ export function initMapLibreController(ctx: AppContext) {
               }
               if (mapLayerRegistry.getEffectiveVisibility('entities.acn', mapCtx)) {
                 const activeAcnLayers = ['maplibre-acn-marker', 'maplibre-acn-circle'].filter(id =>
-                  state.mapLibreInstance.getLayer(id)
+                  map.getLayer(id)
                 );
                 if (activeAcnLayers.length) {
-                  const acnHits = state.mapLibreInstance.queryRenderedFeatures(
+                  const acnHits = map.queryRenderedFeatures(
                     [
                       [event.point.x - 12, event.point.y - 12],
                       [event.point.x + 12, event.point.y + 12],
@@ -2550,9 +2633,9 @@ export function initMapLibreController(ctx: AppContext) {
                   }
                 }
               }
-              const activeLinkLayers = selectableLinkLayers.filter(id => state.mapLibreInstance.getLayer(id));
+              const activeLinkLayers = selectableLinkLayers.filter(id => map.getLayer(id));
               if (mapLayerRegistry.getEffectiveVisibility('comm.links', mapCtx) && activeLinkLayers.length) {
-                const linkHits = state.mapLibreInstance.queryRenderedFeatures(event.point, {
+                const linkHits = map.queryRenderedFeatures(event.point, {
                   layers: activeLinkLayers,
                 });
                 const id = Number(linkHits[0]?.properties?.nodeId);
@@ -2567,7 +2650,7 @@ export function initMapLibreController(ctx: AppContext) {
             }
           });
 
-          state.mapLibreInstance.on('dblclick', event => {
+          map.on('dblclick', (event: MapMouseEvent) => {
             if (state.terrainToolMode === 'transect-poly' && state.tbTransectWaypoints.length >= 2) {
               event.preventDefault();
               actions.finishTransectPolyline();
@@ -2597,7 +2680,7 @@ export function initMapLibreController(ctx: AppContext) {
     return mapLibreInitPromise;
   }
 
-  function setMapMode(mode) {
+  function setMapMode(mode: 'radar' | 'maplibre'): void {
     const nextMode = mode === 'maplibre' ? 'maplibre' : 'radar';
     if (state.activeMapHoverRenderer && state.activeMapHoverRenderer !== nextMode) {
       state.hoveredNodeId = null;
@@ -2610,24 +2693,24 @@ export function initMapLibreController(ctx: AppContext) {
     state.terrainMapMode = nextMode;
     actions.updateRadarCursorReadout(0, 0, false);
     const radar = $('radar-canvas');
-    const map = $('maplibre-stage');
+    const mapEl = $('maplibre-stage');
     $('btnMapRadar')?.classList.toggle('active', state.terrainMapMode === 'radar');
     $('btnMapLibre')?.classList.toggle('active', state.terrainMapMode === 'maplibre');
-    const backdropSel = $('tb-backdrop-mode');
+    const backdropSel = $<HTMLSelectElement>('tb-backdrop-mode');
     if (backdropSel) {
       const isMl = state.terrainMapMode === 'maplibre';
       backdropSel.disabled = isMl;
       backdropSel.title = isMl ? 'Radar only — MapLibre uses geographic basemap' : 'Radar terrain backdrop mode';
     }
     ['zoom-30', 'zoom-60', 'zoom-100', 'zoom-200'].forEach(id => {
-      const b = $(id);
+      const b = $<HTMLButtonElement>(id);
       if (b) {
         b.disabled = state.stageViewMode !== '2d' || state.terrainMapMode === 'maplibre';
         b.title = b.disabled ? 'Range zoom — 2D Radar mode only' : 'Range zoom';
       }
     });
     if (state.stageViewMode !== '2d') {
-      window.setStageViewMode('2d');
+      window.setStageViewMode?.('2d');
       return;
     }
     actions.syncRadarHudMode();
@@ -2651,7 +2734,7 @@ export function initMapLibreController(ctx: AppContext) {
           notice.hidden = false;
         }
       }
-      if (map) map.style.display = 'block';
+      if (mapEl) mapEl.style.display = 'block';
       if (radar) {
         radar.style.display = 'block';
         radar.style.pointerEvents = 'none';
@@ -2668,7 +2751,7 @@ export function initMapLibreController(ctx: AppContext) {
       actions.markUiDirtyAndWake();
     } else {
       if (state.mapLibreInitialized) syncRadarStateFromMapLibreCamera();
-      if (map) map.style.display = 'none';
+      if (mapEl) mapEl.style.display = 'none';
       if (radar) {
         radar.style.display = 'block';
         radar.style.pointerEvents = 'auto';

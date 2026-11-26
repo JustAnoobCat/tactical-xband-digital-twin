@@ -1,6 +1,6 @@
 [package]
 name = "xband-physics"
-version = "4.0.0"
+version = "4.1.0"
 edition = "2021"
 description = "Shared Rust/WASM terrain ray-marching, Bullington/Deygout diffraction, hypsometric hillshade, and polar RF viewshed kernel for Tactical X-Band Digital Twin"
 

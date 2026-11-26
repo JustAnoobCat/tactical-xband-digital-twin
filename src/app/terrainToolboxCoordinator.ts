@@ -1,5 +1,11 @@
-// @ts-nocheck — Terrain Toolbox coordinator (transect, probe, AO swath region, CAD obstacle, bridge finder & precision suite)
+// Terrain Toolbox coordinator (transect, probe, AO swath region, CAD obstacle, bridge finder & precision suite)
 import type { AppContext } from './appContext.ts';
+import type { Position3D } from '../shared/types.ts';
+import type { ObstacleShapeMode } from '../ui/terrainAnalysisController.ts';
+import type { ToolboxGroundNodeView, ToolboxSimulationContext } from '../ui/terrainToolboxAnalysis.ts';
+import type { MapLayerId } from '../ui/workbench/mapLayerRegistry.ts';
+import type { ToolboxMode } from '../ui/controllers/terrainToolboxController.ts';
+import type { ProbeHeatmapConfig } from '../ui/toolboxPrecisionSuite.ts';
 import { MAX_ACTIVE_GROUND_NODES } from '../shared/constants.ts';
 import { RFConfig, EnvironmentConfig } from '../core/config.ts';
 import { cartesianToGeodetic } from '../core/geodesy.ts';
@@ -55,12 +61,12 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
   } = engines;
   const { radarCanvas } = canvases;
 
-  let terrainToolboxControllerInstance = null;
-  let toolboxPrecisionUi = null;
+  let terrainToolboxControllerInstance: ReturnType<typeof createTerrainToolboxController> | null = null;
+  let toolboxPrecisionUi: ReturnType<typeof createToolboxPrecisionUi> | null = null;
 
   state.tbShowRulerTicks = false;
 
-  function getTerrainToolboxController() {
+  function getTerrainToolboxController(): ReturnType<typeof createTerrainToolboxController> {
     if (!terrainToolboxControllerInstance) {
       terrainToolboxControllerInstance = createTerrainToolboxController({
         documentRef: document,
@@ -86,22 +92,22 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     return terrainToolboxControllerInstance;
   }
 
-  function getRadarPointerWorld(event) {
+  function getRadarPointerWorld(event: MouseEvent | PointerEvent): { x: number; y: number } {
     const rect = radarCanvas.getBoundingClientRect();
-    const w = radarCanvas.parentElement.clientWidth || rect.width;
-    const h = radarCanvas.parentElement.clientHeight || rect.height;
+    const w = radarCanvas.parentElement?.clientWidth || rect.width;
+    const h = radarCanvas.parentElement?.clientHeight || rect.height;
     return actions.screenToWorld(event.clientX - rect.left, event.clientY - rect.top, w, h);
   }
 
-  function terrainDistanceText(distanceM) {
+  function terrainDistanceText(distanceM: number): string {
     return distanceM >= 1000 ? `${(distanceM / 1000).toFixed(2)} km` : `${distanceM.toFixed(0)} m`;
   }
 
-  function setTerrainToolStatus(text) {
+  function setTerrainToolStatus(text: string): void {
     setText('terrain-toolbox-status', text);
   }
 
-  function downloadTextBlob(filename, content, mimeType) {
+  function downloadTextBlob(filename: string, content: string, mimeType: string): void {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -113,10 +119,10 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function buildToolboxSimContext() {
-    const freqGhz = parseFloat($('param-freq')?.value ?? '8.0');
-    const bwMhz = parseFloat($('param-bw')?.value ?? '1.0');
-    const rainMmH = parseFloat($('param-rain')?.value ?? '0.0');
+  function buildToolboxSimContext(): ToolboxSimulationContext {
+    const freqGhz = parseFloat($<HTMLInputElement>('param-freq')?.value ?? '8.0');
+    const bwMhz = parseFloat($<HTMLInputElement>('param-bw')?.value ?? '1.0');
+    const rainMmH = parseFloat($<HTMLInputElement>('param-rain')?.value ?? '0.0');
     const rfConfig = new RFConfig({
       carrierFrequencyHz: (Number.isFinite(freqGhz) ? freqGhz : 8.0) * 1e9,
       channelBandwidthHz: Math.max(0.1, Math.min(50, Number.isFinite(bwMhz) ? bwMhz : 1.0)) * 1e6,
@@ -132,15 +138,17 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
         simTimelineController?.isHistoricalInspecting
     );
     const histSnap = isHist && simTimelineController ? simTimelineController.getActiveSpatialSnapshot() : null;
-    const liveAcn = state.latestTelemetry?.acn_telemetry || {};
-    const acnX = Number(histSnap ? histSnap.acn.posX : liveAcn.pos_x);
-    const acnY = Number(histSnap ? histSnap.acn.posY : liveAcn.pos_y);
-    const acnZ = Number(histSnap ? histSnap.acn.altitudeMslM : liveAcn.altitude_msl_m ?? liveAcn.pos_z ?? 5000);
-    const acnPositionMslM = [acnX, acnY, acnZ].every(Number.isFinite) ? [acnX, acnY, acnZ] : null;
+    const liveAcn = state.latestTelemetry?.acn_telemetry;
+    const acnX = Number(histSnap ? histSnap.acn.posX : liveAcn?.pos_x);
+    const acnY = Number(histSnap ? histSnap.acn.posY : liveAcn?.pos_y);
+    const acnZ = Number(histSnap ? histSnap.acn.altitudeMslM : liveAcn?.altitude_msl_m ?? liveAcn?.pos_z ?? 5000);
+    const acnPositionMslM: Position3D | null = [acnX, acnY, acnZ].every(Number.isFinite)
+      ? ([acnX, acnY, acnZ] as const)
+      : null;
 
     const liveNodes = state.latestTelemetry?.nodes_telemetry || [];
     const liveById = new Map(liveNodes.map(n => [n.node_id, n]));
-    const groundNodes = histSnap
+    const groundNodes: ToolboxGroundNodeView[] = histSnap
       ? histSnap.nodes.map(hn => {
           const ln = liveById.get(hn.nodeId);
           return {
@@ -182,35 +190,35 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     };
   }
 
-  function parseTransectHeightPreset(val) {
+  function parseTransectHeightPreset(val: string): { heightMode: 'acn_alt' | 'ground_agl'; aglM: number } {
     if (val === 'acn_alt') return { heightMode: 'acn_alt', aglM: 0 };
     if (val === 'ground_15') return { heightMode: 'ground_agl', aglM: 15 };
     return { heightMode: 'ground_agl', aglM: 2 };
   }
 
-  function buildTransectWaypointInputs(waypoints) {
-    const pA = parseTransectHeightPreset($('tb-transect-height-a')?.value || 'ground_2');
-    const pB = parseTransectHeightPreset($('tb-transect-height-b')?.value || 'ground_2');
+  function buildTransectWaypointInputs(waypoints: ReadonlyArray<{ xM: number; yM: number }>) {
+    const pA = parseTransectHeightPreset($<HTMLSelectElement>('tb-transect-height-a')?.value || 'ground_2');
+    const pB = parseTransectHeightPreset($<HTMLSelectElement>('tb-transect-height-b')?.value || 'ground_2');
     return waypoints.map((wp, idx) => {
       const preset = idx === 0 ? pA : pB;
       return { xM: wp.xM, yM: wp.yM, aglM: preset.aglM, heightMode: preset.heightMode };
     });
   }
 
-  function findMagneticSnapTarget(px, py, w, h, snapThresholdPx = 15) {
+  function findMagneticSnapTarget(px: number, py: number, w: number, h: number, snapThresholdPx = 15) {
     let bestDist = snapThresholdPx;
-    let snapTarget = null;
+    let snapTarget: { xM: number; yM: number; label: string; sp: { x: number; y: number } } | null = null;
     const simTimelineController = state.simTimelineController;
 
     // 1. Ground Nodes
-    const currentNodes =
+    const currentNodes: Array<{ node_id: number; x_m?: number; y_m?: number; position?: readonly [number, number, number] }> =
       simTimelineController && simTimelineController.isHistoricalInspecting
         ? simTimelineController.getActiveSpatialSnapshot()?.nodes.map(n => ({
             node_id: n.nodeId,
             x_m: n.posX,
             y_m: n.posY,
           })) || []
-        : state.latestTelemetry?.nodes_telemetry || [];
+        : [...(state.latestTelemetry?.nodes_telemetry || [])];
     for (const n of currentNodes) {
       const nx = n.x_m !== undefined ? n.x_m : n.position ? n.position[0] : 0;
       const ny = n.y_m !== undefined ? n.y_m : n.position ? n.position[1] : 0;
@@ -249,13 +257,14 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     }
 
     // 4. ACN
-    const acn =
+    const histAcn =
       simTimelineController && simTimelineController.isHistoricalInspecting
         ? simTimelineController.getActiveSpatialSnapshot()?.acn
-        : state.latestTelemetry?.acn_telemetry;
-    const acnX = acn ? acn.posX ?? acn.pos_x : null;
-    const acnY = acn ? acn.posY ?? acn.pos_y : null;
-    if (Number.isFinite(acnX) && Number.isFinite(acnY)) {
+        : null;
+    const liveAcnSnap = state.latestTelemetry?.acn_telemetry;
+    const acnX = histAcn ? histAcn.posX : liveAcnSnap?.pos_x ?? null;
+    const acnY = histAcn ? histAcn.posY : liveAcnSnap?.pos_y ?? null;
+    if (typeof acnX === 'number' && Number.isFinite(acnX) && typeof acnY === 'number' && Number.isFinite(acnY)) {
       const sp = actions.worldToScreen(acnX, acnY, w, h);
       const d = Math.hypot(px - sp.x, py - sp.y);
       if (d <= bestDist) {
@@ -267,7 +276,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     return snapTarget;
   }
 
-  function recomputeTransect(isPreview = false) {
+  function recomputeTransect(isPreview = false): void {
     if (state.tbTransectWaypoints.length < 2) {
       state.tbTransectResult = null;
       state.tbHoveredSampleIdx = null;
@@ -283,9 +292,9 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       return;
     }
     const simCtx = buildToolboxSimContext();
-    const kFactor = parseFloat($('tb-transect-k')?.value || String(4 / 3));
-    const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
-    const includeObstacles = isPreview ? false : Boolean($('tb-transect-obstacles')?.checked ?? true);
+    const kFactor = parseFloat($<HTMLInputElement>('tb-transect-k')?.value || String(4 / 3));
+    const nodeType = $<HTMLSelectElement>('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
+    const includeObstacles = isPreview ? false : Boolean($<HTMLInputElement>('tb-transect-obstacles')?.checked ?? true);
     state.tbTransectResult = evaluateTransect(simCtx, buildTransectWaypointInputs(state.tbTransectWaypoints), {
       kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3,
       includeObstacles,
@@ -296,10 +305,10 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       state.tbHoveredSampleIdx = null;
     }
 
-    const txMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-tx-mast')?.value || '10') || 10));
-    const rxMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-rx-mast')?.value || '2') || 2));
+    const txMastM = Math.max(1, Math.min(2000, parseFloat($<HTMLInputElement>('tb-transect-tx-mast')?.value || '10') || 10));
+    const rxMastM = Math.max(1, Math.min(2000, parseFloat($<HTMLInputElement>('tb-transect-rx-mast')?.value || '2') || 2));
     if (state.tbTransectResult && state.tbTransectResult.samples && state.tbTransectResult.samples.length >= 2) {
-      const elevs = state.tbTransectResult.samples.map(s => s.terrainMslM);
+      const elevs = state.tbTransectResult.samples.map((s: { terrainMslM: number }) => s.terrainMslM);
       const rf = computeTransectRfMetrics(elevs, state.tbTransectResult.totalHorizontalM, txMastM, rxMastM);
       setText('tb-transect-fresnel', `${rf.minF1ClearanceM.toFixed(1)} m (${Math.round(rf.minF1ClearancePct)}%)`);
       setText('tb-transect-diffraction', `${rf.p526DiffractionLossDb.toFixed(1)} dB`);
@@ -346,15 +355,15 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     renderToolboxDrawer();
   }
 
-  function recomputeRubberBandPreview(cursorPt) {
+  function recomputeRubberBandPreview(cursorPt: { x: number; y: number; lng?: number; lat?: number } | null): void {
     if (!cursorPt || state.tbTransectWaypoints.length === 0) return;
     const previewWps = [
       ...state.tbTransectWaypoints,
       { xM: cursorPt.x, yM: cursorPt.y, lng: cursorPt.lng, lat: cursorPt.lat },
     ];
     const simCtx = buildToolboxSimContext();
-    const kFactor = parseFloat($('tb-transect-k')?.value || String(4 / 3));
-    const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
+    const kFactor = parseFloat($<HTMLInputElement>('tb-transect-k')?.value || String(4 / 3));
+    const nodeType = $<HTMLSelectElement>('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
     state.tbTransectResult = evaluateTransect(simCtx, buildTransectWaypointInputs(previewWps), {
       kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3,
       includeObstacles: false,
@@ -362,8 +371,8 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       sampleCount: 64,
     });
     const wpA = state.tbTransectWaypoints[state.tbTransectWaypoints.length - 1];
-    const txMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-tx-mast')?.value || '10') || 10));
-    const rxMastM = Math.max(1, Math.min(2000, parseFloat($('tb-transect-rx-mast')?.value || '2') || 2));
+    const txMastM = Math.max(1, Math.min(2000, parseFloat($<HTMLInputElement>('tb-transect-tx-mast')?.value || '10') || 10));
+    const rxMastM = Math.max(1, Math.min(2000, parseFloat($<HTMLInputElement>('tb-transect-rx-mast')?.value || '2') || 2));
     const demA = sampleDemSafe(simCtx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
     const demB = sampleDemSafe(simCtx.terrainEngine, cursorPt.x, cursorPt.y).elevationM || 3500;
     state.tbRulerPreviewMetrics = computeGeodeticRulerMetrics(
@@ -387,9 +396,9 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     renderToolboxDrawer();
   }
 
-  function findNearestTransectSampleIndex(xM, yM, maxDistM) {
+  function findNearestTransectSampleIndex(xM: number, yM: number, maxDistM = Number.POSITIVE_INFINITY): number | null {
     if (!state.tbTransectResult || !state.tbTransectResult.samples.length) return null;
-    let bestIdx = null;
+    let bestIdx: number | null = null;
     let bestDist = maxDistM;
     for (let i = 0; i < state.tbTransectResult.samples.length; i++) {
       const s = state.tbTransectResult.samples[i];
@@ -402,8 +411,8 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     return bestIdx;
   }
 
-  function updateToolboxTransectHoverUi() {
-    const cvs = $('tb-transect-canvas');
+  function updateToolboxTransectHoverUi(): void {
+    const cvs = $<HTMLCanvasElement>('tb-transect-canvas');
     if (cvs) renderTransectProfileCanvas(cvs, state.tbTransectResult, state.tbHoveredSampleIdx);
     const info = $('tb-transect-hover-readout');
     if (info) {
@@ -415,7 +424,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     if (state.terrainMapMode !== 'maplibre') actions.drawRadar();
   }
 
-  function updateProbeUiReadouts(analysis) {
+  function updateProbeUiReadouts(analysis?: ReturnType<typeof evaluateCursorRfProbe> | null): void {
     if (!analysis) {
       setText('tb-probe-acn-range', '-- km');
       setText('tb-probe-acn-el', '--°');
@@ -455,17 +464,17 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     toolboxPrecisionUi?.sync({ cursorProbeLive: analysis });
   }
 
-  function recomputeProbeAnalysis() {
+  function recomputeProbeAnalysis(): void {
     const simCtx = buildToolboxSimContext();
-    const aglM = Math.max(0, Math.min(500, parseFloat($('tb-probe-agl')?.value || '2') || 2));
-    const radiusKm = Math.max(5, Math.min(60, parseFloat($('tb-probe-radius')?.value || '24') || 24));
-    const targetMode = $('tb-probe-target')?.value === 'acn_alt' ? 'acn_alt' : 'ground_agl';
-    const includeObstacles = Boolean($('tb-probe-obstacles')?.checked ?? true);
-    const sweepKind = $('tb-sweep-target')?.value || 'probe';
-    const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
+    const aglM = Math.max(0, Math.min(500, parseFloat($<HTMLInputElement>('tb-probe-agl')?.value || '2') || 2));
+    const radiusKm = Math.max(5, Math.min(60, parseFloat($<HTMLInputElement>('tb-probe-radius')?.value || '24') || 24));
+    const targetMode = $<HTMLSelectElement>('tb-probe-target')?.value === 'acn_alt' ? 'acn_alt' : 'ground_agl';
+    const includeObstacles = Boolean($<HTMLInputElement>('tb-probe-obstacles')?.checked ?? true);
+    const sweepKind = $<HTMLSelectElement>('tb-sweep-target')?.value || 'probe';
+    const nodeType = $<HTMLSelectElement>('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
 
     if (state.tbProbeSite) {
-      const unitKind = $('tb-probe-unit-select')?.value === 'mcp' ? 'mcp' : 'soldier';
+      const unitKind = $<HTMLSelectElement>('tb-probe-unit-select')?.value === 'mcp' ? 'mcp' : 'soldier';
       state.tbViewshedResult = computeSiteProbeViewshed(simCtx, {
         xM: state.tbProbeSite.xM,
         yM: state.tbProbeSite.yM,
@@ -494,19 +503,25 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
 
       const mastM = Math.max(
         1,
-        Math.min(200, parseFloat($('tb-probe-mast-input')?.value || $('tb-probe-agl')?.value || '2') || 2)
+        Math.min(
+          200,
+          parseFloat($<HTMLInputElement>('tb-probe-mast-input')?.value || $<HTMLInputElement>('tb-probe-agl')?.value || '2') || 2
+        )
       );
       const acnPos = simCtx.acnPositionMslM || [0, 0, 5000];
-      const acnHeading = Number.isFinite(state.latestTelemetry?.acn_heading_deg)
-        ? state.latestTelemetry.acn_heading_deg
-        : Number.isFinite(state.latestTelemetry?.acn_telemetry?.heading_rad)
-          ? (((state.latestTelemetry.acn_telemetry.heading_rad * 180) / Math.PI) % 360 + 360) % 360
-          : 0;
+      const acnHeadingRaw = state.latestTelemetry?.acn_heading_deg;
+      const acnHeadingRad = state.latestTelemetry?.acn_telemetry?.heading_rad;
+      const acnHeading =
+        typeof acnHeadingRaw === 'number' && Number.isFinite(acnHeadingRaw)
+          ? acnHeadingRaw
+          : typeof acnHeadingRad === 'number' && Number.isFinite(acnHeadingRad)
+            ? (((acnHeadingRad * 180) / Math.PI) % 360 + 360) % 360
+            : 0;
 
       const probeAnalysis = evaluateCursorRfProbe(
         { xM: state.tbProbeSite.xM, yM: state.tbProbeSite.yM },
         mastM,
-        acnPos,
+        [acnPos[0], acnPos[1], acnPos[2]],
         acnHeading,
         (x, y) => sampleDemSafe(simCtx.terrainEngine, x, y).elevationM || 3500,
         state.tbProbePinnedP1
@@ -523,7 +538,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
 
     const activeRegion =
       state.terrainRegions.find(r => r.id === state.tbSelectedRegionId) || state.terrainRegions[0] || null;
-    let sweepTarget = null;
+    let sweepTarget: Parameters<typeof computeAltitudeSweep>[1] | null = null;
     if (sweepKind === 'probe' && state.tbProbeSite) {
       sweepTarget = { kind: 'probe', xM: state.tbProbeSite.xM, yM: state.tbProbeSite.yM, aglM };
     } else if (sweepKind === 'region' && activeRegion) {
@@ -542,7 +557,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     if (state.terrainMapMode !== 'maplibre') actions.drawRadar();
   }
 
-  function updateProbeHeatmapConfig(patch) {
+  function updateProbeHeatmapConfig(patch: Partial<ProbeHeatmapConfig>): void {
     state.tbProbeHeatmapConfig = { ...state.tbProbeHeatmapConfig, ...(patch || {}) };
     if (state.tbViewshedResult?.isSiteWithinCoverage) {
       state.tbViewshedCanvas = renderProbeHeatmapCanvas(
@@ -565,7 +580,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     }
   }
 
-  function recomputeRegionZonal() {
+  function recomputeRegionZonal(): void {
     const activeRegion =
       state.terrainRegions.find(r => r.id === state.tbSelectedRegionId) ||
       state.terrainRegions[state.terrainRegions.length - 1] ||
@@ -590,7 +605,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       return;
     }
 
-    let minX, maxX, minY, maxY;
+    let minX: number, maxX: number, minY: number, maxY: number;
     if (state.tbAoSwathBox) {
       minX = Math.min(state.tbAoSwathBox.x1, state.tbAoSwathBox.x2);
       maxX = Math.max(state.tbAoSwathBox.x1, state.tbAoSwathBox.x2);
@@ -614,11 +629,14 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
 
     const simCtx = buildToolboxSimContext();
     const acnPos = simCtx.acnPositionMslM || [0, 0, 5000];
-    const acnHeading = Number.isFinite(state.latestTelemetry?.acn_heading_deg)
-      ? state.latestTelemetry.acn_heading_deg
-      : Number.isFinite(state.latestTelemetry?.acn_telemetry?.heading_rad)
-        ? (((state.latestTelemetry.acn_telemetry.heading_rad * 180) / Math.PI) % 360 + 360) % 360
-        : 0;
+    const acnHeadingRaw = state.latestTelemetry?.acn_heading_deg;
+    const acnHeadingRad = state.latestTelemetry?.acn_telemetry?.heading_rad;
+    const acnHeading =
+      typeof acnHeadingRaw === 'number' && Number.isFinite(acnHeadingRaw)
+        ? acnHeadingRaw
+        : typeof acnHeadingRad === 'number' && Number.isFinite(acnHeadingRad)
+          ? (((acnHeadingRad * 180) / Math.PI) % 360 + 360) % 360
+          : 0;
 
     state.tbAoSwathReport = evaluateAoSwathAnalysis(
       minX,
@@ -648,7 +666,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     };
 
     if (activeRegion) {
-      const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
+      const nodeType = $<HTMLSelectElement>('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
       state.tbZonalStats = analyzeRegionZonal(simCtx, activeRegion, { includeObstacles: true, nodeType });
     }
 
@@ -691,12 +709,12 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     if (state.terrainMapMode !== 'maplibre') actions.drawRadar();
   }
 
-  function runBridgeFinder() {
+  function runBridgeFinder(): void {
     if (!state.tbBridgeA || !state.tbBridgeB) return;
     const simCtx = buildToolboxSimContext();
-    const relayAglM = Math.max(1, Math.min(500, parseFloat($('tb-bridge-agl')?.value || '15') || 15));
+    const relayAglM = Math.max(1, Math.min(500, parseFloat($<HTMLInputElement>('tb-bridge-agl')?.value || '15') || 15));
     const activeRegion = state.terrainRegions.find(r => r.id === state.tbSelectedRegionId) || null;
-    const nodeType = $('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
+    const nodeType = $<HTMLSelectElement>('tb-transect-node-type')?.value === 'mcp' ? 'mcp' : 'soldier';
     state.tbBridgeResult = findJointRelayBridge(
       simCtx,
       { xM: state.tbBridgeA.xM, yM: state.tbBridgeA.yM, aglM: 2, label: 'A' },
@@ -717,7 +735,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     if (state.terrainMapMode !== 'maplibre') actions.drawRadar();
   }
 
-  function ensureBackdropCanvasSynced() {
+  function ensureBackdropCanvasSynced(): void {
     if (state.tbBackdropMode === 'relief') {
       state.tbBackdropCanvas = null;
       state.tbBackdropModeCached = 'relief';
@@ -745,7 +763,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     actions.applyMapLibreTerrainRaster();
   }
 
-  function renderMode1Provenance() {
+  function renderMode1Provenance(): void {
     const hasOutCov = Boolean(
       (state.tbTransectResult && !state.tbTransectResult.isCoverageComplete) ||
         (state.tbViewshedResult &&
@@ -771,7 +789,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     if (alertEl) alertEl.hidden = !prov.outsideCoverageWarning;
   }
 
-  function recomputeActiveToolboxResults() {
+  function recomputeActiveToolboxResults(): void {
     ensureBackdropCanvasSynced();
     renderMode1Provenance();
     if (state.tbTransectWaypoints.length >= 2) recomputeTransect(false);
@@ -782,36 +800,36 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
   }
   window.__onToolboxCacheInvalidated = recomputeActiveToolboxResults;
 
-  function refreshToolboxActionGates() {
+  function refreshToolboxActionGates(): void {
     const simCtx = buildToolboxSimContext();
     const canNode = canAddNodeFromToolbox(
       simCtx.groundNodes.length,
       simCtx.spatialLocked,
       simCtx.isHistoricalInspecting
     );
-    const addRegBtn = $('tb-region-add-node-btn');
+    const addRegBtn = $<HTMLButtonElement>('tb-region-add-node-btn');
     if (addRegBtn) addRegBtn.disabled = !canNode || !state.tbZonalStats?.bestRelayCoord;
-    const addBrBtn = $('tb-bridge-add-node-btn');
+    const addBrBtn = $<HTMLButtonElement>('tb-bridge-add-node-btn');
     if (addBrBtn) addBrBtn.disabled = !canNode || !state.tbBridgeResult?.optimalBridge;
-    const applyWpBtn = $('tb-apply-acn-waypoints-btn');
+    const applyWpBtn = $<HTMLButtonElement>('tb-apply-acn-waypoints-btn');
     if (applyWpBtn)
       applyWpBtn.disabled = !canApplyTransectAsAcnWaypoints(
         state.tbTransectWaypoints.length,
         simCtx.spatialLocked,
         simCtx.isHistoricalInspecting
       );
-    const spawnProbeBtn = $('tb-probe-spawn-node');
+    const spawnProbeBtn = $<HTMLButtonElement>('tb-probe-spawn-node');
     if (spawnProbeBtn) spawnProbeBtn.disabled = !canNode || !state.tbProbeSite;
-    const deploySquadBtn = $('btn-region-deploy-squad');
+    const deploySquadBtn = $<HTMLButtonElement>('btn-region-deploy-squad');
     if (deploySquadBtn) deploySquadBtn.disabled = !canNode || !state.tbAoSwathReport?.squadDeployCoords;
-    const spawnSummitBtn = $('btn-region-spawn-summit-relay');
+    const spawnSummitBtn = $<HTMLButtonElement>('btn-region-spawn-summit-relay');
     if (spawnSummitBtn) spawnSummitBtn.disabled = !canNode || !state.tbAoSwathReport?.summitPeak;
-    const finishPolyBtn = $('tb-transect-finish-btn');
+    const finishPolyBtn = $<HTMLButtonElement>('tb-transect-finish-btn');
     if (finishPolyBtn)
       finishPolyBtn.disabled = !(state.terrainToolMode === 'transect-poly' && state.tbTransectWaypoints.length >= 2);
   }
 
-  function renderToolboxDrawer() {
+  function renderToolboxDrawer(): void {
     const panel = $('terrain-toolbox-panel');
     const drawer = $('terrain-toolbox-drawer');
     const content = $('tb-drawer-content');
@@ -837,9 +855,9 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
             ? 'Blocked by 3D obstacle'
             : 'N/A'
           : `${res.worstCriticalRainRateMmH.toFixed(1)} mm/h`;
-      const kCrit = res.segments.find(s => s.criticalKFactor !== null)?.criticalKFactor;
+      const kCrit = res.segments.find((s: { criticalKFactor: number | null }) => s.criticalKFactor !== null)?.criticalKFactor;
       const ladderHtml = (seg0?.rainSweep || [])
-        .map(p => `<span class="tb-chip ${p.isOutage ? 'is-vermilion' : 'is-sage'}">${p.rainRateMmH}mm:${p.modcodName.split(' ')[0]}</span>`)
+        .map((p: { isOutage: boolean; rainRateMmH: number; modcodName: string }) => `<span class="tb-chip ${p.isOutage ? 'is-vermilion' : 'is-sage'}">${p.rainRateMmH}mm:${p.modcodName.split(' ')[0]}</span>`)
         .join('');
 
       content.innerHTML = `
@@ -862,7 +880,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
           <button id="tb-export-csv-btn" type="button">Export CSV</button>
         </div>`;
 
-      const cvs = $('tb-transect-canvas');
+      const cvs = $<HTMLCanvasElement>('tb-transect-canvas');
       if (cvs) {
         renderTransectProfileCanvas(cvs, res, state.tbHoveredSampleIdx);
         cvs.addEventListener('mousemove', e => {
@@ -930,9 +948,9 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
         `
             : ''
         }`;
-      const polarCvs = $('tb-polar-canvas');
+      const polarCvs = $<HTMLCanvasElement>('tb-polar-canvas');
       if (polarCvs && vs) renderPolarHorizonChart(polarCvs, vs);
-      const sweepCvs = $('tb-sweep-canvas');
+      const sweepCvs = $<HTMLCanvasElement>('tb-sweep-canvas');
       if (sweepCvs && sw) renderAltitudeSweepChart(sweepCvs, sw);
     } else if (state.tbActiveMode === 'region' && (state.tbZonalStats || state.tbBridgeResult)) {
       hasBody = true;
@@ -986,7 +1004,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       });
       $('tb-bridge-add-node-btn')?.addEventListener('click', () => {
         if (!br?.optimalBridge) return;
-        const agl = Math.max(1, Math.min(500, parseFloat($('tb-bridge-agl')?.value || '15') || 15));
+        const agl = Math.max(1, Math.min(500, parseFloat($<HTMLInputElement>('tb-bridge-agl')?.value || '15') || 15));
         addToolboxNodeAt(br.optimalBridge.xM, br.optimalBridge.yM, agl, 'BRIDGE-RELAY');
       });
     }
@@ -1012,7 +1030,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
   }
   window.renderToolboxDrawer = renderToolboxDrawer;
 
-  function addToolboxNodeAt(xM, yM, aglM, callsign, role = 'soldier') {
+  function addToolboxNodeAt(xM: number, yM: number, aglM: number, callsign: string, role = 'soldier'): void {
     const simCtx = buildToolboxSimContext();
     if (!canAddNodeFromToolbox(simCtx.groundNodes.length, simCtx.spatialLocked, simCtx.isHistoricalInspecting)) {
       setTerrainToolStatus(`Cannot add node (locked, historical, or at ${MAX_ACTIVE_GROUND_NODES} node limit).`);
@@ -1022,7 +1040,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     setTerrainToolStatus(`Deployed ${callsign} at (${Math.round(xM)}, ${Math.round(yM)}) m, AGL ${aglM.toFixed(1)} m.`);
   }
 
-  function applyTransectAsAcnWaypoints() {
+  function applyTransectAsAcnWaypoints(): void {
     const simCtx = buildToolboxSimContext();
     if (
       !canApplyTransectAsAcnWaypoints(
@@ -1045,7 +1063,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     setTerrainToolStatus(`Applied ${pts.length} transect vertices as ACN waypoints.`);
   }
 
-  function finishTransectPolyline() {
+  function finishTransectPolyline(): void {
     if (state.tbTransectWaypoints.length < 2) return;
     state.terrainToolMode = 'idle';
     state.tbRubberBandPoint = null;
@@ -1055,7 +1073,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     if (state.terrainMapMode !== 'maplibre') actions.drawRadar();
   }
 
-  function handleToolboxMapClick(point) {
+  function handleToolboxMapClick(point: { x: number; y: number; lng?: number; lat?: number }): boolean | void {
     if (state.terrainToolMode === 'transect-2pt' || state.terrainToolMode === 'measure') {
       if (state.tbTransectWaypoints.length >= 2 || state.tbTransectWaypoints.length === 0) {
         let clickPt = point;
@@ -1137,7 +1155,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       if (state.tbCursorProbeLive) {
         state.tbProbePinnedP1 = state.tbCursorProbeLive;
       }
-      setTerrainToolStatus(`Probe set & [P1] pinned at ${point.lat.toFixed(4)}°, ${point.lng.toFixed(4)}°.`);
+      setTerrainToolStatus(`Probe set & [P1] pinned at ${(point.lat ?? 0).toFixed(4)}°, ${(point.lng ?? 0).toFixed(4)}°.`);
       refreshTerrainToolbox();
       actions.updateMapLibreToolSources();
       if (state.terrainMapMode !== 'maplibre') actions.drawRadar();
@@ -1162,7 +1180,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       return;
     }
     if (state.terrainToolMode === 'obstacle-place') {
-      const shapeMode = $('tb-obs-shape-select')?.value || 'wall';
+      const shapeMode = ($<HTMLSelectElement>('tb-obs-shape-select')?.value || 'wall') as ObstacleShapeMode;
       const preset = OBSTACLE_PRESETS[shapeMode] || OBSTACLE_PRESETS.wall;
       const shapeType = preset.shapeType;
       const baseHeight = preset.defaultHeightM;
@@ -1187,7 +1205,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
         }
         setTerrainToolStatus(`Obstacle [${preset.label}] placed at (${Math.round(point.x)}, ${Math.round(point.y)}) m.`);
       } catch (err) {
-        setTerrainToolStatus(`Could not place obstacle: ${err?.message || err}`);
+        setTerrainToolStatus(`Could not place obstacle: ${err instanceof Error ? err.message : String(err)}`);
       }
       state.terrainToolMode = 'idle';
       actions.refreshObstacleEditor();
@@ -1280,7 +1298,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     const tbStack = $('terrain-toolbox-stack');
     const pickingBar = $('tb-picking-bar');
     const pickingLabel = $('tb-picking-label');
-    const pickingFinishBtn = $('tb-picking-finish-btn');
+    const pickingFinishBtn = $<HTMLButtonElement>('tb-picking-finish-btn');
     const isPicking = state.terrainToolMode !== 'idle';
     if (tbStack) tbStack.setAttribute('data-tb-picking', isPicking ? 'true' : 'false');
     $('terrain-toolbox')?.setAttribute('data-tb-picking', isPicking ? 'true' : 'false');
@@ -1380,7 +1398,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
   }
   window.updateStepGuideBanner = updateStepGuideBanner;
 
-  function setTerrainToolboxExpanded(expanded) {
+  function setTerrainToolboxExpanded(expanded: boolean): void {
     state.tbOpen = Boolean(expanded);
     window.tbOpen = state.tbOpen;
     const tbStack = $('terrain-toolbox-stack');
@@ -1409,7 +1427,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
 
       const detailViewport = document.querySelector('.detail-viewport');
       if (detailViewport) detailViewport.setAttribute('data-tb-open', 'true');
-      document.querySelectorAll('.detail-viewport > .tab-content').forEach(el => {
+      document.querySelectorAll<HTMLElement>('.detail-viewport > .tab-content').forEach(el => {
         el.style.display = 'none';
       });
 
@@ -1429,7 +1447,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       if (terrainToolbox) terrainToolbox.style.display = 'none';
       if (mapActiveToolBar) mapActiveToolBar.style.display = 'none';
 
-      document.querySelectorAll('.detail-viewport > .tab-content').forEach(el => {
+      document.querySelectorAll<HTMLElement>('.detail-viewport > .tab-content').forEach(el => {
         el.style.display = '';
       });
 
@@ -1443,7 +1461,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
   }
   window.setTerrainToolboxExpanded = setTerrainToolboxExpanded;
 
-  function closeTerrainToolbox() {
+  function closeTerrainToolbox(): void {
     setTerrainToolboxExpanded(false);
     state.terrainToolMode = 'idle';
     state.tbRubberBandPoint = null;
@@ -1473,12 +1491,12 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
   }
   window.closeTerrainToolbox = closeTerrainToolbox;
 
-  window.openTerrainToolbox = function(mode = 'transect') {
+  window.openTerrainToolbox = function(mode = 'transect'): void {
     setTerrainToolboxExpanded(true);
     setTbMode(mode, true);
   };
 
-  const setTbMode = (mode, autoArm = true) => {
+  const setTbMode = (mode: string, autoArm = true): void => {
     state.tbActiveMode = mode;
     if (mode === 'transect') {
       state.terrainToolMode = 'transect-2pt';
@@ -1503,13 +1521,13 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       actions.updateMapLibreToolSources();
       actions.updateMapLibreOverlay();
     }
-    getTerrainToolboxController().setTbMode(mode, autoArm);
+    getTerrainToolboxController().setTbMode(mode as ToolboxMode, autoArm);
     updateStepGuideBanner();
   };
   window.setTbMode = setTbMode;
 
-  function isEditableKeyboardTarget(target) {
-    if (!target || !target.closest) return false;
+  function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+    if (!target || !(target instanceof Element)) return false;
     return Boolean(target.closest('input, select, textarea, [contenteditable="true"], [contenteditable=""]'));
   }
   window.isEditableKeyboardTarget = isEditableKeyboardTarget;
@@ -1629,6 +1647,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
         e.preventDefault();
         e.stopPropagation();
         const targetMode = (btn as HTMLElement).dataset.tbRailMode;
+        if (!targetMode) return;
         if (targetMode === 'dem') {
           cancelTerrainTool();
           setTbMode('dem', false);
@@ -1642,6 +1661,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     document.querySelectorAll('.tb-mode-tab[data-tb-mode]').forEach(btn => {
       btn.addEventListener('click', () => {
         const targetMode = (btn as HTMLElement).dataset.tbMode;
+        if (!targetMode) return;
         setTbMode(targetMode, targetMode !== 'dem');
       });
     });
@@ -1686,12 +1706,12 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
         markRadarDirty: () => actions.markRadarDirty(),
         updateMapLibreToolSources: () => actions.updateMapLibreToolSources(),
         updateMapLibreOverlay: () => actions.updateMapLibreOverlay(),
-        applyObstacleHistoryChange: (...a) => actions.applyObstacleHistoryChange(...a),
-        syncObstacleFieldMirror: (...a) => actions.syncObstacleFieldMirror(...a),
-        refreshObstacleEditor: (...a) => actions.refreshObstacleEditor(...a),
-        renderObstacleInventoryList: (...a) => actions.renderObstacleInventoryList(...a),
-        recomputeCadObstacleAnalysis: (...a) => actions.recomputeCadObstacleAnalysis(...a),
-        sendCommand: (...a) => actions.sendCommand(...a),
+        applyObstacleHistoryChange: (...a: Parameters<typeof actions.applyObstacleHistoryChange>) => actions.applyObstacleHistoryChange(...a),
+        syncObstacleFieldMirror: (...a: Parameters<typeof actions.syncObstacleFieldMirror>) => actions.syncObstacleFieldMirror(...a),
+        refreshObstacleEditor: (...a: Parameters<typeof actions.refreshObstacleEditor>) => actions.refreshObstacleEditor(...a),
+        renderObstacleInventoryList: (...a: Parameters<typeof actions.renderObstacleInventoryList>) => actions.renderObstacleInventoryList(...a),
+        recomputeCadObstacleAnalysis: (...a: Parameters<typeof actions.recomputeCadObstacleAnalysis>) => actions.recomputeCadObstacleAnalysis(...a),
+        sendCommand: (...a: Parameters<typeof actions.sendCommand>) => actions.sendCommand(...a),
         addNodeAt: addToolboxNodeAt,
         getTerrainEngine: () => mainTerrainEngine,
         getLatestTelemetry: () => state.latestTelemetry,
@@ -1699,29 +1719,31 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
         getObstacleEditor: () => obstacleEditor,
         getObstacleHistory: () => state.tbObstacleHistory,
         getObsSelectedId: () => state.tbObsSelectedId,
-        setObsSelectedId: id => {
+        setObsSelectedId: (id: string | null) => {
           state.tbObsSelectedId = id;
         },
         getCadObstacleReport: () => actions.getDashboardAndAuthoringController().getCadObstacleReport(),
         getPan: () => ({ x: state.panOffsetX_m, y: state.panOffsetY_m }),
-        setPanAndRange: (x, y, r) => {
+        setPanAndRange: (x: number, y: number, r: number) => {
           state.panOffsetX_m = x;
           state.panOffsetY_m = y;
           actions.setRadarRange(r);
         },
-        setBackdropMode: m => {
-          state.tbBackdropMode = m;
+        setBackdropMode: (m: string) => {
+          if (m === 'relief' || m === 'slope' || m === 'ridge') {
+            state.tbBackdropMode = m;
+          }
           actions.markRadarDirty();
           actions.drawRadar();
         },
-        setLayerVisibility: (id, v) => {
-          mapLayerRegistry.setLayerVisibility(id, v);
+        setLayerVisibility: (id: string, v: boolean) => {
+          mapLayerRegistry.setLayerVisible(id as MapLayerId, v);
           actions.applyMapLayersToAllRenderers();
         },
-        setToolMode: m => {
+        setToolMode: (m: string) => {
           state.terrainToolMode = m;
         },
-        setMeasureMode: m => {
+        setMeasureMode: (m: string) => {
           state.tbActiveMode = 'transect';
           state.terrainToolMode = m;
           state.tbTransectWaypoints = [];
@@ -1734,12 +1756,12 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
           actions.drawRadar();
         },
         getTransectWaypoints: () => state.tbTransectWaypoints,
-        setTransectWaypoints: w => {
+        setTransectWaypoints: (w: any[]) => {
           state.tbTransectWaypoints = w;
         },
         getRulerEvaluation: () => state.tbRulerEvaluation,
         getProbeSite: () => state.tbProbeSite,
-        setProbeSite: s => {
+        setProbeSite: (s: any) => {
           state.tbProbeSite = s;
         },
         updateProbeHeatmapConfig,
@@ -1762,7 +1784,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
           state.terrainRegionDraft = [];
           refreshTerrainToolbox();
         },
-        setAoSwathBox: b => {
+        setAoSwathBox: (b: any) => {
           state.tbAoSwathBox = b;
         },
         getAoSwathReport: () => state.tbAoSwathReport,
@@ -1773,7 +1795,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
           renderToolboxDrawer();
           actions.drawRadar();
         },
-        handleRegionListAction: (act, id, val) => {
+        handleRegionListAction: (act: string, id: number, val?: unknown) => {
           const idx = state.terrainRegions.findIndex(r => r.id === id);
           if (idx < 0) return;
           if (act === 'delete') {
@@ -1806,11 +1828,11 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
           aoSwathBox: state.tbAoSwathBox,
           aoSwathReport: state.tbAoSwathReport,
         }),
-        openToolboxInspector: m => {
+        openToolboxInspector: (m: string) => {
           setTerrainToolboxExpanded(true);
           setTbMode(m, false);
         },
-        applyDemQuickPreset: id => window.applyDemQuickPreset?.(id),
+        applyDemQuickPreset: (id: string) => window.applyDemQuickPreset?.(id),
       })
     );
     toolboxPrecisionUi.mount();
@@ -1851,6 +1873,6 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     closeTerrainToolbox,
     setTbMode,
     setupTerrainToolbox,
-    syncToolboxPrecisionUi: payload => toolboxPrecisionUi?.sync(payload),
+    syncToolboxPrecisionUi: (payload?: unknown) => toolboxPrecisionUi?.sync(payload as Record<string, unknown>),
   });
 }

@@ -169,7 +169,7 @@ console.log('\n[UI05-T3] Verifying Figma-Style Keyboard Shortcuts & Strict Input
 {
   // 1. Strict editable keyboard target guard function must exist
   assert.ok(
-    mainTs.includes('function isEditableKeyboardTarget(target)'),
+    /function\s+isEditableKeyboardTarget\s*\(\s*target(?:\s*:[^)]+)?\s*\)/.test(mainTs),
     'isEditableKeyboardTarget helper must be defined in src/main.ts',
   );
   assert.ok(
@@ -212,8 +212,7 @@ console.log('\n[UI05-T4] Verifying 1-Click Auto-Arm State Transitions & Terse St
 {
   // 1. setTbMode must accept autoArm parameter and arm tool modes directly
   assert.ok(
-    mainTs.includes('const setTbMode = (mode, autoArm = true) =>') ||
-    mainTs.includes('function setTbMode(mode, autoArm = true)'),
+    /(?:const\s+setTbMode\s*=\s*|function\s+setTbMode\s*)\(\s*mode(?:\s*:[^,)]+)?\s*,\s*autoArm(?:\s*:[^=)]+)?\s*=\s*true/.test(mainTs),
     'setTbMode must support autoArm parameter defaulting to true',
   );
 

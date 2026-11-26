@@ -1,5 +1,6 @@
-// @ts-nocheck — Terrain DEM upload (HGT/GeoTIFF/Heightmap), folder catalog mosaic & offline mission pack store
+// Terrain DEM upload (HGT/GeoTIFF/Heightmap), folder catalog mosaic & offline mission pack store
 import type { AppContext } from './appContext.ts';
+import type { TerrainBoundsLike } from './windowBindings.d.ts';
 import { parseHgtBuffer, decodeHgtBuffer } from '../core/hgtParser.ts';
 import {
   buildTileCatalog,
@@ -7,29 +8,38 @@ import {
   selectActivePatch,
   decodeAndStitchPatchAsync,
 } from '../core/hgtMosaic.ts';
+import type {
+  DecodedTile,
+  PatchSelection,
+  SrtmCatalogTile,
+  StitchedMosaicResult,
+  TileCluster,
+} from '../core/hgtMosaic.ts';
 import { inferPackKind } from '../core/offlineMissionPackStore.ts';
+import type { OfflineMissionPackKind } from '../core/offlineMissionPackStore.ts';
 import { REAL_LADAKH_DEM_METADATA } from '../core/terrain.ts';
+import type { DemGeographicMetadata } from '../core/terrain.ts';
 import { parseGeoTiffDem } from '../core/militaryGisEngine.ts';
 
-export function initTerrainUploadController(ctx: AppContext) {
+export function initTerrainUploadController(ctx: AppContext): void {
   const { state, engines, canvases, dom, actions } = ctx;
   const { $, setText } = dom;
   const { mainTerrainEngine, terrainTopViewport, tileCache, offlinePackStore } = engines;
   const { radarCanvas, terrainCanvas } = canvases;
 
-  let currentCatalog = [];
-  let currentClusters = [];
-  let activePatchSelection = null;
-  let activeHgtAbortController = null;
+  let currentCatalog: SrtmCatalogTile[] = [];
+  let currentClusters: TileCluster[] = [];
+  let activePatchSelection: PatchSelection | null = null;
+  let activeHgtAbortController: AbortController | null = null;
 
-  function setCustomDemControlsState({ loading = false, loaded = false } = {}) {
+  function setCustomDemControlsState({ loading = false, loaded = false }: { loading?: boolean; loaded?: boolean } = {}): void {
     const btnCancel = $('btn-cancel-hgt-load');
     const btnUnload = $('btn-unload-custom-dem');
     if (btnCancel) btnCancel.hidden = !loading;
     if (btnUnload) btnUnload.hidden = !loaded;
   }
 
-  function sendCustomDemZeroCopy(elevations, metadata) {
+  function sendCustomDemZeroCopy(elevations: Float32Array, metadata: DemGeographicMetadata): void {
     const transferable = new Float32Array(elevations);
     actions.sendCommand(
       {
@@ -42,14 +52,14 @@ export function initTerrainUploadController(ctx: AppContext) {
     setCustomDemControlsState({ loading: false, loaded: true });
   }
 
-  function resetTerrainFileInputs() {
-    const fileEl = $('terrainFileInput');
-    const folderEl = $('terrainFolderInput');
+  function resetTerrainFileInputs(): void {
+    const fileEl = $<HTMLInputElement>('terrainFileInput');
+    const folderEl = $<HTMLInputElement>('terrainFolderInput');
     if (fileEl) fileEl.value = '';
     if (folderEl) folderEl.value = '';
   }
 
-  function invokeTauriOfflineIpc(cmd, args) {
+  function invokeTauriOfflineIpc(cmd: string, args: Record<string, unknown>): Promise<unknown> | null {
     const tauriInvoke = window?.__TAURI_INTERNALS__?.invoke;
     if (typeof tauriInvoke === 'function') {
       return tauriInvoke(cmd, args);
@@ -57,7 +67,11 @@ export function initTerrainUploadController(ctx: AppContext) {
     return null;
   }
 
-  async function persistOfflinePack(name, kind, bufferOrBytes) {
+  async function persistOfflinePack(
+    name: string,
+    kind: OfflineMissionPackKind,
+    bufferOrBytes: ArrayBuffer | Uint8Array
+  ): Promise<void> {
     try {
       const bytes = bufferOrBytes instanceof Uint8Array ? bufferOrBytes : new Uint8Array(bufferOrBytes);
       if (bytes.byteLength <= 64 * 1024 * 1024) {
@@ -73,7 +87,7 @@ export function initTerrainUploadController(ctx: AppContext) {
     }
   }
 
-  async function refreshOfflinePackList() {
+  async function refreshOfflinePackList(): Promise<void> {
     const summaryEl = $('offline-pack-summary');
     const listEl = $('offline-pack-list');
     if (!summaryEl && !listEl) return;
@@ -118,7 +132,9 @@ export function initTerrainUploadController(ctx: AppContext) {
             if (inferPackKind(loaded.name) === 'scenario') {
               actions.getMissionIoController().applyScenarioJson(new TextDecoder().decode(loaded.bytes));
             } else {
-              const fileBlob = new File([loaded.bytes], loaded.name);
+              const copyBytes = new Uint8Array(loaded.bytes.byteLength);
+              copyBytes.set(loaded.bytes);
+              const fileBlob = new File([copyBytes], loaded.name);
               window.onFileSelected?.(fileBlob);
             }
           });
@@ -148,20 +164,20 @@ export function initTerrainUploadController(ctx: AppContext) {
     }
   }
 
-  function getTerrainLayout() {
-    const cvs = terrainCanvas ? terrainCanvas : $('terrain-canvas');
+  function getTerrainLayout(): { width: number; height: number; padL: number; padR: number; padT: number; padB: number } {
+    const cvs = terrainCanvas ? terrainCanvas : $<HTMLCanvasElement>('terrain-canvas');
     const w = cvs && cvs.parentElement ? cvs.parentElement.clientWidth : cvs ? cvs.width : 800;
     const h = cvs && cvs.parentElement ? cvs.parentElement.clientHeight : cvs ? cvs.height : 320;
     return { width: Math.max(10, w), height: Math.max(10, h), padL: 60, padR: 24, padT: 28, padB: 34 };
   }
   window.getTerrainLayout = getTerrainLayout;
 
-  window.centerMapOnTerrain = function(bounds) {
+  window.centerMapOnTerrain = function(bounds: TerrainBoundsLike | null | undefined): void {
     if (!bounds) return;
-    const minX = bounds.minX !== undefined ? bounds.minX : -bounds.halfWidthM;
-    const maxX = bounds.maxX !== undefined ? bounds.maxX : bounds.halfWidthM;
-    const minY = bounds.minY !== undefined ? bounds.minY : -bounds.halfHeightM;
-    const maxY = bounds.maxY !== undefined ? bounds.maxY : bounds.halfHeightM;
+    const minX = bounds.minX !== undefined ? bounds.minX : -(bounds.halfWidthM ?? NaN);
+    const maxX = bounds.maxX !== undefined ? bounds.maxX : (bounds.halfWidthM ?? NaN);
+    const minY = bounds.minY !== undefined ? bounds.minY : -(bounds.halfHeightM ?? NaN);
+    const maxY = bounds.maxY !== undefined ? bounds.maxY : (bounds.halfHeightM ?? NaN);
 
     if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) return;
 
@@ -171,7 +187,7 @@ export function initTerrainUploadController(ctx: AppContext) {
     const spanY = Math.max(1000, maxY - minY);
 
     // 1. Center 2D Radar Canvas with container dimension & aspect ratio awareness
-    const rCvs = radarCanvas ? radarCanvas : $('radar-canvas');
+    const rCvs = radarCanvas ? radarCanvas : $<HTMLCanvasElement>('radar-canvas');
     const rw = rCvs && rCvs.parentElement ? rCvs.parentElement.clientWidth : rCvs ? rCvs.width : 800;
     const rh = rCvs && rCvs.parentElement ? rCvs.parentElement.clientHeight : rCvs ? rCvs.height : 600;
     const rcx = rw / 2;
@@ -210,7 +226,7 @@ export function initTerrainUploadController(ctx: AppContext) {
     }
   };
 
-  window.setTerrainMode = function(mode) {
+  window.setTerrainMode = function(mode: 'real' | 'synthetic'): void {
     if (state.spatialLocked) {
       setText('worker-label', 'Spatial lock is enabled; terrain mode cannot be changed.');
       return;
@@ -227,12 +243,12 @@ export function initTerrainUploadController(ctx: AppContext) {
     state.cachedTerrainMeshData = null;
     actions.invalidateToolboxCache();
     actions.updateTerrainHudBadge();
-    $('btnRealTerrain').classList.toggle('active', mode === 'real');
-    $('btnSynthTerrain').classList.toggle('active', mode === 'synthetic');
+    $('btnRealTerrain')?.classList.toggle('active', mode === 'real');
+    $('btnSynthTerrain')?.classList.toggle('active', mode === 'synthetic');
     if (mode === 'synthetic' && state.currentRadarRangeM > 300000) {
       state.currentRadarRangeM = 300000;
     }
-    actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: mode });
+    actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode });
     actions.sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: mode } });
     actions.requestTerrainMeshData(true);
     actions.markRadarDirty();
@@ -242,7 +258,7 @@ export function initTerrainUploadController(ctx: AppContext) {
     }
   };
 
-  function openUploadModal() {
+  function openUploadModal(): void {
     const modal = $('upload-modal');
     if (modal) modal.removeAttribute('hidden');
     const statusBox = $('upload-status');
@@ -251,45 +267,46 @@ export function initTerrainUploadController(ctx: AppContext) {
   }
   window.openUploadModal = openUploadModal;
 
-  function closeUploadModal() {
+  function closeUploadModal(): void {
     const modal = $('upload-modal');
     if (modal) modal.setAttribute('hidden', '');
   }
   window.closeUploadModal = closeUploadModal;
 
-  function onDragOver(e) {
+  function onDragOver(e: DragEvent): void {
     e.preventDefault();
     const dz = $('dropzone');
     if (dz) dz.classList.add('dragover');
   }
   window.onDragOver = onDragOver;
 
-  function onDragLeave(e) {
+  function onDragLeave(e: DragEvent): void {
     e.preventDefault();
     const dz = $('dropzone');
     if (dz) dz.classList.remove('dragover');
   }
   window.onDragLeave = onDragLeave;
 
-  function onDropFile(e) {
+  function onDropFile(e: DragEvent): void {
     e.preventDefault();
     const dz = $('dropzone');
     if (dz) dz.classList.remove('dragover');
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
       if (e.dataTransfer.files.length > 1) {
-        window.onFolderSelected(e.dataTransfer.files);
+        void window.onFolderSelected?.(e.dataTransfer.files);
       } else {
-        window.onFileSelected(e.dataTransfer.files[0]);
+        window.onFileSelected?.(e.dataTransfer.files[0]);
       }
     }
   }
   window.onDropFile = onDropFile;
 
-  window.onFileSelected = function(file) {
+  window.onFileSelected = function(file: File): void {
     if (!file) return;
     const statusBox = $('upload-status');
     const patchCtrl = $('folder-patch-controls');
     if (patchCtrl) patchCtrl.style.display = 'none';
+    if (!statusBox) return;
     statusBox.style.display = 'block';
     statusBox.className = 'upload-status-box status-loading';
     statusBox.textContent = `Parsing ${file.name} directly in browser...`;
@@ -298,13 +315,16 @@ export function initTerrainUploadController(ctx: AppContext) {
 
     if (lowerName.endsWith('.hgt')) {
       const reader = new FileReader();
-      reader.onload = (evt) => {
+      reader.onload = (evt: ProgressEvent<FileReader>) => {
         try {
-          const buffer = evt.target.result;
+          const buffer = evt.target?.result;
+          if (!(buffer instanceof ArrayBuffer)) {
+            throw new Error('Failed to read HGT ArrayBuffer.');
+          }
           const parseResult = parseHgtBuffer(file.name, buffer);
-          if (!parseResult.success) {
+          if (!parseResult.success || !parseResult.elevations || !parseResult.metadata) {
             statusBox.className = 'upload-status-box status-error';
-            statusBox.textContent = `[ERR] Error: ${parseResult.error}`;
+            statusBox.textContent = `[ERR] Error: ${parseResult.error || 'Failed to parse HGT file.'}`;
             return;
           }
 
@@ -323,15 +343,15 @@ export function initTerrainUploadController(ctx: AppContext) {
           void persistOfflinePack(file.name, 'hgt', buffer);
 
           // Center cameras without altering authentic coordinates
-          window.centerMapOnTerrain(parseResult.metadata);
+          window.centerMapOnTerrain?.(parseResult.metadata);
 
           const meta = parseResult.metadata;
           statusBox.className = 'upload-status-box status-success';
           statusBox.textContent = `[OK] Loaded ${meta.tileName} (${parseResult.resolution} ${parseResult.sampleCount}×${parseResult.sampleCount}, Elev: ${parseResult.minElevationM?.toFixed(0)}m–${parseResult.maxElevationM?.toFixed(0)}m MSL, Voids: ${parseResult.voidCount}) · View Centered`;
-          setTimeout(() => window.closeUploadModal && window.closeUploadModal(), 1500);
+          setTimeout(() => window.closeUploadModal?.(), 1500);
         } catch (err) {
           statusBox.className = 'upload-status-box status-error';
-          statusBox.textContent = `[ERR] Failed to process HGT: ${err?.message || err}`;
+          statusBox.textContent = `[ERR] Failed to process HGT: ${err instanceof Error ? err.message : String(err)}`;
         }
       };
       reader.onerror = () => {
@@ -341,9 +361,12 @@ export function initTerrainUploadController(ctx: AppContext) {
       reader.readAsArrayBuffer(file);
     } else if (lowerName.endsWith('.tif') || lowerName.endsWith('.tiff')) {
       const reader = new FileReader();
-      reader.onload = (evt) => {
+      reader.onload = (evt: ProgressEvent<FileReader>) => {
         try {
-          const buffer = evt.target.result;
+          const buffer = evt.target?.result;
+          if (!(buffer instanceof ArrayBuffer)) {
+            throw new Error('Failed to read GeoTIFF ArrayBuffer.');
+          }
           const parseResult = parseGeoTiffDem(buffer);
           if (!parseResult.ok || !parseResult.elevationsM || !parseResult.width || !parseResult.height) {
             statusBox.className = 'upload-status-box status-error';
@@ -355,17 +378,22 @@ export function initTerrainUploadController(ctx: AppContext) {
           const maxLat = parseResult.geoBounds?.maxLatDeg ?? 35.5;
           const minLon = parseResult.geoBounds?.minLonDeg ?? 75.5;
           const maxLon = parseResult.geoBounds?.maxLonDeg ?? 77.5;
-          const meta = {
+          const halfWidthM = 91839.9774;
+          const halfHeightM = 110931.4506;
+          const meta: DemGeographicMetadata = {
             tileName: file.name,
+            rasterWidth: parseResult.width,
+            rasterHeight: parseResult.height,
             minLatDeg: minLat,
             maxLatDeg: maxLat,
             minLonDeg: minLon,
             maxLonDeg: maxLon,
             centerLatDeg: (minLat + maxLat) / 2.0,
             centerLonDeg: (minLon + maxLon) / 2.0,
-            halfWidthM: 91839.9774,
-            halfHeightM: 110931.4506,
-            sampleCount: parseResult.width,
+            halfWidthM,
+            halfHeightM,
+            groundResolutionXM: (halfWidthM * 2) / Math.max(1, parseResult.width - 1),
+            groundResolutionYM: (halfHeightM * 2) / Math.max(1, parseResult.height - 1),
           };
 
           mainTerrainEngine.loadCustomDem(parseResult.elevationsM, meta);
@@ -380,14 +408,14 @@ export function initTerrainUploadController(ctx: AppContext) {
           actions.requestTerrainMeshData(true);
           void persistOfflinePack(file.name, 'geotiff', buffer);
 
-          window.centerMapOnTerrain(meta);
+          window.centerMapOnTerrain?.(meta);
 
           statusBox.className = 'upload-status-box status-success';
           statusBox.textContent = `[OK] Loaded GeoTIFF ${file.name} (${parseResult.width}×${parseResult.height}, Elev: ${parseResult.minElevationM?.toFixed(0)}m–${parseResult.maxElevationM?.toFixed(0)}m MSL) · View Centered`;
-          setTimeout(() => window.closeUploadModal && window.closeUploadModal(), 1500);
+          setTimeout(() => window.closeUploadModal?.(), 1500);
         } catch (err) {
           statusBox.className = 'upload-status-box status-error';
-          statusBox.textContent = `[ERR] Failed to process GeoTIFF: ${err?.message || err}`;
+          statusBox.textContent = `[ERR] Failed to process GeoTIFF: ${err instanceof Error ? err.message : String(err)}`;
         }
       };
       reader.onerror = () => {
@@ -397,21 +425,32 @@ export function initTerrainUploadController(ctx: AppContext) {
       reader.readAsArrayBuffer(file);
     } else if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
       const reader = new FileReader();
-      reader.onload = (evt) => {
+      reader.onload = (evt: ProgressEvent<FileReader>) => {
+        const resultUrl = evt.target?.result;
+        if (typeof resultUrl !== 'string') {
+          statusBox.className = 'upload-status-box status-error';
+          statusBox.textContent = `[ERR] Failed to decode heightmap data URL: ${file.name}`;
+          return;
+        }
         const img = new Image();
         img.onload = () => {
           const offCanvas = document.createElement('canvas');
           offCanvas.width = 512;
           offCanvas.height = 512;
           const offCtx = offCanvas.getContext('2d');
+          if (!offCtx) {
+            statusBox.className = 'upload-status-box status-error';
+            statusBox.textContent = '[ERR] 2D canvas context unavailable for heightmap decode.';
+            return;
+          }
           offCtx.drawImage(img, 0, 0, 512, 512);
           const pData = offCtx.getImageData(0, 0, 512, 512).data;
-          const packedGrid = [];
+          const packedGrid: number[][] = [];
           const floatElevations = new Float32Array(512 * 512);
           const minMsl = 2500;
           const maxMsl = 6000;
           for (let r = 0; r < 512; r++) {
-            const row = [];
+            const row: number[] = [];
             for (let c = 0; c < 512; c++) {
               const idx = (r * 512 + c) * 4;
               const gray = pData[idx];
@@ -424,7 +463,7 @@ export function initTerrainUploadController(ctx: AppContext) {
           actions.renderHillshadeFromWorker(packedGrid, 512, 300, 'real');
 
           // Forward elevations to worker so simulation uses this custom DEM!
-          const meta = {
+          const meta: DemGeographicMetadata = {
             ...REAL_LADAKH_DEM_METADATA,
             tileName: file.name.replace(/\.[^/.]+$/, '').toUpperCase(),
             minElevationM: minMsl,
@@ -440,17 +479,17 @@ export function initTerrainUploadController(ctx: AppContext) {
           actions.sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
           actions.requestTerrainMeshData(true);
 
-          window.centerMapOnTerrain(meta);
+          window.centerMapOnTerrain?.(meta);
 
           statusBox.className = 'upload-status-box status-success';
           statusBox.textContent = `[OK] Custom Heightmap Processed (${file.name})`;
-          setTimeout(() => window.closeUploadModal && window.closeUploadModal(), 1200);
+          setTimeout(() => window.closeUploadModal?.(), 1200);
         };
         img.onerror = () => {
           statusBox.className = 'upload-status-box status-error';
           statusBox.textContent = `[ERR] Failed to decode heightmap image: ${file.name}`;
         };
-        img.src = evt.target.result;
+        img.src = resultUrl;
       };
       reader.onerror = () => {
         statusBox.className = 'upload-status-box status-error';
@@ -463,13 +502,13 @@ export function initTerrainUploadController(ctx: AppContext) {
     }
   };
 
-  async function decodeTileFile(catalogTile) {
+  async function decodeTileFile(catalogTile: SrtmCatalogTile): Promise<DecodedTile> {
     const cached = tileCache.get(catalogTile.tileName);
     if (cached) return cached;
 
     const buffer = await catalogTile.file.arrayBuffer();
     const decode = decodeHgtBuffer(buffer, catalogTile.sampleCount);
-    const decoded = {
+    const decoded: DecodedTile = {
       tileName: catalogTile.tileName,
       minLatDeg: catalogTile.minLatDeg,
       maxLatDeg: catalogTile.maxLatDeg,
@@ -485,7 +524,7 @@ export function initTerrainUploadController(ctx: AppContext) {
     return decoded;
   }
 
-  window.cancelHgtLoad = function() {
+  window.cancelHgtLoad = function(): void {
     if (activeHgtAbortController) {
       activeHgtAbortController.abort();
       activeHgtAbortController = null;
@@ -504,7 +543,7 @@ export function initTerrainUploadController(ctx: AppContext) {
     }
   };
 
-  window.unloadCustomTerrain = function() {
+  window.unloadCustomTerrain = function(): void {
     if (activeHgtAbortController) {
       activeHgtAbortController.abort();
       activeHgtAbortController = null;
@@ -542,9 +581,10 @@ export function initTerrainUploadController(ctx: AppContext) {
     }
   };
 
-  window.loadActivePatch = async function(options) {
+  window.loadActivePatch = async function(options): Promise<void> {
     const statusBox = $('upload-status');
     const patchCtrl = $('folder-patch-controls');
+    if (!statusBox) return;
     statusBox.style.display = 'block';
     statusBox.className = 'upload-status-box status-loading';
     statusBox.textContent = `Selecting and stitching terrain patch...`;
@@ -570,7 +610,7 @@ export function initTerrainUploadController(ctx: AppContext) {
       const mosaic = await decodeAndStitchPatchAsync(patch, {
         signal: abortController.signal,
         cache: tileCache,
-        onProgress: (loaded, total, phase) => {
+        onProgress: (loaded: number, total: number, phase: string) => {
           if (abortController.signal.aborted) return;
           statusBox.textContent = `HGT ${phase}: ${loaded}/${total} tile(s) [${patch.tiles.map(t => t.tileName).join(', ')}]...`;
         },
@@ -590,7 +630,7 @@ export function initTerrainUploadController(ctx: AppContext) {
       actions.requestTerrainMeshData(true);
 
       // Center views on the stitched mosaic bounds
-      window.centerMapOnTerrain(mosaic.metadata);
+      window.centerMapOnTerrain?.(mosaic.metadata);
 
       statusBox.className = 'upload-status-box status-success';
       const tileCountStr = `${patch.tiles.length} tile${patch.tiles.length > 1 ? 's' : ''}`;
@@ -600,12 +640,12 @@ export function initTerrainUploadController(ctx: AppContext) {
         renderFolderPatchControls(patchCtrl, patch, currentCatalog, currentClusters, mosaic);
       }
     } catch (err) {
-      if (err?.name === 'AbortError' || abortController.signal.aborted) {
+      if ((err instanceof Error && err.name === 'AbortError') || abortController.signal.aborted) {
         statusBox.className = 'upload-status-box status-error';
         statusBox.textContent = '[CANCELLED] HGT load cancelled; buffers released.';
       } else {
         statusBox.className = 'upload-status-box status-error';
-        statusBox.textContent = `[ERR] Failed to stitch patch: ${err?.message || err}`;
+        statusBox.textContent = `[ERR] Failed to stitch patch: ${err instanceof Error ? err.message : String(err)}`;
       }
       setCustomDemControlsState({ loading: false, loaded: Boolean(state.activeTerrainBounds) });
     } finally {
@@ -615,15 +655,15 @@ export function initTerrainUploadController(ctx: AppContext) {
     }
   };
 
-  window.shiftTerrainPatch = async function(dLat, dLon) {
+  window.shiftTerrainPatch = async function(dLat: number, dLon: number): Promise<void> {
     if (!activePatchSelection || currentCatalog.length === 0) return;
-    const currentAnchor = currentCatalog.find(t => t.tileName === activePatchSelection.anchorTileName);
+    const currentAnchor = currentCatalog.find(t => t.tileName === activePatchSelection?.anchorTileName);
     if (!currentAnchor) return;
 
     const targetLat = currentAnchor.minLatDeg + dLat + 0.5;
     const targetLon = currentAnchor.minLonDeg + dLon + 0.5;
 
-    await window.loadActivePatch({
+    await window.loadActivePatch?.({
       catalog: currentCatalog,
       targetLatDeg: targetLat,
       targetLonDeg: targetLon,
@@ -631,7 +671,13 @@ export function initTerrainUploadController(ctx: AppContext) {
     });
   };
 
-  function renderFolderPatchControls(container, patch, catalog, clusters, mosaic) {
+  function renderFolderPatchControls(
+    container: HTMLElement,
+    patch: PatchSelection,
+    catalog: readonly SrtmCatalogTile[],
+    clusters: readonly TileCluster[],
+    mosaic: StitchedMosaicResult
+  ): void {
     container.style.display = 'block';
     const totalTiles = catalog.length;
     const activeCount = patch.tiles.length;
@@ -684,7 +730,7 @@ export function initTerrainUploadController(ctx: AppContext) {
       btn.addEventListener('click', () => {
         const dLat = Number(btn.getAttribute('data-shift-lat'));
         const dLon = Number(btn.getAttribute('data-shift-lon'));
-        window.shiftTerrainPatch?.(dLat, dLon);
+        void window.shiftTerrainPatch?.(dLat, dLon);
       });
     });
     container.querySelector('[data-action="close-upload-modal"]')?.addEventListener('click', () => {
@@ -692,16 +738,17 @@ export function initTerrainUploadController(ctx: AppContext) {
     });
   }
 
-  window.onFolderSelected = async function(fileList) {
+  window.onFolderSelected = async function(fileList: FileList): Promise<void> {
     if (!fileList || fileList.length === 0) return;
     const statusBox = $('upload-status');
     const patchCtrl = $('folder-patch-controls');
+    if (!statusBox) return;
     statusBox.style.display = 'block';
     statusBox.className = 'upload-status-box status-loading';
     statusBox.textContent = `Scanning folder for SRTM .hgt elevation files...`;
 
     try {
-      currentCatalog = buildTileCatalog(fileList);
+      currentCatalog = buildTileCatalog(Array.from(fileList));
       if (currentCatalog.length === 0) {
         statusBox.className = 'upload-status-box status-error';
         statusBox.textContent = `[ERR] No valid SRTM .hgt files found in selected folder. Expected naming [NS]XX[EW]YYY.hgt.`;
@@ -713,15 +760,20 @@ export function initTerrainUploadController(ctx: AppContext) {
 
       // If only 1 file in catalog, load as single tile
       if (currentCatalog.length === 1) {
-        window.onFileSelected(currentCatalog[0].file);
+        const firstFile = currentCatalog[0].file;
+        if (firstFile instanceof File) {
+          window.onFileSelected?.(firstFile);
+        } else {
+          window.onFileSelected?.(new File([firstFile], `${currentCatalog[0].tileName}.hgt`));
+        }
         return;
       }
 
       // Select initial active patch around theater center (34.5°N, 76.5°E) or first tile
-      await window.loadActivePatch({ catalog: currentCatalog, maxTiles: 4 });
+      await window.loadActivePatch?.({ catalog: currentCatalog, maxTiles: 4 });
     } catch (err) {
       statusBox.className = 'upload-status-box status-error';
-      statusBox.textContent = `[ERR] Folder processing error: ${err?.message || err}`;
+      statusBox.textContent = `[ERR] Folder processing error: ${err instanceof Error ? err.message : String(err)}`;
     }
   };
 

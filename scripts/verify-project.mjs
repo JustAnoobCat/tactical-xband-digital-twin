@@ -113,7 +113,7 @@ check('Simulation reset clears scheduler adaptation and run-local state', () => 
 
 check('Experiment capture exports raw telemetry with provenance metadata', () => {
   assert.match(html, /id="experiment-start"/);
-  assert.match(uiSource, /function experimentObserve\(frame\)/);
+  assert.match(uiSource, /function experimentObserve\(frame(?:\s*:[^)]+)?\)/);
   assert.match(uiSource, /function experimentExportCsv\(\)/);
   assert.match(uiSource, /function experimentExportJson\(\)/);
   assert.match(uiSource, /seed: 'unavailable in current telemetry'/);

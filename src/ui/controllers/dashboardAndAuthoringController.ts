@@ -1028,6 +1028,8 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
     }
   }
 
+  let lastRefreshedObstacleId: string | null = null;
+
   function refreshObstacleEditor(): void {
     const editor = $('obstacle-editor-message');
     if (!editor) return;
@@ -1111,8 +1113,16 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
     if (placeBtn) placeBtn.disabled = locked || pending || draft.length >= OBSTACLE_EDITOR_LIMITS.maxObstacles;
     if (selectModeBtn) selectModeBtn.disabled = pending;
     if (deleteBtn) {
+      const prevSelectedId = lastRefreshedObstacleId;
+      const nextSelectedId = selected?.id ?? null;
+      lastRefreshedObstacleId = nextSelectedId;
       deleteBtn.disabled = locked || pending || !selected;
-      if (deleteBtn.disabled && typeof (window as any).disarmDestructiveButton === 'function') {
+      const selectionLostOrChanged =
+        !selected || (prevSelectedId !== null && prevSelectedId !== nextSelectedId);
+      if (
+        (locked || selectionLostOrChanged) &&
+        typeof (window as any).disarmDestructiveButton === 'function'
+      ) {
         (window as any).disarmDestructiveButton(deleteBtn);
       }
     }

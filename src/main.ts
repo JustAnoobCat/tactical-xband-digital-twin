@@ -1,4 +1,4 @@
-// @ts-nocheck — Composition root for the Tactical X-Band Digital Twin UI (UPG-05)
+/* Composition root for the Tactical X-Band Digital Twin UI */
 import { $, createAppContext } from './app/appContext.ts';
 import { initWorkerBridgeController } from './app/workerBridgeController.ts';
 import { initTerrainUploadController } from './app/terrainUploadController.ts';
@@ -13,14 +13,19 @@ import { initDomEventBindings } from './app/domEventBindings.ts';
 /* Render-quality layer — applied before canvas context creation */
 (function () {
   const gc = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function (t, ...a) {
-    const c = gc.call(this, t, ...a);
+  HTMLCanvasElement.prototype.getContext = function (
+    this: HTMLCanvasElement,
+    t: string,
+    ...a: unknown[]
+  ) {
+    const c = (gc as (...args: unknown[]) => RenderingContext | null).apply(this, [t, ...a]);
     if (c && t === '2d') {
-      c.imageSmoothingQuality = 'high';
-      c.lineJoin = 'round';
+      const ctx2d = c as CanvasRenderingContext2D;
+      ctx2d.imageSmoothingQuality = 'high';
+      ctx2d.lineJoin = 'round';
     }
     return c;
-  };
+  } as typeof HTMLCanvasElement.prototype.getContext;
 })();
 
 const isTauriRuntime =
@@ -45,7 +50,7 @@ if (
   });
 }
 
-(window as any).tbOpen = false;
+window.tbOpen = false;
 
 /* Authoritative simulation Web Worker */
 const worker = new Worker(new URL("./worker/simWorker.ts", import.meta.url), {

@@ -1,4 +1,4 @@
-# Tactical X-Band Air-to-Ground Network Digital Twin (`v4.0.0`)
+# Tactical X-Band Air-to-Ground Network Digital Twin (`v4.1.0`)
 
 [![CI Quality Gate](https://github.com/JustAnoobCat/tactical-xband-digital-twin/actions/workflows/ci.yml/badge.svg)](https://github.com/JustAnoobCat/tactical-xband-digital-twin/actions/workflows/ci.yml)
 [![Live Interactive Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue?logo=github)](https://justanoobcat.github.io/tactical-xband-digital-twin/)
@@ -105,8 +105,9 @@ tactical-xband-digital-twin/
 │   ├── worker/                     # Authoritative Discrete-Event Web Worker
 │   │   ├── simWorker.ts            # SimulationWorkerManager (50 Hz authoritative loop, 3,240 lines)
 │   │   └── telemetrySerializer.ts  # Binary/typed telemetry serialization & caching
-│   ├── app/                        # Modular Composition Controllers Extracted from main.ts
+│   ├── app/                        # 100% Strict TypeScript Modular Controllers (zero @ts-nocheck across src/main.ts + src/app/*)
 │   │   ├── appContext.ts           # Typed AppContext, shared engines, canvas handles & state
+│   │   ├── windowBindings.d.ts     # Global Window API declarations for controllers & Playwright hooks
 │   │   ├── workerBridgeController.ts # Web Worker lifecycle, telemetry profile sync & IPC routing
 │   │   ├── terrainUploadController.ts # SRTM .hgt mosaic, GeoTIFF/PNG upload & OfflineMissionPackStore
 │   │   ├── viewModeAnd3dController.ts # Lazy Three.js/MapLibre loaders & dirty-flag idle rAF loop
@@ -303,7 +304,7 @@ If you utilize this Digital Twin platform, its mathematical formulations, or its
 @software{tactical_xband_digital_twin_2026,
   title = {Tactical X-Band Air-to-Ground Network Digital Twin},
   year = {2026},
-  version = {4.0.0},
+  version = {4.1.0},
   url = {https://github.com/JustAnoobCat/tactical-xband-digital-twin}
 }
 ```

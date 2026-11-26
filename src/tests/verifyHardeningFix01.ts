@@ -416,8 +416,13 @@ async function main() {
   const pkgJsonPath = path.resolve(ROOT_DIR, 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
 
-  await runCheck('package.json version matches 4.0.0', async () => {
-    assert.equal(pkg.version, '4.0.0');
+  await runCheck('package.json version is valid semver >= 4.0.0 and matches src-tauri/tauri.conf.json', async () => {
+    const semverMatch = String(pkg.version || '').match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/);
+    assert.ok(semverMatch, `package.json version must be valid semver (got ${pkg.version})`);
+    assert.ok(Number(semverMatch[1]) >= 4, `package.json major version must be >= 4 (got ${pkg.version})`);
+    const tauriConfPath = path.resolve(ROOT_DIR, 'src-tauri', 'tauri.conf.json');
+    const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
+    assert.equal(pkg.version, tauriConf.version, 'package.json version must match src-tauri/tauri.conf.json');
   });
 
   await runCheck('package.json server:ts uses vite-node (no missing tsx dependency)', async () => {

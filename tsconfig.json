@@ -3,6 +3,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
     "lib": ["ESNext", "DOM", "WebWorker"],
     "types": ["vite/client"],
     "noEmit": true,
@@ -10,6 +11,8 @@
     "strict": true
   },
   "include": [
+    "src/main.ts",
+    "src/app/**/*",
     "src/core/**/*",
     "src/shared/**/*",
     "src/worker/**/*",

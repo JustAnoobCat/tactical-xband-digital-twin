@@ -1,14 +1,22 @@
-// @ts-nocheck
 /**
  * Scientific Scopes, Network Telemetry Charts, Path Profiles,
  * Scheduler History & Timeline Controller.
  */
 import type { AppContext } from './appContext.ts';
+import type { TerrainBoundsTelemetry } from '../core/terrain.ts';
+import type {
+  FresnelSliceTelemetry,
+  NodeTransferTelemetry,
+  SelectedLinkBudgetTelemetry,
+  TelemetryFrame,
+} from '../shared/workerProtocol.ts';
+import type { Position3D } from '../shared/types.ts';
 import { dissectTdmaSlotAllocation } from '../core/pduDissector.ts';
 import { classifyLinkCommunicationStatus } from '../core/linkStatusClassifier.ts';
 import { getStatusBadgeInfo } from '../ui/mapLinkStyles.ts';
 import { summarizeProfileStatus, renderTerrainProfileViewport } from '../ui/linkProfileViewport.ts';
 import { renderTerrainTopView, renderRfTopView, syncCanvasDpr } from '../ui/pathProfileTopView.ts';
+import type { TopViewRenderOptions } from '../ui/pathProfileTopView.ts';
 import {
   SimulationTimelineRenderer,
   SimulationTimelineController,
@@ -74,7 +82,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
   } = canvases;
 
   function networkCanvasContext(id: string) {
-    const canvas = $(id);
+    const canvas = $<HTMLCanvasElement>(id);
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.max(1, window.devicePixelRatio || 1);
@@ -229,24 +237,24 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
 
   function networkVisibleSamples() {
     const samples = networkPerformanceHistory.getSamples();
-    const range = Number($('network-time-range')?.value || 30);
+    const range = Number($<HTMLSelectElement>('network-time-range')?.value || 30);
     const newest = samples.length ? samples[samples.length - 1].simulationTimeS : 0;
     return samples.filter((sample: any) => sample.simulationTimeS >= newest - range);
   }
 
   function drawNetworkCharts() {
-    bindChartHoverCrosshair($('network-individual-chart'), drawNetworkCharts);
-    bindChartHoverCrosshair($('network-aggregate-chart'), drawNetworkCharts);
+    bindChartHoverCrosshair($<HTMLCanvasElement>('network-individual-chart'), drawNetworkCharts);
+    bindChartHoverCrosshair($<HTMLCanvasElement>('network-aggregate-chart'), drawNetworkCharts);
     const samples = networkVisibleSamples();
     const timeSeries = samples.map((s: any) => s.simulationTimeS);
     const selected = new Set(
-      Array.from($('network-node-select')?.selectedOptions || []).map((option: any) =>
+      Array.from($<HTMLSelectElement>('network-node-select')?.selectedOptions || []).map((option: HTMLOptionElement) =>
         Number(option.value)
       )
     );
     const individualCard = $('network-individual-card');
     const aggregateCard = $('network-aggregate-card');
-    const mode = $('network-view-mode')?.value || 'individual';
+    const mode = $<HTMLSelectElement>('network-view-mode')?.value || 'individual';
     if (individualCard) individualCard.style.display = mode === 'individual' ? '' : 'none';
     if (aggregateCard) aggregateCard.style.display = mode === 'aggregate' ? '' : 'none';
     const empty = $('network-dashboard-empty');
@@ -268,7 +276,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     const individualCanvas = networkCanvasContext('network-individual-chart');
     if (individualCanvas && mode === 'individual') {
       const ids = [...selected];
-      const indHover = getCanvasHoverState($('network-individual-chart'));
+      const indHover = getCanvasHoverState($<HTMLCanvasElement>('network-individual-chart'));
       const make = (key: string) =>
         ids.map((id) => ({
           key: id,
@@ -285,9 +293,9 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
       individualCanvas.ctx.fillStyle = HIGHLAND_THEME.substrate.void;
       individualCanvas.ctx.fillRect(0, 0, individualCanvas.width, individualCanvas.height);
       const enabled = [
-        [$('network-show-snr')?.checked, 'snr', 'SNR', 'dB'],
-        [$('network-show-rate')?.checked, 'rate', 'Rate', 'Mbps'],
-        [$('network-show-transferred')?.checked, 'transferred', 'Transferred', 'MB'],
+        [$<HTMLInputElement>('network-show-snr')?.checked, 'snr', 'SNR', 'dB'],
+        [$<HTMLInputElement>('network-show-rate')?.checked, 'rate', 'Rate', 'Mbps'],
+        [$<HTMLInputElement>('network-show-transferred')?.checked, 'transferred', 'Transferred', 'MB'],
       ].filter((item) => item[0]);
       const rowHeight = enabled.length
         ? individualCanvas.height / enabled.length
@@ -319,14 +327,14 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     const aggregateCanvas = networkCanvasContext('network-aggregate-chart');
     if (aggregateCanvas && mode === 'aggregate') {
       const aggregates = samples.map(aggregateNetworkSample);
-      const aggHover = getCanvasHoverState($('network-aggregate-chart'));
+      const aggHover = getCanvasHoverState($<HTMLCanvasElement>('network-aggregate-chart'));
       aggregateCanvas.ctx.clearRect(0, 0, aggregateCanvas.width, aggregateCanvas.height);
       aggregateCanvas.ctx.fillStyle = HIGHLAND_THEME.substrate.void;
       aggregateCanvas.ctx.fillRect(0, 0, aggregateCanvas.width, aggregateCanvas.height);
       const enabled = [
-        [$('network-show-snr')?.checked, 'snr', 'SNR avg / min', 'dB'],
-        [$('network-show-rate')?.checked, 'rate', 'Total rate', 'Mbps'],
-        [$('network-show-transferred')?.checked, 'transferred', 'Total transferred', 'MB'],
+        [$<HTMLInputElement>('network-show-snr')?.checked, 'snr', 'SNR avg / min', 'dB'],
+        [$<HTMLInputElement>('network-show-rate')?.checked, 'rate', 'Total rate', 'Mbps'],
+        [$<HTMLInputElement>('network-show-transferred')?.checked, 'transferred', 'Total transferred', 'MB'],
       ].filter((item) => item[0]);
       const rowHeight = enabled.length
         ? aggregateCanvas.height / enabled.length
@@ -385,7 +393,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
   }
 
   function updateNetworkNodeOptions(nodes: any[]) {
-    const select = $('network-node-select');
+    const select = $<HTMLSelectElement>('network-node-select');
     if (!select) return;
     const signature = nodes
       .map((node) => `${node.node_id}:${node.name || ''}:${node.link_outage === false ? 'up' : 'down'}`)
@@ -474,8 +482,8 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     window.addEventListener('resize', drawNetworkCharts);
   }
 
-  function updateStepControlUI(enabled: boolean) {
-    const btn = $('btn-step');
+  function updateStepControlUI(enabled: boolean = true) {
+    const btn = $<HTMLButtonElement>('btn-step');
     if (!btn) return;
     btn.disabled = !enabled;
     btn.classList.toggle('disabled', !enabled);
@@ -834,31 +842,31 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     $('timeline-btn-toggle-expand')?.addEventListener('click', toggleInspectorExpand);
 
     $('timeline-btn-play')?.addEventListener('click', () => {
-      state.simTimelineController.togglePlayPause();
+      state.simTimelineController?.togglePlayPause();
       actions.markUiDirtyAndWake();
     });
     $('timeline-btn-step-back')?.addEventListener('click', () => {
-      state.simTimelineController.stepBackward(0.02);
+      state.simTimelineController?.stepBackward(0.02);
       actions.markUiDirtyAndWake();
     });
     $('timeline-btn-step-fwd')?.addEventListener('click', () => {
-      state.simTimelineController.stepForward(0.02);
+      state.simTimelineController?.stepForward(0.02);
       actions.markUiDirtyAndWake();
     });
     $('timeline-btn-live')?.addEventListener('click', () => {
-      state.simTimelineController.jumpToLive();
+      state.simTimelineController?.jumpToLive();
       actions.markUiDirtyAndWake();
     });
     $('timeline-btn-zoom-in')?.addEventListener('click', () => {
-      state.simTimelineController.zoomIn();
+      state.simTimelineController?.zoomIn();
       actions.scheduleAnimationLoop();
     });
     $('timeline-btn-zoom-out')?.addEventListener('click', () => {
-      state.simTimelineController.zoomOut();
+      state.simTimelineController?.zoomOut();
       actions.scheduleAnimationLoop();
     });
     $('timeline-btn-fit')?.addEventListener('click', () => {
-      state.simTimelineController.fitHorizon();
+      state.simTimelineController?.fitHorizon();
       actions.scheduleAnimationLoop();
     });
     $('timeline-btn-export-csv')?.addEventListener('click', async () => {
@@ -1056,7 +1064,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
       if (event.button !== 0) return;
       dragging = true;
       dragStartX = event.clientX;
-      const mapWidth = $('persistent-map-panel').getBoundingClientRect().width;
+      const mapWidth = $('persistent-map-panel')?.getBoundingClientRect().width ?? 0;
       dragStartPct = (mapWidth / workspace.getBoundingClientRect().width) * 100;
       handle.setPointerCapture(event.pointerId);
       document.body.classList.add('is-resizing');
@@ -1075,7 +1083,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     handle.addEventListener('pointercancel', stop);
     handle.addEventListener('keydown', (event: any) => {
       const current =
-        ($('persistent-map-panel').getBoundingClientRect().width /
+        (($('persistent-map-panel')?.getBoundingClientRect().width ?? 0) /
           workspace.getBoundingClientRect().width) *
         100;
       if (event.key === 'ArrowLeft') {
@@ -1114,8 +1122,10 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
       (frame.nodes_telemetry || []).find((n: any) => n.node_id === frame.selected_node_id) || {};
     const status = summarizeProfileStatus(f.profile, f);
     const acn = frame.acn_telemetry || {};
-    const acnPos = [acn.pos_x ?? 0, acn.pos_y ?? 0, acn.pos_z ?? 5000];
-    const groundNodePos = selNode.position ? [...selNode.position] : [0, 0, 0];
+    const acnPos: Position3D = [acn.pos_x ?? 0, acn.pos_y ?? 0, acn.pos_z ?? 5000];
+    const groundNodePos: Position3D = selNode.position
+      ? [Number(selNode.position[0] ?? 0), Number(selNode.position[1] ?? 0), Number(selNode.position[2] ?? 0)]
+      : [0, 0, 0];
     const slantKm =
       typeof selNode.slant_range_km === 'number'
         ? selNode.slant_range_km
@@ -1183,7 +1193,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
   }
 
   function updateScrubberUI() {
-    const scrubber = $('profile-history-scrubber');
+    const scrubber = $<HTMLInputElement>('profile-history-scrubber');
     if (!scrubber) return;
     const span = historyBuffer.getSpan();
 
@@ -1280,7 +1290,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     }
 
     ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select'].forEach((id) => {
-      const el = $(id);
+      const el = $<HTMLSelectElement>(id);
       if (el) {
         el.disabled = true;
         el.title = 'Node selection is locked during historical inspection. Return to LIVE to select nodes.';
@@ -1400,7 +1410,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     if (spatWarn) spatWarn.style.display = 'none';
 
     ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select'].forEach((id) => {
-      const el = $(id);
+      const el = $<HTMLSelectElement>(id);
       if (el) {
         el.disabled = false;
         el.title = '';
@@ -1418,7 +1428,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     }
 
     updateScrubberUI();
-    actions.updateDashboardDOM(state.latestTelemetry, true);
+    if (state.latestTelemetry) actions.updateDashboardDOM(state.latestTelemetry, true);
     drawFresnel();
     actions.syncSelectedNodeAglUI();
   }
@@ -1436,8 +1446,11 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     if (shouldResumeWorker && state.isPaused) {
       state.isPaused = false;
       actions.sendCommand({ type: 'SIM_CONTROL', action: 'resume' });
-      $('btn-pause').textContent = 'PAUSE';
-      $('btn-pause').classList.remove('active');
+      const pauseBtn = $('btn-pause');
+      if (pauseBtn) {
+        pauseBtn.textContent = 'PAUSE';
+        pauseBtn.classList.remove('active');
+      }
     }
 
     dataCommVisualizer.exitHistorical(state.isPaused);
@@ -1564,7 +1577,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
   }
 
   function updateSchedulerScrubberUI() {
-    const scrubber = $('sched-history-scrubber');
+    const scrubber = $<HTMLInputElement>('sched-history-scrubber');
     if (!scrubber) return;
     const span = schedHistoryBuffer.getSpan();
 
@@ -1822,7 +1835,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     }
 
     updateSchedulerScrubberUI();
-    actions.updateDashboardDOM(state.latestTelemetry, true);
+    if (state.latestTelemetry) actions.updateDashboardDOM(state.latestTelemetry, true);
     drawWaterfall();
     drawSchedulerCharts();
   }
@@ -1840,8 +1853,11 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     if (shouldResumeWorker && state.isPaused) {
       state.isPaused = false;
       actions.sendCommand({ type: 'SIM_CONTROL', action: 'resume' });
-      $('btn-pause').textContent = 'PAUSE';
-      $('btn-pause').classList.remove('active');
+      const pauseBtn = $('btn-pause');
+      if (pauseBtn) {
+        pauseBtn.textContent = 'PAUSE';
+        pauseBtn.classList.remove('active');
+      }
     }
 
     dataCommVisualizer.exitHistorical(state.isPaused);
@@ -1851,8 +1867,8 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
 
   function drawSchedulerCharts() {
     const records = schedHistoryBuffer.getChronologicalRecords();
-    const utilCanvas = $('sched-chart-utilization');
-    const backlogCanvas = $('sched-chart-backlog');
+    const utilCanvas = $<HTMLCanvasElement>('sched-chart-utilization');
+    const backlogCanvas = $<HTMLCanvasElement>('sched-chart-backlog');
     if (!utilCanvas || !backlogCanvas) return;
 
     bindChartHoverCrosshair(utilCanvas, drawSchedulerCharts);
@@ -2206,7 +2222,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
 
   function drawLinkWaterfallCanvas(frame: any) {
     try {
-      renderLinkWaterfallCanvas(linkWaterfallCanvas, linkWaterfallCtx, frame, state.latestTelemetry);
+      renderLinkWaterfallCanvas(linkWaterfallCanvas, linkWaterfallCtx, frame, state.selectedNodeId, setText);
     } catch (err) {
       console.error('drawLinkWaterfallCanvas exception:', err);
     }
@@ -2282,7 +2298,9 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           (isHistorical &&
             histSchedRec &&
             activeSnap.source === 'historical' &&
-            activeSnap.frameIndex === histSchedRec.frameIndex));
+            activeSnap.frameIndex === histSchedRec.frameIndex))
+          ? activeSnap
+          : null;
 
       const superframeDurationMs = Math.max(
         1.0,
@@ -2290,7 +2308,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           ? useSnap.superframeDurationMs
           : histSchedRec?.superframeDurationMs ??
               (Number.isFinite(state.latestTelemetry?.tdma_frame_config?.frameDurationMs)
-                ? state.latestTelemetry.tdma_frame_config.frameDurationMs
+                ? state.latestTelemetry!.tdma_frame_config!.frameDurationMs
                 : 20.0)
       );
 
@@ -2321,13 +2339,25 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
               (isHistorical ? 3.0 : state.latestTelemetry?.downlink_telemetry?.dl_duration_ms ?? 3.0)
       );
 
-      const nodes =
-        (useSnap?.nodes ??
+      type WaterfallNodeLike = {
+        nodeId?: number;
+        node_id?: number;
+        state_name?: string;
+        stateName?: string;
+        linkOutage?: boolean;
+        link_outage?: boolean;
+        isOutage?: boolean;
+        isBlocked?: boolean;
+        slant_range_m?: number;
+        [key: string]: unknown;
+      };
+      const nodes: readonly WaterfallNodeLike[] =
+        ((useSnap?.nodes ??
           (histSchedRec
             ? histSchedRec.nodeBacklogs
             : isHistorical
               ? []
-              : state.latestTelemetry?.nodes_telemetry || [])) ||
+              : state.latestTelemetry?.nodes_telemetry || [])) as readonly WaterfallNodeLike[]) ||
         [];
 
       const staticAllocations =
@@ -2785,7 +2815,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
             activeSlot.phase === 'UPLINK_SLOT' &&
             activeSlot.scheduledNodeId === nid;
 
-          let col = HIGHLAND_THEME.signal.sage;
+          let col: string = HIGHLAND_THEME.signal.sage;
           if (alloc.is_pre_occlusion_flush ?? alloc.isPreOcclusionFlush)
             col = HIGHLAND_THEME.signal.amberBright;
           else if (nid === 15) col = HIGHLAND_THEME.signal.amber;
@@ -2898,7 +2928,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
             activeSlot.phase === 'UPLINK_SLOT' &&
             activeSlot.scheduledNodeId === nid;
 
-          let col = HIGHLAND_THEME.signal.sage;
+          let col: string = HIGHLAND_THEME.signal.sage;
           if (seg.isPreOcclusionFlush) col = HIGHLAND_THEME.signal.amberBright;
           else if (nid === 15) col = HIGHLAND_THEME.signal.amber;
 
@@ -2992,7 +3022,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
         });
       }
 
-      const renderTrackConflicts = (conflicts: any[], yTrack: number) => {
+      const renderTrackConflicts = (conflicts: readonly any[], yTrack: number) => {
         conflicts.forEach((conf) => {
           const cx = xOfMs(conf.startMs);
           const cw = Math.max(
@@ -3149,7 +3179,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     }
   }
 
-  function updatePduDissectorPanel(nodes: any[], schedMode: string, _subframeOffsetMs: number) {
+  function updatePduDissectorPanel(nodes: readonly any[], schedMode: string, _subframeOffsetMs: number) {
     try {
       const dissectorPanel = $('pdu-dissector-panel');
       if (!dissectorPanel) return;
@@ -3386,7 +3416,20 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           ? state.simTimelineController.getActiveSpatialSnapshot()
           : null;
 
-      const f = isHistRf ? null : state.latestTelemetry.selected_node_fresnel;
+      const liveFrame = state.latestTelemetry as
+        | (TelemetryFrame & {
+            scenario_config?: { waypoints?: readonly [number, number][]; trajectory_mode?: string };
+          })
+        | null;
+      const f = isHistRf
+        ? null
+        : (liveFrame?.selected_node_fresnel as
+            | (FresnelSliceTelemetry & {
+                selected_link_budget?: SelectedLinkBudgetTelemetry;
+                transfer_telemetry?: NodeTransferTelemetry;
+              })
+            | null
+            | undefined);
       const profile = isHistRf
         ? histRecord
           ? histRecord.profile
@@ -3397,32 +3440,38 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
 
       const selNode = isHistRf
         ? null
-        : (state.latestTelemetry.nodes_telemetry || []).find(
+        : (liveFrame?.nodes_telemetry || []).find(
             (n: any) => n.node_id === state.selectedNodeId
           );
       const histSelNode = histSnap
         ? histSnap.nodes.find((n: any) => n.nodeId === state.selectedNodeId)
         : null;
 
-      const acnPos = isHistRf
+      const rawAcnPos = isHistRf
         ? histRecord
           ? histRecord.acnPositionMslM
           : histSnap
-            ? [histSnap.acn.posX, histSnap.acn.posY, histSnap.acn.altitudeMslM]
+            ? ([histSnap.acn.posX, histSnap.acn.posY, histSnap.acn.altitudeMslM] as Position3D)
             : null
-        : state.latestTelemetry.acn_telemetry?.position_m ??
-          (profile ? profile.acnPositionMslM : null);
-      const nodePos = isHistRf
+        : ((liveFrame?.acn_telemetry as { position_m?: Position3D } | undefined)?.position_m ??
+          (profile ? profile.acnPositionMslM : null));
+      const acnPos: Position3D | null = rawAcnPos
+        ? [rawAcnPos[0] ?? 0, rawAcnPos[1] ?? 0, rawAcnPos[2] ?? 0]
+        : null;
+      const rawNodePos = isHistRf
         ? histRecord
           ? histRecord.groundNodePositionMslM
           : histSelNode
-            ? [histSelNode.posX, histSelNode.posY, histSelNode.posZ ?? 0]
+            ? ([histSelNode.posX, histSelNode.posY, histSelNode.posZ ?? 0] as Position3D)
             : null
         : selNode
-          ? [selNode.x_m, selNode.y_m, (selNode.terrain_elevation_msl_m || 0) + (selNode.agl_m || 2)]
+          ? ([selNode.x_m ?? 0, selNode.y_m ?? 0, (selNode.terrain_elevation_msl_m || 0) + (selNode.agl_m || 2)] as Position3D)
           : profile
             ? profile.groundNodePositionMslM
             : null;
+      const nodePos: Position3D | null = rawNodePos
+        ? [rawNodePos[0] ?? 0, rawNodePos[1] ?? 0, rawNodePos[2] ?? 0]
+        : null;
 
       if (terrainCanvas && terrainCtx) {
         const syncResult = syncCanvasDpr(terrainCanvas, terrainCtx);
@@ -3504,7 +3553,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
                   altitude_msl_m: histSnap.acn.altitudeMslM,
                 }
               : null
-            : state.latestTelemetry.acn_telemetry;
+            : liveFrame?.acn_telemetry ?? null;
 
           const topViewAllNodes = isHistRf
             ? histSnap
@@ -3518,26 +3567,44 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
                   snr_db: n.snrDb,
                 }))
               : []
-            : state.latestTelemetry.nodes_telemetry;
+            : liveFrame?.nodes_telemetry;
 
           const topViewSelNode = isHistRf
-            ? topViewAllNodes.find((n: any) => n.node_id === state.selectedNodeId) ?? null
+            ? topViewAllNodes?.find((n: any) => n.node_id === state.selectedNodeId) ?? null
             : selNode;
 
-          const topViewOpts = {
+          const b = state.activeTerrainBounds;
+          const strictBounds: TerrainBoundsTelemetry | null =
+            b &&
+            typeof b.minX === 'number' &&
+            typeof b.maxX === 'number' &&
+            typeof b.minY === 'number' &&
+            typeof b.maxY === 'number'
+              ? {
+                  ...(b as TerrainBoundsTelemetry),
+                  minX: b.minX,
+                  maxX: b.maxX,
+                  minY: b.minY,
+                  maxY: b.maxY,
+                }
+              : null;
+
+          const topViewOpts: TopViewRenderOptions = {
             hillshadeCanvas: state.hillshadeCanvas,
-            activeTerrainBounds: state.activeTerrainBounds,
-            acnTelemetry: topViewAcn,
+            activeTerrainBounds: strictBounds,
+            acnTelemetry: topViewAcn as TopViewRenderOptions['acnTelemetry'],
             selectedNode: topViewSelNode,
             allNodes: topViewAllNodes,
             obstacles: obstacleEditor.committed,
             waypoints: isHistRf
               ? undefined
-              : state.latestTelemetry.scenario_config?.waypoints ??
-                (trajectoryEditor ? trajectoryEditor.preview.points : undefined),
+              : liveFrame?.scenario_config?.waypoints ??
+                (trajectoryEditor && trajectoryEditor.preview.mode === 'waypoints'
+                  ? trajectoryEditor.preview.points
+                  : undefined),
             trajectoryMode: isHistRf
               ? undefined
-              : state.latestTelemetry.scenario_config?.trajectory_mode ??
+              : liveFrame?.scenario_config?.trajectory_mode ??
                 (trajectoryEditor ? trajectoryEditor.preview.mode : undefined),
           };
 
@@ -3580,17 +3647,17 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           if (state.terrainProfileViewMode === 'top') {
             renderTerrainTopView(terrainCtx, tLayout, terrainTopViewport, profile, topViewOpts);
           } else if (state.terrainProfileViewMode === 'rf-top') {
-            const lb = histRecord
+            const lb = (histRecord
               ? histRecord.linkBudget
               : f
-                ? f.selected_link_budget
-                : null;
+                ? f.selected_link_budget ?? null
+                : null) as Parameters<typeof renderRfTopView>[4];
             const commStatus = classifyLinkCommunicationStatus(topViewSelNode);
-            const transferState = histRecord
-              ? histRecord.transferState
+            const transferState = (histRecord
+              ? (histRecord as typeof histRecord & { transferState?: NodeTransferTelemetry }).transferState ?? null
               : f
-                ? f.transfer_telemetry
-                : null;
+                ? f.transfer_telemetry ?? null
+                : null) as Parameters<typeof renderRfTopView>[6];
             renderRfTopView(
               terrainCtx,
               tLayout,
@@ -3633,10 +3700,19 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
         state.ganttHoverState.x = cssX;
         state.ganttHoverState.y = cssY;
 
-        let hit = null;
+        let hit: (typeof state.activeRenderedGanttSlots)[number] | null = null;
         for (let i = state.activeRenderedGanttSlots.length - 1; i >= 0; i--) {
           const s = state.activeRenderedGanttSlots[i];
-          if (cssX >= s.x && cssX <= s.x + s.w && cssY >= s.y && cssY <= s.y + s.h) {
+          if (
+            typeof s.x === 'number' &&
+            typeof s.w === 'number' &&
+            typeof s.y === 'number' &&
+            typeof s.h === 'number' &&
+            cssX >= s.x &&
+            cssX <= s.x + s.w &&
+            cssY >= s.y &&
+            cssY <= s.y + s.h
+          ) {
             hit = s;
             break;
           }
@@ -3659,10 +3735,19 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
         const rect = waterfallCanvas.getBoundingClientRect();
         const cssX = e.clientX - rect.left;
         const cssY = e.clientY - rect.top;
-        let clicked = null;
+        let clicked: (typeof state.activeRenderedGanttSlots)[number] | null = null;
         for (let i = state.activeRenderedGanttSlots.length - 1; i >= 0; i--) {
           const s = state.activeRenderedGanttSlots[i];
-          if (cssX >= s.x && cssX <= s.x + s.w && cssY >= s.y && cssY <= s.y + s.h) {
+          if (
+            typeof s.x === 'number' &&
+            typeof s.w === 'number' &&
+            typeof s.y === 'number' &&
+            typeof s.h === 'number' &&
+            cssX >= s.x &&
+            cssX <= s.x + s.w &&
+            cssY >= s.y &&
+            cssY <= s.y + s.h
+          ) {
             clicked = s;
             break;
           }
@@ -3778,7 +3863,11 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
             const rect = terrainCanvas.getBoundingClientRect();
             const canvasX = e.clientX - rect.left;
             const tLay = getTerrainLayout();
-            const f = state.latestTelemetry ? state.latestTelemetry.fresnel_slice : null;
+            const f = state.latestTelemetry
+              ? (state.latestTelemetry as TelemetryFrame & {
+                  fresnel_slice?: FresnelSliceTelemetry | null;
+                }).fresnel_slice ?? null
+              : null;
             const prof =
               f && f.profile && f.profile.valid && f.profile.samples && f.profile.samples.length >= 2
                 ? f.profile
@@ -3925,8 +4014,11 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           if (shouldPauseWorker) {
             state.isPaused = true;
             actions.sendCommand({ type: 'SIM_CONTROL', action: 'pause' });
-            $('btn-pause').textContent = 'RESUME';
-            $('btn-pause').classList.add('active');
+            const pauseBtn = $('btn-pause');
+            if (pauseBtn) {
+              pauseBtn.textContent = 'RESUME';
+              pauseBtn.classList.add('active');
+            }
           }
         } else {
           historyController.scrubTo(targetFrame);
@@ -3967,8 +4059,11 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           if (shouldPauseWorker) {
             state.isPaused = true;
             actions.sendCommand({ type: 'SIM_CONTROL', action: 'pause' });
-            $('btn-pause').textContent = 'RESUME';
-            $('btn-pause').classList.add('active');
+            const pauseBtn = $('btn-pause');
+            if (pauseBtn) {
+              pauseBtn.textContent = 'RESUME';
+              pauseBtn.classList.add('active');
+            }
           }
         } else {
           schedHistoryController.scrubTo(targetFrame);
