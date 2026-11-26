@@ -1,5 +1,6 @@
 //! Tactical X-Band Air-to-Ground Network Digital Twin — Tauri v2 Desktop Host.
 
+pub mod lan_bridge;
 pub mod tile_protocol;
 
 use serde::Serialize;
@@ -55,6 +56,19 @@ fn delete_offline_tile(app: tauri::AppHandle, name: String) -> Result<bool, Stri
     tile_protocol::delete_offline_tile_in_dir(&dir, &name)
 }
 
+#[tauri::command]
+fn send_atak_cot_udp(target_addr: String, cot_xml: String) -> Result<usize, String> {
+    lan_bridge::send_atak_cot_udp_payload(&target_addr, &cot_xml)
+}
+
+#[tauri::command]
+fn send_mavlink_telemetry_udp(
+    target_addr: String,
+    params: lan_bridge::MavlinkGlobalPositionParams,
+) -> Result<usize, String> {
+    lan_bridge::send_mavlink_telemetry_udp_payload(&target_addr, &params)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -67,7 +81,9 @@ pub fn run() {
             get_tiles_directory,
             list_offline_tiles,
             save_offline_tile,
-            delete_offline_tile
+            delete_offline_tile,
+            send_atak_cot_udp,
+            send_mavlink_telemetry_udp
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tactical X-Band Digital Twin desktop shell");

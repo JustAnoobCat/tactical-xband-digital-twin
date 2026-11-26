@@ -93,6 +93,7 @@
     "typecheck": "tsc --noEmit",
     "benchmark:ts": "vite-node scripts/run_ts_benchmark.ts",
     "benchmark:scientific": "vite-node scripts/generate_scientific_dossier.ts",
+    "cli:batch": "npx tsx scripts/stratos_cli.ts",
     "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "tauri:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri:dev": "tauri dev",

@@ -128,9 +128,10 @@ tactical-xband-digital-twin/
 ├── server/
 │   └── ts_parity_server.ts         # Canonical Node/TS headless parity server (node:http)
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Bounded parallel 133-suite runner (--concurrency=N, --serial)
+│   ├── run_all_verifications.mjs   # Bounded parallel 134-suite runner (--concurrency=N, --serial)
 │   ├── run_v8_coverage.mjs         # Native Node V8 code coverage reporter
 │   ├── verify-browser-ux.mjs       # Multi-viewport (4 viewports + 9 tabs) Playwright Chromium UX gate
+│   ├── stratos_cli.ts              # Multi-core Node worker_threads Monte Carlo batch CLI
 │   └── generate_scientific_dossier.ts# N=30 Monte Carlo research dossier generator
 ├── src/wasm/xband_physics/         # Prebuilt compact WebAssembly kernel (pure-TS fallback when absent)
 ├── src-tauri/                      # Cross-Platform Offline Tauri v2 Desktop Shell & xband-tile:// Rust Host
@@ -173,10 +174,13 @@ npm run verify:coverage
 ```
 Runs representative core engine suites under `NODE_V8_COVERAGE`, prints a formatted summary table across `src/core/*.ts`, and outputs `benchmark_results/generated/v8-coverage-summary.json`.
 
-### Headless CLI Benchmark Runner
+### Headless CLI Benchmark & Multi-Core Batch Runner
 ```bash
 # Standard 5-seed benchmark at 3.5x congested traffic load
 npm run benchmark:ts -- --duration 5 --traffic-scale 3.5
+
+# Multi-core Node worker_threads Monte Carlo batch sweep (deterministic seed-sorted CSV / JSON)
+npm run cli:batch -- --seeds 8 --duration 1.0 --workers 4 --biome alpine_mountain --out benchmark_results/batch.csv
 
 # Scientific N=30 Monte Carlo research dossier generator
 npm run benchmark:scientific
@@ -184,13 +188,13 @@ npm run benchmark:scientific
 
 ### Automated Verification Pipeline & Quality Gates
 The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
-- **`133` TypeScript verification suites** (`114` core V3.0 registered suites + `19` post-release hardening, UI/RF, REMED-01–06, PERF-01, TAURI-01, RUST-CORE-01, UPG-01, and UPG-02 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
+- **`134` TypeScript verification suites** (`114` core V3.0 registered suites + `20` post-release hardening, UI/RF, REMED-01–06, PERF-01, TAURI-01, RUST-CORE-01, UPG-01, UPG-02, and UPG-03 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
 - **`27` Python `pytest` suites (`pytest -v`)**
 - **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs` across 4 viewports + 9 rail tabs enforced in CI)**
 - **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
 
 ```bash
-# Run all 133 TypeScript verification suites (114 core V3.0 + 19 post-release suites)
+# Run all 134 TypeScript verification suites (114 core V3.0 + 20 post-release suites)
 npm run verify:all
 
 # Run with custom concurrency or serial fallback
@@ -218,7 +222,7 @@ npm run rust:bench
 ```
 
 ### Offline Desktop Build (Tauri v2)
-The `src-tauri/` crate packages the digital twin as a lightweight cross-platform offline workstation (Linux, Windows, macOS) with a strict air-gapped CSP, least-privilege capabilities (`core:default`), and a native Rust `xband-tile://` protocol handler supporting RFC 9110 byte-range streaming and symlink containment:
+The `src-tauri/` crate packages the digital twin as a lightweight cross-platform offline workstation (Linux, Windows, macOS) with a strict air-gapped CSP, least-privilege capabilities (`core:default`), a native Rust `xband-tile://` protocol handler supporting RFC 9110 byte-range streaming and symlink containment, and an opt-in air-gapped private-LAN UDP bridge (`src-tauri/src/lan_bridge.rs`: `send_atak_cot_udp` for ATAK CoT XML and `send_mavlink_telemetry_udp` for MAVLink v2 `GLOBAL_POSITION_INT`, hard-blocking public IPs and enforcing `TTL = 1` on local multicast):
 
 ```bash
 # Build frontend assets, check Rust desktop crate, and run Rust protocol unit tests

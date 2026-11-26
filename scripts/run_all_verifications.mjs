@@ -51,7 +51,7 @@ if (isSerial) {
 }
 
 // -----------------------------------------------------------------------------
-// Verification Suites Registry (133 Total Suites)
+// Verification Suites Registry (134 Total Suites)
 // -----------------------------------------------------------------------------
 const viteNodeBin = resolve(process.cwd(), 'node_modules/.bin/vite-node');
 
@@ -191,7 +191,8 @@ REGISTERED_SUITES.push(
   { id: 'verify:tauri01-desktop-shell', name: 'TAURI-01 Cross-Platform Offline Tauri v2 Desktop Shell', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyTauri01DesktopShell.ts'], category: 'desktop' },
   { id: 'verify:rust-core01-wasm-parity', name: 'RUST-CORE-01 Shared Rust/WASM Terrain, Viewshed & Hillshade Parity', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyRustCore01WasmParity.ts'], category: 'physics' },
   { id: 'verify:upg01-flight-recorder-ipc', name: 'UPG-01 Slice WASM Viewshed, On-Demand IPC, Flight Recorder & HUD', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg01FlightRecorderAndIpc.ts'], category: 'architecture' },
-  { id: 'verify:upg02-offline-packs-hgt', name: 'UPG-02 Fast 500+ HGT Manager, Offline Mission Packs & Mentor Edge-Case Fixes', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg02OfflinePacksAndHgt.ts'], category: 'terrain' }
+  { id: 'verify:upg02-offline-packs-hgt', name: 'UPG-02 Fast 500+ HGT Manager, Offline Mission Packs & Mentor Edge-Case Fixes', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg02OfflinePacksAndHgt.ts'], category: 'terrain' },
+  { id: 'verify:upg03-lan-bridge-batch-cli', name: 'UPG-03 Air-Gapped LAN UDP Bridge (ATAK CoT / MAVLink v2) & Multi-Core Batch CLI', command: process.execPath, args: [viteNodeBin, 'src/tests/verifyUpg03LanBridgeAndBatchCli.ts'], category: 'desktop' }
 );
 
 // -----------------------------------------------------------------------------
