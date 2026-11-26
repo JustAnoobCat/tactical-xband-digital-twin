@@ -610,6 +610,155 @@ export function renderPrecisionAoSwathOverlay(
 // Factory: createRadar2dRenderer
 // ============================================================================
 
+function drawTacticalEquipmentOverlays(
+  ctx: CanvasRenderingContext2D,
+  equipment: readonly any[],
+  worldToScreen: (xM: number, yM: number) => RadarPoint2D,
+  acnPosWorld: { x: number; y: number },
+  scale: number,
+  sweepTimeS: number,
+  labelPlacer: CanvasLabelPlacer | null
+): void {
+  if (!equipment || equipment.length === 0) return;
+  const pulse = (Math.max(0, sweepTimeS) * 0.85) % 1.0;
+
+  ctx.save();
+  for (let i = 0; i < equipment.length; i++) {
+    const eq = equipment[i];
+    if (!eq || !Number.isFinite(eq.x_m) || !Number.isFinite(eq.y_m)) continue;
+    const pt = worldToScreen(eq.x_m, eq.y_m);
+    const active = eq.enabled !== false;
+    const alphaScale = active ? 1.0 : 0.35;
+    const rawRadiusPx = (Number.isFinite(eq.effective_radius_m) ? eq.effective_radius_m : 4500) * scale;
+    const ringPx = Math.max(16, Math.min(90, rawRadiusPx));
+
+    if (eq.type === 'barrage_jammer' || eq.type === 'spot_jammer') {
+      // Pulsing red interference rings + diamond (JMR)
+      if (active) {
+        const pulseR = ringPx * (0.35 + 0.65 * pulse);
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pulseR, 0, TAU);
+        ctx.strokeStyle = `rgba(239, 68, 68, ${(1 - pulse) * 0.65})`;
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, ringPx, 0, TAU);
+      ctx.strokeStyle = `rgba(239, 68, 68, ${0.42 * alphaScale})`;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (eq.type === 'spot_jammer') {
+        const aimDeg = typeof eq.azimuth_deg === 'number' && Number.isFinite(eq.azimuth_deg)
+          ? eq.azimuth_deg
+          : (((Math.atan2(acnPosWorld.x - eq.x_m, acnPosWorld.y - eq.y_m) * 180) / Math.PI) + 360) % 360;
+        const bwRad = ((typeof eq.beamwidth_deg === 'number' ? eq.beamwidth_deg : 35) * Math.PI) / 180;
+        const aimCanvasRad = ((aimDeg - 90) * Math.PI) / 180;
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y);
+        ctx.arc(pt.x, pt.y, ringPx * 1.15, aimCanvasRad - bwRad * 0.5, aimCanvasRad + bwRad * 0.5);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.18 * alphaScale})`;
+        ctx.fill();
+      }
+
+      ctx.fillStyle = active ? '#ef4444' : '#7f1d1d';
+      ctx.strokeStyle = '#090b10';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(pt.x, pt.y - 7);
+      ctx.lineTo(pt.x + 7, pt.y);
+      ctx.lineTo(pt.x, pt.y + 7);
+      ctx.lineTo(pt.x - 7, pt.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      const tag = eq.type === 'spot_jammer' ? 'JMR-S' : 'JMR';
+      ctx.font = `bold 10px ${MONO}`;
+      const tagW = Math.max(24, ctx.measureText(tag).width || tag.length * 6.5);
+      const placed = labelPlacer
+        ? labelPlacer.placeLabel(pt.x + 9, pt.y - 10, tagW, 12, pt.x, pt.y)
+        : { x: pt.x + 9, y: pt.y - 10 };
+      ctx.fillStyle = `rgba(248, 113, 113, ${alphaScale})`;
+      ctx.fillText(tag, placed.x, placed.y + 10);
+    } else if (eq.type === 'relay_mast') {
+      // Emerald mast + halo (RLY)
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, ringPx, 0, TAU);
+      ctx.strokeStyle = `rgba(16, 185, 129, ${0.32 * alphaScale})`;
+      ctx.lineWidth = 1.1;
+      ctx.setLineDash([3, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 11, 0, TAU);
+      ctx.fillStyle = `rgba(16, 185, 129, ${0.22 * alphaScale})`;
+      ctx.fill();
+
+      ctx.strokeStyle = active ? '#10b981' : '#065f46';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pt.x, pt.y - 8);
+      ctx.lineTo(pt.x, pt.y + 7);
+      ctx.moveTo(pt.x - 5, pt.y - 4);
+      ctx.lineTo(pt.x + 5, pt.y - 4);
+      ctx.moveTo(pt.x - 4, pt.y + 7);
+      ctx.lineTo(pt.x + 4, pt.y + 7);
+      ctx.stroke();
+
+      const tag = 'RLY';
+      ctx.font = `bold 10px ${MONO}`;
+      const tagW = Math.max(24, ctx.measureText(tag).width || 24);
+      const placed = labelPlacer
+        ? labelPlacer.placeLabel(pt.x + 9, pt.y - 10, tagW, 12, pt.x, pt.y)
+        : { x: pt.x + 9, y: pt.y - 10 };
+      ctx.fillStyle = `rgba(52, 211, 153, ${alphaScale})`;
+      ctx.fillText(tag, placed.x, placed.y + 10);
+    } else if (eq.type === 'esm_sensor') {
+      // Amber intercept sector (ESM)
+      const sweepCenter = ((sweepTimeS * 0.7) % TAU) - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(pt.x, pt.y);
+      ctx.arc(pt.x, pt.y, ringPx * 0.9, sweepCenter - 0.55, sweepCenter + 0.55);
+      ctx.closePath();
+      ctx.fillStyle = eq.intercept_detected
+        ? `rgba(245, 158, 11, ${0.28 * alphaScale})`
+        : `rgba(245, 158, 11, ${0.14 * alphaScale})`;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, ringPx * 0.9, 0, TAU);
+      ctx.strokeStyle = `rgba(245, 158, 11, ${0.4 * alphaScale})`;
+      ctx.lineWidth = 1.1;
+      ctx.setLineDash([2, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = active ? '#f59e0b' : '#78350f';
+      ctx.strokeStyle = '#090b10';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 5.5, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+
+      const tag = eq.intercept_detected ? 'ESM*' : 'ESM';
+      ctx.font = `bold 10px ${MONO}`;
+      const tagW = Math.max(24, ctx.measureText(tag).width || 24);
+      const placed = labelPlacer
+        ? labelPlacer.placeLabel(pt.x + 9, pt.y - 10, tagW, 12, pt.x, pt.y)
+        : { x: pt.x + 9, y: pt.y - 10 };
+      ctx.fillStyle = `rgba(251, 191, 36, ${alphaScale})`;
+      ctx.fillText(tag, placed.x, placed.y + 10);
+    }
+  }
+  ctx.restore();
+}
+
 export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
   let activeLabelPlacer: CanvasLabelPlacer | null = null;
 
@@ -1033,6 +1182,20 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       ctx.fillStyle = palette.accent;
       ctx.fillText(acnLabel, acnPlaced.x, acnPlaced.y + 10);
       ctx.restore();
+    }
+
+    // 7b. Deployed Tactical RF Equipment (Barrage/Spot Jammers, Relay Masts, ESM Sensors)
+    if (!histSnap && Array.isArray(liveTelemetry?.tactical_equipment) && liveTelemetry.tactical_equipment.length > 0) {
+      const eqSweepTimeS = deps.getSweepTimeS?.() ?? Number(liveTelemetry?.sim_time_s ?? 0);
+      drawTacticalEquipmentOverlays(
+        ctx,
+        liveTelemetry.tactical_equipment,
+        (xM, yM) => worldToScreen(xM, yM, w, h),
+        acnPosWorld,
+        geometry.scale,
+        eqSweepTimeS,
+        activeLabelPlacer
+      );
     }
 
     // 8. Precision Tool Overlays (AutoCAD Ruler, RF Field Probe, QGIS AO Swath, CAD 3D Barriers)

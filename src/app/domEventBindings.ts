@@ -412,16 +412,25 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     const wpActive = Boolean(
       typeof state.waypointPlacementArmed !== 'undefined' && state.waypointPlacementArmed
     );
+    const eqActive = Boolean(
+      typeof state.equipmentPlacementArmed !== 'undefined' && state.equipmentPlacementArmed
+    );
     const moveActive = Boolean(
       typeof state.nodeMoveModeActive !== 'undefined' && state.nodeMoveModeActive
     );
-    const active = obsActive || wpActive || moveActive;
+    const active = obsActive || wpActive || eqActive || moveActive;
 
     stage.setAttribute('data-edit-mode', active ? 'active' : 'idle');
     banner.hidden = !active;
     if (!active) return;
 
-    if (moveActive) {
+    if (eqActive) {
+      const eqType = ($<HTMLSelectElement>('equip-type-select')?.value || 'barrage_jammer').replace(/_/g, ' ');
+      if (badge) badge.textContent = 'DEPLOY EQUIPMENT';
+      if (text) text.textContent = `Click 2D Radar to place ${eqType} (Esc to cancel)`;
+      if (doneBtn) doneBtn.textContent = 'Done';
+      if (cancelBtn) cancelBtn.hidden = false;
+    } else if (moveActive) {
       if (badge) badge.textContent = 'MOVE NODE';
       if (text) text.textContent = 'Drag highlighted terminal marker on map to reposition';
       if (doneBtn) doneBtn.textContent = 'Done';
@@ -461,14 +470,18 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     const placingWp = Boolean(
       typeof state.waypointPlacementArmed !== 'undefined' && state.waypointPlacementArmed
     );
+    const placingEq = Boolean(
+      typeof state.equipmentPlacementArmed !== 'undefined' && state.equipmentPlacementArmed
+    );
     const obsActive = Boolean(
       typeof obstacleEditor !== 'undefined' && obstacleEditor?.mode !== 'navigate'
     );
-    if (locked || placingWp || obsActive) {
+    if (locked || placingWp || placingEq || obsActive) {
       stage.setAttribute('data-hud-mode', 'locked');
       const pill = $('radar-hud-locked-pill');
       if (pill) {
-        if (placingWp) pill.textContent = 'WAYPOINT PLACEMENT ARMED · Click map';
+        if (placingEq) pill.textContent = 'EQUIPMENT PLACEMENT ARMED · Click map (Esc cancels)';
+        else if (placingWp) pill.textContent = 'WAYPOINT PLACEMENT ARMED · Click map';
         else if (obsActive)
           pill.textContent = `OBSTACLE TOOL (${obstacleEditor.mode.toUpperCase()}) · Active`;
         else pill.textContent = 'SPATIAL LOCK ACTIVE · Edits suspended';
@@ -586,11 +599,31 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     if (descInp) descInp.value = String(state.committedFlightParams.max_descent_rate_mps);
   }
 
+  const disarmEquipmentPlacement = (statusText?: string) => {
+    if (!state.equipmentPlacementArmed) return;
+    state.equipmentPlacementArmed = false;
+    const btn = $('btn-equip-place-map');
+    if (btn) {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-pressed', 'false');
+      btn.textContent = 'Place on Map';
+    }
+    if (statusText !== undefined) setText('equip-placement-status', statusText);
+    const rc = $('radar-canvas');
+    if (rc) rc.style.cursor = 'crosshair';
+    syncRadarHudMode();
+    actions.updateMapLibreCursor();
+  };
+
   function updateSpatialLockControl(locked: boolean) {
     if (state.spatialLockControlSynced && locked === state.spatialLocked) return;
     state.spatialLockControlSynced = true;
     state.spatialLocked = locked;
-    if (locked) state.nodeMoveModeActive = false;
+
+    if (locked) {
+      state.nodeMoveModeActive = false;
+      disarmEquipmentPlacement('Spatial lock active — equipment placement canceled.');
+    }
     obstacleEditor.setSpatialLock(locked);
     const button = $('btn-spatial-lock');
     if (button) {
@@ -2253,6 +2286,10 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     document.addEventListener('keydown', (e: any) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'Escape') {
+        if (state.equipmentPlacementArmed) {
+          disarmEquipmentPlacement('Equipment placement canceled.');
+          return;
+        }
         const modal = $('upload-modal');
         if (modal && !modal.hidden)
           return (window as any).closeUploadModal && (window as any).closeUploadModal();
@@ -2440,9 +2477,15 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       if (obstacleEditor.mode !== 'navigate') {
         activateObstacleMode('navigate');
       }
+      if (state.equipmentPlacementArmed) {
+        disarmEquipmentPlacement('Equipment placement finished.');
+      }
     });
 
     $('edit-mode-cancel-btn')?.addEventListener('click', () => {
+      if (state.equipmentPlacementArmed) {
+        disarmEquipmentPlacement('Equipment placement canceled.');
+      }
       if (state.nodeMoveModeActive) {
         state.nodeMoveModeActive = false;
         setText('map-node-action-status', '');
@@ -2878,6 +2921,83 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     byId('param-cov')?.addEventListener('input', () =>
       (window as any).onCoverageParamChange?.()
     );
+
+    const sendWaveformLockUpdate = () => {
+      const modeVal = ($<HTMLSelectElement>('mcs-mode-select')?.value || 'acm_auto') as 'acm_auto' | 'manual_lock';
+      const modVal = ($<HTMLSelectElement>('manual-mod-select')?.value || '16-QAM') as any;
+      const fecVal = ($<HTMLSelectElement>('manual-fec-select')?.value || '3/4') as any;
+      actions.sendCommand({
+        type: 'CONFIG_UPDATE',
+        params: {
+          mcs_mode: modeVal,
+          manual_modulation: modVal,
+          manual_fec: fecVal,
+        },
+      });
+      setText(
+        'mcs-mode-readout',
+        modeVal === 'manual_lock'
+          ? `Manual Lock · ${modVal} ${fecVal}`
+          : 'ACM Auto · Adaptive 8-Tier DVB-S2X'
+      );
+    };
+    byId('mcs-mode-select')?.addEventListener('change', sendWaveformLockUpdate);
+    byId('manual-mod-select')?.addEventListener('change', sendWaveformLockUpdate);
+    byId('manual-fec-select')?.addEventListener('change', sendWaveformLockUpdate);
+
+    byId('equip-type-select')?.addEventListener('change', (e: any) => {
+      const eirpInput = $<HTMLInputElement>('equip-eirp-input');
+      if (!eirpInput) return;
+      const t = String(e.currentTarget.value);
+      eirpInput.value = t === 'spot_jammer' ? '72' : t === 'relay_mast' ? '43' : t === 'esm_sensor' ? '20' : '65';
+    });
+
+    byId('btn-equip-place-map')?.addEventListener('click', () => {
+      if (state.spatialLocked) {
+        setText('equip-placement-status', 'Spatial lock active — unlock before placing equipment.');
+        return;
+      }
+      state.equipmentPlacementArmed = !state.equipmentPlacementArmed;
+      const btn = byId('btn-equip-place-map');
+      if (btn) {
+        btn.classList.toggle('active', state.equipmentPlacementArmed);
+        btn.setAttribute('aria-pressed', state.equipmentPlacementArmed ? 'true' : 'false');
+        btn.textContent = state.equipmentPlacementArmed ? 'Armed (Click Map)…' : 'Place on Map';
+      }
+      if (state.equipmentPlacementArmed) {
+        state.nodeMoveModeActive = false;
+        state.waypointPlacementArmed = false;
+        const eqType = ($<HTMLSelectElement>('equip-type-select')?.value || 'barrage_jammer').replace(/_/g, ' ');
+        setText('equip-placement-status', `Armed: click 2D Radar to place ${eqType} (Esc cancels).`);
+        const rc = $('radar-canvas');
+        if (rc) rc.style.cursor = 'crosshair';
+        const overviewTab = $('tab-overview');
+        if (overviewTab && !overviewTab.classList.contains('active')) {
+          (window as any).switchMainTab?.('tab-overview');
+        }
+      } else {
+        setText('equip-placement-status', 'Equipment placement canceled.');
+      }
+      syncRadarHudMode();
+      actions.updateMapLibreCursor();
+    });
+
+    byId('btn-equip-clear-all')?.addEventListener('click', () => {
+      if (state.spatialLocked) {
+        setText('equip-placement-status', 'Spatial lock active — unlock before clearing equipment.');
+        return;
+      }
+      state.equipmentPlacementArmed = false;
+      const btn = byId('btn-equip-place-map');
+      if (btn) {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-pressed', 'false');
+        btn.textContent = 'Place on Map';
+      }
+      actions.sendCommand({ type: 'EQUIPMENT_CLEAR' });
+      setText('equip-placement-status', 'Cleared all deployed tactical equipment.');
+      syncRadarHudMode();
+    });
 
     byId('btn-hifi-all-toggle')?.addEventListener('click', () =>
       (window as any).toggleAllHiFiPhysics?.()

@@ -68,8 +68,12 @@ import {
 } from '../core/ipcTransferCodec';
 import { BoundedReplayBuffer, type ReplayBufferStats, type ReplayFrameEntry, type ReplayBufferMode } from '../core/boundedReplayBuffer';
 import {
-  computeDelayQuantiles as computeDelayQuantilesHelper, extractSchedulerEpochMetrics as extractSchedulerEpochMetricsHelper, createSuperframeEpochRecord, buildSpatialFrameSnapshot, buildHiFiPhysicsTelemetry, createDefaultSimulationMetrics, createTelemetryFrameOutboundMessage, buildObstructionStateSnapshot, evaluateAcmCqiAgingAndOlla, computeJammerInterference, captureEvictionFinalizationRecord,
+  computeDelayQuantiles as computeDelayQuantilesHelper, extractSchedulerEpochMetrics as extractSchedulerEpochMetricsHelper, createSuperframeEpochRecord, buildSpatialFrameSnapshot, buildHiFiPhysicsTelemetry, createDefaultSimulationMetrics, createTelemetryFrameOutboundMessage, buildObstructionStateSnapshot, evaluateAcmCqiAgingAndOlla, captureEvictionFinalizationRecord,
 } from './workerKpiHelpers';
+import {
+  TacticalEquipmentRegistry, evaluateAllJammersBySector, evaluateDeployedEquipmentTelemetry, applyMcsConfigUpdate, executeTacticalEquipmentCommand,
+} from '../core/tacticalEquipment';
+import type { TacticalEquipmentTelemetry } from '../shared/workerProtocol';
 import {
   validateConfigUpdateParams, validateNodeMoveCommand, validatePresetCommand, validateTrafficInjectionCommand, resolveScientificParams, resolveViewshedConfig, validateSetBiomeCommand,
 } from './workerCommandValidators';
@@ -158,6 +162,8 @@ export class SimulationWorkerManager {
   public prevAcnVel: Position3D = [0, 0, 0];
   public jammerShieldLossDb: number = 0.0;
   public jammerSectorInterferenceDbm: readonly [number, number, number, number] = [-150.0, -150.0, -150.0, -150.0];
+  public readonly tacticalEquipmentRegistry: TacticalEquipmentRegistry = new TacticalEquipmentRegistry();
+  public tacticalEquipment: readonly TacticalEquipmentTelemetry[] = [];
   public readonly viewshedEngine: PolarViewshedEngine = new PolarViewshedEngine();
   public viewshedEnabled: boolean = false;
   public telemetrySubscriptions: {
@@ -513,13 +519,8 @@ export class SimulationWorkerManager {
 
   /** Re-derive each ground node's MSL altitude from the currently active terrain and its AGL. */
   private resampleGroundNodeAltitudes(): void {
-    NodeLifecycleManager.resampleGroundNodeAltitudes(
-      this.nodesStatic,
-      this.nodesTac,
-      this.nodeRegistry,
-      this.terrainEngine,
-      this.nodesReactive
-    );
+    NodeLifecycleManager.resampleGroundNodeAltitudes(this.nodesStatic, this.nodesTac, this.nodeRegistry, this.terrainEngine, this.nodesReactive);
+    this.tacticalEquipmentRegistry.resampleElevations((x, y) => this.terrainEngine.getElevation(x, y));
   }
 
   public getNodeEntity(nodeIdOrEntityId: number | string): GroundNodeEntity | undefined {
@@ -935,21 +936,20 @@ export class SimulationWorkerManager {
       (this.frameIndex % this.uiPublishIntervalTicks === 0)
     );
     if (shouldPublish) {
-      const frame = this.buildTelemetryFrame(acnPos);
-      this.replayBuffer.push(t, frame, false);
-      (frame as any).batch_spatial_snapshots = this.batchSpatialSnapshots.splice(0);
-      (frame as any).completed_superframes = this.pendingTimelineRecords.splice(0);
-      this.emitHostMessage(createTelemetryFrameOutboundMessage(frame, {
-        biomeId: this.biomeId,
-        enableBiomeEmPhysics: this.enableBiomeEmPhysics,
-        polarizationMode: this.polarizationMode,
-        liveMeanTwoRayGainDb: this.liveMeanTwoRayGainDb,
-        liveMeanFoliageLossDb: this.liveMeanFoliageLossDb,
-        liveMeanDustLossDb: this.liveMeanDustLossDb,
-        liveMeanPolLossDb: this.liveMeanPolLossDb,
-        weatherCellCount: this.weatherCells.length,
-      }));
+      this.emitCurrentTelemetryFrame(acnPos, t);
     }
+  }
+
+  private emitCurrentTelemetryFrame(acnPos: [number, number, number], t: number = this.simTimeS): void {
+    const frame = this.buildTelemetryFrame(acnPos);
+    this.replayBuffer.push(t, frame, false);
+    (frame as any).batch_spatial_snapshots = this.batchSpatialSnapshots.splice(0);
+    (frame as any).completed_superframes = this.pendingTimelineRecords.splice(0);
+    this.emitHostMessage(createTelemetryFrameOutboundMessage(frame, {
+      biomeId: this.biomeId, enableBiomeEmPhysics: this.enableBiomeEmPhysics, polarizationMode: this.polarizationMode,
+      liveMeanTwoRayGainDb: this.liveMeanTwoRayGainDb, liveMeanFoliageLossDb: this.liveMeanFoliageLossDb,
+      liveMeanDustLossDb: this.liveMeanDustLossDb, liveMeanPolLossDb: this.liveMeanPolLossDb, weatherCellCount: this.weatherCells.length,
+    }));
   }
 
   private stepTransferForCurrentSuperframe(t: number, activeReport: FrameScheduleReport | null): void {
@@ -1213,13 +1213,9 @@ export class SimulationWorkerManager {
     let anyJammerSuppressed = false;
     let ewEvaluatedCount = 0;
 
-    // Evaluate Contested EW Jammer Ingress & Terrain Shielding
-    const jammerRes = computeJammerInterference({
-      jammerEnabled: this.envConfig.jammerEnabled, jammerPosEnu: this.envConfig.jammerPosEnu,
-      jammerEirpDbm: this.envConfig.jammerEirpDbm, acnPos, acnVel, acnAttitude,
-      terrainEngine: this.terrainEngine, rfConfig: this.rfConfig, envConfig: this.envConfig,
-      antennaEngine: this.antennaEngine,
-    });
+    // Evaluate Contested EW Jammer Ingress & Terrain Shielding (legacy + deployed multi-jammers)
+    const eqList = this.tacticalEquipmentRegistry.list();
+    const jammerRes = evaluateAllJammersBySector({ equipment: eqList, acnPos, acnVel, acnAttitude, terrainEngine: this.terrainEngine, rfConfig: this.rfConfig, envConfig: this.envConfig, antennaEngine: this.antennaEngine });
     this.jammerShieldLossDb = jammerRes.jammerShieldLossDb;
     this.jammerSectorInterferenceDbm = jammerRes.jammerSectorInterferenceDbm;
     const jammerInterferenceBySector = jammerRes.jammerInterferenceBySector;
@@ -1263,7 +1259,7 @@ export class SimulationWorkerManager {
         eccmMode: this.eccmMode,
         enableMvdrNullSteering: this.enableMvdrNullSteering,
         acnPos,
-        jammerPosEnu: this.envConfig.jammerPosEnu,
+        jammerPosEnu: jammerRes.dominantJammerPosEnu ?? this.envConfig.jammerPosEnu,
         targetBearingDeg: sectorEval.worldBearingDeg,
         channelBandwidthHz: this.rfConfig.channelBandwidthHz || 1e6,
       });
@@ -1534,34 +1530,13 @@ export class SimulationWorkerManager {
       const relayPos = this.relayAdvisorReport.optimalPosEnu;
       const dHop2M = Math.max(1.0, Math.hypot(acnPos[0] - relayPos[0], acnPos[1] - relayPos[1], acnPos[2] - relayPos[2]));
       const hop2Obs = this.terrainEngine.evaluateTerrainObstruction(relayPos, acnPos, this.rfConfig, this.envConfig);
-      const hop2SectorEval = this.antennaEngine.evaluateNodeSector(
-        -888,
-        acnPos,
-        acnVel,
-        relayPos,
-        this.rfConfig.acnAntennaGainDbi,
-        false,
-        acnAttitude
-      );
-      const hop2Doppler = LinkBudgetEngine.computeDopplerKinematics(
-        acnPos,
-        acnVel,
-        relayPos,
-        this.rfConfig.carrierFrequencyHz,
-        acnAccel
-      );
-      const rawHop2JammerInterferenceDbm = this.envConfig.jammerEnabled && jammerInterferenceBySector !== undefined
-        ? jammerInterferenceBySector[hop2SectorEval.activeSectorId]
-        : undefined;
-
+      const hop2SectorEval = this.antennaEngine.evaluateNodeSector(-888, acnPos, acnVel, relayPos, this.rfConfig.acnAntennaGainDbi, false, acnAttitude);
+      const hop2Doppler = LinkBudgetEngine.computeDopplerKinematics(acnPos, acnVel, relayPos, this.rfConfig.carrierFrequencyHz, acnAccel);
+      const rawHop2JammerInterferenceDbm = jammerInterferenceBySector?.[hop2SectorEval.activeSectorId];
       const hop2Ew = computeNodeEwJammerMitigation({
-        rawJammerDbm: rawHop2JammerInterferenceDbm,
-        eccmMode: this.eccmMode,
-        enableMvdrNullSteering: this.enableMvdrNullSteering,
-        acnPos,
-        jammerPosEnu: this.envConfig.jammerPosEnu,
-        targetBearingDeg: hop2SectorEval.worldBearingDeg,
-        channelBandwidthHz: this.rfConfig.channelBandwidthHz || 1e6,
+        rawJammerDbm: rawHop2JammerInterferenceDbm, eccmMode: this.eccmMode, enableMvdrNullSteering: this.enableMvdrNullSteering,
+        acnPos, jammerPosEnu: jammerRes.dominantJammerPosEnu ?? this.envConfig.jammerPosEnu,
+        targetBearingDeg: hop2SectorEval.worldBearingDeg, channelBandwidthHz: this.rfConfig.channelBandwidthHz || 1e6,
       });
       const hop2JammerInterferenceDbm = hop2Ew.effectiveJammerDbm;
 
@@ -1587,21 +1562,11 @@ export class SimulationWorkerManager {
         if (directLink.isOutage || directLink.bitrateMbps < 5.0) {
           let hop1Obs = this.relayHop1ObstructionCache.get(nid);
           if (!hop1Obs) {
-            hop1Obs = this.terrainEngine.evaluateTerrainObstruction(
-              node.position,
-              relayPos,
-              this.rfConfig,
-              this.envConfig
-            );
+            hop1Obs = this.terrainEngine.evaluateTerrainObstruction(node.position, relayPos, this.rfConfig, this.envConfig);
             this.relayHop1ObstructionCache.set(nid, hop1Obs);
           }
 
-          const dHop1M = Math.max(1.0, Math.hypot(
-            relayPos[0] - node.position[0],
-            relayPos[1] - node.position[1],
-            relayPos[2] - node.position[2]
-          ));
-
+          const dHop1M = Math.max(1.0, Math.hypot(relayPos[0] - node.position[0], relayPos[1] - node.position[1], relayPos[2] - node.position[2]));
           const hop1Link = this.linkEngine.evaluateLink({
             nodeType: (node.nodeType as string) === 'convoy' ? 'vehicular' : node.nodeType, slantRangeM: dHop1M, diffractionLossDb: hop1Obs.diffractionLossDb,
             rf: this.rfConfig, env: this.envConfig, obstacleBlocked: hop1Obs.obstacleBlocked,
@@ -1610,16 +1575,7 @@ export class SimulationWorkerManager {
             customRxGainDbi: this.envConfig.relayAntennaGainDbi, txX: node.position[0], txY: node.position[1],
             rxX: relayPos[0], rxY: relayPos[1], biomeId: this.biomeId, txAltAglM: 3.0, rxAltAglM: node.aglM ?? 2.0,
           });
-
-          const relayedLink = LinkBudgetEngine.computeDecodeAndForwardRelayLink(
-            directLink,
-            hop1Link,
-            hop2Link,
-            dHop1M,
-            dHop2M,
-            this.rfConfig.speedOfLight
-          );
-
+          const relayedLink = LinkBudgetEngine.computeDecodeAndForwardRelayLink(directLink, hop1Link, hop2Link, dHop1M, dHop2M, this.rfConfig.speedOfLight);
           if (relayedLink.isRelayed) {
             nextLinks.set(nid, relayedLink);
             nextShadow.set(nid, false);
@@ -1629,9 +1585,15 @@ export class SimulationWorkerManager {
       }
     }
 
-    this.relayedNodeCount = relayedNodeCount;
+    const eqPost = evaluateDeployedEquipmentTelemetry({
+      equipment: eqList, nodes: this.nodesTac, acnPos, acnVel, acnAccel, acnAttitude, terrainEngine: this.terrainEngine, linkEngine: this.linkEngine,
+      rfConfig: this.rfConfig, envConfig: this.envConfig, antennaEngine: this.antennaEngine, nextLinks, nextShadow, jammerInterferenceBySector,
+      shieldByEquipmentId: jammerRes.shieldByEquipmentId, biomeId: this.biomeId, acnAltAglM,
+    });
+    this.relayedNodeCount = relayedNodeCount + eqPost.relayedNodeCount;
     this.relayBackhaulSectorId = relayBackhaulSectorId;
     this.relayBackhaulSnrDb = relayBackhaulSnrDb;
+    this.tacticalEquipment = eqPost.tacticalEquipment;
 
     this.liveMeanTwoRayGainDb = biomeEvaluatedCount > 0 ? sumTwoRayGainDb / biomeEvaluatedCount : 0.0;
     this.liveMeanFoliageLossDb = biomeEvaluatedCount > 0 ? sumFoliageLossDb / biomeEvaluatedCount : 0.0;
@@ -2650,6 +2612,9 @@ export class SimulationWorkerManager {
         }
         if (p.carrier_freq_ghz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, carrierFrequencyHz: p.carrier_freq_ghz * 1e9 });
         if (p.channel_bandwidth_mhz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, channelBandwidthHz: p.channel_bandwidth_mhz * 1e6 });
+        const mcsRes = applyMcsConfigUpdate(this.rfConfig, p as unknown as Record<string, unknown>);
+        if (mcsRes.error) return reject(mcsRes.error);
+        if (mcsRes.updated) this.rfConfig = mcsRes.rfConfig;
         if (p.rain_rate_mmh !== undefined) this.envConfig = new EnvironmentConfig({ ...this.envConfig, rainRateMmH: p.rain_rate_mmh });
         if (p.earthRadiusFactorK !== undefined && Number.isFinite(p.earthRadiusFactorK)) {
           const k = Math.max(0.5, Math.min(10.0, p.earthRadiusFactorK));
@@ -2663,7 +2628,7 @@ export class SimulationWorkerManager {
             this.liveVzMps = 0.0;
           }
         }
-        if (validation.changesTrajectory || p.coverage_radius_km !== undefined || p.carrier_freq_ghz !== undefined || p.channel_bandwidth_mhz !== undefined || p.rain_rate_mmh !== undefined || p.earthRadiusFactorK !== undefined) {
+        if (validation.changesTrajectory || p.coverage_radius_km !== undefined || p.carrier_freq_ghz !== undefined || p.channel_bandwidth_mhz !== undefined || p.rain_rate_mmh !== undefined || p.earthRadiusFactorK !== undefined || mcsRes.updated) {
           this.lookaheadEngine = new PredictiveLookAheadEngine(
             this.terrainEngine, this.linkEngine, this.rfConfig, this.envConfig, this.flightConfig, this.trajectoryEngine
           );
@@ -2736,6 +2701,7 @@ export class SimulationWorkerManager {
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.computeRelayAdvisor();
         this.emitProfileFrame();
+        if (this.isPaused && mcsRes.updated) this.emitCurrentTelemetryFrame(this.getLiveAcnPosition(), this.simTimeS);
         return result(true);
       }
 
@@ -3105,6 +3071,21 @@ export class SimulationWorkerManager {
           this.aiAutoHealEnabled = msg.autoHealEnabled;
         }
         return result(true);
+      }
+
+      case 'EQUIPMENT_ADD':
+      case 'EQUIPMENT_UPDATE':
+      case 'EQUIPMENT_DELETE':
+      case 'EQUIPMENT_CLEAR': {
+        const eqRes = executeTacticalEquipmentCommand(this.tacticalEquipmentRegistry, msg as unknown as Record<string, unknown>, (x, y) => this.terrainEngine.getElevation(x, y), this.spatialLocked);
+        if (!eqRes.accepted) return reject(eqRes.reason ?? 'Invalid equipment command.');
+        const acnPos = this.getLiveAcnPosition();
+        this.refreshObstructionState(acnPos, this.simTimeS);
+        this.emitProfileFrame();
+        if (this.isPaused) this.emitCurrentTelemetryFrame(acnPos, this.simTimeS);
+        const res: WorkerCommandResult = { type: 'COMMAND_RESULT', command_type: commandType, accepted: true, spatial_locked: this.spatialLocked, request_id: msg.request_id, ...(eqRes.equipmentId ? { equipment_id: eqRes.equipmentId } : {}) };
+        this.emitHostMessage(res);
+        return res;
       }
 
       default:

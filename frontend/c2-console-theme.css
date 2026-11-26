@@ -5389,5 +5389,137 @@ details.c2-card[open] > summary {
   }
 }
 
+/* ==========================================================================
+ * MENTOR-02: Waveform Lock & Tactical Equipment Spawner Controls
+ * ========================================================================== */
+.mentor02-waveform-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.mentor02-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mentor02-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lo-text-dim, #92a0b5);
+}
+
+.mentor02-field select,
+.mentor02-field input {
+  width: 100%;
+  padding: 4px 7px;
+  font-size: 11.5px;
+  font-family: var(--lo-mono, monospace);
+  background: var(--bg-raised, #1b2230);
+  color: var(--lo-text-bright, #f4f7fb);
+  border: 1px solid var(--lo-line, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+}
+
+.mentor02-readout {
+  margin-top: 6px;
+  font-size: 11px;
+  font-family: var(--lo-mono, monospace);
+  color: var(--lo-accent, #38bdf8);
+}
+
+.mentor02-spawner-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--lo-bg-card, #12161f);
+  border: 1px solid var(--lo-line, #1e2638);
+  border-radius: 4px;
+}
+
+.mentor02-spawner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--lo-text-bright, #e6edf3);
+}
+
+.mentor02-spawner-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.3fr) minmax(110px, 0.8fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.mentor02-spawner-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mentor02-equip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mentor02-equip-empty {
+  font-size: 11px;
+  color: var(--lo-text-muted, #8b949e);
+  padding: 4px 0;
+}
+
+.mentor02-equip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(13, 17, 23, 0.72);
+  border: 1px solid var(--lo-line, rgba(255, 255, 255, 0.08));
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.mentor02-equip-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mentor02-equip-title {
+  font-weight: 600;
+  color: var(--lo-text-bright, #f4f7fb);
+}
+
+.mentor02-equip-sub {
+  font-family: var(--lo-mono, monospace);
+  font-size: 10.5px;
+  color: var(--lo-text-dim, #92a0b5);
+}
+
+.mentor02-equip-btns {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .mentor02-waveform-grid,
+  .mentor02-spawner-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 
 

@@ -10,7 +10,16 @@
  * 5. DVB-S2X / 3GPP Rel-17 NTN discrete 8-state MODCOD table with 2.5 dB margin.
  */
 
-import { EnvironmentConfig, NodeType, RFConfig, SPEED_OF_LIGHT } from './config';
+import {
+  EnvironmentConfig,
+  NodeType,
+  RFConfig,
+  SPEED_OF_LIGHT,
+  type McsMode,
+  type ManualModulation,
+  type ManualFec,
+} from './config';
+export type { McsMode, ManualModulation, ManualFec };
 import {
   type AcnSectorEvaluation,
   type AcnSectorId,
@@ -66,6 +75,51 @@ export const MODCOD_TABLE: readonly ModCodEntry[] = [
   { name: 'QPSK 1/2',    minSnrDb: 2.5,  spectralEfficiencyBpsHz: 0.99 },
   { name: 'pi/2-BPSK 1/3', minSnrDb: -1.5, spectralEfficiencyBpsHz: 0.33 },
 ] as const;
+
+const MANUAL_MODULATION_BITS: Readonly<Record<ManualModulation, number>> = {
+  'QPSK': 2,
+  '8-PSK': 3,
+  '16-QAM': 4,
+  '16-APSK': 4,
+  '32-APSK': 5,
+  '64-APSK': 6,
+};
+
+const MANUAL_FEC_RATES: Readonly<Record<ManualFec, number>> = {
+  '1/2': 1 / 2,
+  '2/3': 2 / 3,
+  '3/4': 3 / 4,
+  '5/6': 5 / 6,
+};
+
+/**
+ * LDPC / DVB-S2X calibrated AWGN SNR thresholds (dB) across the 6 modulations x 4 FEC rates.
+ * Strictly monotonic in both modulation order M and code rate R, with rectangular 16-QAM
+ * achieving 0.4 dB lower AWGN threshold than concentric 16-APSK at identical FEC.
+ */
+const MANUAL_MODCOD_SNR_DB: Readonly<Record<ManualModulation, Readonly<Record<ManualFec, number>>>> = {
+  'QPSK':    { '1/2': 2.5,  '2/3': 4.2,  '3/4': 5.5,  '5/6': 6.8 },
+  '8-PSK':   { '1/2': 7.0,  '2/3': 8.8,  '3/4': 10.0, '5/6': 11.2 },
+  '16-QAM':  { '1/2': 8.6,  '2/3': 11.1, '3/4': 12.4, '5/6': 13.8 },
+  '16-APSK': { '1/2': 9.0,  '2/3': 11.5, '3/4': 12.8, '5/6': 14.2 },
+  '32-APSK': { '1/2': 12.8, '2/3': 15.6, '3/4': 17.5, '5/6': 19.0 },
+  '64-APSK': { '1/2': 16.5, '2/3': 19.2, '3/4': 20.8, '5/6': 22.0 },
+};
+
+/**
+ * Resolves a manually locked modulation and FEC combination to its exact ModCodEntry.
+ */
+export function resolveManualModCod(mod: ManualModulation, fec: ManualFec): ModCodEntry {
+  const bitsPerSymbol = MANUAL_MODULATION_BITS[mod] ?? MANUAL_MODULATION_BITS['16-QAM'];
+  const codeRate = MANUAL_FEC_RATES[fec] ?? MANUAL_FEC_RATES['3/4'];
+  const minSnrDb = MANUAL_MODCOD_SNR_DB[mod]?.[fec] ?? MANUAL_MODCOD_SNR_DB['16-QAM']['3/4'];
+  const spectralEfficiencyBpsHz = bitsPerSymbol * codeRate * 0.99;
+  return {
+    name: `${mod} ${fec}`,
+    minSnrDb,
+    spectralEfficiencyBpsHz,
+  };
+}
 
 export interface LinkStatus {
   readonly nodeType: NodeType | string;
@@ -408,9 +462,27 @@ export class LinkBudgetEngine {
   }
 
   /**
-   * Selects highest order operational DVB-S2X / 3GPP Rel-17 MODCOD for received SNR.
+   * Selects highest order operational DVB-S2X / 3GPP Rel-17 MODCOD for received SNR,
+   * or enforces manual modulation/FEC lock when rf.mcsMode === 'manual_lock'.
    */
-  public static selectModCod(snrDb: number): { name: string; spectralEfficiencyBpsHz: number; minSnrDb: number } {
+  public static selectModCod(
+    snrDb: number,
+    rf?: Pick<RFConfig, 'mcsMode' | 'manualModulation' | 'manualFec'>
+  ): { name: string; spectralEfficiencyBpsHz: number; minSnrDb: number } {
+    if (rf?.mcsMode === 'manual_lock') {
+      const locked = resolveManualModCod(
+        rf.manualModulation ?? '16-QAM',
+        rf.manualFec ?? '3/4'
+      );
+      if (snrDb >= locked.minSnrDb) {
+        return {
+          name: locked.name,
+          spectralEfficiencyBpsHz: locked.spectralEfficiencyBpsHz,
+          minSnrDb: locked.minSnrDb,
+        };
+      }
+      return { name: 'OUTAGE', spectralEfficiencyBpsHz: 0.0, minSnrDb: locked.minSnrDb };
+    }
     for (let i = 0; i < MODCOD_TABLE.length; i++) {
       const entry = MODCOD_TABLE[i];
       if (snrDb >= entry.minSnrDb) {
@@ -812,8 +884,8 @@ export class LinkBudgetEngine {
 
     // Dynamic MODCOD selection & capacity mapping using effective SINR
     const snrDb = sinrDb;
-    const modcod = LinkBudgetEngine.selectModCod(snrDb);
-    const isOutage = obstacleBlocked || modcod.name === 'LINK_OUTAGE';
+    const modcod = LinkBudgetEngine.selectModCod(snrDb, rf);
+    const isOutage = obstacleBlocked || modcod.name === 'LINK_OUTAGE' || modcod.name === 'OUTAGE';
     const spectralEfficiency = isOutage ? 0.0 : modcod.spectralEfficiencyBpsHz;
     const bitrateBps = isOutage ? 0.0 : spectralEfficiency * rf.channelBandwidthHz;
     const bitrateMbps = bitrateBps / 1.0e6;

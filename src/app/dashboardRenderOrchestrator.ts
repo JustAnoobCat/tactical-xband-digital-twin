@@ -2736,6 +2736,102 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       setText('sci-fading-cqi-readout', `Mode: ${modeStr}`);
     }
 
+    // MENTOR-02: Sync Waveform Control & Tactical Equipment Spawner UI
+    if (frame.mcs_mode !== undefined) {
+      const modeSel = $<HTMLSelectElement>('mcs-mode-select');
+      if (modeSel && document.activeElement !== modeSel) {
+        modeSel.value = frame.mcs_mode;
+      }
+      const modSel = $<HTMLSelectElement>('manual-mod-select');
+      if (modSel && document.activeElement !== modSel && frame.manual_modulation) {
+        modSel.value = frame.manual_modulation;
+      }
+      const fecSel = $<HTMLSelectElement>('manual-fec-select');
+      if (fecSel && document.activeElement !== fecSel && frame.manual_fec) {
+        fecSel.value = frame.manual_fec;
+      }
+      setText(
+        'mcs-mode-readout',
+        frame.mcs_mode === 'manual_lock'
+          ? `Manual Lock · ${frame.manual_modulation ?? '16-QAM'} ${frame.manual_fec ?? '3/4'}`
+          : 'ACM Auto · Adaptive 8-Tier DVB-S2X'
+      );
+    }
+
+    const eqListEl = $('tactical-equipment-list');
+    if (eqListEl) {
+      const eqItems = Array.isArray(frame.tactical_equipment) ? frame.tactical_equipment : [];
+      setText('equip-count-badge', `${eqItems.length} / 32`);
+      const sig = eqItems
+        .map(
+          eq =>
+            `${eq.id}:${eq.enabled ? 1 : 0}:${eq.eirp_dbm.toFixed(1)}:${Math.round(eq.x_m)}:${Math.round(eq.y_m)}:${eq.relayed_count ?? ''}:${eq.intercept_detected ? 1 : 0}:${typeof eq.intercept_margin_db === 'number' ? eq.intercept_margin_db.toFixed(1) : ''}`
+        )
+        .join('|');
+      if (sig !== state.lastEquipmentListSig) {
+        state.lastEquipmentListSig = sig;
+        eqListEl.replaceChildren();
+        if (eqItems.length === 0) {
+          const emptyEl = document.createElement('div');
+          emptyEl.className = 'mentor02-equip-empty';
+          emptyEl.textContent = 'No deployed equipment. Select a type and click Place on Map.';
+          eqListEl.appendChild(emptyEl);
+        } else {
+          for (const eq of eqItems) {
+            const row = document.createElement('div');
+            row.className = 'mentor02-equip-row';
+
+            const meta = document.createElement('div');
+            meta.className = 'mentor02-equip-meta';
+
+            const title = document.createElement('span');
+            title.className = 'mentor02-equip-title';
+            title.textContent = `${eq.label} (${eq.enabled ? 'ON' : 'OFF'})`;
+
+            const sub = document.createElement('span');
+            sub.className = 'mentor02-equip-sub';
+            let detail = `(${(eq.x_m / 1000).toFixed(1)}, ${(eq.y_m / 1000).toFixed(1)}) km · ${eq.eirp_dbm.toFixed(0)} dBm`;
+            if (eq.type === 'relay_mast' && typeof eq.relayed_count === 'number') {
+              detail += ` · Relayed ${eq.relayed_count}`;
+            } else if (eq.type === 'esm_sensor' && typeof eq.intercept_margin_db === 'number') {
+              detail += ` · Margin ${eq.intercept_margin_db.toFixed(1)} dB${eq.intercept_detected ? ' [DET]' : ''}`;
+            } else if (typeof eq.jammer_shield_db === 'number') {
+              detail += ` · Shield ${eq.jammer_shield_db.toFixed(1)} dB`;
+            }
+            sub.textContent = detail;
+
+            meta.appendChild(title);
+            meta.appendChild(sub);
+
+            const btns = document.createElement('div');
+            btns.className = 'mentor02-equip-btns';
+
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.textContent = eq.enabled ? 'Disable' : 'Enable';
+            toggleBtn.addEventListener('click', () => {
+              sendCommand({ type: 'EQUIPMENT_UPDATE', id: eq.id, enabled: !eq.enabled });
+            });
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'btn-danger';
+            delBtn.textContent = 'Delete';
+            delBtn.addEventListener('click', () => {
+              sendCommand({ type: 'EQUIPMENT_DELETE', id: eq.id });
+            });
+
+            btns.appendChild(toggleBtn);
+            btns.appendChild(delBtn);
+
+            row.appendChild(meta);
+            row.appendChild(btns);
+            eqListEl.appendChild(row);
+          }
+        }
+      }
+    }
+
     actions.updateScientificAblationMatrix(frame);
     renderSoldierPhoneWorkspace(frame);
   }

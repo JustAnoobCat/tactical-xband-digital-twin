@@ -882,6 +882,43 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
           return;
         }
       }
+      if (state.equipmentPlacementArmed) {
+        if (state.spatialLocked || (simTimelineController && simTimelineController.isHistoricalInspecting)) {
+          radarCanvas.style.cursor = 'not-allowed';
+          return;
+        }
+        const typeEl = $('equip-type-select') as HTMLSelectElement | null;
+        const eirpEl = $('equip-eirp-input') as HTMLInputElement | null;
+        const eqType = (typeEl?.value || 'barrage_jammer') as
+          | 'barrage_jammer'
+          | 'spot_jammer'
+          | 'relay_mast'
+          | 'esm_sensor';
+        const rawEirp = eirpEl ? parseFloat(eirpEl.value) : 65;
+        const eirpDbm = Number.isFinite(rawEirp) ? Math.max(10, Math.min(90, rawEirp)) : 65;
+        actions.sendCommand({
+          type: 'EQUIPMENT_ADD',
+          equipment_type: eqType,
+          x_m: world.x,
+          y_m: world.y,
+          eirp_dbm: eirpDbm,
+        });
+        state.equipmentPlacementArmed = false;
+        const placeBtn = $('btn-equip-place-map');
+        if (placeBtn) {
+          placeBtn.classList.remove('active');
+          placeBtn.setAttribute('aria-pressed', 'false');
+          placeBtn.textContent = 'Place on Map';
+        }
+        setText(
+          'equip-placement-status',
+          `Deployed ${eqType.replace(/_/g, ' ')} at (${(world.x / 1000).toFixed(1)}, ${(world.y / 1000).toFixed(1)}) km.`
+        );
+        radarCanvas.style.cursor = 'crosshair';
+        actions.syncRadarHudMode();
+        drawRadar();
+        return;
+      }
       if ((window.tbOpen && state.tbActiveMode !== 'dem') || state.terrainToolMode !== 'idle') {
         return;
       }

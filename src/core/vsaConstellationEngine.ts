@@ -7,7 +7,13 @@
  * Modeled after Keysight 89600 VSA and Rohde & Schwarz VSE Vector Signal Analyzers.
  */
 
-import { MODCOD_TABLE, type ModCodEntry } from './linkBudget.js';
+import {
+  MODCOD_TABLE,
+  resolveManualModCod,
+  type ManualFec,
+  type ManualModulation,
+  type ModCodEntry,
+} from './linkBudget.js';
 
 export interface IqPoint {
   readonly i: number;
@@ -220,9 +226,21 @@ export function getReferenceConstellation(modcodName: string): readonly IqPoint[
  */
 export function resolveConstellationInfo(modcodName?: string): VsaConstellationInfo {
   const norm = String(modcodName || '').toUpperCase().trim();
-  const matchedEntry: ModCodEntry | undefined = MODCOD_TABLE.find(
+  const directEntry: ModCodEntry | undefined = MODCOD_TABLE.find(
     (m) => m.name.toUpperCase().trim() === norm || norm.includes(m.name.toUpperCase().trim())
   );
+
+  let matchedEntry: ModCodEntry | undefined = directEntry;
+  if (!matchedEntry) {
+    const manualFecMatch = norm.match(/\b(1\/2|2\/3|3\/4|5\/6)\b/);
+    const manualModMatch = norm.match(/\b(QPSK|8-PSK|16-QAM|16-APSK|32-APSK|64-APSK)\b/);
+    if (manualFecMatch && manualModMatch) {
+      matchedEntry = resolveManualModCod(
+        manualModMatch[1] as ManualModulation,
+        manualFecMatch[1] as ManualFec
+      );
+    }
+  }
 
   let constellationType = 'QPSK';
   let modulationOrder = 4;

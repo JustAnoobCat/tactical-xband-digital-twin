@@ -2464,6 +2464,37 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               </div>
             </div>
           </div>
+          <div class="group-title" style="margin-top:12px">Waveform &amp; MODCOD Control</div>
+          <div class="mentor02-waveform-grid">
+            <div class="mentor02-field">
+              <label for="mcs-mode-select">MCS Mode</label>
+              <select id="mcs-mode-select" aria-label="Modulation and Coding Scheme Mode">
+                <option value="acm_auto" selected>ACM Auto</option>
+                <option value="manual_lock">Manual Lock</option>
+              </select>
+            </div>
+            <div class="mentor02-field">
+              <label for="manual-mod-select">Modulation</label>
+              <select id="manual-mod-select" aria-label="Manual Carrier Modulation">
+                <option value="QPSK">QPSK</option>
+                <option value="8-PSK">8-PSK</option>
+                <option value="16-QAM" selected>16-QAM</option>
+                <option value="16-APSK">16-APSK</option>
+                <option value="32-APSK">32-APSK</option>
+                <option value="64-APSK">64-APSK</option>
+              </select>
+            </div>
+            <div class="mentor02-field">
+              <label for="manual-fec-select">FEC Rate</label>
+              <select id="manual-fec-select" aria-label="Manual LDPC FEC Code Rate">
+                <option value="1/2">1/2</option>
+                <option value="2/3">2/3</option>
+                <option value="3/4" selected>3/4</option>
+                <option value="5/6">5/6</option>
+              </select>
+            </div>
+          </div>
+          <div id="mcs-mode-readout" class="mentor02-readout">ACM Auto · Adaptive 8-Tier DVB-S2X</div>
         </div>
       </div>
 
@@ -2643,6 +2674,33 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div id="ew-eccm-readout" style="font-size:10.5px;font-family:var(--lo-mono,monospace);color:var(--lo-accent,#38bdf8);">
               ECCM: NONE (0.0 dB) | MVDR Null: 0.0 dB | J_eff: -- dBm | ESM R_det: -- km | TA Drift: 0.0 &mu;s
             </div>
+          </div>
+          <div id="tactical-equipment-spawner" class="inspector-metric mentor02-spawner-card" style="grid-column: 1 / -1;">
+            <div class="mentor02-spawner-head">
+              <span>Tactical Equipment Spawner (Jammer / Relay / ESM)</span>
+              <span id="equip-count-badge" class="kpi-badge badge-neutral">0 / 32</span>
+            </div>
+            <div class="mentor02-spawner-controls">
+              <div class="mentor02-field">
+                <label for="equip-type-select">Equipment Type</label>
+                <select id="equip-type-select" aria-label="Tactical Equipment Type">
+                  <option value="barrage_jammer" selected>Barrage Jammer</option>
+                  <option value="spot_jammer">Spot Jammer</option>
+                  <option value="relay_mast">Relay Mast</option>
+                  <option value="esm_sensor">Adversary ESM</option>
+                </select>
+              </div>
+              <div class="mentor02-field">
+                <label for="equip-eirp-input">EIRP / Power (dBm)</label>
+                <input type="number" id="equip-eirp-input" min="10" max="90" step="1" value="65" aria-label="Equipment EIRP Power in dBm">
+              </div>
+              <div class="mentor02-spawner-actions">
+                <button type="button" id="btn-equip-place-map" class="primary" aria-pressed="false" aria-label="Arm Click-to-Place Equipment on 2D Radar">Place on Map</button>
+                <button type="button" id="btn-equip-clear-all" class="btn-danger" aria-label="Clear All Deployed Tactical Equipment">Clear All</button>
+              </div>
+            </div>
+            <div id="equip-placement-status" class="mentor02-readout">Click Place on Map, then click 2D Radar to deploy.</div>
+            <div id="tactical-equipment-list" class="mentor02-equip-list" aria-live="polite"></div>
           </div>
         </div>
       </div>

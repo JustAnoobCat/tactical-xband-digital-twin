@@ -7,8 +7,10 @@
  */
 
 import type { Position3D } from './types';
-import type { NodeType, AltitudeMode } from '../core/config';
-export type { AltitudeMode };
+import type { NodeType, AltitudeMode, McsMode, ManualModulation, ManualFec } from '../core/config';
+export type { AltitudeMode, McsMode, ManualModulation, ManualFec };
+import type { TacticalEquipmentType, TacticalEquipmentTelemetry } from '../core/tacticalEquipment';
+export type { TacticalEquipmentType, TacticalEquipmentTelemetry };
 import type { NodeTrafficOptions } from '../core/nodeRegistry';
 import type { Obstacle } from '../core/obstacles';
 import type { LinkProfile } from '../core/linkProfile';
@@ -511,6 +513,10 @@ export interface TelemetryFrame {
   readonly transport_abr_telemetry?: TransportAbrTelemetry;
   readonly ew_eccm_telemetry?: EwEccmTelemetry;
   readonly constellation_mobility_telemetry?: ConstellationMobilityTelemetry;
+  readonly mcs_mode?: McsMode;
+  readonly manual_modulation?: ManualModulation;
+  readonly manual_fec?: ManualFec;
+  readonly tactical_equipment?: ReadonlyArray<TacticalEquipmentTelemetry>;
   readonly wasm_active?: boolean;
   readonly state_digest_hex?: string;
 }
@@ -569,6 +575,12 @@ export interface HiFiPhysicsConfigFlags {
   readonly windSpeedMs?: number;
   readonly windDirectionDeg?: number;
   readonly enableAutoCfitPullUp?: boolean;
+  readonly mcs_mode?: McsMode;
+  readonly manual_modulation?: ManualModulation;
+  readonly manual_fec?: ManualFec;
+  readonly mcsMode?: McsMode;
+  readonly manualModulation?: ManualModulation;
+  readonly manualFec?: ManualFec;
 }
 
 export interface HiFiPhysicsTelemetry {
@@ -755,6 +767,7 @@ export interface WorkerCommandResult {
   readonly request_id?: string | number;
   readonly node_id?: number;
   readonly entity_id?: string;
+  readonly equipment_id?: string;
   readonly deleted_node_id?: number;
   readonly source_node_id?: number;
   readonly creation_sequence?: number;
@@ -937,6 +950,12 @@ export interface ConfigUpdateParams {
   readonly windSpeedMs?: number;
   readonly windDirectionDeg?: number;
   readonly enableAutoCfitPullUp?: boolean;
+  readonly mcs_mode?: McsMode;
+  readonly manual_modulation?: ManualModulation;
+  readonly manual_fec?: ManualFec;
+  readonly mcsMode?: McsMode;
+  readonly manualModulation?: ManualModulation;
+  readonly manualFec?: ManualFec;
 }
 
 export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
@@ -998,6 +1017,12 @@ export interface ConfigUpdateCommand extends BaseWorkerInboundCommand {
   readonly wind_direction_deg?: number;
   readonly enableAutoCfitPullUp?: boolean;
   readonly enable_auto_cfit_pull_up?: boolean;
+  readonly mcs_mode?: McsMode;
+  readonly manual_modulation?: ManualModulation;
+  readonly manual_fec?: ManualFec;
+  readonly mcsMode?: McsMode;
+  readonly manualModulation?: ManualModulation;
+  readonly manualFec?: ManualFec;
 }
 
 export interface LoadPresetCommand extends BaseWorkerInboundCommand {
@@ -1082,6 +1107,12 @@ export interface SetScientificParamsCommand extends BaseWorkerInboundCommand {
   readonly windSpeedMs?: number;
   readonly windDirectionDeg?: number;
   readonly enableAutoCfitPullUp?: boolean;
+  readonly mcs_mode?: McsMode;
+  readonly manual_modulation?: ManualModulation;
+  readonly manual_fec?: ManualFec;
+  readonly mcsMode?: McsMode;
+  readonly manualModulation?: ManualModulation;
+  readonly manualFec?: ManualFec;
 }
 
 export interface SetViewshedConfigCommand extends BaseWorkerInboundCommand {
@@ -1133,6 +1164,12 @@ export interface SetBiomeCommand extends BaseWorkerInboundCommand {
   readonly windSpeedMs?: number;
   readonly windDirectionDeg?: number;
   readonly enableAutoCfitPullUp?: boolean;
+  readonly mcs_mode?: McsMode;
+  readonly manual_modulation?: ManualModulation;
+  readonly manual_fec?: ManualFec;
+  readonly mcsMode?: McsMode;
+  readonly manualModulation?: ManualModulation;
+  readonly manualFec?: ManualFec;
 }
 
 export interface TelemetrySubscriptionProfile {
@@ -1146,6 +1183,44 @@ export interface SetTelemetryProfileCommand extends BaseWorkerInboundCommand {
   readonly type: 'SET_TELEMETRY_PROFILE';
   readonly subscriptions?: TelemetrySubscriptionProfile;
   readonly uiPublishIntervalTicks?: number;
+}
+
+export interface EquipmentAddCommand extends BaseWorkerInboundCommand {
+  readonly type: 'EQUIPMENT_ADD';
+  readonly id?: string;
+  readonly equipment_type: TacticalEquipmentType;
+  readonly label?: string;
+  readonly x_m: number;
+  readonly y_m: number;
+  readonly height_agl_m?: number;
+  readonly eirp_dbm?: number;
+  readonly enabled?: boolean;
+  readonly azimuth_deg?: number;
+  readonly beamwidth_deg?: number;
+  readonly sensitivity_dbm?: number;
+}
+
+export interface EquipmentUpdateCommand extends BaseWorkerInboundCommand {
+  readonly type: 'EQUIPMENT_UPDATE';
+  readonly id: string;
+  readonly label?: string;
+  readonly x_m?: number;
+  readonly y_m?: number;
+  readonly height_agl_m?: number;
+  readonly eirp_dbm?: number;
+  readonly enabled?: boolean;
+  readonly azimuth_deg?: number;
+  readonly beamwidth_deg?: number;
+  readonly sensitivity_dbm?: number;
+}
+
+export interface EquipmentDeleteCommand extends BaseWorkerInboundCommand {
+  readonly type: 'EQUIPMENT_DELETE';
+  readonly id: string;
+}
+
+export interface EquipmentClearCommand extends BaseWorkerInboundCommand {
+  readonly type: 'EQUIPMENT_CLEAR';
 }
 
 export type WorkerInboundCommand =
@@ -1166,6 +1241,10 @@ export type WorkerInboundCommand =
   | NodeDeleteCommand
   | NodeDuplicateCommand
   | NodeUpdateCommand
+  | EquipmentAddCommand
+  | EquipmentUpdateCommand
+  | EquipmentDeleteCommand
+  | EquipmentClearCommand
   | ObstaclesReplaceCommand
   | ConfigUpdateCommand
   | LoadPresetCommand

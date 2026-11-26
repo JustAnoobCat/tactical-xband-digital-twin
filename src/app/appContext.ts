@@ -329,6 +329,8 @@ export interface AppState {
   trajectoryRequestSerial: number;
   pendingTrajectoryRequest: string | null;
   waypointPlacementArmed: boolean;
+  equipmentPlacementArmed: boolean;
+  lastEquipmentListSig: string;
   obstacleRequestSerial: number;
   pendingAltitudeMode: AltitudeMode | null;
   flightParamsDirty: boolean;
@@ -887,6 +889,8 @@ export function createAppContext(worker: Worker): AppContext {
     trajectoryRequestSerial: 0,
     pendingTrajectoryRequest: null,
     waypointPlacementArmed: false,
+    equipmentPlacementArmed: false,
+    lastEquipmentListSig: '',
     obstacleRequestSerial: 0,
     pendingAltitudeMode: null,
     flightParamsDirty: false,

@@ -28,6 +28,7 @@ import type {
   HiFiPhysicsTelemetry,
   TelemetryWeatherCellSummary,
   TelemetrySubscriptionProfile,
+  TacticalEquipmentTelemetry,
 } from '../shared/workerProtocol';
 import { isWasmPhysicsReady } from '../core/wasmPhysicsBridge';
 import { computeTelemetryStateDigest } from '../core/flightRecorder';
@@ -39,7 +40,7 @@ import {
   TerrainEngine,
   TerrainObstruction,
 } from '../core/terrain';
-import { ACNFlightConfig, EnvironmentConfig, type AltitudeMode } from '../core/config';
+import { ACNFlightConfig, EnvironmentConfig, RFConfig, type AltitudeMode } from '../core/config';
 import { LinkStatus } from '../core/linkBudget';
 import {
   SlotAllocation,
@@ -161,7 +162,9 @@ export interface TelemetrySimulationState {
   readonly tdmaConfig: TdmaFrameConfig;
   readonly simulationRunId?: number;
   readonly antennaEngine?: QuadSectorAntennaEngine;
+  readonly rfConfig?: RFConfig;
   readonly envConfig?: EnvironmentConfig;
+  readonly tacticalEquipment?: ReadonlyArray<TacticalEquipmentTelemetry>;
   readonly jammerShieldLossDb?: number;
   readonly jammerSectorInterferenceDbm?: readonly [number, number, number, number];
   readonly viewshedSinrGrid?: readonly number[] | Float32Array;
@@ -925,6 +928,8 @@ export class TelemetrySerializer {
       ai_sky_shepherd_directive: state.aiSkyShepherdDirective ?? '',
       hifi_telemetry: state.hifiTelemetry,
       ...(weatherCellsSummary ? { weather_cells: weatherCellsSummary } : {}),
+      ...(state.rfConfig ? { mcs_mode: state.rfConfig.mcsMode, manual_modulation: state.rfConfig.manualModulation, manual_fec: state.rfConfig.manualFec } : {}),
+      ...(state.tacticalEquipment && state.tacticalEquipment.length > 0 ? { tactical_equipment: state.tacticalEquipment } : {}),
     };
     const mutableMeta = frame as { wasm_active?: boolean; state_digest_hex?: string };
     mutableMeta.wasm_active = isWasmPhysicsReady();

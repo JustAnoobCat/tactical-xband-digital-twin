@@ -145,6 +145,13 @@ export function getModcodIdentifier(name: string, spectralEff: number = 1.0): nu
     if (compact.includes('8/9')) return 0x33;
     return 0x30;
   }
+  if (compact.includes('16QAM') || compact.includes('QAM16')) {
+    if (compact.includes('1/2')) return 0x28;
+    if (compact.includes('2/3')) return 0x29;
+    if (compact.includes('3/4')) return 0x2a;
+    if (compact.includes('5/6')) return 0x2b;
+    return 0x2a;
+  }
   if (compact.includes('16APSK')) {
     if (compact.includes('2/3')) return 0x20;
     if (compact.includes('3/4')) return 0x21;

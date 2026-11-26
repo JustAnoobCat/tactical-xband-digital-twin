@@ -14,6 +14,10 @@ export const BOLTZMANN_CONSTANT = 1.380649e-23; // Exact SI constant (J/K)
 
 export type NodeType = 'soldier' | 'mcp' | 'acn';
 
+export type McsMode = 'acm_auto' | 'manual_lock';
+export type ManualModulation = 'QPSK' | '8-PSK' | '16-QAM' | '16-APSK' | '32-APSK' | '64-APSK';
+export type ManualFec = '1/2' | '2/3' | '3/4' | '5/6';
+
 /** Authoritative IDs for the registered ground-node population. */
 export const GROUND_NODE_IDS: readonly number[] = Object.freeze(Array.from({ length: 16 }, (_, id) => id));
 
@@ -42,6 +46,9 @@ export interface IRFConfig {
   readonly acnSectorHpbwElDeg?: number;
   readonly acnSectorDowntiltDeg?: number;
   readonly acnHandoverHysteresisDb?: number;
+  readonly mcsMode?: McsMode;
+  readonly manualModulation?: ManualModulation;
+  readonly manualFec?: ManualFec;
 }
 
 export class RFConfig implements IRFConfig {
@@ -64,6 +71,9 @@ export class RFConfig implements IRFConfig {
   public readonly acnSectorHpbwElDeg: number = 65.0;
   public readonly acnSectorDowntiltDeg: number = -15.0;
   public readonly acnHandoverHysteresisDb: number = 1.5;
+  public readonly mcsMode: McsMode = 'acm_auto';
+  public readonly manualModulation: ManualModulation = '16-QAM';
+  public readonly manualFec: ManualFec = '3/4';
 
   constructor(init?: Partial<IRFConfig>) {
     this.carrierFrequencyHz = init?.carrierFrequencyHz ?? 8.0e9; // 8.0 GHz Tactical X-band
@@ -85,6 +95,9 @@ export class RFConfig implements IRFConfig {
     this.acnSectorHpbwElDeg = init?.acnSectorHpbwElDeg ?? 65.0;
     this.acnSectorDowntiltDeg = init?.acnSectorDowntiltDeg ?? -15.0;
     this.acnHandoverHysteresisDb = init?.acnHandoverHysteresisDb ?? 1.5;
+    this.mcsMode = init?.mcsMode ?? 'acm_auto';
+    this.manualModulation = init?.manualModulation ?? '16-QAM';
+    this.manualFec = init?.manualFec ?? '3/4';
 
     if (!Number.isFinite(this.channelBandwidthHz) || this.channelBandwidthHz < 0.1e6 || this.channelBandwidthHz > 50.0e6) {
       throw new Error('channelBandwidthHz must be finite and in [0.1, 50.0] MHz.');

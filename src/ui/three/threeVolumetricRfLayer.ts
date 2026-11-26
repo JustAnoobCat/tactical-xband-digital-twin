@@ -31,6 +31,7 @@ import {
 
 export const MAX_PREALLOCATED_ELLIPSOIDS = 16;
 export const MAX_PREALLOCATED_WEATHER_CELLS = 4;
+export const MAX_EQUIPMENT_VOLUMES = 32;
 
 export const SECTOR_BASE_COLORS = [
   0x38bdf8, // S0 FWD: Cyan
@@ -49,6 +50,7 @@ export class ThreeVolumetricRfLayer {
   public readonly fresnelGroup: THREE.Group;
   public readonly sectorLobeGroup: THREE.Group;
   public readonly volumeGroup: THREE.Group;
+  public readonly equipmentGroup: THREE.Group;
 
   // Options state
   private options: VolumetricRfOptions = {
@@ -70,6 +72,7 @@ export class ThreeVolumetricRfLayer {
   private readonly sectorLobeMeshes: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>[] = [];
   private jammerDomeMesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> | null;
   private readonly weatherCellMeshes: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>[] = [];
+  private readonly equipmentMeshes: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>[] = [];
 
   // Scratch objects for zero-allocation per-frame transform updates
   private readonly scratchVecA = new THREE.Vector3();
@@ -111,6 +114,10 @@ export class ThreeVolumetricRfLayer {
     this.volumeGroup = new THREE.Group();
     this.volumeGroup.name = 'volumeThreatGroup';
     this.rootGroup.add(this.volumeGroup);
+
+    this.equipmentGroup = new THREE.Group();
+    this.equipmentGroup.name = 'tacticalEquipmentGroup';
+    this.rootGroup.add(this.equipmentGroup);
 
     // 1. Initialize Shared Unit Geometries
     // Unit Sphere: radius 1.0, centered at origin
@@ -202,6 +209,22 @@ export class ThreeVolumetricRfLayer {
     return mesh;
   }
 
+  private allocateEquipmentMesh(index: number): THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial> {
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xef4444,
+      transparent: true,
+      opacity: 0.18,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(this.sharedDomeGeo, mat);
+    mesh.name = `tacticalEquipmentDome_${index}`;
+    mesh.visible = false;
+    this.equipmentMeshes.push(mesh);
+    this.equipmentGroup.add(mesh);
+    return mesh;
+  }
+
   public setOptions(options: Partial<VolumetricRfOptions>): void {
     this.options = { ...this.options, ...options };
     if (this.options.showFresnel === false) {
@@ -213,6 +236,7 @@ export class ThreeVolumetricRfLayer {
     if (this.options.showThreatVolumes === false) {
       if (this.jammerDomeMesh) this.jammerDomeMesh.visible = false;
       for (const m of this.weatherCellMeshes) m.visible = false;
+      for (const m of this.equipmentMeshes) m.visible = false;
     }
   }
 
@@ -396,6 +420,7 @@ export class ThreeVolumetricRfLayer {
     if (!showVolumes) {
       if (this.jammerDomeMesh) this.jammerDomeMesh.visible = false;
       for (const m of this.weatherCellMeshes) m.visible = false;
+      for (const m of this.equipmentMeshes) m.visible = false;
     } else {
       // EW Jammer from canonical TelemetryFrame fields
       let jammerCenterRoot: Vector3Tuple | null = null;
@@ -477,6 +502,48 @@ export class ThreeVolumetricRfLayer {
           mesh.visible = false;
         }
       }
+
+      // 5. Lazy-pooled Deployed Tactical Equipment domes / mast markers (up to 32)
+      const eqList = Array.isArray(frame.tactical_equipment) ? frame.tactical_equipment : [];
+      const eqCount = Math.min(eqList.length, MAX_EQUIPMENT_VOLUMES);
+      while (this.equipmentMeshes.length < eqCount) {
+        this.allocateEquipmentMesh(this.equipmentMeshes.length);
+      }
+      for (let e = 0; e < this.equipmentMeshes.length; e++) {
+        const mesh = this.equipmentMeshes[e];
+        if (e >= eqCount) {
+          mesh.visible = false;
+          continue;
+        }
+        const eq = eqList[e];
+        if (!eq || eq.enabled === false || !Number.isFinite(eq.x_m) || !Number.isFinite(eq.y_m)) {
+          mesh.visible = false;
+          continue;
+        }
+        const eqZ = Number.isFinite(eq.z_m) ? eq.z_m : 0;
+        const eqRoot = simToThreeCoords(eq.x_m, eq.y_m, eqZ);
+        const radius = Number.isFinite(eq.effective_radius_m) && eq.effective_radius_m! > 0
+          ? eq.effective_radius_m!
+          : 4000;
+        if (eq.type === 'relay_mast') {
+          mesh.material.color.setHex(0x10b981);
+          mesh.material.opacity = 0.24;
+          mesh.position.set(eqRoot.x, eqRoot.y, eqRoot.z);
+          mesh.scale.set(Math.min(radius, 3500), Math.max(800, eq.height_agl_m * 40), Math.min(radius, 3500));
+        } else if (eq.type === 'esm_sensor') {
+          mesh.material.color.setHex(0xf59e0b);
+          mesh.material.opacity = eq.intercept_detected ? 0.22 : 0.13;
+          mesh.position.set(eqRoot.x, eqRoot.y, eqRoot.z);
+          mesh.scale.set(radius, radius * 0.45, radius);
+        } else {
+          mesh.material.color.setHex(0xef4444);
+          mesh.material.opacity = eq.type === 'spot_jammer' ? 0.20 : 0.15;
+          mesh.position.set(eqRoot.x, eqRoot.y, eqRoot.z);
+          mesh.scale.set(radius, radius * 0.65, radius);
+        }
+        mesh.visible = true;
+        this.activeThreatVolumeCount++;
+      }
     }
   }
 
@@ -511,10 +578,16 @@ export class ThreeVolumetricRfLayer {
     }
     this.weatherCellMeshes.length = 0;
 
+    for (const m of this.equipmentMeshes) {
+      m.material.dispose();
+    }
+    this.equipmentMeshes.length = 0;
+
     // 3. Clear groups
     this.fresnelGroup.clear();
     this.sectorLobeGroup.clear();
     this.volumeGroup.clear();
+    this.equipmentGroup.clear();
     this.rootGroup.clear();
   }
 }
