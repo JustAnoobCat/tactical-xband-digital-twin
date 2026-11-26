@@ -126,7 +126,7 @@ tactical-xband-digital-twin/
 ├── server/
 │   └── ts_parity_server.ts         # Canonical Node/TS headless parity server (node:http)
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Bounded parallel 128-suite runner (--concurrency=N, --serial)
+│   ├── run_all_verifications.mjs   # Bounded parallel 129-suite runner (--concurrency=N, --serial)
 │   ├── run_v8_coverage.mjs         # Native Node V8 code coverage reporter
 │   ├── verify-browser-ux.mjs       # Multi-viewport (4 viewports + 9 tabs) Playwright Chromium UX gate
 │   └── generate_scientific_dossier.ts# N=30 Monte Carlo research dossier generator
@@ -180,13 +180,13 @@ npm run benchmark:scientific
 
 ### Automated Verification Pipeline & Quality Gates
 The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
-- **`128` TypeScript verification suites** (`114` core V3.0 registered suites + `14` post-release hardening, UI/RF, and REMED-01–06 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
+- **`129` TypeScript verification suites** (`114` core V3.0 registered suites + `15` post-release hardening, UI/RF, REMED-01–06, and PERF-01 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
 - **`27` Python `pytest` suites (`pytest -v`)**
 - **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs` across 4 viewports + 9 rail tabs enforced in CI)**
 - **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
 
 ```bash
-# Run all 128 TypeScript verification suites (114 core V3.0 + 14 post-release suites)
+# Run all 129 TypeScript verification suites (114 core V3.0 + 15 post-release suites)
 npm run verify:all
 
 # Run with custom concurrency or serial fallback

@@ -1,0 +1,11 @@
+{
+  "name": "Stratos — X-Band Air-to-Ground Network Digital Twin",
+  "short_name": "Stratos X-Band",
+  "description": "Real-time 8.0 GHz X-Band air-to-ground TDMA network digital twin with terrain propagation, predictive scheduling, and multi-mode cartography.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1016",
+  "theme_color": "#0d1016",
+  "icons": []
+}

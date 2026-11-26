@@ -200,10 +200,10 @@ export class SimulationWorkerManager {
   public relayBackhaulSectorId?: 0 | 1 | 2 | 3;
   public relayBackhaulSnrDb?: number;
   private relayHop1ObstructionCache: Map<number, TerrainObstruction> = new Map();
-
-  public clearRelayHop1Cache(): void {
-    this.relayHop1ObstructionCache.clear();
-  }
+  public rayMarchCacheHits = 0; public rayMarchCacheMisses = 0;
+  private readonly rayMarchSlots = Array.from({ length: 4096 }, () => ({ valid: false, nx: 0, ny: 0, nz: 0, qAx: 0, qAy: 0, qAz: 0, rev: 0, obs: null as unknown, biome: '', mode: '', dem: null as unknown, wl: 0, rEff: 0, step: 0, pert: 0, res: null as unknown as TerrainObstruction }));
+  public clearRelayHop1Cache(): void { this.relayHop1ObstructionCache.clear(); }
+  public clearRayMarchCache(): void { this.rayMarchCacheHits = 0; this.rayMarchCacheMisses = 0; for (let i = 0; i < 4096; i++) this.rayMarchSlots[i].valid = false; }
   public lastTelemetryFrame: TelemetryFrame | null = null;
   public batchSpatialSnapshots: SpatialFrameSnapshot[] = [];
   public tdmaSimTimeS: number = 0.0;
@@ -430,6 +430,21 @@ export class SimulationWorkerManager {
     this.envConfig = new EnvironmentConfig();
     this.flightConfig = new ACNFlightConfig();
     this.terrainEngine = new TerrainEngine({ theaterExtentM: THEATER_HALF_M, terrainMode: 'real' });
+    const rawEval = this.terrainEngine.evaluateTerrainObstruction.bind(this.terrainEngine);
+    this.terrainEngine.evaluateTerrainObstruction = (nodePos, acnPos, rf, env, stepIntervalM = 100.0, pert = 0.0) => {
+      const nx = nodePos[0], ny = nodePos[1], nz = nodePos[2], qAx = Math.round(acnPos[0] * 0.125), qAy = Math.round(acnPos[1] * 0.125), qAz = Math.round(acnPos[2] * 0.5);
+      const obs = (this.terrainEngine.obstacleField as any).values, dem = this.terrainEngine.realDemGrid, biome = this.terrainEngine.activeBiomeId, mode = this.terrainEngine.terrainMode;
+      const s = this.rayMarchSlots[((Math.imul((nx | 0) ^ ((ny | 0) * 31), 2654435761) ^ Math.imul(qAx ^ (qAy * 31), 2246822519) ^ (stepIntervalM | 0)) >>> 0) & 4095];
+      if (s.valid && s.nx === nx && s.ny === ny && s.nz === nz && s.qAx === qAx && s.qAy === qAy && s.qAz === qAz && s.rev === this.spatialRevision && s.obs === obs && s.biome === biome && s.mode === mode && s.dem === dem && s.wl === rf.wavelengthM && s.rEff === env.effectiveEarthRadiusM && s.step === stepIntervalM && s.pert === pert) {
+        this.rayMarchCacheHits++; return s.res;
+      }
+      const res = rawEval(nodePos, acnPos, rf, env, stepIntervalM, pert);
+      this.rayMarchCacheMisses++;
+      if (Number.isFinite(nx) && Number.isFinite(ny) && Number.isFinite(qAx) && Number.isFinite(qAy)) {
+        s.valid = true; s.nx = nx; s.ny = ny; s.nz = nz; s.qAx = qAx; s.qAy = qAy; s.qAz = qAz; s.rev = this.spatialRevision; s.obs = obs; s.biome = biome; s.mode = mode; s.dem = dem; s.wl = rf.wavelengthM; s.rEff = env.effectiveEarthRadiusM; s.step = stepIntervalM; s.pert = pert; s.res = res;
+      }
+      return res;
+    };
     this.hillshadeGenerator = new HillshadeGenerator(this.terrainEngine);
     this.linkEngine = new LinkBudgetEngine();
     this.liveAltitudeM = this.flightConfig.altitudeMslM;
@@ -2186,6 +2201,7 @@ export class SimulationWorkerManager {
     this.predStates.clear();
     this.obstructionResults.clear();
     this.clearRelayHop1Cache();
+    this.clearRayMarchCache();
     this.relayedNodeCount = 0;
     this.relayBackhaulSectorId = undefined;
     this.relayBackhaulSnrDb = undefined;
@@ -3157,9 +3173,13 @@ export class SimulationWorkerManager {
   }
 
   public async start(): Promise<void> {
-    // 1. Try to load real satellite DEM using dynamic Base URL
+    // 1. Try to load real satellite DEM using dynamic Base URL (supports http, subpath, file://, tauri://)
     try {
-      const ok = await this.terrainEngine.loadRealSatelliteDem();
+      const baseEnv = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) ? String(import.meta.env.BASE_URL) : './';
+      const cleanBase = baseEnv.endsWith('/') ? baseEnv : `${baseEnv}/`;
+      const demUrl = (typeof self !== 'undefined' && self.location?.href) ? new URL(cleanBase.startsWith('/') ? `${cleanBase}terrain/real_ladakh_dem.bin` : '../terrain/real_ladakh_dem.bin', self.location.href).toString() : undefined;
+      let ok = false;
+      if (demUrl && self.location?.origin === 'null') { const r = await fetch(demUrl); if (r.ok) { const b = await r.arrayBuffer(); if (b.byteLength >= 512 * 512 * 4) ok = this.terrainEngine.loadCustomDem(new Float32Array(b, 0, 512 * 512)); } } else { ok = await this.terrainEngine.loadRealSatelliteDem(demUrl); }
       if (ok) {
         console.log('[Worker] Real satellite DEM loaded successfully.');
         // Loading the DEM changes elevation samples while the nodes still carry

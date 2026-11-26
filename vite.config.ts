@@ -5,7 +5,7 @@ export default defineConfig({
   base:
     process.env.GITHUB_ACTIONS === "true"
       ? "/tactical-xband-digital-twin/"
-      : "/",
+      : "./",
 
   server: {
     port: Number(process.env.PORT) || 3000,

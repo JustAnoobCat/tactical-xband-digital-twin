@@ -754,7 +754,10 @@ export function createWorkspaceTilesManager(
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let lastRenderKey = '';
   let lastBarKey = '';
+  let lastCols = -1;
+  let lastSyncedEnabled: boolean | null = null;
   let boundOnResize: (() => void) | null = null;
+  let boundOnVisibility: (() => void) | null = null;
 
   let overlayEl: HTMLDivElement | null = null;
   let gridEl: HTMLDivElement | null = null;
@@ -784,6 +787,8 @@ export function createWorkspaceTilesManager(
   };
 
   const syncTriggerButtons = (): void => {
+    if (lastSyncedEnabled === state.enabled) return;
+    lastSyncedEnabled = state.enabled;
     if (toolbarBtnEl) {
       toolbarBtnEl.classList.toggle('active', state.enabled);
       toolbarBtnEl.setAttribute('aria-pressed', String(state.enabled));
@@ -938,6 +943,100 @@ export function createWorkspaceTilesManager(
     `;
   };
 
+  const computeDirtySignature = (
+    cols: number,
+    input: WorkspaceTilesTelemetryInput
+  ): string => {
+    const parts: string[] = [
+      state.enabled ? '1' : '0',
+      state.layout,
+      state.focusedTile,
+      state.openTiles.join(','),
+      state.collapsedTiles.join(','),
+      String(cols),
+      String(input.activeMode ?? ''),
+    ];
+    for (let i = 0; i < state.openTiles.length; i++) {
+      const id = state.openTiles[i];
+      if (id === 'dem') {
+        parts.push(
+          'd',
+          String(input.terrainSector ?? ''),
+          String(input.terrainSource ?? ''),
+          String(input.radarRangeM ?? ''),
+          String(input.backdropMode ?? ''),
+          String(input.terrainElevMinM ?? ''),
+          String(input.terrainElevMaxM ?? ''),
+          String(input.terrainGridSize ?? ''),
+          String(input.groundNodeCount ?? '')
+        );
+      } else if (id === 'transect') {
+        const res = input.transectResult;
+        const rm = input.rulerMetrics;
+        const rev = input.rulerEvaluation;
+        parts.push(
+          't',
+          String(res?.totalHorizontalM ?? rm?.horizontalDistanceM ?? ''),
+          String(rm?.azimuthDeg ?? res?.azimuthDeg ?? rm?.bearingDeg ?? ''),
+          String(rm?.cardinalOctant ?? ''),
+          String(rm?.groundElevationDeltaM ?? rm?.deltaZM ?? rm?.antennaElevationDeltaM ?? rm?.elevationDeltaM ?? res?.elevDeltaM ?? rm?.elevDeltaM ?? ''),
+          String(res?.minFresnelClearanceM ?? rev?.minFresnelClearanceM ?? rev?.minClearanceM ?? ''),
+          String(res?.estSnrDb ?? rev?.estSnrDb ?? ''),
+          String(rev?.isLineOfSightClear ?? res?.isObstructed ?? rev?.isLos ?? ''),
+          String(input.transectSnrLabel ?? ''),
+          String(input.transectFresnelLabel ?? '')
+        );
+      } else if (id === 'probe') {
+        const live = input.cursorProbeLive;
+        const vs = input.viewshedResult;
+        parts.push(
+          'p',
+          input.probeSite ? '1' : '0',
+          String(live?.estSinrDb ?? vs?.acnLink?.estSinrDb ?? vs?.estSinrDb ?? ''),
+          String(live?.isLos ?? vs?.acnLink?.isLos ?? vs?.isLos ?? ''),
+          String(live?.d3dKm ?? vs?.acnLink?.slantRangeM ?? vs?.slantRangeM ?? ''),
+          String(live?.elToAcnDeg ?? vs?.acnLink?.elevationAngleDeg ?? vs?.elevationAngleDeg ?? ''),
+          String(live?.skyOpennessPct ?? vs?.skyOpenPct ?? vs?.openSkyPct ?? ''),
+          String(live?.modcodName ?? vs?.acnLink?.modcod ?? vs?.modcod ?? '')
+        );
+      } else if (id === 'region') {
+        const box = input.aoSwathBox;
+        const rep = input.aoSwathReport;
+        parts.push(
+          'r',
+          box ? `${box.x1},${box.y1},${box.x2},${box.y2}` : '0',
+          String(rep?.losCoveragePct ?? ''),
+          String(rep?.deadZonePct ?? ''),
+          String(rep?.meanSinrDb ?? ''),
+          String(rep?.summitPeak?.zMslM ?? rep?.maxElevM ?? ''),
+          String(rep?.valleyFloor?.zMslM ?? rep?.minElevM ?? '')
+        );
+      } else {
+        const obsList = Array.isArray(input.obstacles) ? input.obstacles : [];
+        const sel =
+          (input.obsSelectedId != null
+            ? obsList.find((o) => String(o?.id) === String(input.obsSelectedId))
+            : null) ??
+          obsList[obsList.length - 1] ??
+          null;
+        const rep = input.cadObstacleReport;
+        parts.push(
+          'o',
+          String(obsList.length),
+          String(sel?.id ?? ''),
+          String(sel?.depthM ?? sel?.depth_m ?? sel?.length_m ?? ''),
+          String(sel?.widthM ?? sel?.width_m ?? ''),
+          String(sel?.heightM ?? sel?.height_m ?? ''),
+          String(Array.isArray(rep?.intersections) ? rep.intersections.length : 0),
+          String(Array.isArray(rep?.slicedNodeIds) ? rep.slicedNodeIds.length : 0),
+          String(rep?.maxRequiredHeightToSliceAllM ?? ''),
+          String(rep?.midTopElevM ?? '')
+        );
+      }
+    }
+    return parts.join('|');
+  };
+
   const sync = (): void => {
     if (!mounted || !overlayEl || !gridEl) return;
     syncTriggerButtons();
@@ -945,30 +1044,40 @@ export function createWorkspaceTilesManager(
     const input = deps.getTelemetryInput();
     const is3d = input.stageViewMode === '3d';
     const shouldShow = state.enabled && !is3d;
-    overlayEl.hidden = !shouldShow;
+    if (overlayEl.hidden !== !shouldShow) {
+      overlayEl.hidden = !shouldShow;
+    }
     if (!shouldShow) {
       lastRenderKey = '';
       lastBarKey = '';
+      lastCols = -1;
+      return;
+    }
+
+    if (typeof document !== 'undefined' && document.hidden) {
       return;
     }
 
     const containerWidth = overlayEl.parentElement?.clientWidth ?? 820;
     const cols = computeWorkspaceGridColumns(state.openTiles.length, state.layout, containerWidth - 68);
-    overlayEl.setAttribute('data-ws-layout', state.layout);
-    gridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-
-    const snapshots = state.openTiles.map((id) => buildWorkspaceTileTelemetry(id, input));
-    const renderKey = JSON.stringify({
-      state,
-      cols,
-      activeMode: input.activeMode,
-      snapshots,
-    });
-    if (renderKey === lastRenderKey) return;
+    const renderKey = computeDirtySignature(cols, input);
+    if (renderKey === lastRenderKey) {
+      return;
+    }
     lastRenderKey = renderKey;
 
+    if (overlayEl.getAttribute('data-ws-layout') !== state.layout) {
+      overlayEl.setAttribute('data-ws-layout', state.layout);
+    }
+    if (cols !== lastCols) {
+      gridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+      lastCols = cols;
+    }
+
+    const snapshots = state.openTiles.map((id) => buildWorkspaceTileTelemetry(id, input));
+
     const barEl = overlayEl.querySelector('#workspace-tiles-bar');
-    const barKey = JSON.stringify({ layout: state.layout, openTiles: state.openTiles });
+    const barKey = `${state.layout}:${state.openTiles.join(',')}`;
     if (barEl && barKey !== lastBarKey) {
       const hasFocusInBar =
         typeof document !== 'undefined' &&
@@ -1169,7 +1278,7 @@ export function createWorkspaceTilesManager(
     sync();
     if (state.enabled && !pollTimer) {
       pollTimer = setInterval(() => {
-        if (state.enabled) sync();
+        if (state.enabled && (typeof document === 'undefined' || !document.hidden)) sync();
       }, 220);
     } else if (!state.enabled && pollTimer) {
       clearInterval(pollTimer);
@@ -1267,6 +1376,14 @@ export function createWorkspaceTilesManager(
         };
         window.addEventListener('resize', boundOnResize);
       }
+      if (!boundOnVisibility && typeof document !== 'undefined') {
+        boundOnVisibility = () => {
+          if (state.enabled && !document.hidden) {
+            sync();
+          }
+        };
+        document.addEventListener('visibilitychange', boundOnVisibility);
+      }
     }
 
     sync();
@@ -1280,6 +1397,10 @@ export function createWorkspaceTilesManager(
     if (boundOnResize && typeof window !== 'undefined') {
       window.removeEventListener('resize', boundOnResize);
       boundOnResize = null;
+    }
+    if (boundOnVisibility && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', boundOnVisibility);
+      boundOnVisibility = null;
     }
     overlayEl?.remove();
     toolbarBtnEl?.remove();

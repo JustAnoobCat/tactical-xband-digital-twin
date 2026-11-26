@@ -31,6 +31,66 @@ const MAX_VISIBLE_TILES_PER_FRAME = 120;
 const MIN_WORLD_TILE_ZOOM = 2;
 const MAX_WORLD_TILE_ZOOM = 15;
 const TILE_ERROR_RETRY_COOLDOWN_MS = 30_000;
+const DEFAULT_WORLD_TILE_CACHE_SIZE = 64;
+const DEFAULT_TERRARIUM_SCRATCH_PIXELS = 65536;
+
+export const AIRGAP_OFFLINE_STORAGE_KEY = 'xband_airgap_offline_only';
+
+let sharedTerrariumElevScratch = new Float32Array(DEFAULT_TERRARIUM_SCRATCH_PIXELS);
+
+function getTerrariumElevScratch(totalPixels: number): Float32Array {
+  if (totalPixels <= sharedTerrariumElevScratch.length) {
+    return sharedTerrariumElevScratch;
+  }
+  sharedTerrariumElevScratch = new Float32Array(totalPixels);
+  return sharedTerrariumElevScratch;
+}
+
+export function isAirGapDefaultEnvironment(): boolean {
+  if (typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string' && navigator.userAgent.includes('Electron')) {
+    return true;
+  }
+  if (typeof window !== 'undefined') {
+    if ('__TAURI__' in window || '__TAURI_INTERNALS__' in window) {
+      return true;
+    }
+  }
+  if (typeof location !== 'undefined' && typeof location.protocol === 'string') {
+    if (location.protocol === 'file:' || location.protocol === 'tauri:' || location.protocol === 'app:') {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function getAirGapOfflineOnly(): boolean {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const stored = window.localStorage.getItem(AIRGAP_OFFLINE_STORAGE_KEY);
+      if (stored === '1' || stored === 'true') return true;
+      if (stored === '0' || stored === 'false') return false;
+    }
+  } catch {
+    // Ignore storage access restrictions
+  }
+  return isAirGapDefaultEnvironment();
+}
+
+export function setAirGapOfflineOnly(enabled: boolean): boolean {
+  const next = Boolean(enabled);
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(AIRGAP_OFFLINE_STORAGE_KEY, next ? '1' : '0');
+    }
+  } catch {
+    // Ignore storage access restrictions
+  }
+  return next;
+}
+
+export function isExternalHttpUrl(url: string): boolean {
+  return typeof url === 'string' && /^https?:\/\//i.test(url.trim());
+}
 
 export interface VisibleWorldTile {
   readonly z: number;
@@ -184,7 +244,7 @@ export function shadeTerrariumTileRgba(
   centerLatDeg: number
 ): void {
   const total = width * height;
-  const elev = new Float32Array(total);
+  const elev = getTerrariumElevScratch(total);
   for (let i = 0; i < total; i++) {
     const p = i << 2;
     elev[i] = decodeTerrariumElevationM(srcRgba[p], srcRgba[p + 1], srcRgba[p + 2]);
@@ -369,6 +429,7 @@ export interface WorldTileLayerOptions {
   readonly maxCacheSize?: number;
   readonly opacity?: number;
   readonly allowExternalTiles?: boolean;
+  readonly airGapOfflineOnly?: boolean;
   readonly originLatDeg?: number;
   readonly originLonDeg?: number;
 }
@@ -384,6 +445,7 @@ export class WorldTileLayer {
   private readonly maxCacheSize: number;
   private readonly opacity: number;
   private allowExternalTilesOption: boolean | undefined;
+  private airGapOfflineOnlyOption: boolean | undefined;
   private originLatDeg: number;
   private originLonDeg: number;
   private readonly cache = new Map<string, CachedTileEntry>();
@@ -397,9 +459,10 @@ export class WorldTileLayer {
       (this.renderMode === 'radar-terrarium'
         ? DEFAULT_WORLD_RADAR_DEM_TILE_URL
         : DEFAULT_WORLD_SATELLITE_TILE_URL);
-    this.maxCacheSize = options.maxCacheSize ?? 220;
+    this.maxCacheSize = options.maxCacheSize ?? DEFAULT_WORLD_TILE_CACHE_SIZE;
     this.opacity = options.opacity ?? 0.96;
     this.allowExternalTilesOption = options.allowExternalTiles;
+    this.airGapOfflineOnlyOption = options.airGapOfflineOnly;
     this.originLatDeg =
       options.originLatDeg !== undefined && Number.isFinite(options.originLatDeg)
         ? Math.max(-MAX_MERCATOR_LAT_DEG, Math.min(MAX_MERCATOR_LAT_DEG, options.originLatDeg))
@@ -410,7 +473,25 @@ export class WorldTileLayer {
         : GEODESY_ORIGIN_LON_DEG;
   }
 
+  public getMaxCacheSize(): number {
+    return this.maxCacheSize;
+  }
+
+  public isAirGapOfflineOnly(): boolean {
+    if (this.airGapOfflineOnlyOption !== undefined) {
+      return this.airGapOfflineOnlyOption;
+    }
+    return getAirGapOfflineOnly();
+  }
+
+  public setAirGapOfflineOnly(enabled: boolean | undefined): void {
+    this.airGapOfflineOnlyOption = enabled;
+  }
+
   public isExternalTilesAllowed(): boolean {
+    if (this.isAirGapOfflineOnly() && isExternalHttpUrl(this.tileUrlTemplate)) {
+      return false;
+    }
     if (this.allowExternalTilesOption !== undefined) {
       return this.allowExternalTilesOption;
     }

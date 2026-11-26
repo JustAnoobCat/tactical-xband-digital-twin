@@ -1,9 +1,6 @@
 // @ts-nocheck — Extracted workbench UI orchestrator from index.html (REMED-06 Task 6.1)
 import { parseHgtBuffer, decodeHgtBuffer } from './core/hgtParser.ts';
 import { PLAYBACK_SPEED, MAX_ACTIVE_GROUND_NODES } from './shared/constants.ts';
-import { Map as MapLibreMap, setWorkerUrl } from 'maplibre-gl';
-import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   buildTileCatalog,
   clusterNeighbouringTiles,
@@ -102,12 +99,10 @@ import {
   buildAglConfigUpdateCommand,
 } from './ui/nodeAglController.ts';
 import {
-  createHistoricalRecordSnapshot,
   SimulationHistoryBuffer,
   SimulationHistoryController,
 } from './ui/simulationHistory.ts';
 import {
-  createSchedulerRecordSnapshot,
   SchedulerHistoryBuffer,
   SchedulerHistoryController,
 } from './ui/schedulerHistory.ts';
@@ -142,7 +137,6 @@ import {
   computeRadarCursorReadout,
   renderCursorHudHtml,
 } from './ui/radarCursorReadout.ts';
-import { createThreeSceneController } from './ui/three/threeSceneController.ts';
 import { getLatticeCanvasPalette } from './ui/canvasTheme.ts';
 import {
   DEFAULT_PALETTE_COMMANDS,
@@ -153,7 +147,6 @@ import {
   generateAarMarkdown,
   generateAarPrintableHtml,
 } from './core/aarBriefingGenerator.ts';
-import { MapController } from './ui/mapController.ts';
 import {
   MapLayerRegistry,
   getMapZoomLodTier,
@@ -299,6 +292,9 @@ import {
   DEFAULT_WORLD_SATELLITE_ATTRIBUTION,
   DEFAULT_WORLD_RADAR_DEM_TILE_URL,
   geodeticToUnwrappedEnu,
+  getAirGapOfflineOnly,
+  setAirGapOfflineOnly,
+  isExternalHttpUrl,
 } from './ui/worldTileLayer.ts';
 import { createRadarNodeMarkerLayer } from './ui/radarNodeMarkerLayer.ts';
 import { createToolboxPrecisionUi, createToolboxRuntimeBridge, computeBarrierWallRotationDeg } from './ui/toolboxPrecisionSuite.ts';
@@ -441,9 +437,46 @@ let radarWorldTileLayer = null;
 function getRadarWorldTileLayer() {
   if (!radarWorldTileLayer) {
     const customDem = window.__xbandRadarDemTileUrl || DEFAULT_WORLD_RADAR_DEM_TILE_URL;
-    radarWorldTileLayer = new WorldTileLayer({ tileUrlTemplate: customDem, renderMode: 'radar-terrarium' });
+    radarWorldTileLayer = new WorldTileLayer({
+      tileUrlTemplate: customDem,
+      renderMode: 'radar-terrarium',
+      airGapOfflineOnly: getAirGapOfflineOnly(),
+    });
   }
   return radarWorldTileLayer;
+}
+
+function resolveBundledAssetUrl(relativePath) {
+  const cleanRel = String(relativePath || '').replace(/^\/+/, '');
+  const baseEnv = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL)
+    ? String(import.meta.env.BASE_URL)
+    : './';
+  const cleanBase = baseEnv.endsWith('/') ? baseEnv : `${baseEnv}/`;
+  const baseUri = (typeof document !== 'undefined' && document.baseURI)
+    ? document.baseURI
+    : (typeof window !== 'undefined' ? window.location.href : 'http://localhost/');
+  try {
+    const rootBase = new URL(cleanBase, baseUri);
+    return new URL(cleanRel, rootBase).toString();
+  } catch {
+    return `${cleanBase}${cleanRel}`;
+  }
+}
+
+window.resolveBundledDemUrl = () => resolveBundledAssetUrl('terrain/real_ladakh_dem.bin');
+
+if (
+  typeof window !== 'undefined' &&
+  typeof navigator !== 'undefined' &&
+  'serviceWorker' in navigator &&
+  (window.location.protocol === 'http:' || window.location.protocol === 'https:') &&
+  !(typeof navigator.userAgent === 'string' && navigator.userAgent.includes('Electron')) &&
+  !('__TAURI__' in window) &&
+  !('__TAURI_INTERNALS__' in window)
+) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+  });
 }
 
 let radarNodeMarkerLayer = null;
@@ -470,7 +503,7 @@ function getRadar2dRenderer() {
       getTerrainMode: () => activeTerrainMode,
       getWorldTileLayer: () => getRadarWorldTileLayer(),
       getNodeMarkerLayer: () => getRadarNodeMarkerLayer(),
-      projectEnuToScreen: (xM, yM) => mapController.projectEnuToContainerPoint(xM, yM),
+      projectEnuToScreen: (xM, yM) => mapController?.projectEnuToContainerPoint(xM, yM) ?? null,
       getLatestTelemetry: () => latestTelemetry,
       getHistoricalSnapshot: () => (simTimelineController && simTimelineController.isHistoricalInspecting)
         ? simTimelineController.getActiveSpatialSnapshot()
@@ -487,7 +520,7 @@ function getRadar2dRenderer() {
       isMgrsGridActive: () => isMgrsGridActive(),
       onSelectNode: (id) => handleNodeSelection(id),
       onDismissInspector: () => dismissNodeInspector(),
-      markDirty: () => { radarNeedsRender = true; },
+      markDirty: () => { markRadarDirty(); },
       setRangeM: (r) => setRadarRange(r),
       setPanOffset: (x, y) => { panOffsetX_m = x; panOffsetY_m = y; },
     });
@@ -508,7 +541,7 @@ function getTerrainToolboxController() {
       getTerrainEngine: () => mainTerrainEngine,
       getObstacleEditor: () => obstacleEditor,
       sendCommand: (msg) => sendCommand(msg),
-      markRadarDirty: () => { radarNeedsRender = true; },
+      markRadarDirty: () => { markRadarDirty(); },
       drawRadar: () => drawRadar(),
       updateMapLibreToolSources: () => updateMapLibreToolSources(),
       updateMapLibreOverlay: () => updateMapLibreOverlay(),
@@ -1665,24 +1698,31 @@ if (timelineCanvas) {
 
   $('timeline-btn-play')?.addEventListener('click', () => {
     simTimelineController.togglePlayPause();
+    markUiDirtyAndWake();
   });
   $('timeline-btn-step-back')?.addEventListener('click', () => {
     simTimelineController.stepBackward(0.020);
+    markUiDirtyAndWake();
   });
   $('timeline-btn-step-fwd')?.addEventListener('click', () => {
     simTimelineController.stepForward(0.020);
+    markUiDirtyAndWake();
   });
   $('timeline-btn-live')?.addEventListener('click', () => {
     simTimelineController.jumpToLive();
+    markUiDirtyAndWake();
   });
   $('timeline-btn-zoom-in')?.addEventListener('click', () => {
     simTimelineController.zoomIn();
+    scheduleAnimationLoop();
   });
   $('timeline-btn-zoom-out')?.addEventListener('click', () => {
     simTimelineController.zoomOut();
+    scheduleAnimationLoop();
   });
   $('timeline-btn-fit')?.addEventListener('click', () => {
     simTimelineController.fitHorizon();
+    scheduleAnimationLoop();
   });
   $('timeline-btn-export-csv')?.addEventListener('click', async () => {
     const btn = $('timeline-btn-export-csv');
@@ -1920,10 +1960,48 @@ const TAU = Math.PI * 2;
 let THEATER_RADIUS_M = 300000;
 
 let isPaused = false;
+let activeBiomeId = 'alpine_mountain';
 let radarNeedsRender = true;
 let schedulerNeedsRender = true;
 let terrainNeedsRender = true;
-function markRadarDirty() { radarNeedsRender = true; }
+let animationLoopRafId = null;
+
+function shouldContinueAnimationLoop() {
+  if (typeof document !== 'undefined' && document.hidden) return false;
+  const isPlayingHistory = Boolean(typeof simTimelineController !== 'undefined' && simTimelineController?.isPlayingHistory);
+  const isSteppedPlaying = Boolean(
+    typeof dataCommVisualizer !== 'undefined' &&
+    dataCommVisualizer.getPlaybackMode?.() === 'stepped' &&
+    dataCommVisualizer.getSteppedLifecycle?.() === 'playing' &&
+    !dataCommVisualizer.isVisualPaused?.()
+  );
+  return (
+    !isPaused ||
+    isPlayingHistory ||
+    isSteppedPlaying ||
+    radarNeedsRender ||
+    schedulerNeedsRender ||
+    terrainNeedsRender
+  );
+}
+
+function scheduleAnimationLoop() {
+  if (typeof document !== 'undefined' && document.hidden) return;
+  if (animationLoopRafId !== null || typeof requestAnimationFrame !== 'function') return;
+  animationLoopRafId = requestAnimationFrame(animationLoop);
+}
+
+function markRadarDirty() {
+  radarNeedsRender = true;
+  scheduleAnimationLoop();
+}
+
+function markUiDirtyAndWake() {
+  radarNeedsRender = true;
+  schedulerNeedsRender = true;
+  terrainNeedsRender = true;
+  scheduleAnimationLoop();
+}
 let selectedNodeId = -1;
 let inspectorDismissed = false;
 let nodeMoveModeActive = false;
@@ -2011,10 +2089,108 @@ let activeTerrainBounds = null;
 let pendingTerrainCenteringBounds = null;
 let terrainMapMode = 'radar';
 let mapLibreInstance = null;
-const mapController = new MapController();
-window.mapController = mapController;
+let mapController = null;
+window.mapController = null;
+let threeModulePromise = null;
+let threeInitPromise = null;
+let mapLibreDepsPromise = null;
+let mapLibreInitPromise = null;
+let boundMapLibreOfflineHandler = null;
+let boundMapLibrePointerUp = null;
 let mapLibreInitialized = false;
 let mapLibreErrorShown = false;
+
+async function loadThreeStageModule() {
+  if (!threeModulePromise) {
+    threeModulePromise = import('./ui/three/threeSceneController.ts');
+  }
+  return threeModulePromise;
+}
+
+async function loadMapLibreDependencies() {
+  if (!mapLibreDepsPromise) {
+    mapLibreDepsPromise = Promise.all([
+      import('maplibre-gl'),
+      import('maplibre-gl/dist/maplibre-gl-worker.mjs?url'),
+      import('maplibre-gl/dist/maplibre-gl.css'),
+      import('./ui/mapController.ts'),
+    ]).then(([mlMod, workerMod, _cssMod, ctrlMod]) => ({
+      MapLibreMap: mlMod.Map,
+      setWorkerUrl: mlMod.setWorkerUrl,
+      mapLibreWorkerUrl: workerMod.default,
+      MapController: ctrlMod.MapController,
+      buildOfflineSafeMapStyle: ctrlMod.buildOfflineSafeMapStyle,
+    }));
+  }
+  return mapLibreDepsPromise;
+}
+
+window.isAirGapOfflineMode = function() {
+  return getAirGapOfflineOnly();
+};
+
+window.setAirGapOfflineMode = function(enabled) {
+  const next = setAirGapOfflineOnly(Boolean(enabled));
+  radarWorldTileLayer?.setAirGapOfflineOnly(next);
+  if (mapLibreInstance) {
+    const notice = $('map-renderer-notice');
+    const rasterConfig = window.__xbandMapLibreRaster || {};
+    const configuredTiles = rasterConfig.tiles || window.__xbandMapLibreRasterTileUrl || DEFAULT_WORLD_SATELLITE_TILE_URL;
+    const rasterTiles = Array.isArray(configuredTiles) ? configuredTiles : [configuredTiles];
+    const rasterAttribution = rasterConfig.attribution || window.__xbandMapLibreRasterAttribution || DEFAULT_WORLD_SATELLITE_ATTRIBUTION;
+    const rasterMaxZoom = Number.isFinite(Number(rasterConfig.maxzoom)) ? Number(rasterConfig.maxzoom) : 19;
+    if (mapController && typeof mapController.buildMapLibreStyle === 'function') {
+      const style = mapController.buildMapLibreStyle({
+        airGapOfflineOnly: next,
+        rasterTiles,
+        attribution: rasterAttribution,
+        maxzoom: rasterMaxZoom,
+      });
+      mapLibreInitialized = false;
+      mapLibreInstance.setStyle(style);
+    }
+    if (notice) {
+      if (next && rasterTiles.every(t => isExternalHttpUrl(t))) {
+        notice.textContent = 'Air-gap mode: external map tiles blocked — using offline tactical fallback';
+        notice.hidden = false;
+      } else if (!next && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+        mapLibreErrorShown = false;
+        notice.hidden = true;
+      }
+    }
+  }
+  markUiDirtyAndWake();
+  drawRadar();
+  return next;
+};
+
+window.releaseInactiveWebglContexts = function() {
+  const released = { three: false, maplibre: false };
+  if (stageViewMode !== '3d' && threeController) {
+    try { threeController.setViewMode('2d'); } catch (_) {}
+    try { threeController.dispose(); } catch (_) {}
+    threeController = null;
+    released.three = true;
+  }
+  if ((stageViewMode === '3d' || terrainMapMode !== 'maplibre') && mapLibreInstance) {
+    if (boundMapLibreOfflineHandler) {
+      window.removeEventListener('offline', boundMapLibreOfflineHandler);
+      boundMapLibreOfflineHandler = null;
+    }
+    if (boundMapLibrePointerUp) {
+      window.removeEventListener('pointerup', boundMapLibrePointerUp);
+      window.removeEventListener('pointercancel', boundMapLibrePointerUp);
+      boundMapLibrePointerUp = null;
+    }
+    try { mapLibreInstance.remove(); } catch (_) {}
+    mapLibreInstance = null;
+    mapLibreInitialized = false;
+    mapLibreSourceHashes.clear();
+    if (mapController) mapController.setMapInstance(null);
+    released.maplibre = true;
+  }
+  return released;
+};
 let mapLibreTravelledPath = [];
 let mapLibreTerrainRaster = null;
 let mapLibreTerrainVisible = mapLayerRegistry.isLayerVisible('base.terrainDem');
@@ -2356,7 +2532,7 @@ function recordHistoricalFrame(frame) {
   const slantKm = typeof selNode.slant_range_km === 'number' ? selNode.slant_range_km : (typeof f.distance_km === 'number' ? f.distance_km : 0);
 
   const lb = frame.selected_link_budget || f.link_budget;
-  const rec = createHistoricalRecordSnapshot({
+  historyBuffer.pushRaw({
     frameIndex: frame.frame_index,
     simulationTimeS: frame.sim_time_s,
     spatialRevision: typeof frame.spatial_revision === 'number' ? frame.spatial_revision : currentSpatialRevision,
@@ -2393,8 +2569,6 @@ function recordHistoricalFrame(frame) {
     profilePoints: f.profile_points,
     groundNodeAglM: typeof selNode.agl_m === 'number' ? selNode.agl_m : (typeof selNode.antenna_height_m === 'number' ? selNode.antenna_height_m : 2.0),
   });
-
-  historyBuffer.push(rec);
   updateScrubberUI();
 }
 
@@ -2649,7 +2823,7 @@ function recordSchedulerHistoricalFrame(frame) {
     ? selectedNodeId
     : (typeof frame.selected_node_id === 'number' ? frame.selected_node_id : null);
 
-  const rec = createSchedulerRecordSnapshot({
+  schedHistoryBuffer.pushRaw({
     frameIndex: frame.frame_index,
     simulationTimeS: frame.sim_time_s,
     spatialRevision: typeof frame.spatial_revision === 'number' ? frame.spatial_revision : currentSpatialRevision,
@@ -2697,8 +2871,6 @@ function recordSchedulerHistoricalFrame(frame) {
       tacSelectedBacklogKb: kpi.tac_selected_backlog_kb,
     },
   });
-
-  schedHistoryBuffer.push(rec);
   updateSchedulerScrubberUI();
   drawSchedulerCharts();
 }
@@ -3667,6 +3839,7 @@ worker.onmessage = (event) => {
     radarNeedsRender = true;
     schedulerNeedsRender = true;
     terrainNeedsRender = true;
+    scheduleAnimationLoop();
     if (simTimelineController && !simTimelineController.prepareTelemetryRun(msg.frame)) {
       return;
     }
@@ -3770,6 +3943,7 @@ worker.onmessage = (event) => {
       ...(msg.nodes_telemetry ? { nodes_telemetry: msg.nodes_telemetry } : {}),
     };
     terrainNeedsRender = true;
+    scheduleAnimationLoop();
     if (isPaused && !historyController.isInspecting) {
       updateDashboardDOM(latestTelemetry, true);
       drawFresnel();
@@ -3777,9 +3951,13 @@ worker.onmessage = (event) => {
   } else if (msg.type === 'CUSTOM_DEM_LOADED') {
     if (msg.bounds) {
       activeTerrainBounds = msg.bounds;
+      if (mapController && Number.isFinite(msg.bounds.centerLatDeg) && Number.isFinite(msg.bounds.centerLonDeg)) {
+        mapController.setOrigin(msg.bounds.centerLatDeg, msg.bounds.centerLonDeg);
+      }
       window.centerMapOnTerrain(msg.bounds);
       pendingTerrainCenteringBounds = null;
     }
+    markUiDirtyAndWake();
   } else if (msg.type === 'HILLSHADE_READY') {
     renderHillshadeFromWorker(msg.data, msg.grid_size || 512, msg.bounds_km || 300, msg.terrain_mode, msg.bounds);
     requestTerrainMeshData(false);
@@ -3793,6 +3971,7 @@ worker.onmessage = (event) => {
         pendingTerrainCenteringBounds = null;
       }
     }
+    markUiDirtyAndWake();
   } else if (msg.type === 'TERRAIN_MESH_DATA_READY') {
     handleTerrainMeshDataResponse(msg);
     if (msg.bounds) {
@@ -4178,73 +4357,96 @@ $('edit-mode-cancel-btn')?.addEventListener('click', () => {
 });
 
 let threeSelectedThisClick = false;
-function initThreeStage() {
+async function initThreeStage() {
   const container = $('three-stage-container');
   const canvas = $('three-canvas');
   if (!container || !canvas || threeController) return;
+  if (threeInitPromise) return threeInitPromise;
 
-  try {
-    threeController = createThreeSceneController({
-      container,
-      canvas,
-      antialias: true,
-      maxPixelRatio: 2,
-      powerPreference: 'high-performance',
-      clearColor: 0x080c10,
-    });
-    threeController.setSelectedNode(selectedNodeId);
-    threeController.onNodeSelected((nodeId) => {
-      threeSelectedThisClick = true;
-      handleNodeSelection(nodeId);
-    });
-    if (typeof threeController.onNodePicked === 'function') {
-      threeController.onNodePicked((nodeId) => {
+  threeInitPromise = (async () => {
+    try {
+      const { createThreeSceneController } = await loadThreeStageModule();
+      // Post-await active-mode check prevents leaked WebGL contexts on rapid 3D<->2D toggles
+      if (stageViewMode !== '3d' || threeController) return;
+
+      threeController = createThreeSceneController({
+        container,
+        canvas,
+        antialias: true,
+        maxPixelRatio: 2,
+        powerPreference: 'high-performance',
+        clearColor: 0x080c10,
+      });
+      threeController.setSelectedNode(selectedNodeId);
+      threeController.onNodeSelected((nodeId) => {
         threeSelectedThisClick = true;
         handleNodeSelection(nodeId);
       });
-    }
-    syncVolumetricRfHudButtons();
-    let threeDownX = 0;
-    let threeDownY = 0;
-    let threeDownActive = false;
-    let threeWheelUsed = false;
-    canvas.addEventListener('pointerdown', (e) => {
-      threeDownX = e.clientX;
-      threeDownY = e.clientY;
-      threeDownActive = e.button === 0;
-      threeWheelUsed = false;
-      threeSelectedThisClick = false;
-    });
-    canvas.addEventListener('wheel', () => {
-      threeWheelUsed = true;
-    }, { passive: true });
-    canvas.addEventListener('click', (e) => {
-      const wasDown = threeDownActive;
-      const wasWheel = threeWheelUsed;
-      const wasSelected = threeSelectedThisClick;
-      threeDownActive = false;
-      threeWheelUsed = false;
-      threeSelectedThisClick = false;
-      if (stageViewMode !== '3d' || !wasDown || wasWheel || wasSelected) return;
-      if (Math.hypot(e.clientX - threeDownX, e.clientY - threeDownY) >= 4) return;
-      if (isNeutralMapSelectionMode()) {
-        dismissNodeInspector();
+      if (typeof threeController.onNodePicked === 'function') {
+        threeController.onNodePicked((nodeId) => {
+          threeSelectedThisClick = true;
+          handleNodeSelection(nodeId);
+        });
       }
-    });
-    applyThreeLayerVisibility();
-    if (latestTelemetry) {
-      threeController.updateTelemetry(latestTelemetry);
-    }
-    if (cachedTerrainMeshData) {
-      threeController.loadTerrainMeshData(cachedTerrainMeshData);
-      if (hillshadeCanvas) {
-        threeController.setHillshadeCanvas(hillshadeCanvas);
+      syncVolumetricRfHudButtons();
+      let threeDownX = 0;
+      let threeDownY = 0;
+      let threeDownActive = false;
+      let threeWheelUsed = false;
+      if (!canvas.__threeClickWired) {
+        canvas.__threeClickWired = true;
+        canvas.addEventListener('pointerdown', (e) => {
+          threeDownX = e.clientX;
+          threeDownY = e.clientY;
+          threeDownActive = e.button === 0;
+          threeWheelUsed = false;
+          threeSelectedThisClick = false;
+        });
+        canvas.addEventListener('wheel', () => {
+          threeWheelUsed = true;
+        }, { passive: true });
+        canvas.addEventListener('click', (e) => {
+          const wasDown = threeDownActive;
+          const wasWheel = threeWheelUsed;
+          const wasSelected = threeSelectedThisClick;
+          threeDownActive = false;
+          threeWheelUsed = false;
+          threeSelectedThisClick = false;
+          if (stageViewMode !== '3d' || !wasDown || wasWheel || wasSelected) return;
+          if (Math.hypot(e.clientX - threeDownX, e.clientY - threeDownY) >= 4) return;
+          if (isNeutralMapSelectionMode()) {
+            dismissNodeInspector();
+          }
+        });
       }
+      applyThreeLayerVisibility();
+      if (latestTelemetry) {
+        threeController.updateTelemetry(latestTelemetry);
+      }
+      if (cachedTerrainMeshData) {
+        threeController.loadTerrainMeshData(cachedTerrainMeshData);
+        if (hillshadeCanvas) {
+          threeController.setHillshadeCanvas(hillshadeCanvas);
+        }
+      }
+      if (stageViewMode === '3d') {
+        threeController.setViewMode('3d');
+        if (hillshadeCanvas) {
+          threeController.setHillshadeCanvas(hillshadeCanvas);
+        }
+        if (activeTerrainBounds) {
+          threeController.centerOnBounds(activeTerrainBounds);
+        }
+      }
+      console.log('[StageController] Three.js 3D subsystem initialized lazily.');
+    } catch (err) {
+      console.error('[StageController] Failed to initialize Three.js subsystem:', err);
+    } finally {
+      threeInitPromise = null;
     }
-    console.log('[StageController] Three.js 3D subsystem initialized successfully.');
-  } catch (err) {
-    console.error('[StageController] Failed to initialize Three.js subsystem:', err);
-  }
+  })();
+
+  return threeInitPromise;
 }
 
 mapLayersPanel = $('radar-container')
@@ -4478,7 +4680,7 @@ window.setStageViewMode = function(mode) {
     if (resLabel) resLabel.style.display = 'inline';
     if (resToggle) resToggle.style.display = 'inline-flex';
     if (!threeController) {
-      initThreeStage();
+      void initThreeStage();
     }
     requestTerrainMeshData(false);
     if (radarCvs) {
@@ -4499,6 +4701,7 @@ window.setStageViewMode = function(mode) {
         threeController.centerOnBounds(activeTerrainBounds);
       }
     }
+    scheduleAnimationLoop();
   } else {
     updateRadarCursorReadout(0, 0, false);
     if (scopeNote3d) scopeNote3d.hidden = true;
@@ -4514,8 +4717,16 @@ window.setStageViewMode = function(mode) {
     }
     if (radarCvs) {
       if (terrainMapMode === 'maplibre') {
-        initializeMapLibre();
-        if (mapLibreInstance) mapController.setMapInstance(mapLibreInstance);
+        void initializeMapLibre().then(() => {
+          if (terrainMapMode === 'maplibre' && stageViewMode === '2d' && mapLibreInstance) {
+            if (mapController) mapController.setMapInstance(mapLibreInstance);
+            mapLibreInstance.resize();
+            updateMapLibreOverlay();
+            syncMapLibreCameraFromRadarState(0);
+            drawRadar();
+          }
+        });
+        if (mapLibreInstance && mapController) mapController.setMapInstance(mapLibreInstance);
         if (mapLibreStage) mapLibreStage.style.display = 'block';
         radarCvs.style.display = 'block';
         radarCvs.style.pointerEvents = 'none';
@@ -4537,12 +4748,17 @@ window.setStageViewMode = function(mode) {
         drawRadar();
       }
     }
+    markUiDirtyAndWake();
   }
   syncRadarHudMode();
   syncFloatingOverlayLayout();
 };
 
 function mapLibreCoordinate(xM, yM) {
+  if (mapController && typeof mapController.projectEnuToGeodetic === 'function') {
+    const geo = mapController.projectEnuToGeodetic(xM, yM);
+    return [geo.lonDeg, geo.latDeg];
+  }
   const coordinate = cartesianToGeodetic(xM, yM);
   return [coordinate.lonDeg, coordinate.latDeg];
 }
@@ -5601,42 +5817,87 @@ function registerTacticalMapLibreImages(map) {
   }
 }
 
-function initializeMapLibre() {
+async function initializeMapLibre() {
   if (mapLibreInstance) return;
-  const notice = $('map-renderer-notice');
-  const rasterConfig = window.__xbandMapLibreRaster || {};
-  const configuredTiles = rasterConfig.tiles || window.__xbandMapLibreRasterTileUrl || DEFAULT_WORLD_SATELLITE_TILE_URL;
-  const rasterTiles = Array.isArray(configuredTiles) ? configuredTiles : [configuredTiles];
-  const rasterAttribution = rasterConfig.attribution || window.__xbandMapLibreRasterAttribution || DEFAULT_WORLD_SATELLITE_ATTRIBUTION;
-  const rasterMaxZoom = Number.isFinite(Number(rasterConfig.maxzoom)) ? Number(rasterConfig.maxzoom) : 19;
-  const bgLayer = { id: 'airgap-bg', type: 'background', paint: { 'background-color': '#0b1017' } };
-  const mapStyle = { version: 8, sources: { 'maplibre-satellite': { type: 'raster', tiles: rasterTiles, tileSize: 256, maxzoom: rasterMaxZoom, attribution: rasterAttribution } }, layers: [bgLayer, { id: 'maplibre-satellite-layer', type: 'raster', source: 'maplibre-satellite' }] };
-  setWorkerUrl(mapLibreWorkerUrl);
-  mapLibreInstance = new MapLibreMap({ container: 'maplibre-map', style: mapStyle, center: [76.5, 34.5], zoom: 6, minZoom: 0, attributionControl: { compact: true }, cooperativeGestures: false });
-  mapController.setMapInstance(mapLibreInstance);
-  requestAnimationFrame(() => {
-    const attribEl = document.querySelector('#maplibre-map .maplibregl-ctrl-attrib');
-    if (attribEl) {
-      attribEl.classList.add('maplibregl-compact');
-      attribEl.classList.remove('maplibregl-compact-show');
-    }
-  });
-  const showOfflineMapLibreNotice = () => {
-    mapLibreErrorShown = true;
-    if (notice) {
-      notice.textContent = 'Offline / tile fetch blocked — using local SRTM DEM fallback';
-      notice.hidden = false;
-    }
-  };
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    showOfflineMapLibreNotice();
-  }
-  window.addEventListener('offline', showOfflineMapLibreNotice);
-  mapLibreInstance.on('error', event => {
-    if (mapLibreErrorShown) return;
-    showOfflineMapLibreNotice();
-    console.error('MapLibre map error', event.error || event);
-  });
+  if (mapLibreInitPromise) return mapLibreInitPromise;
+
+  mapLibreInitPromise = (async () => {
+    try {
+      const {
+        MapLibreMap,
+        setWorkerUrl,
+        mapLibreWorkerUrl,
+        MapController,
+        buildOfflineSafeMapStyle,
+      } = await loadMapLibreDependencies();
+
+      // Post-await guard: do not create WebGL map if user switched back to Radar or 3D
+      if (terrainMapMode !== 'maplibre' || stageViewMode !== '2d' || mapLibreInstance) {
+        return;
+      }
+
+      if (!mapController) {
+        mapController = new MapController(null, activeBiomeId);
+        window.mapController = mapController;
+      } else {
+        mapController.setBiome(activeBiomeId);
+      }
+
+      const notice = $('map-renderer-notice');
+      const rasterConfig = window.__xbandMapLibreRaster || {};
+      const configuredTiles = rasterConfig.tiles || window.__xbandMapLibreRasterTileUrl || DEFAULT_WORLD_SATELLITE_TILE_URL;
+      const rasterTiles = Array.isArray(configuredTiles) ? configuredTiles : [configuredTiles];
+      const rasterAttribution = rasterConfig.attribution || window.__xbandMapLibreRasterAttribution || DEFAULT_WORLD_SATELLITE_ATTRIBUTION;
+      const rasterMaxZoom = Number.isFinite(Number(rasterConfig.maxzoom)) ? Number(rasterConfig.maxzoom) : 19;
+      const airGap = getAirGapOfflineOnly();
+      const mapStyle = buildOfflineSafeMapStyle({
+        airGapOfflineOnly: airGap,
+        rasterTiles,
+        attribution: rasterAttribution,
+        maxzoom: rasterMaxZoom,
+      });
+      const originGeo = mapController.getOrigin();
+
+      setWorkerUrl(mapLibreWorkerUrl);
+      mapLibreInstance = new MapLibreMap({
+        container: 'maplibre-map',
+        style: mapStyle,
+        center: [originGeo.lonDeg, originGeo.latDeg],
+        zoom: 6,
+        minZoom: 0,
+        attributionControl: { compact: true },
+        cooperativeGestures: false,
+      });
+      mapController.setMapInstance(mapLibreInstance);
+      requestAnimationFrame(() => {
+        const attribEl = document.querySelector('#maplibre-map .maplibregl-ctrl-attrib');
+        if (attribEl) {
+          attribEl.classList.add('maplibregl-compact');
+          attribEl.classList.remove('maplibregl-compact-show');
+        }
+      });
+      const showOfflineMapLibreNotice = () => {
+        mapLibreErrorShown = true;
+        if (notice) {
+          notice.textContent = airGap
+            ? 'Air-gap mode: external map tiles blocked — using offline tactical fallback & local SRTM DEM'
+            : 'Offline / tile fetch blocked — using local SRTM DEM fallback';
+          notice.hidden = false;
+        }
+      };
+      if ((airGap && rasterTiles.every(t => isExternalHttpUrl(t))) || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        showOfflineMapLibreNotice();
+      }
+      if (boundMapLibreOfflineHandler) {
+        window.removeEventListener('offline', boundMapLibreOfflineHandler);
+      }
+      boundMapLibreOfflineHandler = showOfflineMapLibreNotice;
+      window.addEventListener('offline', boundMapLibreOfflineHandler);
+      mapLibreInstance.on('error', event => {
+        if (mapLibreErrorShown) return;
+        showOfflineMapLibreNotice();
+        console.error('MapLibre map error', event.error || event);
+      });
   mapLibreInstance.on('move', () => {
     if (terrainMapMode === 'maplibre') drawRadar();
   });
@@ -6024,8 +6285,13 @@ function initializeMapLibre() {
       }
     };
     mapLibreInstance.on('mouseup', finishMapLibreDrag);
-    window.addEventListener('pointerup', finishMapLibreDrag);
-    window.addEventListener('pointercancel', finishMapLibreDrag);
+    if (boundMapLibrePointerUp) {
+      window.removeEventListener('pointerup', boundMapLibrePointerUp);
+      window.removeEventListener('pointercancel', boundMapLibrePointerUp);
+    }
+    boundMapLibrePointerUp = finishMapLibreDrag;
+    window.addEventListener('pointerup', boundMapLibrePointerUp);
+    window.addEventListener('pointercancel', boundMapLibrePointerUp);
 
     mapLibreInstance.on('mousemove', selectableLinkLayers, event => {
       if (mapLibreNodeDrag || mapLibreObstacleDrag) return;
@@ -6148,6 +6414,14 @@ function initializeMapLibre() {
       }
     });
   });
+    } catch (err) {
+      console.error('[MapLibre] Failed to initialize lazily:', err);
+    } finally {
+      mapLibreInitPromise = null;
+    }
+  })();
+
+  return mapLibreInitPromise;
 }
 
 function setMapMode(mode) {
@@ -6182,9 +6456,18 @@ function setMapMode(mode) {
   syncRadarHudMode();
   syncFloatingOverlayLayout();
   if (terrainMapMode === 'maplibre') {
-    initializeMapLibre();
-    if (mapLibreInstance) mapController.setMapInstance(mapLibreInstance);
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    void initializeMapLibre().then(() => {
+      if (terrainMapMode === 'maplibre' && stageViewMode === '2d' && mapLibreInstance) {
+        if (mapController) mapController.setMapInstance(mapLibreInstance);
+        mapLibreInstance.resize();
+        updateMapLibreOverlay();
+        applyMapLibreLayerState();
+        syncMapLibreCameraFromRadarState(0);
+        drawRadar();
+      }
+    });
+    if (mapLibreInstance && mapController) mapController.setMapInstance(mapLibreInstance);
+    if (getAirGapOfflineOnly() || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
       const notice = $('map-renderer-notice');
       if (notice) {
         notice.textContent = 'Air-gap mode: external map tiles blocked/offline — switch to Radar / SRTM DEM';
@@ -6205,6 +6488,7 @@ function setMapMode(mode) {
       syncMapLibreCameraFromRadarState(0);
       drawRadar();
     });
+    markUiDirtyAndWake();
   } else {
     if (mapLibreInitialized) syncRadarStateFromMapLibreCamera();
     if (map) map.style.display = 'none';
@@ -6214,6 +6498,7 @@ function setMapMode(mode) {
       radar.style.background = '';
       radar.style.zIndex = '';
     }
+    markUiDirtyAndWake();
     drawRadar();
   }
 }
@@ -6499,12 +6784,14 @@ window.togglePause = function() {
     dataCommVisualizer.resumeContinuous();
     updateStepControlUI(true);
     sendCommand({ type: 'SIM_CONTROL', action: 'resume' });
+    markUiDirtyAndWake();
   } else {
     dataCommVisualizer.setVisualPaused(true);
     sendCommand({ type: 'SIM_CONTROL', action: 'pause' });
     if (terrainMapMode === 'maplibre' && stageViewMode === '2d') {
       updateMapLibreOverlay();
     }
+    markUiDirtyAndWake();
   }
   updatePauseButtonUI();
   if (latestTelemetry) updateDashboardDOM(latestTelemetry, true);
@@ -6562,6 +6849,7 @@ window.stepSim = function() {
   updatePauseButtonUI();
   if (latestTelemetry) updateDashboardDOM(latestTelemetry, true);
   sendCommand({ type: 'SIM_CONTROL', action: 'step', step_request_id: reqId });
+  markUiDirtyAndWake();
 };
 
 let currentSimSpeed = PLAYBACK_SPEED.defaultValue;
@@ -8384,10 +8672,10 @@ window.applyDemQuickPreset = function(presetId) {
 };
 window.onDemSectorChange = function(sectorVal) {
   if (sectorVal === 'synthetic') { sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' }); }
-  else if (sectorVal === 'ladakh' || sectorVal === 'alpine_mountain') { sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' }); }
-  else if (sectorVal === 'kargil') { sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' }); }
-  else { sendCommand({ type: 'SET_BIOME', biomeId: sectorVal }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' }); }
-  window.syncDemQuickPresetButtons?.(sectorVal); radarNeedsRender = true;
+  else if (sectorVal === 'ladakh' || sectorVal === 'alpine_mountain') { activeBiomeId = 'alpine_mountain'; mapController?.setBiome('alpine_mountain'); sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' }); }
+  else if (sectorVal === 'kargil') { activeBiomeId = 'alpine_mountain'; mapController?.setBiome('alpine_mountain'); sendCommand({ type: 'SET_BIOME', biomeId: 'alpine_mountain' }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' }); }
+  else { activeBiomeId = sectorVal; mapController?.setBiome(sectorVal); sendCommand({ type: 'SET_BIOME', biomeId: sectorVal }); sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'synthetic' }); }
+  window.syncDemQuickPresetButtons?.(sectorVal); markRadarDirty();
 };
 window.onBiomeEmToggleChange = function(enabled) {
   sendCommand({ type: 'CONFIG_UPDATE', params: { enableBiomeEmPhysics: Boolean(enabled) } }); radarNeedsRender = true;
@@ -8417,6 +8705,13 @@ window.onBiomeFoliageDepthChange = function(depthM) {
 };
 
 function updateBiomePhysicsUI(msg) {
+  const nextBiome = msg?.biome_id || msg?.frame?.biome_id;
+  if (typeof nextBiome === 'string' && nextBiome) {
+    activeBiomeId = nextBiome;
+    if (mapController && mapController.getBiome() !== nextBiome) {
+      mapController.setBiome(nextBiome);
+    }
+  }
   telemetryUpdaters.updateBiomePhysicsUI(msg);
 }
 window.updateBiomePhysicsUI = updateBiomePhysicsUI;
@@ -9527,6 +9822,7 @@ window.switchMainTab = function(targetTabId) {
     );
   }
   scheduleResizeCanvases();
+  markUiDirtyAndWake();
 };
 
 const workspaceRail = document.querySelector('.rail[role="tablist"]');
@@ -11788,6 +12084,10 @@ function drawRadar() {
   const cvs = radarCanvas;
   if (stageViewMode === '3d') radarNodeMarkerLayer?.hide();
   if (!cvs || stageViewMode === '3d') return;
+  if (typeof document !== 'undefined' && document.hidden) {
+    radarNeedsRender = true;
+    return;
+  }
   getRadar2dRenderer().renderRadar();
 }
 
@@ -13694,6 +13994,10 @@ function drawFresnel() {
 let lastTimelineAnimTimeMs = 0;
 let last3dSecondaryCanvasThrottleMs = 0;
 function animationLoop(timestampMs) {
+  animationLoopRafId = null;
+  if (typeof document !== 'undefined' && document.hidden) {
+    return;
+  }
   try {
     const now = typeof timestampMs === 'number' ? timestampMs : performance.now();
     const isPlayingHistory = Boolean(simTimelineController?.isPlayingHistory);
@@ -13714,8 +14018,8 @@ function animationLoop(timestampMs) {
       last3dSecondaryCanvasThrottleMs = now;
     }
 
-    // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty or MapLibre kinetic overlay active (skips when in 3D mode)
-    if (!is3dMode && (radarNeedsRender || isPlayingHistory || terrainMapMode === 'maplibre')) {
+    // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty or active playback (skips when in 3D mode)
+    if (!is3dMode && (radarNeedsRender || isPlayingHistory || (terrainMapMode === 'maplibre' && !isPaused))) {
       drawRadar();
       radarNeedsRender = false;
     }
@@ -13736,7 +14040,7 @@ function animationLoop(timestampMs) {
           drawFresnel();
           if (latestTelemetry) drawLinkWaterfallCanvas(latestTelemetry);
           terrainNeedsRender = false;
-        } else if (activeTab.id === 'tab-soldier' && latestTelemetry) {
+        } else if (activeTab.id === 'tab-soldier' && latestTelemetry && (radarNeedsRender || isPlayingHistory || !isPaused)) {
           renderSoldierPhoneWorkspace(latestTelemetry);
         }
       }
@@ -13744,9 +14048,31 @@ function animationLoop(timestampMs) {
   } catch (err) {
     console.error('Animation loop exception:', err);
   }
-  requestAnimationFrame(animationLoop);
+  if (shouldContinueAnimationLoop()) {
+    scheduleAnimationLoop();
+  }
 }
-requestAnimationFrame(animationLoop);
+scheduleAnimationLoop();
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (animationLoopRafId !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(animationLoopRafId);
+        animationLoopRafId = null;
+      }
+      if (threeController && typeof threeController.stopAnimationLoop === 'function') {
+        threeController.stopAnimationLoop();
+      }
+    } else {
+      lastTimelineAnimTimeMs = 0;
+      if (stageViewMode === '3d' && threeController && typeof threeController.startAnimationLoop === 'function') {
+        threeController.startAnimationLoop();
+      }
+      markUiDirtyAndWake();
+    }
+  });
+}
 
 setTimeout(() => {
   sendCommand({ type: 'GET_HILLSHADE' });
@@ -13852,7 +14178,7 @@ setTimeout(() => {
     draw();
   };
   sample();
-  window.setInterval(sample,1000);
+  window.setInterval(() => { if (!document.hidden && !isPaused) sample(); }, 1000);
   window.addEventListener('resize',draw);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)draw();});
 })();
@@ -13879,7 +14205,7 @@ setTimeout(() => {
       panel.querySelectorAll('[data-context-link]').forEach(el=>el.textContent=(snr && snr !== '--') ? ('SNR '+snr + (status ? ' ('+status+')' : '')) : (status || '--'));
     });
   }
-  update(); window.setInterval(update,1000);
+  update(); window.setInterval(() => { if (!document.hidden && !isPaused) update(); }, 1000);
   document.addEventListener('change',e=>{
     if(e.target && (e.target.id==='termNodeSelect'||e.target.id==='quickNodeSelect')) {
       update();
