@@ -37,6 +37,8 @@ export interface BiomeTelemetryState {
 export interface FleetTerminalTelemetry extends LinkStatusTelemetryInput {
   readonly node_id: number;
   readonly name?: string;
+  readonly team_id?: string;
+  readonly team_name?: string;
   readonly active_sector_id?: number;
   readonly sector_id?: number;
   readonly modcod_name?: string;
@@ -50,6 +52,10 @@ export interface FleetTerminalTelemetry extends LinkStatusTelemetryInput {
 
 export interface TelemetryDomUpdatersDeps {
   readonly onSelectNode?: (nodeId: number | string) => void;
+  readonly onEditNode?: (nodeId: number) => void;
+  readonly getSelectedTeamFilter?: () => string | null;
+  readonly getCheckedFleetNodeIds?: () => ReadonlySet<number>;
+  readonly onToggleFleetNodeCheck?: (nodeId: number, checked: boolean) => void;
   readonly documentRef?: Document;
 }
 
@@ -506,16 +512,26 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     const countBadge = $('ops-fleet-count');
     if (!tbody || !doc) return;
 
-    const nodeList = Array.isArray(nodes) ? nodes : [];
+    const allNodes = Array.isArray(nodes) ? nodes : [];
+    const teamFilter = deps?.getSelectedTeamFilter?.() ?? null;
+    const nodeList = teamFilter
+      ? allNodes.filter((n) => (n.team_id || '').toLowerCase() === teamFilter.toLowerCase())
+      : allNodes;
+    const checkedIds = deps?.getCheckedFleetNodeIds?.();
+
     if (countBadge) {
-      countBadge.textContent = `${nodeList.length} ACTIVE`;
+      countBadge.textContent = teamFilter
+        ? `${nodeList.length}/${allNodes.length} TEAM`
+        : `${allNodes.length} ACTIVE`;
     }
 
     if (nodeList.length === 0) {
-      if (lastOpsFleetSignature !== '__EMPTY__') {
-        lastOpsFleetSignature = '__EMPTY__';
-        tbody.innerHTML =
-          '<tr><td colspan="5" class="muted" style="text-align:center;padding:12px 6px;">No active ground terminals</td></tr>';
+      const emptySig = teamFilter ? `__EMPTY_${teamFilter}__` : '__EMPTY__';
+      if (lastOpsFleetSignature !== emptySig) {
+        lastOpsFleetSignature = emptySig;
+        tbody.innerHTML = teamFilter
+          ? '<tr><td colspan="5" class="muted" style="text-align:center;padding:12px 6px;">No terminals in selected team</td></tr>'
+          : '<tr><td colspan="5" class="muted" style="text-align:center;padding:12px 6px;">No active ground terminals</td></tr>';
       }
       return;
     }
@@ -523,20 +539,24 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     const rowsData: Array<{
       nodeId: number;
       isSelected: boolean;
+      isChecked: boolean;
       nidStr: string;
       callsign: string;
+      teamName: string;
       secStr: string;
       modcodStr: string;
       statusText: string;
       statusClass: string;
     }> = [];
-    const sigParts = [String(selectedNodeId ?? '')];
+    const sigParts = [String(selectedNodeId ?? ''), String(teamFilter ?? '')];
 
     for (let i = 0; i < nodeList.length; i++) {
       const n = nodeList[i];
       const isSelected = n.node_id === selectedNodeId;
+      const isChecked = Boolean(checkedIds?.has(n.node_id));
       const nidStr = 'N-' + String(n.node_id).padStart(2, '0');
       const callsign = n.name || 'Terminal ' + n.node_id;
+      const teamName = typeof n.team_name === 'string' ? n.team_name.trim() : '';
       const secStr =
         typeof n.active_sector_id === 'number'
           ? 'S' + n.active_sector_id
@@ -588,13 +608,15 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
       }
 
       sigParts.push(
-        `${n.node_id}:${callsign}:${secStr}:${modcodStr}:${statusText}:${isSelected}`
+        `${n.node_id}:${callsign}:${teamName}:${secStr}:${modcodStr}:${statusText}:${isSelected}:${isChecked}`
       );
       rowsData.push({
         nodeId: n.node_id,
         isSelected,
+        isChecked,
         nidStr,
         callsign,
+        teamName,
         secStr,
         modcodStr,
         statusText,
@@ -613,7 +635,28 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
       tr.style.cursor = 'pointer';
       if (r.isSelected) tr.classList.add('is-selected');
       tr.dataset.nodeId = String(r.nodeId);
-      const onRowClick = () => {
+      const onRowClick = (ev?: any) => {
+        const target = ev?.target as HTMLElement | undefined;
+        if (target && typeof target.closest === 'function') {
+          if (target.closest('[data-fleet-action="edit"]')) {
+            ev?.stopPropagation?.();
+            if (deps?.onEditNode) {
+              deps.onEditNode(r.nodeId);
+            } else if (
+              typeof window !== 'undefined' &&
+              typeof (window as unknown as { openNodeEditModal?: (id: number) => void }).openNodeEditModal === 'function'
+            ) {
+              (window as unknown as { openNodeEditModal: (id: number) => void }).openNodeEditModal(r.nodeId);
+            }
+            return;
+          }
+          const checkEl = target.closest('[data-fleet-check]') as HTMLInputElement | null;
+          if (checkEl) {
+            ev?.stopPropagation?.();
+            deps?.onToggleFleetNodeCheck?.(r.nodeId, Boolean(checkEl.checked));
+            return;
+          }
+        }
         if (deps?.onSelectNode) {
           deps.onSelectNode(r.nodeId);
         } else if (
@@ -627,9 +670,14 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
         }
       };
       tr.addEventListener('click', onRowClick);
+      const teamBadgeHtml = r.teamName
+        ? ` <span class="c2-team-badge">[${escapeHtml(r.teamName)}]</span>`
+        : '';
+      const editBtnHtml = `<button type="button" class="c2-fleet-edit-btn" data-fleet-action="edit" data-node-id="${r.nodeId}" title="Rename / Edit terminal" aria-label="Edit ${escapeHtml(r.callsign)}">&#9998;</button>`;
+      const checkHtml = `<input type="checkbox" class="c2-fleet-check" data-fleet-check="${r.nodeId}" aria-label="Select ${escapeHtml(r.callsign)} for team" ${r.isChecked ? 'checked' : ''} />`;
       tr.innerHTML = `
-        <td class="c-acc">${escapeHtml(r.nidStr)}</td>
-        <td>${escapeHtml(r.callsign)}</td>
+        <td class="c-acc">${checkHtml} ${escapeHtml(r.nidStr)}</td>
+        <td><span class="c2-fleet-callsign-wrap"><span>${escapeHtml(r.callsign)}${teamBadgeHtml}</span>${editBtnHtml}</span></td>
         <td>${escapeHtml(r.secStr)}</td>
         <td>${escapeHtml(r.modcodStr)}</td>
         <td class="${escapeHtml(r.statusClass)}">${escapeHtml(r.statusText)}</td>

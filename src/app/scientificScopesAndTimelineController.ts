@@ -30,7 +30,11 @@ import {
 } from '../ui/timelineFrameInspector.ts';
 import { exportTimelineDualCsv } from '../ui/timelineCsvExporter.ts';
 import { resolveSuperframeTimeline } from '../ui/dataCommVisualization.ts';
-import { aggregateNetworkSample } from '../ui/networkPerformanceDashboard.ts';
+import {
+  aggregateNetworkSample,
+  aggregateTeamNetworkSample,
+} from '../ui/networkPerformanceDashboard.ts';
+import { collectTeamsFromNodes, parseTeamSelection } from '../core/nodeRegistry.ts';
 import { HIGHLAND_THEME } from '../ui/workbench/chartTheme.ts';
 import {
   computeNiceTicks,
@@ -45,6 +49,16 @@ import {
   drawEcdfDelayScope as renderEcdfDelayScope,
   drawSensitivitySweepScope as renderSensitivitySweepScope,
 } from '../ui/scientificScopesRenderer.ts';
+
+/**
+ * Pure timeline dock height clamp allowing vertical stretch up to workspaceHeightPx - 96px.
+ */
+export function clampTimelineDockHeight(heightPx: number, workspaceHeightPx: number): number {
+  const minH = 96;
+  const maxH = Math.max(180, Math.round((Number.isFinite(workspaceHeightPx) ? workspaceHeightPx : 900) - 96));
+  const safeH = Number.isFinite(heightPx) ? heightPx : 108;
+  return Math.max(minH, Math.min(maxH, Math.round(safeH)));
+}
 
 export function initScientificScopesAndTimelineController(ctx: AppContext): void {
   const { worker, state, engines, canvases, dom, actions } = ctx;
@@ -247,11 +261,10 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     bindChartHoverCrosshair($<HTMLCanvasElement>('network-aggregate-chart'), drawNetworkCharts);
     const samples = networkVisibleSamples();
     const timeSeries = samples.map((s: any) => s.simulationTimeS);
-    const selected = new Set(
-      Array.from($<HTMLSelectElement>('network-node-select')?.selectedOptions || []).map((option: HTMLOptionElement) =>
-        Number(option.value)
-      )
-    );
+    const selectedValues = Array.from(
+      $<HTMLSelectElement>('network-node-select')?.selectedOptions || []
+    ).map((option: HTMLOptionElement) => option.value);
+    const selectedSet = new Set(selectedValues);
     const individualCard = $('network-individual-card');
     const aggregateCard = $('network-aggregate-card');
     const mode = $<HTMLSelectElement>('network-view-mode')?.value || 'individual';
@@ -260,9 +273,9 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     const empty = $('network-dashboard-empty');
     if (empty)
       empty.textContent =
-        samples.length && selected.size
-          ? `${selected.size} node${selected.size === 1 ? '' : 's'} selected · ${samples.length} samples`
-          : 'Select one or more ground nodes to compare performance.';
+        samples.length && selectedSet.size
+          ? `${selectedSet.size} selection${selectedSet.size === 1 ? '' : 's'} · ${samples.length} samples`
+          : 'Select one or more ground nodes or teams to compare performance.';
 
     const colors = [
       HIGHLAND_THEME.signal.amber,
@@ -275,25 +288,48 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
 
     const individualCanvas = networkCanvasContext('network-individual-chart');
     if (individualCanvas && mode === 'individual') {
-      const ids = [...selected];
+      const keys = [...selectedSet];
       const indHover = getCanvasHoverState($<HTMLCanvasElement>('network-individual-chart'));
+      const latestSample = samples[samples.length - 1];
+      const labelForSelection = (selVal: string): string => {
+        const teamKey = parseTeamSelection(selVal);
+        if (teamKey) {
+          if (latestSample) {
+            const agg = aggregateTeamNetworkSample(latestSample, teamKey);
+            return `Team: ${agg.teamName} (${agg.activeMemberCount}/${agg.memberCount} up, ${agg.outageMemberCount} out)`;
+          }
+          return `Team: ${teamKey}`;
+        }
+        const nid = Number(selVal);
+        return state.networkNodeNames.get(nid) || `Node ${nid}`;
+      };
       const make = (key: string) =>
-        ids.map((id) => ({
-          key: id,
-          label: state.networkNodeNames.get(id) || `Node ${id}`,
-          values: samples.map((sample: any) => {
-            const node = sample.nodes.find((item: any) => item.nodeId === id);
-            if (!node) return NaN;
-            if (key === 'snr') return node.linkValid ? node.snrDb ?? NaN : NaN;
-            if (key === 'rate') return node.rateMbps;
-            return node.transferredMb;
-          }),
-        }));
+        keys.map((selVal) => {
+          const teamKey = parseTeamSelection(selVal);
+          return {
+            key: selVal,
+            label: labelForSelection(selVal),
+            values: samples.map((sample: any) => {
+              if (teamKey) {
+                const agg = aggregateTeamNetworkSample(sample, teamKey);
+                if (key === 'snr') return agg.averageSinrDb ?? agg.averageSnrDb ?? NaN;
+                if (key === 'rate') return agg.totalRateMbps;
+                return agg.totalTransferredMb;
+              }
+              const nid = Number(selVal);
+              const node = sample.nodes.find((item: any) => item.nodeId === nid);
+              if (!node) return NaN;
+              if (key === 'snr') return node.linkValid ? node.snrDb ?? NaN : NaN;
+              if (key === 'rate') return node.rateMbps;
+              return node.transferredMb;
+            }),
+          };
+        });
       individualCanvas.ctx.clearRect(0, 0, individualCanvas.width, individualCanvas.height);
       individualCanvas.ctx.fillStyle = HIGHLAND_THEME.substrate.void;
       individualCanvas.ctx.fillRect(0, 0, individualCanvas.width, individualCanvas.height);
       const enabled = [
-        [$<HTMLInputElement>('network-show-snr')?.checked, 'snr', 'SNR', 'dB'],
+        [$<HTMLInputElement>('network-show-snr')?.checked, 'snr', 'SNR / SINR', 'dB'],
         [$<HTMLInputElement>('network-show-rate')?.checked, 'rate', 'Rate', 'Mbps'],
         [$<HTMLInputElement>('network-show-transferred')?.checked, 'transferred', 'Transferred', 'MB'],
       ].filter((item) => item[0]);
@@ -306,7 +342,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           make(item[1] as string),
           item[2] as string,
           item[3] as string,
-          (id) => colors[ids.indexOf(id) % colors.length],
+          (k) => colors[Math.max(0, keys.indexOf(String(k))) % colors.length],
           index * rowHeight,
           rowHeight,
           individualCanvas.width,
@@ -315,10 +351,10 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           timeSeries
         )
       );
-      const legend = ids
+      const legend = keys
         .map(
-          (id, index) =>
-            `${state.networkNodeNames.get(id) || `Node ${id}`} (${colors[index % colors.length]})`
+          (selVal, index) =>
+            `${labelForSelection(selVal)} (${colors[index % colors.length]})`
         )
         .join(' · ');
       setText('network-individual-value', legend || 'No nodes selected');
@@ -395,27 +431,48 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
   function updateNetworkNodeOptions(nodes: any[]) {
     const select = $<HTMLSelectElement>('network-node-select');
     if (!select) return;
+    const teams = collectTeamsFromNodes(nodes);
     const signature = nodes
-      .map((node) => `${node.node_id}:${node.name || ''}:${node.link_outage === false ? 'up' : 'down'}`)
+      .map(
+        (node) =>
+          `${node.node_id}:${node.name || ''}:${node.team_id || ''}:${node.team_name || ''}:${node.link_outage === false ? 'up' : 'down'}`
+      )
       .join('|');
     if (signature === state.networkNodeOptionsSignature) return;
     state.networkNodeOptionsSignature = signature;
-    const selected = new Set(
-      Array.from(select.selectedOptions).map((option: any) => Number(option.value))
-    );
+    const selectedVals = new Set(Array.from(select.selectedOptions).map((option: any) => String(option.value)));
     const ids = nodes.map((node) => node.node_id);
-    select.replaceChildren(
-      ...nodes.map((node) => {
-        state.networkNodeNames.set(node.node_id, node.name || `Node ${node.node_id}`);
+
+    const children: HTMLElement[] = [];
+    if (teams.length > 0) {
+      const teamGroup = document.createElement('optgroup');
+      teamGroup.label = 'Tactical Teams';
+      teams.forEach((t) => {
         const option = document.createElement('option');
-        option.value = String(node.node_id);
-        option.textContent = `${node.name || `Node ${node.node_id}`} · ${node.link_outage === false ? 'connected' : 'disconnected'}`;
-        option.selected = selected.size
-          ? selected.has(node.node_id)
-          : ids.indexOf(node.node_id) < 3;
-        return option;
-      })
-    );
+        option.value = `team:${t.teamId}`;
+        option.textContent = `Team: ${t.teamName} (${t.nodeIds.length} nodes)`;
+        option.selected = selectedVals.has(option.value);
+        teamGroup.appendChild(option);
+      });
+      children.push(teamGroup);
+    }
+
+    const termGroup = document.createElement('optgroup');
+    termGroup.label = 'Individual Terminals';
+    nodes.forEach((node) => {
+      state.networkNodeNames.set(node.node_id, node.name || `Node ${node.node_id}`);
+      const option = document.createElement('option');
+      option.value = String(node.node_id);
+      const teamSuffix = node.team_name ? ` [${node.team_name}]` : '';
+      option.textContent = `${node.name || `Node ${node.node_id}`}${teamSuffix} · ${node.link_outage === false ? 'connected' : 'disconnected'}`;
+      option.selected = selectedVals.size
+        ? selectedVals.has(String(node.node_id))
+        : ids.indexOf(node.node_id) < 3;
+      termGroup.appendChild(option);
+    });
+    children.push(termGroup);
+
+    select.replaceChildren(...children);
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('node') && state.selectedNodeId === -1) {
       const nid = Number(urlParams.get('node'));
@@ -885,13 +942,19 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
       }
     });
 
-    // Resizable & Collapsible Timeline (localStorage persisted)
+    // Resizable & Collapsible Timeline (localStorage persisted, uncapped vertical stretch)
     const timelinePanel = $('sim-timeline-panel');
     const timelineHandle = $('sim-timeline-resize-handle');
     const timelineCollapseBtn = $('timeline-btn-collapse');
     const TL_HEIGHT_KEY = 'xband-timeline-height-v1';
     const TL_COLLAPSED_KEY = 'xband-timeline-collapsed-v1';
-    const clampTimelineHeight = (h: number) => Math.max(100, Math.min(320, Math.round(h)));
+    const DEFAULT_TL_HEIGHT = 108;
+    const getWorkspaceHeight = () => {
+      const mapPanelH = $('persistent-map-panel')?.getBoundingClientRect().height ?? 0;
+      return mapPanelH > 200 ? mapPanelH : (window.innerHeight || 900);
+    };
+    const getMaxTimelineHeight = () => Math.max(180, Math.round(getWorkspaceHeight() - 96));
+    const clampTimelineHeight = (h: number) => clampTimelineDockHeight(h, getWorkspaceHeight());
 
     let hasPersistedTimelineHeight = false;
     let savedTimelineHeight = 160;
@@ -899,7 +962,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     try {
       const rawStr = localStorage.getItem(TL_HEIGHT_KEY);
       const rawH = rawStr === null ? Number.NaN : Number(rawStr);
-      if (Number.isFinite(rawH) && rawH >= 100 && rawH <= 320) {
+      if (Number.isFinite(rawH) && rawH >= 96 && rawH <= Math.max(getMaxTimelineHeight(), 2400)) {
         hasPersistedTimelineHeight = true;
         savedTimelineHeight = clampTimelineHeight(rawH);
       }
@@ -909,28 +972,57 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
 
     const syncTimelineAriaNow = () => {
       if (!timelinePanel || !timelineHandle) return;
+      const maxH = getMaxTimelineHeight();
+      timelineHandle.setAttribute('aria-valuemax', String(maxH));
+      if (hasPersistedTimelineHeight && !timelinePanel.classList.contains('is-collapsed')) {
+        const reclamped = clampTimelineHeight(savedTimelineHeight);
+        if (reclamped !== savedTimelineHeight) {
+          savedTimelineHeight = reclamped;
+          timelinePanel.style.setProperty('--timeline-height', `${reclamped}px`);
+        }
+      }
       const h = Math.round(timelinePanel.getBoundingClientRect().height || savedTimelineHeight);
       timelineHandle.setAttribute('aria-valuenow', String(clampTimelineHeight(h)));
+    };
+
+    let tlResizeRafPending = false;
+    const scheduleTimelineCanvasResize = () => {
+      state.simTimelineRenderer?.resize?.();
+      if (tlResizeRafPending) return;
+      tlResizeRafPending = true;
+      requestAnimationFrame(() => {
+        tlResizeRafPending = false;
+        state.simTimelineRenderer?.resize?.();
+        actions.resizeCanvases();
+      });
     };
 
     const applyTimelineHeight = (heightPx: number, persist = true) => {
       if (!timelinePanel) return;
       const clamped = clampTimelineHeight(heightPx);
       timelinePanel.style.setProperty('--timeline-height', `${clamped}px`);
+      timelineHandle?.setAttribute('aria-valuemax', String(getMaxTimelineHeight()));
       timelineHandle?.setAttribute('aria-valuenow', String(clamped));
-      if (
-        persist &&
-        !timelinePanel.classList.contains('is-collapsed') &&
-        !timelinePanel.classList.contains('is-expanded')
-      ) {
+      if (persist && !timelinePanel.classList.contains('is-collapsed')) {
         hasPersistedTimelineHeight = true;
         savedTimelineHeight = clamped;
         try {
           localStorage.setItem(TL_HEIGHT_KEY, String(clamped));
         } catch (_) {}
       }
-      state.simTimelineRenderer?.resize?.();
-      requestAnimationFrame(() => actions.resizeCanvases());
+      scheduleTimelineCanvasResize();
+    };
+
+    const resetTimelineHeightToDefault = () => {
+      if (!timelinePanel) return;
+      hasPersistedTimelineHeight = false;
+      savedTimelineHeight = DEFAULT_TL_HEIGHT;
+      timelinePanel.style.removeProperty('--timeline-height');
+      try {
+        localStorage.removeItem(TL_HEIGHT_KEY);
+      } catch (_) {}
+      syncTimelineAriaNow();
+      scheduleTimelineCanvasResize();
     };
 
     const applyTimelineCollapsed = (collapsed: boolean, persist = true) => {
@@ -976,11 +1068,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
       let tlStartH = savedTimelineHeight;
       timelineHandle.addEventListener('pointerdown', (event: any) => {
         if (event.button !== 0) return;
-        if (
-          timelinePanel.classList.contains('is-collapsed') ||
-          timelinePanel.classList.contains('is-expanded')
-        )
-          return;
+        if (timelinePanel.classList.contains('is-collapsed')) return;
         tlDragging = true;
         tlStartY = event.clientY;
         tlStartH = timelinePanel.getBoundingClientRect().height || savedTimelineHeight;
@@ -993,6 +1081,11 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
         const nextH = tlStartH - (event.clientY - tlStartY);
         applyTimelineHeight(nextH, true);
       });
+      timelineHandle.addEventListener('dblclick', (event: any) => {
+        if (timelinePanel.classList.contains('is-collapsed')) return;
+        event.preventDefault();
+        resetTimelineHeightToDefault();
+      });
       const stopTimelineDrag = () => {
         if (!tlDragging) return;
         tlDragging = false;
@@ -1003,23 +1096,19 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
       timelineHandle.addEventListener('pointerup', stopTimelineDrag);
       timelineHandle.addEventListener('pointercancel', stopTimelineDrag);
       timelineHandle.addEventListener('keydown', (event: any) => {
-        if (
-          timelinePanel.classList.contains('is-collapsed') ||
-          timelinePanel.classList.contains('is-expanded')
-        )
-          return;
+        if (timelinePanel.classList.contains('is-collapsed')) return;
         const currentH = timelinePanel.getBoundingClientRect().height || savedTimelineHeight;
         if (event.key === 'ArrowUp') {
-          applyTimelineHeight(currentH + 12, true);
+          applyTimelineHeight(currentH + 16, true);
           event.preventDefault();
         } else if (event.key === 'ArrowDown') {
-          applyTimelineHeight(currentH - 12, true);
+          applyTimelineHeight(currentH - 16, true);
           event.preventDefault();
         } else if (event.key === 'Home') {
-          applyTimelineHeight(100, true);
+          applyTimelineHeight(96, true);
           event.preventDefault();
         } else if (event.key === 'End') {
-          applyTimelineHeight(320, true);
+          applyTimelineHeight(getMaxTimelineHeight(), true);
           event.preventDefault();
         }
       });

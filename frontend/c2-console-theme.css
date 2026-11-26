@@ -826,8 +826,8 @@ body.is-historical-mode .historical-mode-banner {
 }
 
 .persistent-map-mount {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 0%;
+  min-height: 96px;
   min-width: 0;
   display: flex;
 }
@@ -1712,7 +1712,7 @@ body.is-historical-mode .historical-mode-banner {
   flex: none;
   height: var(--timeline-height, 108px);
   min-height: 96px;
-  max-height: 320px;
+  max-height: calc(100% - 96px);
   display: flex;
   flex-direction: column;
   background: var(--lo-surface);
@@ -1735,8 +1735,8 @@ body.is-historical-mode .historical-mode-banner {
 }
 
 .sim-timeline-panel.is-expanded {
-  height: clamp(280px, 38vh, 440px);
-  max-height: none;
+  height: var(--timeline-height, clamp(280px, 38vh, 440px));
+  max-height: calc(100% - 96px);
 }
 
 .sim-timeline-panel.is-expanded .sim-timeline-canvas-container {
@@ -3059,6 +3059,10 @@ details.c2-card[open] > summary {
   }
   .map-resize-handle {
     display: none;
+  }
+  .persistent-map-mount {
+    flex: 1 1 auto;
+    min-height: 0;
   }
   .radar-canvas-container {
     min-height: clamp(360px, 48vh, 460px);
@@ -5516,6 +5520,158 @@ details.c2-card[open] > summary {
 @media (max-width: 720px) {
   .mentor02-waveform-grid,
   .mentor02-spawner-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* C2-TEAMS-AND-UX-01: Non-blocking inspector drag-hide, Teams manager & Node Edit Modal */
+#radar-container .map-node-details.is-dragging-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#radar-container .map-node-details[data-lock-mode="unlocked"] {
+  width: min(268px, calc(100% - 64px));
+  padding: 10px 12px;
+}
+
+#radar-container .map-node-details .c2-inspector-lock-hint {
+  font-family: var(--lo-mono, monospace);
+  font-size: 10px;
+  color: var(--lo-text-dim, #92a0b5);
+  margin-top: 6px;
+}
+
+.c2-team-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.c2-team-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.c2-team-row select,
+.c2-team-row input {
+  flex: 1 1 110px;
+  min-width: 0;
+  padding: 4px 7px;
+  font-size: 11px;
+  background: var(--lo-void, #0b0d12);
+  color: var(--lo-text-bright, #f4f7fb);
+  border: 1px solid var(--lo-line, #232a36);
+  border-radius: 4px;
+}
+
+.c2-team-status {
+  font-size: 10.5px;
+  color: var(--lo-text-dim, #92a0b5);
+  min-height: 14px;
+}
+
+.c2-team-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 5px;
+  font-family: var(--lo-mono, monospace);
+  font-size: 10px;
+  color: var(--lo-accent-bright, #38bdf8);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 3px;
+}
+
+.c2-fleet-callsign-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+}
+
+.c2-fleet-edit-btn {
+  padding: 1px 5px;
+  font-size: 11px;
+  line-height: 1.2;
+  background: transparent;
+  color: var(--lo-text-dim, #92a0b5);
+  border: 1px solid var(--lo-line, #232a36);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.c2-fleet-edit-btn:hover {
+  color: var(--lo-text-bright, #f4f7fb);
+  border-color: var(--lo-accent, #38bdf8);
+}
+
+.c2-fleet-check {
+  width: 13px;
+  height: 13px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.node-edit-modal-card {
+  width: 520px;
+  max-width: 94vw;
+}
+
+.node-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.node-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-modal-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lo-text-dim, #92a0b5);
+}
+
+.node-modal-field input,
+.node-modal-field select {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: var(--lo-void, #0b0d12);
+  color: var(--lo-text-bright, #f4f7fb);
+  border: 1px solid var(--lo-line-strong, #2e3746);
+  border-radius: 4px;
+}
+
+.node-modal-feedback {
+  min-height: 16px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--lo-text-dim, #92a0b5);
+}
+
+.node-modal-feedback.is-error {
+  color: #f87171;
+}
+
+.node-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@media (max-width: 600px) {
+  .node-modal-grid {
     grid-template-columns: 1fr;
   }
 }

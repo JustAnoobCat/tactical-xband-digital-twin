@@ -10,7 +10,8 @@ import type { QosNetworkSlaReport } from '../core/qosSlaEngine.ts';
 import type { TwinEvaluationReport } from '../core/digitalTwinCalibrationEngine.ts';
 import type { NetworkTrafficFrame, TrafficFlowRecord } from '../ui/networkTrafficInventory.ts';
 import { obstacleFootprintPoints } from '../core/obstacles.ts';
-import { evaluate5QiBearerSlaMetrics } from '../core/qosSlaEngine.ts';
+import { evaluate5QiBearerSlaMetrics, evaluateTeam5QiBearerSlaMetrics } from '../core/qosSlaEngine.ts';
+import { collectTeamsFromNodes, parseTeamSelection } from '../core/nodeRegistry.ts';
 import { evaluateNtnNodeSignaling } from '../core/ntnSignalingEngine.ts';
 import {
   evaluateWorkerRealTimeProfile,
@@ -552,7 +553,10 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       return;
     }
 
-    if (panel) panel.dataset.inspectTarget = 'node';
+    if (panel) {
+      panel.dataset.inspectTarget = 'node';
+      panel.dataset.lockMode = state.spatialLocked ? 'locked' : 'unlocked';
+    }
     if (titleEl) titleEl.textContent = 'Selected Node';
 
     let node: NodeTelemetryItem | undefined | null = null;
@@ -616,6 +620,8 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const rate = isTimelineHist ? 'Unavailable' : nodeAchievedRate(node);
     const rows = [
       ['ID / name', `${node.node_id} · ${node.name || `Node ${node.node_id}`}`],
+      ['Team', node.team_name || null],
+      ['Role', node.node_role || node.node_type || null],
       ['Registration', node.registration_state || null],
       [
         'Latitude',
@@ -665,15 +671,10 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       ],
       ['Sector handovers', typeof node.handover_count === 'number' ? `${node.handover_count}` : null],
     ].filter(([, value]) => value !== null && value !== undefined);
-    content.innerHTML = `<h3>${mapEscape(node.name || `Node ${node.node_id}`)} <span class="muted">#${node.node_id}</span></h3><div class="detail-sub">${mapEscape(isTimelineHist && histSnap ? `Historical #${histSnap.frameIndex}` : node.registration_state || 'Registration unavailable')} · ${mapEscape(nodeLinkLabel(node))}</div><div class="detail-grid">${rows.map(([label, value]) => `<span>${mapEscape(label)}</span><span>${mapEscape(value)}</span>`).join('')}</div>`;
-    const moveButton = $('map-node-details')?.querySelector<HTMLButtonElement>('[data-map-action="move"]');
-    if (moveButton) {
-      moveButton.disabled = state.spatialLocked || isTimelineHist;
-      moveButton.title =
-        state.spatialLocked || isTimelineHist ? 'Disable Spatial Lock / exit historical view to move nodes' : '';
-    }
+    const lockHint = state.spatialLocked ? 'Scenario Locked' : 'Unlocked · Drag node on map';
+    content.innerHTML = `<h3>${mapEscape(node.name || `Node ${node.node_id}`)} <span class="muted">#${node.node_id}</span></h3><div class="detail-sub">${mapEscape(isTimelineHist && histSnap ? `Historical #${histSnap.frameIndex}` : node.registration_state || 'Registration unavailable')} · ${mapEscape(nodeLinkLabel(node))} · ${mapEscape(lockHint)}</div><div class="detail-grid">${rows.map(([label, value]) => `<span>${mapEscape(label)}</span><span>${mapEscape(value)}</span>`).join('')}</div>`;
     $('map-node-details')
-      ?.querySelectorAll<HTMLButtonElement>('button:not([data-map-action="move"])')
+      ?.querySelectorAll<HTMLButtonElement>('button')
       .forEach(button => {
         button.disabled = false;
       });
@@ -689,6 +690,8 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     actions.disarmAllDestructiveConfirmations();
     state.inspectingAcn = false;
     state.inspectorDismissed = false;
+    state.selectedTeamId = null;
+    state.selectedTrafficTeamId = null;
     if (state.selectedNodeId !== nodeId && state.nodeMoveModeActive) {
       state.nodeMoveModeActive = false;
       actions.syncEditModeBanner();
@@ -1055,11 +1058,15 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const rows = [];
 
     for (const n of nodes) {
-      const role = getNodeRole(n.node_id, n.node_type);
+      const role = getNodeRole(n.node_id, n.node_role || n.node_type);
       const callsign = n.name || `S${n.node_id}`;
+      const teamName = typeof n.team_name === 'string' ? n.team_name : '';
       if (q) {
         const match =
-          String(n.node_id).includes(q) || callsign.toLowerCase().includes(q) || role.toLowerCase().includes(q);
+          String(n.node_id).includes(q) ||
+          callsign.toLowerCase().includes(q) ||
+          role.toLowerCase().includes(q) ||
+          teamName.toLowerCase().includes(q);
         if (!match) continue;
       }
 
@@ -1111,16 +1118,27 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       const tr = document.createElement('tr');
       if (isSelected) tr.classList.add('is-selected');
       tr.dataset.nodeId = String(n.node_id);
-      tr.onclick = () => {
+      tr.onclick = (ev: MouseEvent) => {
+        const editBtn = (ev?.target as HTMLElement | undefined)?.closest?.('[data-inv-edit]');
+        if (editBtn) {
+          ev.stopPropagation();
+          actions.openNodeEditModal(n.node_id);
+          return;
+        }
         if (typeof window.onTargetNodeChange === 'function') {
           window.onTargetNodeChange(n.node_id);
         }
       };
 
+      const teamPillHtml = teamName
+        ? ` <span class="c2-team-badge">[${escapeHtml(teamName)}]</span>`
+        : '';
+      const rowEditBtnHtml = `<button type="button" class="c2-fleet-edit-btn" data-inv-edit="${n.node_id}" title="Edit / Rename terminal" aria-label="Edit ${escapeHtml(callsign)}">&#9998;</button>`;
+
       tr.innerHTML = `
         <td style="text-align:left;font-family:var(--mono)">${Number(n.node_id)}</td>
         <td style="text-align:left;font-weight:600">
-          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${nodeColor};margin-right:6px;vertical-align:middle"></span>${escapeHtml(callsign)}
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${nodeColor};margin-right:6px;vertical-align:middle"></span>${escapeHtml(callsign)}${teamPillHtml} ${rowEditBtnHtml}
         </td>
         <td style="text-align:left;font-family:var(--sans)">${escapeHtml(role)}</td>
         <td style="font-family:var(--mono)">${txPwr}</td>
@@ -1150,27 +1168,76 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
   }
 
   function populateDropdownsOnce(nodes: TelemetryFrame['nodes_telemetry']) {
+    const teams = Array.isArray(nodes) ? collectTeamsFromNodes(nodes) : [];
+    const fleetFilter = $<HTMLSelectElement>('ops-fleet-team-filter');
+    if (fleetFilter && Array.isArray(nodes)) {
+      const filterKey = teams.map(t => `${t.teamId}:${t.teamName}:${t.nodeIds.length}`).join(',');
+      if (fleetFilter.dataset.lastKey !== filterKey) {
+        fleetFilter.dataset.lastKey = filterKey;
+        const prevVal = state.opsFleetTeamFilter ? `team:${state.opsFleetTeamFilter}` : 'all';
+        fleetFilter.innerHTML = '';
+        const allOpt = document.createElement('option');
+        allOpt.value = 'all';
+        allOpt.textContent = `All Teams (${nodes.length})`;
+        fleetFilter.appendChild(allOpt);
+        teams.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = `team:${t.teamId}`;
+          opt.textContent = `${t.teamName} (${t.nodeIds.length})`;
+          fleetFilter.appendChild(opt);
+        });
+        fleetFilter.value = Array.from(fleetFilter.options).some(o => o.value === prevVal) ? prevVal : 'all';
+      }
+    }
+
     ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select'].forEach(id => {
       const sel = $<HTMLSelectElement>(id);
       if (!sel || !Array.isArray(nodes)) return;
       if (nodes.length === 0) {
-        if (sel.dataset.lastKey === 'empty' && sel.children.length === 1) return;
+        if (sel.dataset.lastKey === 'empty' && sel.options.length === 1) return;
         sel.dataset.lastKey = 'empty';
         sel.innerHTML = '<option value="-1">No ground terminals (ACN only)</option>';
         sel.value = '-1';
         return;
       }
-      const key = nodes.map(n => `${n.node_id}:${n.name}:${n.node_type}`).join(',');
-      if (sel.dataset.lastKey === key && sel.children.length === nodes.length) return;
+      const key =
+        nodes.map(n => `${n.node_id}:${n.name}:${n.node_role || n.node_type}:${n.team_id || ''}:${n.team_name || ''}`).join(',');
+      if (sel.dataset.lastKey === key && sel.options.length >= nodes.length) return;
       sel.dataset.lastKey = key;
       sel.innerHTML = '';
+
+      const supportsTeamOptgroup = id === 'quickNodeSelect' || id === 'termNodeSelect';
+      if (supportsTeamOptgroup && teams.length > 0) {
+        const teamGroup = document.createElement('optgroup');
+        teamGroup.label = 'Tactical Teams';
+        teams.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = `team:${t.teamId}`;
+          opt.textContent = `Team: ${t.teamName} (${t.nodeIds.length} nodes)`;
+          teamGroup.appendChild(opt);
+        });
+        sel.appendChild(teamGroup);
+      }
+
+      const termGroup = supportsTeamOptgroup ? document.createElement('optgroup') : null;
+      if (termGroup) termGroup.label = 'Individual Terminals';
       nodes.forEach(n => {
-        const role = getNodeRole(n.node_id, n.node_type);
+        const role = getNodeRole(n.node_id, n.node_role || n.node_type);
         const opt = document.createElement('option');
         opt.value = String(n.node_id);
-        opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id} - ${role}`;
-        sel.appendChild(opt);
+        const teamSuffix = n.team_name ? ` [${n.team_name}]` : '';
+        opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id} - ${role}${teamSuffix}`;
+        (termGroup || sel).appendChild(opt);
       });
+      if (termGroup) sel.appendChild(termGroup);
+
+      if (supportsTeamOptgroup && state.selectedTeamId) {
+        const teamVal = `team:${state.selectedTeamId}`;
+        if (Array.from(sel.options).some(o => o.value === teamVal)) {
+          sel.value = teamVal;
+          return;
+        }
+      }
       if (nodes.some(n => n.node_id === state.selectedNodeId)) {
         sel.value = String(state.selectedNodeId);
       } else if (nodes.length > 0) {
@@ -1202,7 +1269,13 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         ? state.latestTelemetry.active_gantt_allocations
         : [];
 
-    const report = evaluate5QiBearerSlaMetrics(nodes, allocs);
+    const activeTeamId = state.selectedTeamId;
+    const report = activeTeamId
+      ? evaluateTeam5QiBearerSlaMetrics(nodes, activeTeamId, allocs)
+      : evaluate5QiBearerSlaMetrics(nodes, allocs);
+    const activeTeamName = activeTeamId
+      ? (nodes.find(n => n.team_id === activeTeamId)?.team_name ?? activeTeamId)
+      : null;
 
     const jBadge = $('qos-jains-fairness');
     if (jBadge) {
@@ -1214,7 +1287,8 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
 
     const slaBadge = $('qos-overall-sla');
     if (slaBadge) {
-      slaBadge.textContent = `Overall 3GPP 5QI SLA: ${report.overallSlaCompliancePct.toFixed(1)}%`;
+      const teamPrefix = activeTeamName ? `TEAM: ${activeTeamName} · ` : '';
+      slaBadge.textContent = `${teamPrefix}Overall 3GPP 5QI SLA: ${report.overallSlaCompliancePct.toFixed(1)}%`;
       if (report.overallSlaCompliancePct >= 95.0) slaBadge.className = 'kpi-badge badge-emerald';
       else if (report.overallSlaCompliancePct >= 75.0) slaBadge.className = 'kpi-badge badge-amber';
       else slaBadge.className = 'kpi-badge badge-danger';
@@ -1583,8 +1657,23 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
   };
 
   window.onTrafficNodeSelectChange = function(nodeIdStr) {
-    const nid = Number(nodeIdStr);
+    const raw = String(nodeIdStr ?? '').trim();
+    const teamKey = parseTeamSelection(raw);
+    if (teamKey) {
+      state.selectedTrafficTeamId = teamKey;
+      state.selectedTeamId = teamKey;
+      if (state.latestTelemetry) renderNetworkTrafficInventory(state.latestTelemetry);
+      return;
+    }
+    if (raw === 'all') {
+      state.selectedTrafficTeamId = null;
+      state.selectedTrafficNodeId = -1;
+      if (state.latestTelemetry) renderNetworkTrafficInventory(state.latestTelemetry);
+      return;
+    }
+    const nid = Number(raw);
     if (Number.isInteger(nid)) {
+      state.selectedTrafficTeamId = null;
       state.selectedTrafficNodeId = nid;
       if (state.latestTelemetry) renderNetworkTrafficInventory(state.latestTelemetry);
     }
@@ -1631,18 +1720,43 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const trafficFrame = toTrafficFrame(frame);
 
     const nodeSel = $<HTMLSelectElement>('traffic-node-select');
+    const teams = collectTeamsFromNodes(nodes);
     if (nodeSel && nodes.length > 0) {
-      const key = nodes.map(n => n.node_id).join(',');
+      const key =
+        nodes.map(n => `${n.node_id}:${n.name}:${n.team_id || ''}:${n.team_name || ''}`).join(',');
       if (nodeSel.dataset.lastKey !== key) {
         nodeSel.dataset.lastKey = key;
         nodeSel.innerHTML = '';
+        const allOpt = document.createElement('option');
+        allOpt.value = 'all';
+        allOpt.textContent = `All Nodes (${nodes.length})`;
+        nodeSel.appendChild(allOpt);
+        if (teams.length > 0) {
+          const teamGroup = document.createElement('optgroup');
+          teamGroup.label = 'Tactical Teams';
+          teams.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = `team:${t.teamId}`;
+            opt.textContent = `Team: ${t.teamName} (${t.nodeIds.length} nodes)`;
+            teamGroup.appendChild(opt);
+          });
+          nodeSel.appendChild(teamGroup);
+        }
+        const termGroup = document.createElement('optgroup');
+        termGroup.label = 'Individual Terminals';
         nodes.forEach(n => {
           const opt = document.createElement('option');
           opt.value = String(n.node_id);
-          opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id}`;
-          nodeSel.appendChild(opt);
+          opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id}${n.team_name ? ` [${n.team_name}]` : ''}`;
+          termGroup.appendChild(opt);
         });
-        if (nodes.some(n => n.node_id === state.selectedTrafficNodeId)) {
+        nodeSel.appendChild(termGroup);
+
+        if (state.selectedTrafficTeamId && Array.from(nodeSel.options).some(o => o.value === `team:${state.selectedTrafficTeamId}`)) {
+          nodeSel.value = `team:${state.selectedTrafficTeamId}`;
+        } else if (state.selectedTrafficNodeId === -1) {
+          nodeSel.value = 'all';
+        } else if (nodes.some(n => n.node_id === state.selectedTrafficNodeId)) {
           nodeSel.value = String(state.selectedTrafficNodeId);
         } else {
           state.selectedTrafficNodeId = nodes[0].node_id;
@@ -1651,7 +1765,12 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       }
     }
 
-    const flows = networkTrafficTracker.getFlowRecords(trafficFrame);
+    const activeTrafficSelection = state.selectedTrafficTeamId
+      ? `team:${state.selectedTrafficTeamId}`
+      : state.selectedTrafficNodeId < 0
+        ? 'all'
+        : state.selectedTrafficNodeId;
+    const flows = networkTrafficTracker.getFlowRecordsForSelection(activeTrafficSelection, trafficFrame);
     const combined = networkTrafficTracker.getCombinedNetworkSummary(flows);
 
     setText('traffic-agg-tx', formatTrafficBytes(combined.totalPayloadTransmittedBytes));
@@ -1674,8 +1793,52 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         : 'Min: —'
     );
 
-    const nodeSummary = networkTrafficTracker.getPerNodeSummary(state.selectedTrafficNodeId, trafficFrame);
-    if (nodeSummary) {
+    const teamSummary = state.selectedTrafficTeamId
+      ? networkTrafficTracker.getTeamSummary(state.selectedTrafficTeamId, trafficFrame)
+      : null;
+    const nodeSummary = !teamSummary && state.selectedTrafficNodeId >= 0
+      ? networkTrafficTracker.getPerNodeSummary(state.selectedTrafficNodeId, trafficFrame)
+      : null;
+    if (teamSummary) {
+      setText('traffic-node-header', `TEAM: ${teamSummary.teamName} (${teamSummary.memberCount} nodes)`);
+      setText(
+        'traffic-node-role-badge',
+        `5QI Q: C2:${teamSummary.c2Packets} · V:${teamSummary.voicePackets} · Vid:${teamSummary.videoPackets} · Img:${teamSummary.photoPackets}`
+      );
+      const badgeInfo = getTrafficStatusBadge(teamSummary.linkStatus);
+      const badgeEl = $('traffic-node-status-badge');
+      if (badgeEl) {
+        badgeEl.className = `kpi-badge ${badgeInfo.badgeClass}`;
+        badgeEl.textContent = badgeInfo.label;
+      }
+      setText('traffic-node-tx', formatTrafficBytes(teamSummary.totalDataTransmittedBytes));
+      setText('traffic-node-rx', formatTrafficBytes(teamSummary.totalDataReceivedBytes));
+      setText('traffic-node-ul-rate', formatTrafficRate(teamSummary.currentUploadRateMbps));
+      setText('traffic-node-dl-rate', formatTrafficRate(teamSummary.currentDownloadRateMbps));
+      setText('traffic-node-deliveries', String(teamSummary.totalSuccessfulTransfers));
+      setText('traffic-node-snr', formatTrafficSnr(teamSummary.averageSnrDb));
+      setText('traffic-node-availability', `${teamSummary.communicationAvailabilityPct.toFixed(1)}%`);
+      setText('traffic-node-links', `${teamSummary.activeLinksCount} / ${teamSummary.memberCount}`);
+      const modcodEl = $('traffic-node-modcod');
+      if (modcodEl) modcodEl.textContent = `TEAM: ${teamSummary.teamName}`;
+      setText('flow-node-source-title', `TEAM: ${teamSummary.teamName}`);
+      setText('flow-node-source-role', `${teamSummary.memberCount} Member Terminals`);
+      setText('flow-node-source-rate', `UL: ${formatTrafficRate(teamSummary.currentUploadRateMbps)}`);
+      setText('flow-uplink-snr', `Avg SNR: ${formatTrafficSnr(teamSummary.averageSnrDb)}`);
+      const ulLine = $('flow-uplink-line');
+      const isUlActive = teamSummary.linkStatus === 'CONNECTED' || teamSummary.linkStatus === 'DEGRADED';
+      if (ulLine) ulLine.className = isUlActive ? 'traffic-flow-line is-active' : 'traffic-flow-line';
+      setText('flow-uplink-label', isUlActive ? '▸▸ Team Uplink (Active)' : '╌╌ Team Uplink (Outage)');
+      const flowBadge = $('traffic-flow-mode-badge');
+      if (flowBadge) {
+        flowBadge.className = isUlActive ? 'kpi-badge badge-emerald' : 'kpi-badge badge-neutral';
+        flowBadge.textContent = isUlActive ? 'TEAM AGGREGATE' : 'TEAM OUTAGE';
+      }
+      const narrative = $('traffic-flow-narrative');
+      if (narrative) {
+        narrative.textContent = `Tactical Team ${teamSummary.teamName}: ${teamSummary.activeLinksCount}/${teamSummary.memberCount} terminals active, combined UL ${formatTrafficRate(teamSummary.currentUploadRateMbps)}, 5QI queue backlog ${teamSummary.c2Packets + teamSummary.voicePackets + teamSummary.videoPackets + teamSummary.photoPackets} pkts.`;
+      }
+    } else if (nodeSummary) {
       setText('traffic-node-header', `Node ${nodeSummary.nodeId}: ${nodeSummary.callsign}`);
       setText('traffic-node-role-badge', nodeSummary.role);
 
@@ -2145,7 +2308,9 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     if (frame.nodes_telemetry) {
       networkTrafficTracker.ingest(toTrafficFrame(frame));
     }
-    const nodesKey = Array.isArray(frame.nodes_telemetry) ? frame.nodes_telemetry.map(n => n.node_id).join(',') : '';
+    const nodesKey = Array.isArray(frame.nodes_telemetry)
+      ? frame.nodes_telemetry.map(n => `${n.node_id}:${n.name}:${n.team_id || ''}:${n.node_role || n.node_type}`).join(',')
+      : '';
     const hasNodeListTransition = Boolean(frame.nodes_telemetry && nodesKey !== state.lastRenderedNodesKey);
     const nowMs = performance.now();
     if (!force && !hasNodeListTransition && nowMs - lastDomUpdateMs < DOM_UPDATE_INTERVAL_MS) {

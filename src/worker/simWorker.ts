@@ -2954,6 +2954,7 @@ export class SimulationWorkerManager {
         }
         this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
         this.emitProfileFrame();
+        if (this.isPaused) this.emitCurrentTelemetryFrame(this.getLiveAcnPosition(), this.simTimeS);
 
         const res: WorkerCommandResult = {
           type: 'COMMAND_RESULT',
@@ -2966,6 +2967,16 @@ export class SimulationWorkerManager {
         };
         this.emitHostMessage(res);
         return res;
+      }
+
+      case 'TEAM_ASSIGN': {
+        const teamRes = NodeLifecycleManager.assignTeam({
+          msg, nodesStatic: this.nodesStatic, nodesTac: this.nodesTac,
+          nodesReactive: this.nodesReactive, nodeRegistry: this.nodeRegistry,
+        });
+        if (!teamRes.accepted) return reject(teamRes.reason ?? 'TEAM_ASSIGN rejected.');
+        if (this.isPaused) this.emitCurrentTelemetryFrame(this.getLiveAcnPosition(), this.simTimeS);
+        return result(true);
       }
 
       case 'TRIGGER_AI_NODE_REPOSITION': {

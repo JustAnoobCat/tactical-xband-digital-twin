@@ -306,6 +306,91 @@ function drawAcn4SectorAndSweepOverlay(
   ctx.restore();
 }
 
+function drawAcnTrajectoryTrack2d(
+  ctx: CanvasRenderingContext2D,
+  worldToScreenFn: (xM: number, yM: number) => RadarPoint2D,
+  flightPath: ReadonlyArray<readonly [number, number]> | undefined,
+  trajectoryConfig: {
+    readonly trajectory_mode?: string;
+    readonly center_x_m?: number;
+    readonly center_y_m?: number;
+    readonly orbit_a_m?: number;
+    readonly orbit_b_m?: number;
+    readonly orbit_rotation_deg?: number;
+    readonly waypoints?: ReadonlyArray<{ readonly x_m: number; readonly y_m: number }>;
+  } | null | undefined,
+  accentColor: string
+): void {
+  const pts: Array<{ xM: number; yM: number }> = [];
+  if (Array.isArray(flightPath) && flightPath.length >= 2) {
+    for (const p of flightPath) {
+      if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+        pts.push({ xM: p[0], yM: p[1] });
+      }
+    }
+  } else if (trajectoryConfig?.trajectory_mode === 'waypoints' && Array.isArray(trajectoryConfig.waypoints)) {
+    for (const wp of trajectoryConfig.waypoints) {
+      if (Number.isFinite(wp.x_m) && Number.isFinite(wp.y_m)) {
+        pts.push({ xM: wp.x_m, yM: wp.y_m });
+      }
+    }
+  } else {
+    const mode = String(trajectoryConfig?.trajectory_mode ?? 'ellipse').toLowerCase();
+    if (mode === 'ellipse' || mode === 'elliptical') {
+      const cx = Number.isFinite(trajectoryConfig?.center_x_m) ? Number(trajectoryConfig?.center_x_m) : 0;
+      const cy = Number.isFinite(trajectoryConfig?.center_y_m) ? Number(trajectoryConfig?.center_y_m) : 0;
+      const a = Number.isFinite(trajectoryConfig?.orbit_a_m) && Number(trajectoryConfig?.orbit_a_m) > 0
+        ? Number(trajectoryConfig?.orbit_a_m)
+        : 20000;
+      const b = Number.isFinite(trajectoryConfig?.orbit_b_m) && Number(trajectoryConfig?.orbit_b_m) > 0
+        ? Number(trajectoryConfig?.orbit_b_m)
+        : 10000;
+      const rotDeg = Number.isFinite(trajectoryConfig?.orbit_rotation_deg) ? Number(trajectoryConfig?.orbit_rotation_deg) : 35;
+      const phi = (rotDeg * Math.PI) / 180;
+      const cosPhi = Math.cos(phi);
+      const sinPhi = Math.sin(phi);
+      const segments = 64;
+      for (let i = 0; i < segments; i++) {
+        const theta = (i / segments) * TAU;
+        const xr = a * Math.cos(theta);
+        const yr = b * Math.sin(theta);
+        pts.push({
+          xM: cx + xr * cosPhi - yr * sinPhi,
+          yM: cy + xr * sinPhi + yr * cosPhi,
+        });
+      }
+    }
+  }
+
+  if (pts.length < 2) return;
+
+  ctx.save();
+  ctx.strokeStyle = accentColor;
+  ctx.globalAlpha = 0.42;
+  ctx.lineWidth = 1.25;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  const p0 = worldToScreenFn(pts[0].xM, pts[0].yM);
+  ctx.moveTo(p0.x, p0.y);
+  for (let i = 1; i < pts.length; i++) {
+    const p = worldToScreenFn(pts[i].xM, pts[i].yM);
+    ctx.lineTo(p.x, p.y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function formatNodeRadarCallout(nodeId: number, callsign?: string | null, teamName?: string | null): string {
+  const baseTag = formatRadarNodeTag(nodeId, callsign);
+  if (typeof teamName !== 'string' || !teamName.trim()) return baseTag;
+  const trimmed = teamName.trim();
+  const shortWord = trimmed.split(/\s+/)[0] || trimmed;
+  const badge = shortWord.length > 10 ? shortWord.slice(0, 10) : shortWord;
+  return `${baseTag} [${badge}]`;
+}
+
 const BIOME_AO_LABELS: Readonly<Record<string, string>> = Object.freeze({
   alpine_mountain: 'LADAKH AO',
   arid_desert: 'THAR DESERT AO',
@@ -968,6 +1053,7 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       ? histSnap.nodes.map((n: any) => ({
           nodeId: Number(n.nodeId),
           callsign: n.callsign ?? null,
+          teamName: n.teamName ?? n.team_name ?? null,
           posX: Number(n.posX),
           posY: Number(n.posY),
           snrDb: n.snrDb,
@@ -977,7 +1063,8 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
         }))
       : (liveTelemetry?.nodes_telemetry || []).map((n: any) => ({
           nodeId: Number(n.node_id),
-          callsign: n.callsign ?? n.label ?? null,
+          callsign: n.callsign ?? n.label ?? n.name ?? null,
+          teamName: n.team_name ?? n.teamName ?? null,
           posX: Number(n.x_m ?? n.position?.[0] ?? 0),
           posY: Number(n.y_m ?? n.position?.[1] ?? 0),
           snrDb: n.snr_db,
@@ -987,6 +1074,18 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
         }));
 
     const selectedNodeId = deps.getSelectedNodeId();
+
+    // 5.0 Planned ACN Elliptical / Waypoint Trajectory Orbit Track
+    const visTrajectory = mapLayers?.getEffectiveVisibility('entities.trajectory', focusCtx) ?? true;
+    if (visTrajectory) {
+      drawAcnTrajectoryTrack2d(
+        ctx,
+        (xM, yM) => worldToScreen(xM, yM, w, h),
+        !histSnap ? liveTelemetry?.acn_telemetry?.flight_path : undefined,
+        !histSnap ? liveTelemetry?.trajectory_config : undefined,
+        palette.accent
+      );
+    }
 
     // 5a. ACN 4-Sector Footprint & Rotating Radar Sweep Overlay
     const visAcnSectors = mapLayers?.getEffectiveVisibility('rf.acnSectors', focusCtx) ?? true;
@@ -1082,7 +1181,7 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
               y: nodePt.y,
               status: node.markerStatus,
               selected: String(selectedNodeId) === String(node.nodeId),
-              label: formatRadarNodeTag(node.nodeId, node.callsign),
+              label: formatNodeRadarCallout(node.nodeId, node.callsign, node.teamName),
               snrDb: typeof node.snrDb === 'number' ? node.snrDb : null,
             };
           })
@@ -1103,7 +1202,7 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
         ctx.fill();
         ctx.stroke();
 
-        const nodeTag = formatRadarNodeTag(node.nodeId, node.callsign);
+        const nodeTag = formatNodeRadarCallout(node.nodeId, node.callsign, node.teamName);
         ctx.font = `10px ${MONO}`;
         const tagW = Math.max(20, ctx.measureText(nodeTag).width || nodeTag.length * 6.5);
         const placed = activeLabelPlacer.placeLabel(nodePt.x + 8, nodePt.y - 12, tagW, 12, nodePt.x, nodePt.y);
@@ -1250,4 +1349,77 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
     },
     getActiveLabelPlacer: () => activeLabelPlacer,
   };
+}
+
+export interface HeadlessRadar2dOptions {
+  readonly width: number;
+  readonly height: number;
+  readonly rangeM?: number;
+  readonly panOffsetX_m?: number;
+  readonly panOffsetY_m?: number;
+  readonly flightTrajectoryMode?: 'ELLIPTICAL' | 'WAYPOINTS' | 'ellipse' | 'waypoints';
+  readonly acnPositionEnu?: readonly [number, number, number];
+  readonly telemetry?: any;
+  readonly selectedNodeId?: number | string | null;
+}
+
+/**
+ * Direct headless entry point sharing the authoritative 2D Radar renderer pipeline.
+ */
+export function drawRadar2D(ctx: CanvasRenderingContext2D, options: HeadlessRadar2dOptions): void {
+  const width = options.width;
+  const height = options.height;
+  const rangeM = options.rangeM ?? 60000;
+  const panX = options.panOffsetX_m ?? 0;
+  const panY = options.panOffsetY_m ?? 0;
+  const modeNormalized =
+    String(options.flightTrajectoryMode ?? options.telemetry?.trajectory_config?.trajectory_mode ?? 'ellipse')
+      .toLowerCase() === 'waypoints'
+      ? 'waypoints'
+      : 'ellipse';
+  const acnPos = options.acnPositionEnu;
+  const baseTel = options.telemetry ?? {};
+  const mergedTelemetry = {
+    ...baseTel,
+    trajectory_config: {
+      ...(baseTel.trajectory_config ?? {}),
+      trajectory_mode: modeNormalized,
+    },
+    acn_telemetry: {
+      ...(baseTel.acn_telemetry ?? {}),
+      ...(acnPos
+        ? {
+            pos_x: acnPos[0],
+            pos_y: acnPos[1],
+            pos_z: acnPos[2],
+          }
+        : {}),
+    },
+  };
+  const stubCanvas = {
+    width,
+    height,
+    parentElement: { clientWidth: width, clientHeight: height },
+  } as unknown as HTMLCanvasElement;
+  const renderer = createRadar2dRenderer({
+    canvas: stubCanvas,
+    ctx,
+    getRangeM: () => rangeM,
+    getPanOffset: () => ({ xM: panX, yM: panY }),
+    getStageViewMode: () => '2d',
+    getTerrainMapMode: () => 'radar',
+    getLatestTelemetry: () => mergedTelemetry,
+    getHistoricalSnapshot: () => null,
+    getActiveTerrainBounds: () => null,
+    getHillshadeCanvas: () => null,
+    getBackdropCanvas: () => null,
+    getBackdropMode: () => 'relief',
+    getMapLayerRegistry: () => null,
+    getContextualMapContext: () => ({}),
+    getSelectedNodeId: () => options.selectedNodeId ?? null,
+    getToolboxState: () => ({}),
+    getObstacleEditor: () => null,
+    isMgrsGridActive: () => false,
+  });
+  renderer.renderRadar();
 }

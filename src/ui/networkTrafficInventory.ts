@@ -15,6 +15,7 @@ import { classifyLinkCommunicationStatus, LinkCommunicationStatus } from '../cor
 import { DEFAULT_ACN_FLIGHT_CONFIG, DEFAULT_RF_CONFIG } from '../core/config';
 import { LinkBudgetEngine } from '../core/linkBudget';
 import { T_FRAME_S } from '../core/scheduler';
+import { nodeMatchesTeam, parseTeamSelection } from '../core/nodeRegistry';
 import { getNodeRole } from './nodeInventory';
 
 export interface TrafficNodeTelemetry {
@@ -22,6 +23,16 @@ export interface TrafficNodeTelemetry {
   readonly node_id: number;
   readonly name?: string;
   readonly node_type?: string;
+  readonly team_id?: string;
+  readonly team_name?: string;
+  readonly c2_backlog?: number;
+  readonly voice_backlog?: number;
+  readonly video_backlog?: number;
+  readonly photo_backlog?: number;
+  readonly c2_bytes?: number;
+  readonly voice_bytes?: number;
+  readonly video_bytes?: number;
+  readonly photo_bytes?: number;
   readonly snr_db?: number;
   readonly bitrate_mbps?: number;
   readonly bitrate_bps?: number;
@@ -100,6 +111,29 @@ export interface PerNodeTrafficSummary {
   readonly linkStatus: LinkCommunicationStatus;
   readonly communicationAvailabilityPct: number;
   readonly activeLinksCount: number;
+}
+
+export interface TeamTrafficSummary {
+  readonly teamId: string;
+  readonly teamName: string;
+  readonly memberCount: number;
+  readonly totalDataTransmittedBytes: number;
+  readonly totalDataReceivedBytes: number;
+  readonly currentUploadRateMbps: number;
+  readonly currentDownloadRateMbps: number;
+  readonly totalSuccessfulTransfers: number;
+  readonly averageSnrDb: number | null;
+  readonly linkStatus: LinkCommunicationStatus;
+  readonly communicationAvailabilityPct: number;
+  readonly activeLinksCount: number;
+  readonly c2Packets: number;
+  readonly voicePackets: number;
+  readonly videoPackets: number;
+  readonly photoPackets: number;
+  readonly c2Bytes: number;
+  readonly voiceBytes: number;
+  readonly videoBytes: number;
+  readonly photoBytes: number;
 }
 
 export interface CombinedNetworkSummary {
@@ -515,6 +549,103 @@ export class NetworkTrafficTracker {
       averageSnrDb: avgSnr,
       minimumSnrDb: minSnr,
     };
+  }
+
+  /**
+   * Generates aggregated traffic & 5QI queue statistics for a tactical team (`team:<teamId>`).
+   */
+  public getTeamSummary(teamIdOrSelection: string, frame: NetworkTrafficFrame): TeamTrafficSummary | null {
+    const key = parseTeamSelection(teamIdOrSelection) ?? teamIdOrSelection;
+    if (!key) return null;
+    const members = frame.nodes.filter(node => nodeMatchesTeam(node, key));
+    if (members.length === 0) return null;
+
+    let txBytes = 0;
+    let rxBytes = 0;
+    let ulRate = 0;
+    let dlRate = 0;
+    let deliveries = 0;
+    let activeLinks = 0;
+    let availSum = 0;
+    let c2Packets = 0;
+    let voicePackets = 0;
+    let videoPackets = 0;
+    let photoPackets = 0;
+    let c2Bytes = 0;
+    let voiceBytes = 0;
+    let videoBytes = 0;
+    let photoBytes = 0;
+    const snrs: number[] = [];
+    let bestStatus: LinkCommunicationStatus = 'OUTAGE_DISCONNECTED';
+
+    for (const node of members) {
+      const summary = this.getPerNodeSummary(node.node_id, frame);
+      if (summary) {
+        txBytes += summary.totalDataTransmittedBytes;
+        rxBytes += summary.totalDataReceivedBytes;
+        ulRate += summary.currentUploadRateMbps;
+        dlRate = Math.max(dlRate, summary.currentDownloadRateMbps);
+        deliveries += summary.totalSuccessfulTransfers;
+        activeLinks += summary.activeLinksCount;
+        availSum += summary.communicationAvailabilityPct;
+        if (finite(summary.snrDb)) snrs.push(summary.snrDb);
+        if (summary.linkStatus === 'CONNECTED') bestStatus = 'CONNECTED';
+        else if (summary.linkStatus === 'DEGRADED' && bestStatus !== 'CONNECTED') bestStatus = 'DEGRADED';
+      }
+      c2Packets += finite(node.c2_backlog) ? Math.max(0, node.c2_backlog) : 0;
+      voicePackets += finite(node.voice_backlog) ? Math.max(0, node.voice_backlog) : 0;
+      videoPackets += finite(node.video_backlog) ? Math.max(0, node.video_backlog) : 0;
+      photoPackets += finite(node.photo_backlog) ? Math.max(0, node.photo_backlog) : 0;
+      c2Bytes += finite(node.c2_bytes) ? Math.max(0, node.c2_bytes) : 0;
+      voiceBytes += finite(node.voice_bytes) ? Math.max(0, node.voice_bytes) : 0;
+      videoBytes += finite(node.video_bytes) ? Math.max(0, node.video_bytes) : 0;
+      photoBytes += finite(node.photo_bytes) ? Math.max(0, node.photo_bytes) : 0;
+    }
+
+    const teamName = members.find(m => m.team_name)?.team_name ?? key;
+    return {
+      teamId: key,
+      teamName,
+      memberCount: members.length,
+      totalDataTransmittedBytes: txBytes,
+      totalDataReceivedBytes: rxBytes,
+      currentUploadRateMbps: Number(ulRate.toFixed(2)),
+      currentDownloadRateMbps: Number(dlRate.toFixed(2)),
+      totalSuccessfulTransfers: deliveries,
+      averageSnrDb: snrs.length > 0 ? Number((snrs.reduce((a, b) => a + b, 0) / snrs.length).toFixed(1)) : null,
+      linkStatus: activeLinks > 0 ? bestStatus : 'OUTAGE_DISCONNECTED',
+      communicationAvailabilityPct: Number((availSum / members.length).toFixed(1)),
+      activeLinksCount: activeLinks,
+      c2Packets,
+      voicePackets,
+      videoPackets,
+      photoPackets,
+      c2Bytes,
+      voiceBytes,
+      videoBytes,
+      photoBytes,
+    };
+  }
+
+  /**
+   * Filters flow records by `'all'`, `'team:<teamId>'`, or numeric node ID.
+   */
+  public getFlowRecordsForSelection(selection: string | number, frame: NetworkTrafficFrame): TrafficFlowRecord[] {
+    const all = this.getFlowRecords(frame);
+    const selStr = String(selection ?? '').trim();
+    if (!selStr || selStr === 'all') return all;
+    const teamKey = parseTeamSelection(selStr);
+    if (teamKey) {
+      const memberIds = new Set(
+        frame.nodes.filter(n => nodeMatchesTeam(n, teamKey)).map(n => n.node_id)
+      );
+      return all.filter(r => r.fromId === 'ACN' || (typeof r.fromId === 'number' && memberIds.has(r.fromId)));
+    }
+    const nid = Number(selStr);
+    if (Number.isInteger(nid) && nid >= 0) {
+      return all.filter(r => r.fromId === 'ACN' || r.fromId === nid);
+    }
+    return all;
   }
 }
 

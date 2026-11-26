@@ -11,6 +11,7 @@
  */
 
 import { CANONICAL_5QI_PDB_MS, QOS_PROFILES } from './queues';
+import { nodeMatchesTeam, parseTeamSelection } from './nodeRegistry';
 
 export type SlaVerdict = 'SLA_COMPLIANT' | 'SLA_AT_RISK' | 'SLA_BREACHED';
 
@@ -406,4 +407,35 @@ export function evaluate5QiBearerSlaMetrics(
     totalNetworkBacklogBits,
     bearers,
   };
+}
+
+/**
+ * Filters node telemetry items belonging to a tactical team (`team:<teamId>` or raw `<teamId>`).
+ */
+export function filterNodesByTeam<T extends { readonly team_id?: string | null; readonly teamId?: string | null; readonly team_name?: string | null; readonly teamName?: string | null }>(
+  nodes: readonly T[],
+  teamIdOrSelection: string
+): readonly T[] {
+  if (!Array.isArray(nodes)) return [];
+  const key = parseTeamSelection(teamIdOrSelection) ?? teamIdOrSelection;
+  if (!key) return nodes;
+  return nodes.filter(node => nodeMatchesTeam(node, key));
+}
+
+/**
+ * Evaluates 3GPP TS 23.501 5QI bearer SLA compliance scoped to a single tactical team.
+ */
+export function evaluateTeam5QiBearerSlaMetrics(
+  nodes: readonly any[],
+  teamIdOrSelection: string,
+  ganttAllocations?: readonly any[]
+): QosNetworkSlaReport {
+  const members = filterNodesByTeam(nodes, teamIdOrSelection);
+  const memberIds = new Set(
+    members.map((n: any) => n.nodeId ?? n.node_id).filter((id: unknown): id is number => typeof id === 'number')
+  );
+  const filteredAllocs = Array.isArray(ganttAllocations)
+    ? ganttAllocations.filter((a: any) => memberIds.has(a.nodeId ?? a.node_id))
+    : undefined;
+  return evaluate5QiBearerSlaMetrics(members, filteredAllocs);
 }

@@ -374,6 +374,11 @@ export interface AppState {
   smoothedJitterMs: number;
   selectedNtnNodeId: number;
   selectedTrafficNodeId: number;
+  selectedTrafficTeamId: string | null;
+  selectedTeamId: string | null;
+  opsFleetTeamFilter: string | null;
+  checkedFleetNodeIds: Set<number>;
+  nodeModalTargetId: number;
   trafficSortColumn: string;
   trafficSortAscending: boolean;
   currentTrafficSubtab: string;
@@ -655,6 +660,9 @@ export interface AppActions {
   handleAglCommandResult: (msg: WorkerCommandResult) => void;
   handleNodeCommandResult: (msg: WorkerCommandResult) => void;
   initNodeInventoryToolbar: () => void;
+  openNodeEditModal: (nodeId?: number) => void;
+  closeNodeEditModal: () => void;
+  syncMapNodeDragVisibility: (isDragging: boolean) => void;
   syncNodeDropdowns: (nodeId: number) => void;
   resizeCanvases: () => void;
   scheduleResizeCanvases: () => void;
@@ -736,6 +744,15 @@ export function createAppContext(worker: Worker): AppContext {
       if (typeof window.onTargetNodeChange === 'function') {
         window.onTargetNodeChange(Number(nid));
       }
+    },
+    onEditNode: (nid: number) => {
+      actions.openNodeEditModal?.(nid);
+    },
+    getSelectedTeamFilter: () => state.opsFleetTeamFilter,
+    getCheckedFleetNodeIds: () => state.checkedFleetNodeIds,
+    onToggleFleetNodeCheck: (nid: number, checked: boolean) => {
+      if (checked) state.checkedFleetNodeIds.add(nid);
+      else state.checkedFleetNodeIds.delete(nid);
     },
   });
 
@@ -952,6 +969,11 @@ export function createAppContext(worker: Worker): AppContext {
     smoothedJitterMs: 0.42,
     selectedNtnNodeId: 1,
     selectedTrafficNodeId: 4,
+    selectedTrafficTeamId: null,
+    selectedTeamId: null,
+    opsFleetTeamFilter: null,
+    checkedFleetNodeIds: new Set<number>(),
+    nodeModalTargetId: -1,
     trafficSortColumn: 'fromName',
     trafficSortAscending: true,
     currentTrafficSubtab: 'inventory',

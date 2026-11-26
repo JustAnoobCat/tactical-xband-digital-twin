@@ -32,6 +32,13 @@ import {
 import { syncCanvasDpr } from '../ui/pathProfileTopView.ts';
 import { getLatticeCanvasPalette } from '../ui/canvasTheme.ts';
 import { MapLayersPanel } from '../ui/workbench/mapLayersPanel.ts';
+import {
+  collectTeamsFromNodes,
+  DEFAULT_TACTICAL_TEAMS,
+  nodeMatchesTeam,
+  normalizeTeamId,
+  parseTeamSelection,
+} from '../core/nodeRegistry.ts';
 
 const TABS = [
   'tab-overview',
@@ -615,11 +622,22 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     actions.updateMapLibreCursor();
   };
 
+  function syncMapNodeDragVisibility(isDragging: boolean) {
+    const details = $('map-node-details');
+    if (details) {
+      details.classList.toggle('is-dragging-hidden', Boolean(isDragging));
+    }
+  }
+
   function updateSpatialLockControl(locked: boolean) {
     if (state.spatialLockControlSynced && locked === state.spatialLocked) return;
     state.spatialLockControlSynced = true;
     state.spatialLocked = locked;
 
+    const details = $('map-node-details');
+    if (details) {
+      details.dataset.lockMode = locked ? 'locked' : 'unlocked';
+    }
     if (locked) {
       state.nodeMoveModeActive = false;
       disarmEquipmentPlacement('Spatial lock active — equipment placement canceled.');
@@ -1596,6 +1614,111 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
   }
   (window as any).handleNodeCommandResult = handleNodeCommandResult;
 
+  function closeNodeEditModal() {
+    const overlay = $('node-modal-overlay');
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.style.display = 'none';
+    }
+    const fb = $('node-modal-feedback');
+    if (fb) {
+      fb.textContent = '';
+      fb.classList.remove('is-error');
+    }
+  }
+
+  function openNodeEditModal(targetNodeId?: number) {
+    const resolvedId =
+      typeof targetNodeId === 'number' && Number.isInteger(targetNodeId) && targetNodeId >= 0
+        ? targetNodeId
+        : state.selectedNodeId;
+    if (state.simTimelineController && state.simTimelineController.isHistoricalInspecting) {
+      showNodeFeedback('Cannot edit nodes while Historical Inspection is active.', true);
+      return;
+    }
+    if (typeof resolvedId !== 'number' || resolvedId < 0) {
+      showNodeFeedback('No terminal currently selected to edit.', true);
+      return;
+    }
+    const nodes = state.latestTelemetry?.nodes_telemetry || [];
+    const node = nodes.find((n: any) => n.node_id === resolvedId);
+    if (!node) {
+      showNodeFeedback('Selected terminal not found in telemetry.', true);
+      return;
+    }
+
+    state.nodeModalTargetId = resolvedId;
+    const title = $('node-modal-title');
+    if (title) title.textContent = `Edit / Rename Terminal #${resolvedId}`;
+
+    const callsignInput = $<HTMLInputElement>('node-modal-callsign');
+    if (callsignInput) callsignInput.value = node.name || `S${resolvedId}`;
+
+    const roleSel = $<HTMLSelectElement>('node-modal-role');
+    if (roleSel) {
+      const r = String(node.node_role || node.node_type || 'soldier').toLowerCase();
+      roleSel.value = r === 'mcp' ? 'mcp' : r === 'convoy' ? 'convoy' : 'soldier';
+    }
+
+    const teamSel = $<HTMLSelectElement>('node-modal-team');
+    const customTeamInput = $<HTMLInputElement>('node-modal-team-custom');
+    if (teamSel) {
+      const mergedTeams = new Map<string, string>();
+      for (const t of DEFAULT_TACTICAL_TEAMS) mergedTeams.set(t.teamId, t.teamName);
+      for (const t of collectTeamsFromNodes(nodes)) mergedTeams.set(t.teamId, t.teamName);
+      teamSel.innerHTML = '';
+      for (const [tid, tname] of mergedTeams.entries()) {
+        const opt = document.createElement('option');
+        opt.value = tid;
+        opt.textContent = tname;
+        teamSel.appendChild(opt);
+      }
+      const customOpt = document.createElement('option');
+      customOpt.value = '__custom__';
+      customOpt.textContent = '+ Create Custom Team…';
+      teamSel.appendChild(customOpt);
+
+      const nodeTeamId = node.team_id ? normalizeTeamId(node.team_id) : (node.team_name ? normalizeTeamId(node.team_name) : 'alpha');
+      if (mergedTeams.has(nodeTeamId)) {
+        teamSel.value = nodeTeamId;
+      } else {
+        teamSel.value = '__custom__';
+      }
+    }
+    if (customTeamInput) {
+      customTeamInput.value = '';
+    }
+
+    const txInput = $<HTMLInputElement>('node-modal-tx-power');
+    if (txInput) {
+      txInput.value = String(node.tx_power_dbm ?? (node.node_type === 'mcp' ? 43.0 : 36.0));
+    }
+
+    const aglInput = $<HTMLInputElement>('node-modal-agl');
+    if (aglInput) {
+      aglInput.value = String(node.agl_m ?? 2.0);
+      aglInput.disabled = Boolean(state.spatialLocked);
+      aglInput.title = state.spatialLocked ? 'Unlock scenario to modify antenna AGL' : '';
+    }
+
+    const fb = $('node-modal-feedback');
+    if (fb) {
+      fb.textContent = state.spatialLocked
+        ? 'Scenario Locked: Rename, Role, Team & TX Power allowed; AGL locked.'
+        : '';
+      fb.classList.remove('is-error');
+    }
+
+    const overlay = $('node-modal-overlay');
+    if (overlay) {
+      overlay.hidden = false;
+      overlay.style.display = 'flex';
+    }
+    callsignInput?.focus();
+  }
+  (window as any).openNodeEditModal = openNodeEditModal;
+  (window as any).closeNodeEditModal = closeNodeEditModal;
+
   function initNodeInventoryToolbar() {
     const btnAdd = $('btn-node-add');
     const btnDup = $('btn-node-duplicate');
@@ -1731,59 +1854,169 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     });
 
     if (btnEdit) {
-      btnEdit.onclick = () => {
-        if (
-          state.spatialLocked ||
-          (state.simTimelineController && state.simTimelineController.isHistoricalInspecting)
-        ) {
-          showNodeFeedback(
-            'Cannot edit nodes while Spatial Lock or Historical Inspection is active.',
-            true
-          );
+      btnEdit.onclick = () => openNodeEditModal(state.selectedNodeId);
+    }
+
+    const modalOverlay = $('node-modal-overlay');
+    const modalSaveBtn = $('node-modal-save');
+    const modalCancelBtn = $('node-modal-cancel');
+    const modalCloseBtn = $('node-modal-close');
+    if (modalCancelBtn) modalCancelBtn.onclick = closeNodeEditModal;
+    if (modalCloseBtn) modalCloseBtn.onclick = closeNodeEditModal;
+    modalOverlay?.addEventListener('click', (ev: any) => {
+      if (ev.target === modalOverlay) closeNodeEditModal();
+    });
+    if (modalSaveBtn) {
+      modalSaveBtn.onclick = () => {
+        const nid = state.nodeModalTargetId;
+        if (!Number.isInteger(nid) || nid < 0) return;
+        const fb = $('node-modal-feedback');
+        const setModalErr = (msg: string) => {
+          if (fb) {
+            fb.textContent = msg;
+            fb.classList.add('is-error');
+          }
+        };
+
+        const callsign = $<HTMLInputElement>('node-modal-callsign')?.value?.trim() || '';
+        const csVal = validateNodeCallsign(callsign);
+        if (!callsign || !csVal.valid) {
+          setModalErr(csVal.error || 'Callsign must be a non-empty string.');
           return;
         }
-        if (typeof state.selectedNodeId !== 'number' || state.selectedNodeId < 0) {
-          showNodeFeedback('No terminal currently selected to edit.', true);
+
+        const rawRole = $<HTMLSelectElement>('node-modal-role')?.value || 'soldier';
+        const role: 'soldier' | 'mcp' | 'convoy' =
+          rawRole === 'mcp' ? 'mcp' : rawRole === 'convoy' ? 'convoy' : 'soldier';
+
+        const teamSel = $<HTMLSelectElement>('node-modal-team');
+        const customTeam = $<HTMLInputElement>('node-modal-team-custom')?.value?.trim() || '';
+        let teamName = customTeam;
+        let teamId = customTeam ? normalizeTeamId(customTeam) : '';
+        if (!teamName) {
+          const selVal = teamSel?.value || 'alpha';
+          if (selVal === '__custom__') {
+            setModalErr('Enter a custom team name or choose an existing team.');
+            return;
+          }
+          const selText = teamSel?.selectedOptions?.[0]?.textContent?.trim() || selVal;
+          teamId = normalizeTeamId(selVal);
+          teamName = selText;
+        }
+
+        const txPowerDbm = Number($<HTMLInputElement>('node-modal-tx-power')?.value);
+        const txVal = validateNodeTxPower(txPowerDbm);
+        if (!txVal.valid) {
+          setModalErr(txVal.error || 'Invalid TX power.');
           return;
         }
-        const nodes = state.latestTelemetry?.nodes_telemetry || [];
-        const node = nodes.find((n: any) => n.node_id === state.selectedNodeId);
-        if (!node) {
-          showNodeFeedback('Selected terminal not found in telemetry.', true);
-          return;
+
+        const aglInput = $<HTMLInputElement>('node-modal-agl');
+        const aglM = Number(aglInput?.value);
+        const includeAgl = !state.spatialLocked && aglInput && !aglInput.disabled;
+        if (includeAgl) {
+          const aglVal = validateNodeAglHeight(aglM);
+          if (!aglVal.valid) {
+            setModalErr(aglVal.error || 'Invalid AGL height.');
+            return;
+          }
         }
-        state.nodeEditorMode = 'edit';
-        state.nodeEditorTargetId = state.selectedNodeId;
-        const title = $('node-editor-title');
-        if (title) title.textContent = `Edit Terminal ${state.selectedNodeId}`;
-        const inputCallsign = $<HTMLInputElement>('node-input-callsign');
-        if (inputCallsign) inputCallsign.value = node.name || `S${node.node_id}`;
-        const inputRole = $<HTMLSelectElement>('node-input-role');
-        if (inputRole) inputRole.value = node.node_type === 'mcp' ? 'mcp' : 'soldier';
-        const inputX = $<HTMLInputElement>('node-input-x');
-        if (inputX) inputX.value = String(node.x_m ?? 0);
-        const inputY = $<HTMLInputElement>('node-input-y');
-        if (inputY) inputY.value = String(node.y_m ?? 0);
-        const inputAgl = $<HTMLInputElement>('node-input-agl');
-        if (inputAgl) inputAgl.value = String(node.agl_m ?? 2.0);
-        const inputTx = $<HTMLInputElement>('node-input-tx-power');
-        if (inputTx)
-          inputTx.value = String(node.tx_power_dbm ?? (node.node_type === 'mcp' ? 43.0 : 36.0));
-        const inputBatCap = $<HTMLInputElement>('node-input-battery-capacity');
-        if (inputBatCap)
-          inputBatCap.value = String(
-            node.battery_capacity_mah ?? (node.node_type === 'mcp' ? 20000 : 5000)
-          );
-        const inputBatLvl = $<HTMLInputElement>('node-input-battery-level');
-        if (inputBatLvl) inputBatLvl.value = String(node.battery_level_pct ?? 100);
-        const inputPri = $<HTMLInputElement>('node-input-priority');
-        if (inputPri) inputPri.value = String(node.tactical_priority ?? 1.0);
-        const inputCol = $<HTMLInputElement>('node-input-color');
-        if (inputCol)
-          inputCol.value = node.color_hex || (node.node_type === 'mcp' ? '#e9c46a' : '#e09f3e');
-        if (form) form.style.display = 'block';
+
+        actions.sendCommand({
+          type: 'NODE_UPDATE',
+          node_id: nid,
+          callsign,
+          role,
+          team_id: teamId,
+          team_name: teamName,
+          tx_power_dbm: txPowerDbm,
+          ...(includeAgl ? { agl_m: aglM } : {}),
+        });
+
+        // Optimistic immediate UI projection so labels/tables/selectors reflect update cleanly
+        state.networkNodeNames.set(nid, callsign);
+        state.networkNodeOptionsSignature = '';
+        state.lastRenderedNodesKey = '';
+        state.lastOpsFleetSignature = '';
+        ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select', 'traffic-node-select', 'ops-fleet-team-filter'].forEach((id) => {
+          const el = $(id);
+          if (el) delete el.dataset.lastKey;
+        });
+        const liveNodes = state.latestTelemetry?.nodes_telemetry as any[] | undefined;
+        const targetNode = liveNodes?.find((n: any) => n.node_id === nid);
+        if (targetNode) {
+          targetNode.name = callsign;
+          targetNode.label = callsign;
+          targetNode.node_role = role;
+          targetNode.node_type = role;
+          targetNode.team_id = teamId;
+          targetNode.team_name = teamName;
+          targetNode.tx_power_dbm = txPowerDbm;
+          if (includeAgl) targetNode.agl_m = aglM;
+        }
+        if (state.latestTelemetry) {
+          actions.updateDashboardDOM(state.latestTelemetry, true);
+          actions.renderSelectedNodeDetails();
+          actions.drawRadar();
+        }
+        closeNodeEditModal();
       };
     }
+
+    const fleetFilter = $<HTMLSelectElement>('ops-fleet-team-filter');
+    fleetFilter?.addEventListener('change', () => {
+      const teamKey = parseTeamSelection(fleetFilter.value);
+      state.opsFleetTeamFilter = teamKey;
+      state.lastOpsFleetSignature = '';
+      if (state.latestTelemetry?.nodes_telemetry) {
+        actions.renderOpsFleetRegistry(state.latestTelemetry.nodes_telemetry);
+      }
+    });
+
+    $('btn-ops-team-assign')?.addEventListener('click', () => {
+      const rawName = $<HTMLInputElement>('ops-team-name-input')?.value?.trim() || '';
+      const filterVal = $<HTMLSelectElement>('ops-fleet-team-filter')?.value || '';
+      const fallbackTeam = parseTeamSelection(filterVal);
+      const teamName = rawName || (fallbackTeam ? fallbackTeam : '');
+      if (!teamName) {
+        setText('ops-team-status', 'Enter a team name first.');
+        return;
+      }
+      const checked = Array.from(state.checkedFleetNodeIds);
+      const nodeIds = checked.length > 0 ? checked : (state.selectedNodeId >= 0 ? [state.selectedNodeId] : []);
+      if (nodeIds.length === 0) {
+        setText('ops-team-status', 'Check nodes or select a terminal first.');
+        return;
+      }
+      const teamId = normalizeTeamId(teamName);
+      actions.sendCommand({
+        type: 'TEAM_ASSIGN',
+        node_ids: nodeIds,
+        team_id: teamId,
+        team_name: teamName,
+      });
+      state.checkedFleetNodeIds.clear();
+      state.networkNodeOptionsSignature = '';
+      state.lastRenderedNodesKey = '';
+      state.lastOpsFleetSignature = '';
+      ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select', 'traffic-node-select', 'ops-fleet-team-filter'].forEach((id) => {
+        const el = $(id);
+        if (el) delete el.dataset.lastKey;
+      });
+      const liveNodes = state.latestTelemetry?.nodes_telemetry as any[] | undefined;
+      if (liveNodes) {
+        for (const n of liveNodes) {
+          if (nodeIds.includes(n.node_id)) {
+            n.team_id = teamId;
+            n.team_name = teamName;
+          }
+        }
+        actions.updateDashboardDOM(state.latestTelemetry!, true);
+        actions.renderSelectedNodeDetails();
+        actions.drawRadar();
+      }
+      setText('ops-team-status', `Grouped ${nodeIds.length} node(s) into "${teamName}".`);
+    });
 
     if (btnCancel) {
       btnCancel.onclick = () => {
@@ -1804,7 +2037,11 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
           return;
         }
         const callsign = $<HTMLInputElement>('node-input-callsign')?.value?.trim();
-        const role = $<HTMLSelectElement>('node-input-role')?.value === 'mcp' ? 'mcp' : 'soldier';
+        const rawRole = $<HTMLSelectElement>('node-input-role')?.value || 'soldier';
+        const role: 'soldier' | 'mcp' | 'convoy' =
+          rawRole === 'mcp' ? 'mcp' : rawRole === 'convoy' ? 'convoy' : 'soldier';
+        const teamName = $<HTMLInputElement>('node-input-team')?.value?.trim() || (role === 'mcp' ? 'HQ Command' : 'Alpha Squad');
+        const teamId = normalizeTeamId(teamName);
         const xM = Number($<HTMLInputElement>('node-input-x')?.value);
         const yM = Number($<HTMLInputElement>('node-input-y')?.value);
         const aglM = Number($<HTMLInputElement>('node-input-agl')?.value);
@@ -1860,35 +2097,41 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         }
 
         if (state.nodeEditorMode === 'add') {
-          actions.sendCommand(
-            buildNodeAddCommand({
+          actions.sendCommand({
+            ...buildNodeAddCommand({
               xM,
               yM,
               aglM,
               callsign: callsign || undefined,
-              role,
+              role: role === 'mcp' ? 'mcp' : 'soldier',
               colorHex,
               txPowerDbm,
               batteryCapacityMah,
               batteryLevelPct,
               tacticalPriority,
-            })
-          );
+            }),
+            role,
+            team_id: teamId,
+            team_name: teamName,
+          });
         } else {
-          actions.sendCommand(
-            buildNodeUpdateCommand(state.nodeEditorTargetId, {
+          actions.sendCommand({
+            ...buildNodeUpdateCommand(state.nodeEditorTargetId, {
               xM,
               yM,
               aglM,
               callsign: callsign || undefined,
-              role,
+              role: role === 'mcp' ? 'mcp' : 'soldier',
               colorHex,
               txPowerDbm,
               batteryCapacityMah,
               batteryLevelPct,
               tacticalPriority,
-            })
-          );
+            }),
+            role,
+            team_id: teamId,
+            team_name: teamName,
+          });
         }
       };
     }
@@ -1923,7 +2166,44 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     disarmAllDestructiveConfirmations();
     state.inspectingAcn = false;
     state.inspectorDismissed = false;
+
+    const teamKey = parseTeamSelection(String(val ?? ''));
+    if (teamKey) {
+      state.selectedTeamId = teamKey;
+      state.selectedTrafficTeamId = teamKey;
+      const allNodes = state.latestTelemetry?.nodes_telemetry || [];
+      const members = allNodes.filter((n: any) => nodeMatchesTeam(n, teamKey));
+      if (members.length > 0) {
+        const worst = [...members].sort((a: any, b: any) => {
+          const aOut = a.link_outage ? -999 : (a.snr_db ?? 999);
+          const bOut = b.link_outage ? -999 : (b.snr_db ?? 999);
+          return aOut - bOut;
+        })[0];
+        state.selectedNodeId = worst.node_id;
+        syncNodeDropdowns(state.selectedNodeId);
+        ['quickNodeSelect', 'termNodeSelect'].forEach((id) => {
+          const sel = $<HTMLSelectElement>(id);
+          if (sel) sel.value = `team:${teamKey}`;
+        });
+        const teamDisplayName = members[0].team_name || teamKey;
+        setText('wf-target-node-badge', `TEAM: ${teamDisplayName} · Focus Node ${worst.node_id}`);
+        actions.sendCommand({ type: 'SELECT_NODE', node_id: state.selectedNodeId });
+      }
+      if (state.latestTelemetry) {
+        actions.renderQosSlaAnalyzer(state.latestTelemetry);
+        actions.renderNetworkTrafficInventory(state.latestTelemetry);
+        actions.renderSelectedNodeDetails();
+        actions.drawRadar();
+        actions.drawFresnel();
+        actions.updateDashboardDOM(state.latestTelemetry, true);
+      }
+      return;
+    }
+
+    state.selectedTeamId = null;
+    state.selectedTrafficTeamId = null;
     state.selectedNodeId = parseInt(val, 10);
+    setText('wf-target-node-badge', `Inspecting Target Node ${state.selectedNodeId}`);
     state.pendingAglUpdate = null;
     syncNodeDropdowns(state.selectedNodeId);
     syncSelectedNodeAglUI();
@@ -2290,6 +2570,11 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
           disarmEquipmentPlacement('Equipment placement canceled.');
           return;
         }
+        const nodeEditModal = $('node-modal-overlay');
+        if (nodeEditModal && !nodeEditModal.hidden) {
+          closeNodeEditModal();
+          return;
+        }
         const modal = $('upload-modal');
         if (modal && !modal.hidden)
           return (window as any).closeUploadModal && (window as any).closeUploadModal();
@@ -2394,12 +2679,12 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       }
       const action = event.target?.closest?.('[data-map-action]')?.dataset.mapAction;
       if (!action) return;
-      if (action === 'edit') $('btn-node-edit')?.click();
+      if (action === 'edit') openNodeEditModal(state.selectedNodeId);
       else if (action === 'delete') return;
       else if (action === 'performance') (window as any).switchMainTab?.('tab-terrain');
       else if (action === 'soldier-phone') (window as any).openSoldierPhone?.();
-      else if (action === 'focus' || action === 'move') {
-        if (state.inspectingAcn && action === 'focus') {
+      else if (action === 'focus') {
+        if (state.inspectingAcn) {
           (window as any).centerMapOnACN();
           return;
         }
@@ -2444,11 +2729,6 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
           actions.easeMapLibreToLocalCenter(targetXM, targetYM, 300);
         } else {
           actions.drawRadar();
-        }
-        if (action === 'move' && !isTimelineHist) {
-          state.nodeMoveModeActive = true;
-          syncEditModeBanner();
-          setText('map-node-action-status', 'Node centered. Drag its highlighted marker to reposition it.');
         }
       }
     });
@@ -3307,6 +3587,9 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     handleAglCommandResult,
     handleNodeCommandResult,
     initNodeInventoryToolbar,
+    openNodeEditModal,
+    closeNodeEditModal,
+    syncMapNodeDragVisibility,
     syncNodeDropdowns,
     resizeCanvases,
     scheduleResizeCanvases,

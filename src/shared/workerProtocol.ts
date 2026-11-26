@@ -107,7 +107,11 @@ export interface NodeTelemetryItem {
   readonly entity_id?: string;
   readonly creation_sequence?: number;
   readonly name: string;
+  readonly label?: string;
   readonly node_type: NodeType | string;
+  readonly node_role?: string;
+  readonly team_id?: string;
+  readonly team_name?: string;
   readonly x_m: number;
   readonly y_m: number;
   readonly z_m: number;
@@ -117,6 +121,7 @@ export interface NodeTelemetryItem {
   readonly coordinate_reference: string;
   readonly terrain_elevation_msl_m: number;
   readonly agl_m: number;
+  readonly antenna_height_agl_m?: number;
   readonly altitude_msl_m: number;
   readonly slant_range_km: number;
   readonly snr_db: number;
@@ -854,6 +859,10 @@ export interface NodeAddCommand extends BaseWorkerInboundCommand {
   readonly agl_m?: number;
   readonly callsign?: string;
   readonly color_hex?: string;
+  readonly team_id?: string;
+  readonly team_name?: string;
+  readonly teamId?: string;
+  readonly teamName?: string;
   readonly tx_power_dbm?: number;
   readonly battery_capacity_mah?: number;
   readonly battery_level_pct?: number;
@@ -884,13 +893,29 @@ export interface NodeUpdateCommand extends BaseWorkerInboundCommand {
   readonly y_m?: number;
   readonly agl_m?: number;
   readonly callsign?: string;
+  readonly label?: string;
   readonly role?: 'soldier' | 'mcp' | 'convoy';
   readonly color_hex?: string;
+  readonly team_id?: string;
+  readonly team_name?: string;
+  readonly teamId?: string;
+  readonly teamName?: string;
   readonly tx_power_dbm?: number;
   readonly battery_capacity_mah?: number;
   readonly battery_level_pct?: number;
   readonly tactical_priority?: number;
   readonly traffic_options?: NodeTrafficOptions;
+  readonly request_id?: string | number;
+}
+
+export interface TeamAssignCommand extends BaseWorkerInboundCommand {
+  readonly type: 'TEAM_ASSIGN';
+  readonly node_ids?: readonly number[];
+  readonly nodeIds?: readonly number[];
+  readonly team_id?: string;
+  readonly teamId?: string;
+  readonly team_name?: string;
+  readonly teamName?: string;
   readonly request_id?: string | number;
 }
 
@@ -1241,6 +1266,7 @@ export type WorkerInboundCommand =
   | NodeDeleteCommand
   | NodeDuplicateCommand
   | NodeUpdateCommand
+  | TeamAssignCommand
   | EquipmentAddCommand
   | EquipmentUpdateCommand
   | EquipmentDeleteCommand

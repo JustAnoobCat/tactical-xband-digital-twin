@@ -39,6 +39,24 @@ import { computeWebMercatorZoomLevel } from '../ui/cartographyRenderer.ts';
 
 export { computeWebMercatorZoomLevel };
 
+export interface MapNodePopoverPolicyInput {
+  readonly hasSelection: boolean;
+  readonly dismissed: boolean;
+  readonly spatialLocked: boolean;
+  readonly isDragging: boolean;
+  readonly lockedOnlyMode?: boolean;
+}
+
+/**
+ * Pure popover visibility policy: never blocks active dragging, and optionally
+ * restricts floating entity popovers strictly to Scenario Locked mode.
+ */
+export function shouldShowMapNodePopover(opts: MapNodePopoverPolicyInput): boolean {
+  if (!opts.hasSelection || opts.dismissed || opts.isDragging) return false;
+  if (opts.lockedOnlyMode) return Boolean(opts.spatialLocked);
+  return true;
+}
+
 export function initRadar2dAndInteractionController(ctx: AppContext) {
   const { state, engines, canvases, dom, actions } = ctx;
   const { $, setText, MONO, mapField, mapEscape, nodeLinkLabel, nodeAchievedRate } = dom;
@@ -266,7 +284,11 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
         ? `${(node.total_backlog_bytes / 1024).toFixed(1)} KB queued`
         : 'Unavailable';
     const link = nodeLinkLabel(node);
-    const title = kind === 'link' ? `ACN → ${name} · Communication link` : `${name} · Node ${node.node_id}`;
+    const teamTag = node.team_name ? ` [${node.team_name}]` : '';
+    const title =
+      kind === 'link'
+        ? `ACN → ${name}${teamTag} · Communication link`
+        : `${name}${teamTag} · Node ${node.node_id}`;
     const regState = (node as NodeTelemetryItem & { registration_state?: string }).registration_state;
     tooltip.innerHTML = `<div class="tip-title">${mapEscape(title)}</div><div class="tip-row">${kind === 'node' ? `Position <b>${mapEscape(latLon)}</b> · AGL <b>${mapEscape(mapField(node.agl_m, 1, ' m'))}</b>` : `State <b>${mapEscape(link)}</b> · SNR <b>${mapEscape(mapField(node.snr_db, 1, ' dB'))}</b>`}</div><div class="tip-row">Registration <b>${mapEscape(regState || 'Unavailable')}</b> · RF <b>${mapEscape(link)}</b></div><div class="tip-row">SNR <b>${mapEscape(mapField(node.snr_db, 1, ' dB'))}</b> · Achieved rate <b>${mapEscape(nodeAchievedRate(node))}</b></div><div class="tip-row">Queue <b>${mapEscape(queue)}</b>${typeof node.battery_level_pct === 'number' && Number.isFinite(node.battery_level_pct) ? ` · Battery <b>${mapEscape(mapField(node.battery_level_pct, 1, '%'))}</b>` : ''}</div>`;
     tooltip.style.display = 'block';
@@ -1036,6 +1058,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
           return;
         }
         state.draggedEntity = { type: 'node', id: nodeHit.node_id };
+        actions.syncMapNodeDragVisibility?.(true);
         radarCanvas.style.cursor = 'grabbing';
         return;
       }
@@ -1612,6 +1635,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
           }
         }
       } else {
+        actions.syncMapNodeDragVisibility?.(true);
         state.draggedEntity.lastPosition = { xM: world.x, yM: world.y };
         const now = performance.now();
         if (now - state.lastMoveSendTime > 40) {
@@ -1620,6 +1644,9 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
         }
       }
     } else if (state.isPanning) {
+      if (Math.hypot(e.clientX - state.panOriginX, e.clientY - state.panOriginY) >= 4) {
+        actions.syncMapNodeDragVisibility?.(true);
+      }
       const { scale } = getRadarGeometry(w, h);
       state.panOffsetX_m -= (e.clientX - state.panStartX) / scale;
       state.panOffsetY_m += (e.clientY - state.panStartY) / scale;
@@ -1731,6 +1758,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
       });
     }
     actions.markRadarDirty();
+    actions.syncMapNodeDragVisibility?.(false);
     state.draggedEntity = null;
     state.isPanning = false;
     radarCanvas.style.cursor = 'grab';

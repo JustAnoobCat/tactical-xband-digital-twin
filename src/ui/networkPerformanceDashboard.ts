@@ -1,7 +1,14 @@
+import { nodeMatchesTeam, parseTeamSelection } from '../core/nodeRegistry';
+
+export { parseTeamSelection };
+
 export interface NetworkNodeTelemetry {
   readonly node_id: number;
   readonly name?: string;
+  readonly team_id?: string;
+  readonly team_name?: string;
   readonly snr_db?: number;
+  readonly sinr_db?: number;
   readonly bitrate_mbps?: number;
   readonly link_outage?: boolean;
   readonly transfer_state?: {
@@ -18,10 +25,26 @@ export interface NetworkPerformanceFrame {
 
 export interface NetworkNodeSample {
   readonly nodeId: number;
+  readonly teamId?: string;
+  readonly teamName?: string;
   readonly snrDb: number | null;
+  readonly sinrDb: number | null;
   readonly rateMbps: number;
   readonly transferredMb: number;
   readonly linkValid: boolean;
+}
+
+export interface NetworkTeamAggregateSample {
+  readonly simulationTimeS: number;
+  readonly teamId: string;
+  readonly teamName: string;
+  readonly memberCount: number;
+  readonly activeMemberCount: number;
+  readonly outageMemberCount: number;
+  readonly averageSnrDb: number | null;
+  readonly averageSinrDb: number | null;
+  readonly totalRateMbps: number;
+  readonly totalTransferredMb: number;
 }
 
 export interface NetworkPerformanceSample {
@@ -56,6 +79,34 @@ export function aggregateNetworkSample(sample: NetworkPerformanceSample): Networ
     totalRateMbps: sample.nodes.reduce((sum, node) => sum + Math.max(0, node.rateMbps), 0),
     totalTransferredMb: sample.nodes.reduce((sum, node) => sum + Math.max(0, node.transferredMb), 0),
     validLinkCount: snrs.length,
+  };
+}
+
+export function aggregateTeamNetworkSample(
+  sample: NetworkPerformanceSample,
+  teamIdOrSelection: string
+): NetworkTeamAggregateSample {
+  const key = parseTeamSelection(teamIdOrSelection) ?? teamIdOrSelection;
+  const members = sample.nodes.filter(node => nodeMatchesTeam(node, key));
+  const validSnrs = members
+    .filter(node => node.linkValid && finite(node.snrDb))
+    .map(node => node.snrDb as number);
+  const validSinrs = members
+    .filter(node => node.linkValid && finite(node.sinrDb ?? node.snrDb))
+    .map(node => (node.sinrDb ?? node.snrDb) as number);
+  const activeCount = members.filter(node => node.linkValid).length;
+  const resolvedName = members.find(m => m.teamName)?.teamName ?? key;
+  return {
+    simulationTimeS: sample.simulationTimeS,
+    teamId: key,
+    teamName: resolvedName,
+    memberCount: members.length,
+    activeMemberCount: activeCount,
+    outageMemberCount: Math.max(0, members.length - activeCount),
+    averageSnrDb: validSnrs.length ? validSnrs.reduce((sum, v) => sum + v, 0) / validSnrs.length : null,
+    averageSinrDb: validSinrs.length ? validSinrs.reduce((sum, v) => sum + v, 0) / validSinrs.length : null,
+    totalRateMbps: members.reduce((sum, node) => sum + Math.max(0, node.rateMbps), 0),
+    totalTransferredMb: members.reduce((sum, node) => sum + Math.max(0, node.transferredMb), 0),
   };
 }
 
@@ -111,12 +162,17 @@ export class NetworkPerformanceHistory {
       const rateBps = node.transfer_state && finite(node.transfer_state.current_rate_bps)
         ? Math.max(0, node.transfer_state.current_rate_bps)
         : 0;
+      const valid = isValidLink(node);
+      const rawSinr = finite(node.sinr_db) ? node.sinr_db : node.snr_db;
       return {
         nodeId: node.node_id,
-        snrDb: isValidLink(node) ? node.snr_db as number : null,
+        ...(node.team_id ? { teamId: node.team_id } : {}),
+        ...(node.team_name ? { teamName: node.team_name } : {}),
+        snrDb: valid ? (node.snr_db as number) : null,
+        sinrDb: valid && finite(rawSinr) ? rawSinr : null,
         rateMbps: rateBps / 1e6,
         transferredMb: ((this.cumulativeTransferredBytes.get(node.node_id) ?? 0) * 8) / 1e6,
-        linkValid: isValidLink(node),
+        linkValid: valid,
       };
     });
 
@@ -138,5 +194,12 @@ export class NetworkPerformanceHistory {
     const ids = new Set<number>();
     for (const sample of this.samples) for (const node of sample.nodes) ids.add(node.nodeId);
     return [...ids].sort((a, b) => a - b);
+  }
+
+  getTeamSeries(
+    teamIdOrSelection: string,
+    samples: readonly NetworkPerformanceSample[] = this.samples
+  ): readonly NetworkTeamAggregateSample[] {
+    return samples.map(sample => aggregateTeamNetworkSample(sample, teamIdOrSelection));
   }
 }

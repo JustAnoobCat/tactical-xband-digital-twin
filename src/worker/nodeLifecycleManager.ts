@@ -20,6 +20,7 @@
 import {
   GroundNodeEntity,
   NodeRegistry,
+  normalizeTeamId,
 } from '../core/nodeRegistry';
 import { NodeType } from '../core/config';
 import {
@@ -106,6 +107,22 @@ export interface UpdateNodeOutcome {
   reason?: string;
   nodeId?: number;
   spatialChanged?: boolean;
+}
+
+export interface AssignTeamParams {
+  msg: Extract<WorkerInboundCommand, { type: 'TEAM_ASSIGN' }>;
+  nodesStatic: GroundNodeTrafficSubsystem[];
+  nodesTac: GroundNodeTrafficSubsystem[];
+  nodesReactive?: GroundNodeTrafficSubsystem[];
+  nodeRegistry: NodeRegistry;
+}
+
+export interface AssignTeamOutcome {
+  accepted: boolean;
+  reason?: string;
+  teamId?: string;
+  teamName?: string;
+  updatedNodeIds?: number[];
 }
 
 function resolveBiomeFallbackMsl(terrainEngine: TerrainEngine): number {
@@ -299,6 +316,9 @@ export class NodeLifecycleManager {
     const entity = nodeRegistry.createDynamicNode({
       callsign: msg.callsign ? msg.callsign.trim() : undefined,
       role,
+      nodeRole: msg.role ?? 'soldier',
+      teamId: msg.team_id ?? msg.teamId,
+      teamName: msg.team_name ?? msg.teamName,
       position: [xm, ym],
       aglM,
       trafficOptions: msg.traffic_options,
@@ -398,6 +418,9 @@ export class NodeLifecycleManager {
     const entity = nodeRegistry.createDynamicNode({
       callsign,
       role: src.identity.role,
+      nodeRole: src.identity.nodeRole ?? src.identity.role,
+      teamId: src.identity.teamId,
+      teamName: src.identity.teamName,
       position: [newX, newY],
       aglM: src.aglM,
       trafficOptions: { ...src.trafficOptions },
@@ -464,7 +487,8 @@ export class NodeLifecycleManager {
     if (msg.role !== undefined && msg.role !== 'soldier' && msg.role !== 'mcp' && msg.role !== 'convoy') {
       return { accepted: false, reason: "role must be 'soldier' or 'mcp' (or 'convoy')." };
     }
-    if (msg.callsign !== undefined && (typeof msg.callsign !== 'string' || msg.callsign.trim().length === 0)) {
+    const rawCallsign = msg.callsign ?? msg.label;
+    if (rawCallsign !== undefined && (typeof rawCallsign !== 'string' || rawCallsign.trim().length === 0)) {
       return { accepted: false, reason: 'callsign must be a non-empty string.' };
     }
     if (msg.tx_power_dbm !== undefined && (!isFiniteNumber(msg.tx_power_dbm) || msg.tx_power_dbm < 10.0 || msg.tx_power_dbm > 50.0)) {
@@ -533,7 +557,10 @@ export class NodeLifecycleManager {
       position: [nextX, nextY],
       aglM: nextAgl,
       role: msg.role as NodeType | undefined,
-      callsign: msg.callsign ? msg.callsign.trim() : undefined,
+      nodeRole: msg.role ? String(msg.role) : undefined,
+      callsign: rawCallsign ? rawCallsign.trim() : undefined,
+      teamId: msg.team_id ?? msg.teamId,
+      teamName: msg.team_name ?? msg.teamName,
       trafficOptions: msg.traffic_options,
       colorHex: msg.color_hex ? msg.color_hex.trim() : undefined,
       txPowerDbm: msg.tx_power_dbm,
@@ -553,6 +580,41 @@ export class NodeLifecycleManager {
       accepted: true,
       nodeId: nid,
       spatialChanged: changesSpatial,
+    };
+  }
+
+  /**
+   * Assigns one or more active nodes to a tactical team (TEAM_ASSIGN).
+   */
+  public static assignTeam(params: AssignTeamParams): AssignTeamOutcome {
+    const { msg, nodesStatic, nodesTac, nodesReactive, nodeRegistry } = params;
+    const rawIds = msg.node_ids ?? msg.nodeIds ?? [];
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      return { accepted: false, reason: 'TEAM_ASSIGN requires at least one node_id.' };
+    }
+    const rawName = String(msg.team_name ?? msg.teamName ?? msg.team_id ?? msg.teamId ?? '').trim();
+    if (!rawName) {
+      return { accepted: false, reason: 'TEAM_ASSIGN requires a non-empty team_name or team_id.' };
+    }
+    const rawId = String(msg.team_id ?? msg.teamId ?? '').trim();
+    const teamId = rawId ? normalizeTeamId(rawId) : normalizeTeamId(rawName);
+    const updatedNodeIds = nodeRegistry.assignNodesToTeam(rawIds, teamId, rawName);
+    if (updatedNodeIds.length === 0) {
+      return { accepted: false, reason: 'No matching active nodes found for TEAM_ASSIGN.' };
+    }
+    for (const nid of updatedNodeIds) {
+      const entity = nodeRegistry.getByNodeId(nid);
+      if (!entity) continue;
+      for (const list of [nodesStatic, nodesTac, nodesReactive ?? []]) {
+        const sub = list.find(n => n.nodeId === nid);
+        if (sub) (sub as any).identity = entity.identity;
+      }
+    }
+    return {
+      accepted: true,
+      teamId,
+      teamName: rawName,
+      updatedNodeIds,
     };
   }
 }

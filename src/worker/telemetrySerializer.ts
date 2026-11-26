@@ -385,13 +385,20 @@ export class TelemetrySerializer {
       const regEntity = state.nodeRegistry.getByNodeId(node.nodeId);
       const registration = state.registrationLifecycle.get(node.nodeId);
       const callsign = regEntity?.identity.callsign ?? node.identity?.callsign ?? (node.nodeId === MCP_ID ? 'MCP' : `S${node.nodeId}`);
+      const nodeRole = regEntity?.identity.nodeRole ?? regEntity?.identity.role ?? node.nodeType;
+      const teamId = regEntity?.identity.teamId ?? node.identity?.teamId ?? (node.nodeType === 'mcp' ? 'hq' : 'alpha');
+      const teamName = regEntity?.identity.teamName ?? node.identity?.teamName ?? (node.nodeType === 'mcp' ? 'HQ Command' : 'Alpha Squad');
 
       return {
         node_id: node.nodeId,
         entity_id: node.entityId,
         creation_sequence: node.creationSequence,
         name: callsign,
+        label: callsign,
         node_type: node.nodeType,
+        node_role: nodeRole,
+        team_id: teamId,
+        team_name: teamName,
         x_m: node.position[0],
         y_m: node.position[1],
         z_m: node.position[2],
@@ -400,6 +407,7 @@ export class TelemetrySerializer {
         coordinate_reference: 'local Cartesian; x/y metres; z absolute altitude MSL metres',
         terrain_elevation_msl_m: state.terrainEngine.getElevation(node.position[0], node.position[1]),
         agl_m: node.aglM,
+        antenna_height_agl_m: node.aglM,
         altitude_msl_m: node.position[2],
         slant_range_km: (ls?.slantRangeM ?? 0) / 1000.0,
         snr_db: ls?.snrDb ?? -99.0,

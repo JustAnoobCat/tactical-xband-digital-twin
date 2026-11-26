@@ -73,9 +73,9 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radiu
 /* persistent map + detail workspace */
 .main-viewport{flex:1;min-width:0;min-height:0;display:grid;grid-template-columns:var(--map-width,58%) 8px minmax(0,1fr);overflow:hidden}
 .persistent-map-panel{container-type:inline-size;min-width:260px;min-height:0;display:flex;flex-direction:column;background:var(--ink);overflow:hidden}
-.persistent-map-mount{flex:1;min-height:0;min-width:0;display:flex}
+.persistent-map-mount{flex:1 1 0;min-height:96px;min-width:0;display:flex}
 .persistent-map-mount .radar-stage{flex:1;min-width:0;min-height:0}
-.sim-timeline-panel{flex:none;height:160px;min-height:120px;display:flex;flex-direction:column;background:var(--ink);border-top:1px solid var(--line);position:relative;z-index:2}
+.sim-timeline-panel{flex:none;height:var(--timeline-height,160px);min-height:96px;max-height:calc(100% - 96px);display:flex;flex-direction:column;background:var(--ink);border-top:1px solid var(--line);position:relative;z-index:2}
 .sim-timeline-toolbar{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:var(--surface);border-bottom:1px solid var(--line);gap:8px;font-size:11px}
 .sim-timeline-controls-left,.sim-timeline-controls-right{display:flex;align-items:center;gap:4px}
 .sim-timeline-time-display{font:700 12px var(--mono);color:var(--accent);padding:2px 8px;background:var(--ink);border:1px solid var(--line);border-radius:2px;letter-spacing:0.5px}
@@ -994,7 +994,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
   <aside class="persistent-map-panel" id="persistent-map-panel" aria-label="Persistent terrain and network map">
     <div class="persistent-map-mount" id="persistent-map-mount"></div>
     <div class="sim-timeline-panel" id="sim-timeline-panel" aria-label="Simulation Frame Timeline">
-      <div class="sim-timeline-resize-handle" id="sim-timeline-resize-handle" role="separator" aria-label="Resize timeline panel" aria-orientation="horizontal" aria-valuemin="100" aria-valuemax="320" aria-valuenow="160" tabindex="0" title="Drag to resize timeline"></div>
+      <div class="sim-timeline-resize-handle" id="sim-timeline-resize-handle" role="separator" aria-label="Resize timeline panel" aria-orientation="horizontal" aria-valuemin="96" aria-valuemax="900" aria-valuenow="160" tabindex="0" title="Drag to resize timeline (double-click to reset)"></div>
       <div class="sim-timeline-toolbar">
         <div class="sim-timeline-controls-left">
           <button id="timeline-btn-play" class="btn btn-sm btn-icon" title="Play / Pause Historical Playback" aria-label="Play or pause historical playback">
@@ -1524,7 +1524,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <button type="button" class="btn-close-inspector" id="btn-close-node-details" title="Close inspector" aria-label="Close inspector">×</button>
             </div>
             <div id="map-node-detail-content" class="map-node-empty">No ground node selected. Select a marker or choose a terminal from Node Inventory.</div>
-            <div class="map-node-actions"><button type="button" data-map-action="edit">Edit / rename</button><button type="button" data-map-action="move">Move on map</button><button type="button" data-map-action="focus">Focus</button><button type="button" data-map-action="performance" title="Open link budget and SINR analysis in Terrain &amp; RF tab">Link Performance ↗</button><button type="button" data-map-action="soldier-phone" title="Open Soldier Handheld Device (ATAK Phone)">[EUD] Phone</button><button type="button" data-map-action="delete" class="btn-danger">Delete</button></div>
+            <div class="map-node-actions"><button type="button" data-map-action="edit">Edit / rename</button><button type="button" data-map-action="focus">Focus</button><button type="button" data-map-action="performance" title="Open link budget and SINR analysis in Terrain &amp; RF tab">Link Performance ↗</button><button type="button" data-map-action="soldier-phone" title="Open Soldier Handheld Device (ATAK Phone)">[EUD] Phone</button><button type="button" data-map-action="delete" class="btn-danger">Delete</button></div>
             <div class="node-rf-quick-toggles" role="group" aria-label="RF analysis quick overlays">
               <button type="button" id="btn-node-quick-los" data-rf-toggle="los" aria-pressed="false" title="Toggle Selected-Link LOS &amp; Margin map overlay">[LOS] LOS Overlay</button>
               <button type="button" id="btn-node-quick-fresnel" data-rf-toggle="fresnel" aria-pressed="false" title="Toggle First Fresnel Corridor (0.6 F₁) map overlay">[F1] Fresnel Zone</button>
@@ -1690,11 +1690,23 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             </div>
           </details>
 
-          <!-- Fleet Summary Table -->
+          <!-- Fleet Summary Table & Tactical Teams -->
           <div class="c2-card">
             <div class="c2-card-head">
-              <span class="c2-card-title">Fleet Registry</span>
+              <span class="c2-card-title">Fleet Registry &amp; Tactical Teams</span>
               <span id="ops-fleet-count" class="c2-card-sub">0 Active</span>
+            </div>
+            <div id="ops-team-manager" class="c2-team-manager">
+              <div class="c2-team-row">
+                <label for="ops-fleet-team-filter" class="sr-only">Filter fleet by team</label>
+                <select id="ops-fleet-team-filter" aria-label="Filter fleet by tactical team">
+                  <option value="all">All Teams</option>
+                </select>
+                <label for="ops-team-name-input" class="sr-only">Team name</label>
+                <input id="ops-team-name-input" type="text" placeholder="Team name (e.g. Delta)" aria-label="Tactical team name" />
+                <button id="btn-ops-team-assign" type="button" class="btn-sm" title="Group checked nodes (or selected node) into team">Assign Team</button>
+              </div>
+              <div id="ops-team-status" class="c2-team-status" aria-live="polite"></div>
             </div>
             <div class="c2-fleet-table-wrap">
               <table class="c2-fleet-table">
@@ -2930,8 +2942,13 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               <label for="node-input-role" style="display:block;font-size:11px;color:var(--muted)">Tactical Role</label>
               <select id="node-input-role" style="width:100%;padding:4px 6px;font-size:12px;background:var(--hi-void);border:1px solid var(--line);color:inherit;border-radius:4px">
                 <option value="soldier">Soldier Terminal</option>
+                <option value="convoy">Ground Convoy</option>
                 <option value="mcp">Main Command Post (MCP)</option>
               </select>
+            </div>
+            <div>
+              <label for="node-input-team" style="display:block;font-size:11px;color:var(--muted)">Tactical Team</label>
+              <input type="text" id="node-input-team" value="Alpha Squad" placeholder="e.g. Alpha Squad" style="width:100%;padding:4px 6px;font-size:12px;background:var(--hi-void);border:1px solid var(--line);color:inherit;border-radius:4px" />
             </div>
             <div>
               <label for="node-input-x" style="display:block;font-size:11px;color:var(--muted)">Coord X (m)</label>
@@ -4358,6 +4375,59 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           </div>
         </div>
         <div id="offline-pack-list" style="margin-top:6px;font-size:11px;color:var(--text-muted)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Node Rename / Edit Modal Overlay -->
+<div id="node-modal-overlay" class="modal-backdrop" hidden>
+  <div class="modal-card node-edit-modal-card" role="dialog" aria-modal="true" aria-labelledby="node-modal-title">
+    <div class="modal-header">
+      <h3 id="node-modal-title">Edit / Rename Terminal</h3>
+      <button id="node-modal-close" type="button" class="modal-close-btn" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="node-modal-grid">
+        <div class="node-modal-field">
+          <label for="node-modal-callsign">Callsign / Name</label>
+          <input id="node-modal-callsign" type="text" maxlength="24" placeholder="e.g. Recon-4" />
+        </div>
+        <div class="node-modal-field">
+          <label for="node-modal-role">Tactical Role</label>
+          <select id="node-modal-role">
+            <option value="soldier">Soldier Terminal</option>
+            <option value="convoy">Ground Convoy</option>
+            <option value="mcp">Main Command Post (MCP)</option>
+          </select>
+        </div>
+        <div class="node-modal-field">
+          <label for="node-modal-team">Tactical Team</label>
+          <select id="node-modal-team">
+            <option value="alpha">Alpha Squad</option>
+            <option value="bravo">Bravo Squad</option>
+            <option value="charlie">Charlie Recon</option>
+            <option value="hq">HQ Command</option>
+            <option value="__custom__">+ Create Custom Team…</option>
+          </select>
+        </div>
+        <div class="node-modal-field">
+          <label for="node-modal-team-custom">Custom Team Name</label>
+          <input id="node-modal-team-custom" type="text" maxlength="32" placeholder="Optional new team name" />
+        </div>
+        <div class="node-modal-field">
+          <label for="node-modal-tx-power">TX Power (dBm)</label>
+          <input id="node-modal-tx-power" type="number" min="10" max="50" step="0.5" value="36.0" />
+        </div>
+        <div class="node-modal-field">
+          <label for="node-modal-agl">Antenna Height AGL (m)</label>
+          <input id="node-modal-agl" type="number" min="0" max="1000" step="0.5" value="2.0" />
+        </div>
+      </div>
+      <div id="node-modal-feedback" class="node-modal-feedback" role="status" aria-live="polite"></div>
+      <div class="node-modal-actions">
+        <button id="node-modal-cancel" type="button" class="btn">Cancel</button>
+        <button id="node-modal-save" type="button" class="btn btn-primary">Save / Apply</button>
       </div>
     </div>
   </div>
