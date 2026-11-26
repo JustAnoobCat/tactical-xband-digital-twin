@@ -85,6 +85,8 @@ The simulation executes three parallel, lockstep MAC policies across each sector
 
 ```
 tactical-xband-digital-twin/
+├── crates/
+│   └── xband-physics/              # Shared Rust/WASM terrain ray-march, viewshed, hillshade & Rayon bench CLI
 ├── src/
 │   ├── core/                       # Authoritative Domain Models & Physics Engines
 │   │   ├── antennaArray.ts         # QuadSectorAntennaEngine (ITU-R F.1336, 4 quadrants)
@@ -126,10 +128,11 @@ tactical-xband-digital-twin/
 ├── server/
 │   └── ts_parity_server.ts         # Canonical Node/TS headless parity server (node:http)
 ├── scripts/
-│   ├── run_all_verifications.mjs   # Bounded parallel 130-suite runner (--concurrency=N, --serial)
+│   ├── run_all_verifications.mjs   # Bounded parallel 131-suite runner (--concurrency=N, --serial)
 │   ├── run_v8_coverage.mjs         # Native Node V8 code coverage reporter
 │   ├── verify-browser-ux.mjs       # Multi-viewport (4 viewports + 9 tabs) Playwright Chromium UX gate
 │   └── generate_scientific_dossier.ts# N=30 Monte Carlo research dossier generator
+├── src/wasm/xband_physics/         # Prebuilt compact WebAssembly kernel (pure-TS fallback when absent)
 ├── src-tauri/                      # Cross-Platform Offline Tauri v2 Desktop Shell & xband-tile:// Rust Host
 ├── public/terrain/                 # 512x512 AWS Terrarium Ladakh DEM (~360 m x 434 m/px; native SRTM1/SRTM3 .hgt import supported)
 └── index.html                      # C2 Operator Workbench & Scientific Instruments (9 Rail Tabs, ~4.3k lines, zero inline scripts/handlers)
@@ -181,13 +184,13 @@ npm run benchmark:scientific
 
 ### Automated Verification Pipeline & Quality Gates
 The repository enforces a comprehensive automated verification matrix ensuring 100% adherence to physics and architectural invariants:
-- **`130` TypeScript verification suites** (`114` core V3.0 registered suites + `16` post-release hardening, UI/RF, REMED-01–06, PERF-01, and TAURI-01 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
+- **`131` TypeScript verification suites** (`114` core V3.0 registered suites + `17` post-release hardening, UI/RF, REMED-01–06, PERF-01, TAURI-01, and RUST-CORE-01 suites in `scripts/run_all_verifications.mjs`; `npm run verify:all` — bounded parallel runner with `--concurrency=N` and `--serial` fallback)
 - **`27` Python `pytest` suites (`pytest -v`)**
 - **`4`-viewport Playwright Chromium UX gate (`node scripts/verify-browser-ux.mjs` across 4 viewports + 9 rail tabs enforced in CI)**
 - **CI / GitHub Pages Quality Gates (`.github/workflows/ci.yml` & `.github/workflows/deploy-pages.yml`)**
 
 ```bash
-# Run all 130 TypeScript verification suites (114 core V3.0 + 16 post-release suites)
+# Run all 131 TypeScript verification suites (114 core V3.0 + 17 post-release suites)
 npm run verify:all
 
 # Run with custom concurrency or serial fallback
@@ -202,6 +205,16 @@ node scripts/verify-browser-ux.mjs
 
 # Production build check
 npm run build
+```
+
+### Shared Rust/WASM Physics Kernel & Multi-Core Bench (`crates/xband-physics`)
+The [`crates/xband-physics`](crates/xband-physics/Cargo.toml) crate accelerates DEM bilinear ray-marching, ITU-R P.526 Bullington/Deygout diffraction, 512×512 hypsometric hillshade generation, and 360° polar SINR viewshed sweeps via a compact WebAssembly target (`src/wasm/xband_physics/`, with automatic pure-TS fallback in [`wasmPhysicsBridge.ts`](src/core/wasmPhysicsBridge.ts)) alongside a Rayon-parallel native benchmark CLI (`xband_bench`):
+
+```bash
+# Run native Rust unit tests, rebuild the compact WASM package, and run the 100-seed x 128-node multi-core benchmark
+npm run rust:test
+npm run wasm:build
+npm run rust:bench
 ```
 
 ### Offline Desktop Build (Tauri v2)

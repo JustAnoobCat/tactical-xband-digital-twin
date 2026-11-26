@@ -50,3 +50,8 @@ skills-lock.json
 screenshot-*.png
 sidebar-computed-*.json
 CODEBASE_*_CONTEXT.md
+
+# Rust / Tauri / WASM Build Targets
+crates/*/target/
+src-tauri/target/
+src-tauri/gen/

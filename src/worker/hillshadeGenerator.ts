@@ -15,6 +15,7 @@ import {
   TerrainBoundsTelemetry,
   TerrainEngine,
 } from '../core/terrain';
+import { isWasmPhysicsReady, wasmGenerateHillshadeRgba } from '../core/wasmPhysicsBridge';
 import { THEATER_HALF_M } from '../shared/constants';
 import type { HillshadeReadyMessage } from '../shared/workerProtocol';
 
@@ -213,6 +214,56 @@ export class HillshadeGenerator {
     const meta = engine.demMetadata ?? REAL_LADAKH_DEM_METADATA;
     const stepX = isReal ? (bounds.maxX - bounds.minX) / (size - 1) : (THEATER_HALF_M * 2.0) / (size - 1);
     const stepY = isReal ? (bounds.maxY - bounds.minY) / (size - 1) : (THEATER_HALF_M * 2.0) / (size - 1);
+
+    // Optional WASM acceleration path for real DEM grids (exact pure-TS fallback below)
+    const hasCustomElevFn = Boolean((engine as unknown as { customElevationFn?: unknown }).customElevationFn);
+    if (isWasmPhysicsReady() && isReal && !hasCustomElevFn && engine.realDemGrid && size >= 2) {
+      const rgba = wasmGenerateHillshadeRgba(
+        engine.realDemGrid,
+        meta.rasterWidth,
+        meta.rasterHeight,
+        size,
+        bounds.minX,
+        bounds.maxX,
+        bounds.minY,
+        bounds.maxY,
+        meta.minElevationM ?? 0.0
+      );
+      if (rgba && rgba.length >= size * size * 4) {
+        const wasmGrid: number[][] = new Array(size);
+        for (let r = 0; r < size; r++) {
+          const rowPack: number[] = new Array(size);
+          const rowBase = r * size * 4;
+          for (let c = 0; c < size; c++) {
+            const p = rowBase + c * 4;
+            rowPack[c] = rgba[p + 3] === 0 ? 0 : (rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2];
+          }
+          wasmGrid[r] = rowPack;
+        }
+        this.cachedRealHillshade = {
+          grid: wasmGrid,
+          demRef: engine.realDemGrid,
+          size,
+        };
+        this.currentGrid = wasmGrid;
+        return {
+          grid: wasmGrid,
+          gridSize: size,
+          boundsKm: bounds.halfWidthM / 1000.0,
+          bounds,
+          terrainMode: engine.terrain_mode,
+          isCached: false,
+          message: {
+            type: 'HILLSHADE_READY',
+            grid_size: size,
+            bounds_km: bounds.halfWidthM / 1000.0,
+            bounds,
+            data: wasmGrid,
+            terrain_mode: engine.terrain_mode,
+          },
+        };
+      }
+    }
 
     // Northwest Sun Illumination: Azimuth 315°, Altitude 45°
     const lx = -0.5;

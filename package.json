@@ -96,7 +96,10 @@
     "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "tauri:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "wasm:build": "wasm-pack build crates/xband-physics --target web --release --out-dir ../../src/wasm/xband_physics --no-pack && node -e \"try { require('fs').unlinkSync('src/wasm/xband_physics/.gitignore'); } catch {}\"",
+    "rust:test": "cargo test --manifest-path crates/xband-physics/Cargo.toml",
+    "rust:bench": "cargo run --release --manifest-path crates/xband-physics/Cargo.toml --bin xband_bench -- --seeds 100 --nodes 128"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",

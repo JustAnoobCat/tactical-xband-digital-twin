@@ -1,0 +1,25 @@
+[package]
+name = "xband-physics"
+version = "0.1.0"
+edition = "2021"
+description = "Shared Rust/WASM terrain ray-marching, Bullington/Deygout diffraction, hypsometric hillshade, and polar RF viewshed kernel for Tactical X-Band Digital Twin"
+
+[lib]
+name = "xband_physics"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "xband_bench"
+path = "src/bin/xband_bench.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rayon = "1"

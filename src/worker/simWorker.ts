@@ -56,6 +56,8 @@ import type {
   WorkerCommandResult, SelectedLinkBudgetTelemetry, TelemetryGanttAllocation, WorkerInboundCommand, WorkerOutboundMessage, TelemetryFrame, NodeTelemetryItem, FresnelSliceTelemetry, TerrainMeshDataReadyMessage, ConfigUpdateParams, SpatialFrameSnapshot, SpatialNodeSnapshot, SpatialLinkBudgetSnapshot, TimelineCommunicationRecord, SuperframeEpochRecord, SuperframeDiscontinuityRecord, SchedulerEpochMetrics, EvictionDropFinalizationRecord, EvictionSchedulerId, HiFiPhysicsTelemetry, TransportAbrTelemetry,
 } from '../shared/workerProtocol';
 import { HillshadeGenerator, type HillshadeResult } from './hillshadeGenerator';
+import { RayMarchCache } from './rayMarchCache';
+import { initWasmPhysics } from '../core/wasmPhysicsBridge';
 import { TelemetrySerializer, normalizeSlotAllocationToFrame, type RunningMetrics, type TelemetrySimulationState } from './telemetrySerializer';
 import { NodeLifecycleManager } from './nodeLifecycleManager';
 import { TerrainMeshGenerator, type TerrainMeshGenerationResult } from './terrainMeshGenerator';
@@ -74,58 +76,21 @@ import {
 import type { BiomeId, PolarizationMode, AdvectingWeatherCell, BiomeEmParameters } from '../core/biomePhysics';
 
 export {
-  FRAME_DT,
-  MCP_ID,
-  ACN_ID,
-  THEATER_HALF_M,
-  FRESNEL_SAMPLES,
-  HillshadeGenerator,
-  TelemetrySerializer,
-  NodeLifecycleManager,
-  TerrainMeshGenerator,
-  ActiveTransferManager,
-  normalizeSlotAllocationToFrame,
-  PROFILE_FRESNEL_FRACTION,
-  PolarViewshedEngine,
-  collectTransferables,
-  cloneToTransferableFloat32,
-  packFloat32Grid,
-  packTerrainProfileTyped,
-  packConstellationIQ,
-  BoundedReplayBuffer,
-  computeDelayQuantilesHelper as computeDelayQuantiles,
-  extractSchedulerEpochMetricsHelper as extractSchedulerEpochMetrics,
-  createSuperframeEpochRecord,
-  buildSpatialFrameSnapshot,
-  validateConfigUpdateParams,
-  validateNodeMoveCommand,
-  validatePresetCommand,
-  validateTrafficInjectionCommand,
-  resolveScientificParams,
-  resolveViewshedConfig,
+  FRAME_DT, MCP_ID, ACN_ID, THEATER_HALF_M, FRESNEL_SAMPLES, HillshadeGenerator, TelemetrySerializer,
+  NodeLifecycleManager, TerrainMeshGenerator, ActiveTransferManager, normalizeSlotAllocationToFrame,
+  PROFILE_FRESNEL_FRACTION, PolarViewshedEngine, collectTransferables, cloneToTransferableFloat32,
+  packFloat32Grid, packTerrainProfileTyped, packConstellationIQ, BoundedReplayBuffer,
+  computeDelayQuantilesHelper as computeDelayQuantiles, extractSchedulerEpochMetricsHelper as extractSchedulerEpochMetrics,
+  createSuperframeEpochRecord, buildSpatialFrameSnapshot, validateConfigUpdateParams,
+  validateNodeMoveCommand, validatePresetCommand, validateTrafficInjectionCommand,
+  resolveScientificParams, resolveViewshedConfig,
 };
 export type {
-  RelayAdvisorReport,
-  WorkerCommandResult,
-  SelectedLinkBudgetTelemetry,
-  TelemetryGanttAllocation,
-  WorkerInboundCommand,
-  WorkerOutboundMessage,
-  TelemetryFrame,
-  NodeTelemetryItem,
-  FresnelSliceTelemetry,
-  HillshadeResult,
-  RunningMetrics,
-  NodeTransferState,
-  TelemetrySimulationState,
-  TerrainMeshGenerationResult,
-  PackedGridFloat32,
-  UnpackedGridFloat32,
-  UnpackedTerrainProfile,
-  UnpackedConstellationIQ,
-  ReplayBufferStats,
-  ReplayFrameEntry,
-  ReplayBufferMode,
+  RelayAdvisorReport, WorkerCommandResult, SelectedLinkBudgetTelemetry, TelemetryGanttAllocation,
+  WorkerInboundCommand, WorkerOutboundMessage, TelemetryFrame, NodeTelemetryItem, FresnelSliceTelemetry,
+  HillshadeResult, RunningMetrics, NodeTransferState, TelemetrySimulationState, TerrainMeshGenerationResult,
+  PackedGridFloat32, UnpackedGridFloat32, UnpackedTerrainProfile, UnpackedConstellationIQ,
+  ReplayBufferStats, ReplayFrameEntry, ReplayBufferMode,
 };
 
 const ANTENNA_HEIGHT_M = 2.0;
@@ -200,10 +165,13 @@ export class SimulationWorkerManager {
   public relayBackhaulSectorId?: 0 | 1 | 2 | 3;
   public relayBackhaulSnrDb?: number;
   private relayHop1ObstructionCache: Map<number, TerrainObstruction> = new Map();
-  public rayMarchCacheHits = 0; public rayMarchCacheMisses = 0;
-  private readonly rayMarchSlots = Array.from({ length: 4096 }, () => ({ valid: false, nx: 0, ny: 0, nz: 0, qAx: 0, qAy: 0, qAz: 0, rev: 0, obs: null as unknown, biome: '', mode: '', dem: null as unknown, wl: 0, rEff: 0, step: 0, pert: 0, res: null as unknown as TerrainObstruction }));
+  private readonly rayMarchCache = new RayMarchCache();
+  public get rayMarchCacheHits(): number { return this.rayMarchCache.hits; }
+  public set rayMarchCacheHits(v: number) { this.rayMarchCache.hits = v; }
+  public get rayMarchCacheMisses(): number { return this.rayMarchCache.misses; }
+  public set rayMarchCacheMisses(v: number) { this.rayMarchCache.misses = v; }
   public clearRelayHop1Cache(): void { this.relayHop1ObstructionCache.clear(); }
-  public clearRayMarchCache(): void { this.rayMarchCacheHits = 0; this.rayMarchCacheMisses = 0; for (let i = 0; i < 4096; i++) this.rayMarchSlots[i].valid = false; }
+  public clearRayMarchCache(): void { this.rayMarchCache.clear(); }
   public lastTelemetryFrame: TelemetryFrame | null = null;
   public batchSpatialSnapshots: SpatialFrameSnapshot[] = [];
   public tdmaSimTimeS: number = 0.0;
@@ -430,21 +398,7 @@ export class SimulationWorkerManager {
     this.envConfig = new EnvironmentConfig();
     this.flightConfig = new ACNFlightConfig();
     this.terrainEngine = new TerrainEngine({ theaterExtentM: THEATER_HALF_M, terrainMode: 'real' });
-    const rawEval = this.terrainEngine.evaluateTerrainObstruction.bind(this.terrainEngine);
-    this.terrainEngine.evaluateTerrainObstruction = (nodePos, acnPos, rf, env, stepIntervalM = 100.0, pert = 0.0) => {
-      const nx = nodePos[0], ny = nodePos[1], nz = nodePos[2], qAx = Math.round(acnPos[0] * 0.125), qAy = Math.round(acnPos[1] * 0.125), qAz = Math.round(acnPos[2] * 0.5);
-      const obs = (this.terrainEngine.obstacleField as any).values, dem = this.terrainEngine.realDemGrid, biome = this.terrainEngine.activeBiomeId, mode = this.terrainEngine.terrainMode;
-      const s = this.rayMarchSlots[((Math.imul((nx | 0) ^ ((ny | 0) * 31), 2654435761) ^ Math.imul(qAx ^ (qAy * 31), 2246822519) ^ (stepIntervalM | 0)) >>> 0) & 4095];
-      if (s.valid && s.nx === nx && s.ny === ny && s.nz === nz && s.qAx === qAx && s.qAy === qAy && s.qAz === qAz && s.rev === this.spatialRevision && s.obs === obs && s.biome === biome && s.mode === mode && s.dem === dem && s.wl === rf.wavelengthM && s.rEff === env.effectiveEarthRadiusM && s.step === stepIntervalM && s.pert === pert) {
-        this.rayMarchCacheHits++; return s.res;
-      }
-      const res = rawEval(nodePos, acnPos, rf, env, stepIntervalM, pert);
-      this.rayMarchCacheMisses++;
-      if (Number.isFinite(nx) && Number.isFinite(ny) && Number.isFinite(qAx) && Number.isFinite(qAy)) {
-        s.valid = true; s.nx = nx; s.ny = ny; s.nz = nz; s.qAx = qAx; s.qAy = qAy; s.qAz = qAz; s.rev = this.spatialRevision; s.obs = obs; s.biome = biome; s.mode = mode; s.dem = dem; s.wl = rf.wavelengthM; s.rEff = env.effectiveEarthRadiusM; s.step = stepIntervalM; s.pert = pert; s.res = res;
-      }
-      return res;
-    };
+    this.rayMarchCache.installOnTerrainEngine(this.terrainEngine, () => this.spatialRevision);
     this.hillshadeGenerator = new HillshadeGenerator(this.terrainEngine);
     this.linkEngine = new LinkBudgetEngine();
     this.liveAltitudeM = this.flightConfig.altitudeMslM;
@@ -624,6 +578,89 @@ export class SimulationWorkerManager {
     this.emitHostMessage(message);
   }
 
+  private startAiNodeMovement(nid: number, nodePos: Position3D, nodeType: string, rec: AiNodeRecoveryRecommendation): void {
+    const walkPath = rec.walkPathEnu && rec.walkPathEnu.length >= 2
+      ? rec.walkPathEnu
+      : [nodePos, [rec.targetPos[0], rec.targetPos[1], rec.targetPos[2]] as Position3D];
+    const firstTarget = walkPath[1] ?? rec.targetPos;
+    const firstDist = Math.hypot(firstTarget[0] - nodePos[0], firstTarget[1] - nodePos[1]);
+    const tobler = computeToblerWalkingSpeedMs(firstDist, firstTarget[2] - nodePos[2], nodeType);
+    this.aiActiveMovements.set(nid, {
+      targetPos: [rec.targetPos[0], rec.targetPos[1], rec.targetPos[2]],
+      speedMs: Math.max(0.5, tobler.speedMs),
+      moveBearingDeg: rec.moveBearingDeg,
+      waypoints: walkPath,
+      waypointIndex: 1,
+    });
+    this.aiActiveMovingNodes.add(nid);
+    this.aiActiveRepositionCount = this.aiActiveMovements.size;
+  }
+
+  private applyRuntimeFeatureFlags(src: {
+    enableAirframeShadowing?: boolean; enableCorrelatedRicianFading?: boolean; enableMacPhyFeedback?: boolean;
+    enableDubinsKinematics?: boolean; viewshedFidelityMode?: 'fast' | 'link-budget-parity'; enableTransportAbr?: boolean;
+    eccmMode?: SpreadSpectrumEccmMode; enableMvdrNullSteering?: boolean; enableAdversaryEsmModel?: boolean;
+    enableAntiSpoofHoldover?: boolean; gnssSpoofingRateUsPerSec?: number; acnConstellationCount?: number;
+    enableMultiHopManet?: boolean; enableGroundConvoyMobility?: boolean; windSpeedMs?: number;
+    windDirectionDeg?: number; enableAutoCfitPullUp?: boolean;
+  }): void {
+    if (src.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = src.enableAirframeShadowing;
+    if (src.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = src.enableCorrelatedRicianFading;
+    if (src.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = src.enableMacPhyFeedback;
+    if (src.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = src.enableDubinsKinematics;
+    if (src.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = src.viewshedFidelityMode;
+    if (src.enableTransportAbr !== undefined) this.enableTransportAbr = src.enableTransportAbr;
+    if (src.eccmMode !== undefined) this.eccmMode = src.eccmMode;
+    if (src.enableMvdrNullSteering !== undefined) this.enableMvdrNullSteering = src.enableMvdrNullSteering;
+    if (src.enableAdversaryEsmModel !== undefined) this.enableAdversaryEsmModel = src.enableAdversaryEsmModel;
+    if (src.enableAntiSpoofHoldover !== undefined) this.enableAntiSpoofHoldover = src.enableAntiSpoofHoldover;
+    if (src.gnssSpoofingRateUsPerSec !== undefined) {
+      this.gnssSpoofingRateUsPerSec = src.gnssSpoofingRateUsPerSec;
+      if (this.gnssSpoofingRateUsPerSec <= 0) this.gnssSpoofElapsedSec = 0.0;
+    }
+    if (src.acnConstellationCount !== undefined) this.acnConstellationCount = src.acnConstellationCount;
+    if (src.enableMultiHopManet !== undefined) this.enableMultiHopManet = src.enableMultiHopManet;
+    if (src.enableGroundConvoyMobility !== undefined) this.enableGroundConvoyMobility = src.enableGroundConvoyMobility;
+    if (src.windSpeedMs !== undefined) this.windSpeedMs = src.windSpeedMs;
+    if (src.windDirectionDeg !== undefined) this.windDirectionDeg = src.windDirectionDeg;
+    if (src.enableAutoCfitPullUp !== undefined) this.enableAutoCfitPullUp = src.enableAutoCfitPullUp;
+  }
+
+  private refreshSpatialAndRelay(recomputeRelay: boolean = true): void {
+    this.spatialRevision++;
+    this.lookaheadEngine.invalidateAll();
+    this.deferredEmergencyQueue.clear();
+    this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+    if (recomputeRelay) this.computeRelayAdvisor();
+    this.emitProfileFrame();
+  }
+
+  private computeRecoveryForNode(
+    node: GroundNodeTrafficSubsystem, acnPos: [number, number, number], sinrDb: number, isOutage: boolean
+  ): AiNodeRecoveryRecommendation {
+    return computeAiRecoveryAdvisory({
+      nodeId: node.nodeId, nodePos: node.position, nodeType: node.nodeType, acnPos,
+      currentSinrDb: sinrDb, currentIsOutage: isOutage,
+      getElevationAt: (x, y) => this.terrainEngine.getElevation(x, y), qTable: this.aiQTable,
+      obstacles: this.terrainEngine.obstacleField.all, jammerPosEnu: this.envConfig.jammerPosEnu,
+      jammerEnabled: this.envConfig.jammerEnabled, rfConfig: this.rfConfig, envConfig: this.envConfig,
+      kinematicConstraints: this.enableDubinsKinematics ? this.buildGroundKinematicConstraints(node.nodeType) : undefined,
+    });
+  }
+
+  private onDemUpdated(requestId?: string | number): TerrainBoundsTelemetry {
+    this.hillshadeGenerator.invalidateRealCache();
+    this.resampleGroundNodeAltitudes();
+    this.spatialRevision++;
+    this.lookaheadEngine.invalidateAll();
+    this.deferredEmergencyQueue.clear();
+    this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
+    this.initHillshade(512);
+    const bounds = this.terrainEngine.getTerrainBoundsTelemetry();
+    this.emitHostMessage({ type: 'TERRAIN_BOUNDS_READY', request_id: requestId, bounds });
+    return bounds;
+  }
+
   private buildGroundKinematicConstraints(nodeType: string): FixedWingKinematicConstraints {
     const speedMs = nodeType === 'mcp' ? 8.0 : 1.4;
     const maxVertRateMs = nodeType === 'mcp'
@@ -722,68 +759,18 @@ export class SimulationWorkerManager {
       const lastEval = this.aiLastEvalTick.get(nid) ?? -999;
 
       if ((isOutage || sinrDb < 8.0) && (this.aiTickCount - lastEval >= 50)) {
-        const rec = computeAiRecoveryAdvisory({
-          nodeId: nid,
-          nodePos: node.position,
-          nodeType: node.nodeType,
-          acnPos,
-          currentSinrDb: sinrDb,
-          currentIsOutage: isOutage,
-          getElevationAt: (x, y) => this.terrainEngine.getElevation(x, y),
-          qTable: this.aiQTable,
-          obstacles: this.terrainEngine.obstacleField.all,
-          jammerPosEnu: this.envConfig.jammerPosEnu,
-          jammerEnabled: this.envConfig.jammerEnabled,
-          rfConfig: this.rfConfig,
-          envConfig: this.envConfig,
-          kinematicConstraints: this.enableDubinsKinematics
-            ? this.buildGroundKinematicConstraints(node.nodeType)
-            : undefined,
-        });
+        const rec = this.computeRecoveryForNode(node, acnPos, sinrDb, isOutage);
         this.aiRecommendations.set(nid, rec);
         this.aiLastEvalTick.set(nid, this.aiTickCount);
 
         // If Auto-Heal is enabled and not already moving, immediately initiate recovery movement
         if (this.aiAutoHealEnabled && rec.needsReposition && !this.aiActiveMovements.has(nid)) {
-          const walkPath = rec.walkPathEnu && rec.walkPathEnu.length >= 2
-            ? rec.walkPathEnu
-            : [node.position, [rec.targetPos[0], rec.targetPos[1], rec.targetPos[2]] as Position3D];
-          const firstTarget = walkPath[1] ?? rec.targetPos;
-          const firstDist = Math.hypot(firstTarget[0] - node.position[0], firstTarget[1] - node.position[1]);
-          const firstDeltaZ = firstTarget[2] - node.position[2];
-          const tobler = computeToblerWalkingSpeedMs(firstDist, firstDeltaZ, node.nodeType);
-          this.aiActiveMovements.set(nid, {
-            targetPos: [rec.targetPos[0], rec.targetPos[1], rec.targetPos[2]],
-            speedMs: Math.max(0.5, tobler.speedMs),
-            moveBearingDeg: rec.moveBearingDeg,
-            waypoints: walkPath,
-            waypointIndex: 1,
-          });
-          this.aiActiveMovingNodes.add(nid);
-          this.aiActiveRepositionCount = this.aiActiveMovements.size;
+          this.startAiNodeMovement(nid, node.position, node.nodeType, rec);
         }
       } else if (!isOutage && sinrDb >= 8.0 && !this.aiActiveMovements.has(nid)) {
         const existingRec = this.aiRecommendations.get(nid);
         if (existingRec && existingRec.needsReposition) {
-          const rec = computeAiRecoveryAdvisory({
-            nodeId: nid,
-            nodePos: node.position,
-            nodeType: node.nodeType,
-            acnPos,
-            currentSinrDb: sinrDb,
-            currentIsOutage: false,
-            getElevationAt: (x, y) => this.terrainEngine.getElevation(x, y),
-            qTable: this.aiQTable,
-            obstacles: this.terrainEngine.obstacleField.all,
-            jammerPosEnu: this.envConfig.jammerPosEnu,
-            jammerEnabled: this.envConfig.jammerEnabled,
-            rfConfig: this.rfConfig,
-            envConfig: this.envConfig,
-            kinematicConstraints: this.enableDubinsKinematics
-              ? this.buildGroundKinematicConstraints(node.nodeType)
-              : undefined,
-          });
-          this.aiRecommendations.set(nid, rec);
+          this.aiRecommendations.set(nid, this.computeRecoveryForNode(node, acnPos, sinrDb, false));
         }
       }
     }
@@ -1108,24 +1095,12 @@ export class SimulationWorkerManager {
     const terrainElevation = this.terrainEngine.getElevation(acnPos[0], acnPos[1]);
 
     return buildSpatialFrameSnapshot({
-      frameIndex: this.frameIndex,
-      simTimeS: this.simTimeS,
-      wallClockTimeMs: performance.now(),
-      spatialRevision: this.spatialRevision,
-      acnPos,
-      acnVel,
-      liveAltitudeM: this.liveAltitudeM,
-      liveVzMps: this.liveVzMps,
-      terrainElevation,
-      coverageRadiusKm: this.flightConfig.coverageRadiusKm,
-      isTerrainClamped: this.isTerrainClamped,
-      attitudeHeadingDeg: attitude.headingDeg,
-      attitudeBankDeg: attitude.bankDeg,
-      nodesTac: this.nodesTac,
-      obstructionResults: this.obstructionResults,
-      linkStatuses: this.linkStatuses,
-      predStates: this.predStates,
-      selectedNodeId: this.selectedNodeId,
+      frameIndex: this.frameIndex, simTimeS: this.simTimeS, wallClockTimeMs: performance.now(),
+      spatialRevision: this.spatialRevision, acnPos, acnVel, liveAltitudeM: this.liveAltitudeM,
+      liveVzMps: this.liveVzMps, terrainElevation, coverageRadiusKm: this.flightConfig.coverageRadiusKm,
+      isTerrainClamped: this.isTerrainClamped, attitudeHeadingDeg: attitude.headingDeg,
+      attitudeBankDeg: attitude.bankDeg, nodesTac: this.nodesTac, obstructionResults: this.obstructionResults,
+      linkStatuses: this.linkStatuses, predStates: this.predStates, selectedNodeId: this.selectedNodeId,
     });
   }
 
@@ -1219,15 +1194,9 @@ export class SimulationWorkerManager {
 
     // Evaluate Contested EW Jammer Ingress & Terrain Shielding
     const jammerRes = computeJammerInterference({
-      jammerEnabled: this.envConfig.jammerEnabled,
-      jammerPosEnu: this.envConfig.jammerPosEnu,
-      jammerEirpDbm: this.envConfig.jammerEirpDbm,
-      acnPos,
-      acnVel,
-      acnAttitude,
-      terrainEngine: this.terrainEngine,
-      rfConfig: this.rfConfig,
-      envConfig: this.envConfig,
+      jammerEnabled: this.envConfig.jammerEnabled, jammerPosEnu: this.envConfig.jammerPosEnu,
+      jammerEirpDbm: this.envConfig.jammerEirpDbm, acnPos, acnVel, acnAttitude,
+      terrainEngine: this.terrainEngine, rfConfig: this.rfConfig, envConfig: this.envConfig,
       antennaEngine: this.antennaEngine,
     });
     this.jammerShieldLossDb = jammerRes.jammerShieldLossDb;
@@ -1521,23 +1490,11 @@ export class SimulationWorkerManager {
       : 0;
 
     this.hifiTelemetry = buildHiFiPhysicsTelemetry({
-      enableAirframeShadowing: this.enableAirframeShadowing,
-      enableCorrelatedRicianFading: this.enableCorrelatedRicianFading,
-      enableMacPhyFeedback: this.enableMacPhyFeedback,
-      enableDubinsKinematics: this.enableDubinsKinematics,
-      viewshedFidelityMode: this.viewshedFidelityMode,
-      uavAttitude,
-      numNodes,
-      sumShadowLossDb,
-      maxShadowLossDb,
-      sumCorrelatedFadingDb,
-      latestCoherenceTimeMs,
-      cqiLagFrames,
-      sumOllaOffsetDb,
-      harqRetxTotal: this.harqRetxTotal,
-      latestHarqGainDb,
-      dynamicGuardEfficiency,
-      dubinsMinTurnRadiusM,
+      enableAirframeShadowing: this.enableAirframeShadowing, enableCorrelatedRicianFading: this.enableCorrelatedRicianFading,
+      enableMacPhyFeedback: this.enableMacPhyFeedback, enableDubinsKinematics: this.enableDubinsKinematics,
+      viewshedFidelityMode: this.viewshedFidelityMode, uavAttitude, numNodes, sumShadowLossDb,
+      maxShadowLossDb, sumCorrelatedFadingDb, latestCoherenceTimeMs, cqiLagFrames, sumOllaOffsetDb,
+      harqRetxTotal: this.harqRetxTotal, latestHarqGainDb, dynamicGuardEfficiency, dubinsMinTurnRadiusM,
     });
 
     this.liveMaxSlantRangeM = maxSlantRangeM;
@@ -2335,12 +2292,7 @@ export class SimulationWorkerManager {
           tacNode.position = [xm, ym, terrainMsl + tacNode.aglM];
           this.nodeRegistry.updateSpatial(nid, xm, ym);
         }
-        this.spatialRevision++;
-        this.lookaheadEngine.invalidateAll();
-        this.deferredEmergencyQueue.clear();
-        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
-        this.computeRelayAdvisor();
-        this.emitProfileFrame();
+        this.refreshSpatialAndRelay(true);
         return result(true);
       }
 
@@ -2466,15 +2418,7 @@ export class SimulationWorkerManager {
         const sci = resolveScientificParams(msg, this.envConfig);
         if (sci.viewshedEnabled !== undefined) this.viewshedEnabled = sci.viewshedEnabled;
         if (sci.recomputeRelayAdvisor) this.computeRelayAdvisor();
-        if (sci.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = sci.enableAirframeShadowing; if (sci.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = sci.enableCorrelatedRicianFading;
-        if (sci.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = sci.enableMacPhyFeedback; if (sci.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = sci.enableDubinsKinematics;
-        if (sci.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = sci.viewshedFidelityMode; if (sci.enableTransportAbr !== undefined) this.enableTransportAbr = sci.enableTransportAbr;
-        if (sci.eccmMode !== undefined) this.eccmMode = sci.eccmMode; if (sci.enableMvdrNullSteering !== undefined) this.enableMvdrNullSteering = sci.enableMvdrNullSteering;
-        if (sci.enableAdversaryEsmModel !== undefined) this.enableAdversaryEsmModel = sci.enableAdversaryEsmModel; if (sci.enableAntiSpoofHoldover !== undefined) this.enableAntiSpoofHoldover = sci.enableAntiSpoofHoldover;
-        if (sci.gnssSpoofingRateUsPerSec !== undefined) { this.gnssSpoofingRateUsPerSec = sci.gnssSpoofingRateUsPerSec; if (this.gnssSpoofingRateUsPerSec <= 0) this.gnssSpoofElapsedSec = 0.0; }
-        if (sci.acnConstellationCount !== undefined) this.acnConstellationCount = sci.acnConstellationCount; if (sci.enableMultiHopManet !== undefined) this.enableMultiHopManet = sci.enableMultiHopManet;
-        if (sci.enableGroundConvoyMobility !== undefined) this.enableGroundConvoyMobility = sci.enableGroundConvoyMobility; if (sci.windSpeedMs !== undefined) this.windSpeedMs = sci.windSpeedMs;
-        if (sci.windDirectionDeg !== undefined) this.windDirectionDeg = sci.windDirectionDeg; if (sci.enableAutoCfitPullUp !== undefined) this.enableAutoCfitPullUp = sci.enableAutoCfitPullUp;
+        this.applyRuntimeFeatureFlags(sci);
         if (sci.biomeId !== undefined && sci.biomeId !== this.biomeId) {
           this.biomeId = sci.biomeId;
           this.terrainEngine.setBiome(sci.biomeId);
@@ -2554,20 +2498,7 @@ export class SimulationWorkerManager {
         if (v.weatherCells !== undefined) this.weatherCells = v.weatherCells;
 
         this.terrainEngine.setBiome(v.biomeId);
-        this.hillshadeGenerator.invalidateRealCache();
-        this.resampleGroundNodeAltitudes();
-        this.spatialRevision++;
-        this.lookaheadEngine.invalidateAll();
-        this.deferredEmergencyQueue.clear();
-        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
-        this.initHillshade(512);
-
-        const bounds = this.terrainEngine.getTerrainBoundsTelemetry();
-        this.emitHostMessage({
-          type: 'TERRAIN_BOUNDS_READY',
-          request_id: msg.request_id,
-          bounds,
-        });
+        this.onDemUpdated(msg.request_id);
         return result(true);
       }
 
@@ -2584,26 +2515,10 @@ export class SimulationWorkerManager {
           return reject('Failed to load custom DEM into terrain engine.');
         }
 
-        this.hillshadeGenerator.invalidateRealCache();
-        this.resampleGroundNodeAltitudes();
-        this.spatialRevision++;
-        this.lookaheadEngine.invalidateAll();
-        this.deferredEmergencyQueue.clear();
-        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
-        this.initHillshade(512);
-
-        const bounds = this.terrainEngine.getTerrainBoundsTelemetry();
+        const bounds = this.onDemUpdated(msg.request_id);
         this.emitHostMessage({
-          type: 'TERRAIN_BOUNDS_READY',
-          request_id: msg.request_id,
-          bounds,
-        });
-        this.emitHostMessage({
-          type: 'CUSTOM_DEM_LOADED',
-          request_id: msg.request_id,
-          tile_name: metadata?.tileName ?? 'custom',
-          resolution: metadata?.rasterWidth ?? 512,
-          bounds,
+          type: 'CUSTOM_DEM_LOADED', request_id: msg.request_id,
+          tile_name: metadata?.tileName ?? 'custom', resolution: metadata?.rasterWidth ?? 512, bounds,
         });
 
         this.emitProfileFrame();
@@ -2653,16 +2568,7 @@ export class SimulationWorkerManager {
         if (this.spatialLocked && (validation.changesTrajectory || validation.changesTerrain || validation.hasAgl)) {
           return locked();
         }
-
-        if (validation.enableAirframeShadowing !== undefined) this.enableAirframeShadowing = validation.enableAirframeShadowing; if (validation.enableCorrelatedRicianFading !== undefined) this.enableCorrelatedRicianFading = validation.enableCorrelatedRicianFading;
-        if (validation.enableMacPhyFeedback !== undefined) this.enableMacPhyFeedback = validation.enableMacPhyFeedback; if (validation.enableDubinsKinematics !== undefined) this.enableDubinsKinematics = validation.enableDubinsKinematics;
-        if (validation.viewshedFidelityMode !== undefined) this.viewshedFidelityMode = validation.viewshedFidelityMode; if (validation.enableTransportAbr !== undefined) this.enableTransportAbr = validation.enableTransportAbr;
-        if (validation.eccmMode !== undefined) this.eccmMode = validation.eccmMode; if (validation.enableMvdrNullSteering !== undefined) this.enableMvdrNullSteering = validation.enableMvdrNullSteering;
-        if (validation.enableAdversaryEsmModel !== undefined) this.enableAdversaryEsmModel = validation.enableAdversaryEsmModel; if (validation.enableAntiSpoofHoldover !== undefined) this.enableAntiSpoofHoldover = validation.enableAntiSpoofHoldover;
-        if (validation.gnssSpoofingRateUsPerSec !== undefined) { this.gnssSpoofingRateUsPerSec = validation.gnssSpoofingRateUsPerSec; if (this.gnssSpoofingRateUsPerSec <= 0) this.gnssSpoofElapsedSec = 0.0; }
-        if (validation.acnConstellationCount !== undefined) this.acnConstellationCount = validation.acnConstellationCount; if (validation.enableMultiHopManet !== undefined) this.enableMultiHopManet = validation.enableMultiHopManet;
-        if (validation.enableGroundConvoyMobility !== undefined) this.enableGroundConvoyMobility = validation.enableGroundConvoyMobility; if (validation.windSpeedMs !== undefined) this.windSpeedMs = validation.windSpeedMs;
-        if (validation.windDirectionDeg !== undefined) this.windDirectionDeg = validation.windDirectionDeg; if (validation.enableAutoCfitPullUp !== undefined) this.enableAutoCfitPullUp = validation.enableAutoCfitPullUp;
+        this.applyRuntimeFeatureFlags(validation);
 
         // Construct the full replacement trajectory before mutating any live configuration.
         let nextFlightConfig: ACNFlightConfig | null = validation.nextFlightConfig ?? null;
@@ -2868,12 +2774,7 @@ export class SimulationWorkerManager {
           this.selectedNodeId = nid;
         }
 
-        this.spatialRevision++;
-        this.lookaheadEngine.invalidateAll();
-        this.deferredEmergencyQueue.clear();
-        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
-        this.computeRelayAdvisor();
-        this.emitProfileFrame();
+        this.refreshSpatialAndRelay(true);
 
         const res: WorkerCommandResult = {
           type: 'COMMAND_RESULT',
@@ -2953,12 +2854,7 @@ export class SimulationWorkerManager {
           }
         }
 
-        this.spatialRevision++;
-        this.lookaheadEngine.invalidateAll();
-        this.deferredEmergencyQueue.clear();
-        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
-        this.computeRelayAdvisor();
-        this.emitProfileFrame();
+        this.refreshSpatialAndRelay(true);
 
         const res: WorkerCommandResult = {
           type: 'COMMAND_RESULT',
@@ -3001,12 +2897,7 @@ export class SimulationWorkerManager {
 
         this.transferManager.registerNode(nid);
 
-        this.spatialRevision++;
-        this.lookaheadEngine.invalidateAll();
-        this.deferredEmergencyQueue.clear();
-        this.refreshObstructionState(this.trajectoryEngine.getAcnPosition(this.simTimeS), this.simTimeS);
-        this.computeRelayAdvisor();
-        this.emitProfileFrame();
+        this.refreshSpatialAndRelay(true);
 
         const res: WorkerCommandResult = {
           type: 'COMMAND_RESULT',
@@ -3089,22 +2980,7 @@ export class SimulationWorkerManager {
           this.aiLastEvalTick.set(nid, this.aiTickCount);
         }
         if (rec && rec.needsReposition) {
-          const walkPath = rec.walkPathEnu && rec.walkPathEnu.length >= 2
-            ? rec.walkPathEnu
-            : [staticNode.position, [rec.targetPos[0], rec.targetPos[1], rec.targetPos[2]] as Position3D];
-          const firstTarget = walkPath[1] ?? rec.targetPos;
-          const firstDist = Math.hypot(firstTarget[0] - staticNode.position[0], firstTarget[1] - staticNode.position[1]);
-          const firstDeltaZ = firstTarget[2] - staticNode.position[2];
-          const tobler = computeToblerWalkingSpeedMs(firstDist, firstDeltaZ, staticNode.nodeType);
-          this.aiActiveMovements.set(nid, {
-            targetPos: [rec.targetPos[0], rec.targetPos[1], rec.targetPos[2]],
-            speedMs: Math.max(0.5, tobler.speedMs),
-            moveBearingDeg: rec.moveBearingDeg,
-            waypoints: walkPath,
-            waypointIndex: 1,
-          });
-          this.aiActiveMovingNodes.add(nid);
-          this.aiActiveRepositionCount = this.aiActiveMovements.size;
+          this.startAiNodeMovement(nid, staticNode.position, staticNode.nodeType, rec);
         }
         return result(true);
       }
@@ -3173,6 +3049,8 @@ export class SimulationWorkerManager {
   }
 
   public async start(): Promise<void> {
+    // 0. Initialize optional Rust/WASM acceleration kernel (non-fatal pure-TS fallback)
+    const wasmInitPromise = initWasmPhysics().catch(() => false);
     // 1. Try to load real satellite DEM using dynamic Base URL (supports http, subpath, file://, tauri://)
     try {
       const baseEnv = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) ? String(import.meta.env.BASE_URL) : './';
@@ -3194,6 +3072,7 @@ export class SimulationWorkerManager {
       this.terrainEngine.setTerrainMode('synthetic');
     }
 
+    await wasmInitPromise;
     // 2. Generate 512x512 hillshade relief grid covering the 1,200 km theater
     this.initHillshade(512);
 
