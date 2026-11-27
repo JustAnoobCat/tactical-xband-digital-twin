@@ -398,7 +398,37 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
 
     syncVolumetricRfHudButtons();
   }
+  function applyInitial2dStageVisibility(): void {
+    const is3d = state.stageViewMode === '3d';
+    const threeWrap = $('three-stage-container');
+    const resSep = $('sep-mesh-res');
+    const resLabel = $('label-mesh-res');
+    const resToggle = $('mesh-res-toggle');
+    const mapLibreStage = $('maplibre-stage');
+    if (threeWrap) {
+      threeWrap.hidden = !is3d;
+      threeWrap.style.display = is3d ? 'block' : 'none';
+      threeWrap.setAttribute('aria-hidden', String(!is3d));
+    }
+    if (resSep) {
+      resSep.hidden = !is3d;
+      resSep.style.display = is3d ? 'inline-block' : 'none';
+    }
+    if (resLabel) {
+      resLabel.hidden = !is3d;
+      resLabel.style.display = is3d ? 'inline' : 'none';
+    }
+    if (resToggle) {
+      resToggle.hidden = !is3d;
+      resToggle.style.display = is3d ? 'inline-flex' : 'none';
+    }
+    if (mapLibreStage && (is3d || state.terrainMapMode !== 'maplibre')) {
+      mapLibreStage.hidden = true;
+      mapLibreStage.style.display = 'none';
+    }
+  }
   initVolumetricRfControls();
+  applyInitial2dStageVisibility();
 
   function requestTerrainMeshData(force = false): void {
     const currentMode = state.activeTerrainMode || 'real';
@@ -551,19 +581,33 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
         }
       }
       if (scopeNote3d) scopeNote3d.hidden = false;
-      if (resSep) resSep.style.display = 'inline-block';
-      if (resLabel) resLabel.style.display = 'inline';
-      if (resToggle) resToggle.style.display = 'inline-flex';
+      if (resSep) {
+        resSep.hidden = false;
+        resSep.style.display = 'inline-block';
+      }
+      if (resLabel) {
+        resLabel.hidden = false;
+        resLabel.style.display = 'inline';
+      }
+      if (resToggle) {
+        resToggle.hidden = false;
+        resToggle.style.display = 'inline-flex';
+      }
       if (!state.threeController) {
         void initThreeStage();
       }
       requestTerrainMeshData(false);
       if (radarCvs) {
+        radarCvs.hidden = true;
         radarCvs.style.display = 'none';
         radarCvs.style.pointerEvents = 'auto';
       }
-      if (mapLibreStage) mapLibreStage.style.display = 'none';
+      if (mapLibreStage) {
+        mapLibreStage.hidden = true;
+        mapLibreStage.style.display = 'none';
+      }
       if (threeWrap) {
+        threeWrap.hidden = false;
         threeWrap.style.display = 'block';
         threeWrap.setAttribute('aria-hidden', 'false');
       }
@@ -595,17 +639,28 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
     } else {
       actions.updateRadarCursorReadout(0, 0, false);
       if (scopeNote3d) scopeNote3d.hidden = true;
-      if (resSep) resSep.style.display = 'none';
-      if (resLabel) resLabel.style.display = 'none';
-      if (resToggle) resToggle.style.display = 'none';
+      if (resSep) {
+        resSep.hidden = true;
+        resSep.style.display = 'none';
+      }
+      if (resLabel) {
+        resLabel.hidden = true;
+        resLabel.style.display = 'none';
+      }
+      if (resToggle) {
+        resToggle.hidden = true;
+        resToggle.style.display = 'none';
+      }
       if (state.threeController) {
         state.threeController.setViewMode('2d');
       }
       if (threeWrap) {
+        threeWrap.hidden = true;
         threeWrap.style.display = 'none';
         threeWrap.setAttribute('aria-hidden', 'true');
       }
       if (radarCvs) {
+        radarCvs.hidden = false;
         if (state.terrainMapMode === 'maplibre') {
           void actions.initializeMapLibre().then(() => {
             if (state.terrainMapMode === 'maplibre' && state.stageViewMode === '2d' && state.mapLibreInstance) {
@@ -617,7 +672,10 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
             }
           });
           if (state.mapLibreInstance && state.mapController) state.mapController.setMapInstance(state.mapLibreInstance);
-          if (mapLibreStage) mapLibreStage.style.display = 'block';
+          if (mapLibreStage) {
+            mapLibreStage.hidden = false;
+            mapLibreStage.style.display = 'block';
+          }
           radarCvs.style.display = 'block';
           radarCvs.style.pointerEvents = 'none';
           radarCvs.style.background = 'transparent';
@@ -634,7 +692,10 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
           radarCvs.style.pointerEvents = 'auto';
           radarCvs.style.background = '';
           radarCvs.style.zIndex = '';
-          if (mapLibreStage) mapLibreStage.style.display = 'none';
+          if (mapLibreStage) {
+            mapLibreStage.hidden = true;
+            mapLibreStage.style.display = 'none';
+          }
           actions.drawRadar();
         }
       }

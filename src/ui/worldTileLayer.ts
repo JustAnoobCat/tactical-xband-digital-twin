@@ -780,7 +780,7 @@ export class WorldTileLayer {
       const cvs = document.createElement('canvas');
       cvs.width = w;
       cvs.height = h;
-      const c = cvs.getContext('2d');
+      const c = cvs.getContext('2d', { willReadFrequently: true });
       if (!c) return img;
       c.drawImage(img, 0, 0, w, h);
       const srcData = c.getImageData(0, 0, w, h);

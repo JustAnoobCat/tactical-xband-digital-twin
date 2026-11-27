@@ -2748,8 +2748,12 @@ export function initMapLibreController(ctx: AppContext): void {
           notice.hidden = false;
         }
       }
-      if (mapEl) mapEl.style.display = 'block';
+      if (mapEl) {
+        mapEl.hidden = false;
+        mapEl.style.display = 'block';
+      }
       if (radar) {
+        radar.hidden = false;
         radar.style.display = 'block';
         radar.style.pointerEvents = 'none';
         radar.style.background = 'transparent';
@@ -2765,8 +2769,12 @@ export function initMapLibreController(ctx: AppContext): void {
       actions.markUiDirtyAndWake();
     } else {
       if (state.mapLibreInitialized) syncRadarStateFromMapLibreCamera();
-      if (mapEl) mapEl.style.display = 'none';
+      if (mapEl) {
+        mapEl.hidden = true;
+        mapEl.style.display = 'none';
+      }
       if (radar) {
+        radar.hidden = false;
         radar.style.display = 'block';
         radar.style.pointerEvents = 'auto';
         radar.style.background = '';

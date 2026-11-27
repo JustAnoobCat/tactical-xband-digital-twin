@@ -18,6 +18,7 @@
  * 1. UNIFIED AEROSPACE CARBON-GRAPHITE TOKENS
  * ========================================================================== */
 :root {
+  color-scheme: dark;
   /* Layered Matte Carbon-Graphite Surfaces (60% Dominant + 30% Structural) */
   --lo-void: #090b10;
   --lo-bg: #0d1016;
@@ -337,10 +338,26 @@ button[data-confirm-armed="true"],
   text-underline-offset: 3px;
 }
 
+[hidden],
+#terrain-toolbox[hidden],
+#terrain-toolbox.terrain-toolbox-viewport[hidden],
+.map-active-tool-bar[hidden],
+.seg[hidden],
+#terrain-toolbox-stack .tb-picking-bar[hidden],
+#tb-picking-bar[hidden],
+#three-stage-container[hidden],
+#maplibre-stage[hidden],
+#mesh-res-toggle[hidden],
+#sep-mesh-res[hidden],
+#label-mesh-res[hidden] {
+  display: none;
+}
+
 select,
 input[type="text"],
 input[type="search"],
 input[type="number"] {
+  color-scheme: dark;
   height: 30px;
   padding: 4px 10px;
   background: var(--lo-void);
@@ -350,6 +367,12 @@ input[type="number"] {
   font-family: var(--lo-sans);
   font-size: 12px;
   transition: border-color 140ms var(--ease-out), background-color 140ms var(--ease-out);
+}
+
+select option,
+select optgroup {
+  background-color: var(--lo-surface);
+  color: var(--lo-text-bright);
 }
 
 input[type="number"] {
@@ -533,17 +556,18 @@ input[type="range"]::-moz-range-thumb {
 }
 
 #dem-sector-select {
+  color-scheme: dark;
   width: auto;
   max-width: 215px;
   height: 28px;
   padding: 2px 8px;
-  background: var(--lo-bg);
+  background-color: var(--lo-bg);
   border-color: var(--lo-line);
   border-radius: var(--r-sm);
   font-family: var(--lo-sans);
   font-size: 11.5px;
   font-weight: 500;
-  color: var(--lo-text);
+  color: var(--lo-text-bright);
 }
 
 /* Quiet Unboxed Live Telemetry Ribbon */
@@ -2987,13 +3011,63 @@ details.c2-card[open] > summary {
   }
 }
 
+@media (max-width: 1380px) {
+  .topbar {
+    gap: 8px;
+    padding: 0 10px;
+  }
+  .topbar-left,
+  .topbar-right,
+  .topbar-group,
+  .sim-controls {
+    gap: 6px;
+  }
+  .topbar .brand-mark {
+    padding-right: 8px;
+  }
+  .topbar-telemetry {
+    gap: 8px;
+    padding: 0 8px;
+  }
+  .topbar-metric-jitter,
+  .topbar-metric-ew {
+    display: none;
+  }
+  #dem-sector-select {
+    max-width: 165px;
+  }
+  #btn-command-palette {
+    padding: 4px 8px;
+  }
+  .detail-viewport > .tab-content,
+  .overview-layout,
+  .c2-card {
+    min-width: 0;
+  }
+  .overview-sidebar {
+    padding: 14px 14px 32px;
+  }
+  .health-chip {
+    min-width: 0;
+    padding: 8px 10px;
+  }
+  .c2-run-bar .primary {
+    min-width: 0;
+    padding: 7px 12px;
+  }
+  .c2-run-bar #scheduler-quick-toggle {
+    flex-shrink: 0;
+    padding: 6px 10px;
+  }
+}
+
 @media (max-width: 1280px) {
   .topbar-metric-jitter,
   .topbar-metric-ew {
     display: none;
   }
   #dem-sector-select {
-    max-width: 190px;
+    max-width: 155px;
   }
 }
 

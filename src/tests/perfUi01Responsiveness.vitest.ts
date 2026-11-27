@@ -7,6 +7,8 @@ import { shouldDeferSelectMutation } from '../ui/controllers/telemetryDomUpdater
 import { createDashboardAndAuthoringController } from '../ui/controllers/dashboardAndAuthoringController';
 import { createRadar2dRenderer } from '../ui/controllers/radar2dRenderer';
 import { initWorkerBridgeController } from '../app/workerBridgeController';
+import { initViewModeAnd3dController } from '../app/viewModeAnd3dController';
+import { initTerrainToolboxCoordinator } from '../app/terrainToolboxCoordinator';
 import { SimulationWorkerManager } from '../worker/simWorker';
 import type { AppContext } from '../app/appContext';
 
@@ -350,5 +352,177 @@ describe('PERF-UI-01: Dropdown Focus-Guard, 25 Hz Telemetry Profile, Static Rada
     const rawCss = fs.readFileSync(cssPath, 'utf-8');
     const rulesOnly = rawCss.replace(/\/\*[\s\S]*?\*\//g, '');
     expect(/(?:-webkit-)?backdrop-filter\s*:[^;]*blur/i.test(rulesOnly)).toBe(false);
+  });
+
+  it('simulates Tauri __TAURI_INTERNALS__ boot: >0 ground terminals, 0 uncaught errors, hidden 3D/toolbox overlays, dark color-scheme', () => {
+    const origWindow = (globalThis as Record<string, unknown>).window;
+    const origDocument = (globalThis as Record<string, unknown>).document;
+
+    const makeMockEl = (id: string) => {
+      const attrs = new Map<string, string>();
+      const classes = new Set<string>();
+      return {
+        id,
+        hidden: false,
+        style: {} as Record<string, string>,
+        dataset: {} as Record<string, string>,
+        textContent: '',
+        innerHTML: '',
+        clientWidth: 800,
+        getBoundingClientRect: () => ({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600 }),
+        addEventListener: () => {},
+        setAttribute: (k: string, v: string) => attrs.set(k, v),
+        getAttribute: (k: string) => attrs.get(k) ?? null,
+        removeAttribute: (k: string) => attrs.delete(k),
+        classList: {
+          add: (...c: string[]) => c.forEach((x) => classes.add(x)),
+          remove: (...c: string[]) => c.forEach((x) => classes.delete(x)),
+          toggle: (c: string, force?: boolean) => {
+            if (force === true) classes.add(c);
+            else if (force === false) classes.delete(c);
+            else if (classes.has(c)) classes.delete(c);
+            else classes.add(c);
+          },
+          contains: (c: string) => classes.has(c),
+        },
+        querySelectorAll: () => [],
+        querySelector: () => null,
+        closest: () => null,
+        appendChild: (c: unknown) => c,
+        prepend: () => {},
+        replaceChildren: () => {},
+        insertAdjacentHTML: () => {},
+        after: () => {},
+        parentElement: null as unknown,
+        children: [] as unknown[],
+      };
+    };
+
+    const elements = new Map<string, ReturnType<typeof makeMockEl>>();
+    for (const id of [
+      'three-stage-container',
+      'sep-mesh-res',
+      'label-mesh-res',
+      'mesh-res-toggle',
+      'maplibre-stage',
+      'terrain-toolbox',
+      'map-active-tool-bar',
+      'terrain-toolbox-panel',
+      'terrain-toolbox-drawer',
+      'terrain-toolbox-toggle-btn',
+      'terrain-toolbox-stack',
+      'radar-container',
+      'tb-picking-bar',
+      'three-canvas',
+      'radar-canvas',
+    ]) {
+      elements.set(id, makeMockEl(id));
+    }
+
+    (globalThis as Record<string, unknown>).window = {
+      __TAURI_INTERNALS__: { invoke: async () => null },
+      location: { protocol: 'tauri:', hostname: 'tauri.localhost', href: 'tauri://localhost/' },
+      addEventListener: () => {},
+    };
+    (globalThis as Record<string, unknown>).document = {
+      hidden: false,
+      addEventListener: () => {},
+      createElement: (tag: string) => makeMockEl(tag),
+      getElementById: (id: string) => elements.get(id) ?? null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    };
+
+    try {
+      const workerMgr = new SimulationWorkerManager(0);
+      expect(workerMgr.currentScenarioPreset).toBe('16_NODES');
+      expect(workerMgr.nodeRegistry.size).toBeGreaterThan(0);
+
+      const emitted: unknown[] = [];
+      (workerMgr as unknown as { emitHostMessage: (m: unknown) => void }).emitHostMessage = (m) => emitted.push(m);
+      workerMgr.tickSimulation(true);
+      const frameMsg = emitted.find((m) => (m as { type?: string }).type === 'TELEMETRY_FRAME') as
+        | { frame: { nodes_telemetry: unknown[] } }
+        | undefined;
+      expect(frameMsg?.frame.nodes_telemetry.length).toBeGreaterThan(0);
+
+      const actions: Record<string, unknown> = {
+        sendCommand: () => {},
+        syncFloatingOverlayLayout: () => {},
+        applyThreeLayerVisibility: () => {},
+        syncRadarHudMode: () => {},
+        syncZoomHudReadout: () => {},
+        drawRadar: () => {},
+        markRadarDirty: () => {},
+        updateMapLibreToolSources: () => {},
+        updateMapLibreOverlay: () => {},
+        getRadarWorldTileLayer: () => null,
+        getDashboardAndAuthoringController: () => ({ getCadObstacleReport: () => null }),
+      };
+
+      const ctx = {
+        worker: null,
+        state: {
+          stageViewMode: '2d',
+          terrainMapMode: 'radar',
+          activeTerrainMode: 'real',
+          activeBiomeId: 'alpine_mountain',
+          currentTerrainResolution: 'native512',
+          tbOpen: false,
+          tbActiveMode: 'dem',
+          terrainToolMode: 'idle',
+          tbTransectWaypoints: [],
+          terrainRegions: [],
+          terrainRegionDraft: [],
+          tbObstacleHistory: {},
+          animationLoopRafId: null,
+          isPaused: false,
+          radarNeedsRender: false,
+          schedulerNeedsRender: false,
+          terrainNeedsRender: false,
+          selectedNodeId: -1,
+        } as unknown as AppContext['state'],
+        engines: {
+          mainTerrainEngine: {},
+          dataCommVisualizer: {},
+          obstacleEditor: {},
+          mapLayerRegistry: { isLayerVisible: () => false },
+          historyController: {},
+          schedHistoryController: {},
+        } as unknown as AppContext['engines'],
+        canvases: {
+          radarCanvas: elements.get('radar-canvas'),
+        } as unknown as AppContext['canvases'],
+        dom: {
+          $: <T>(id: string) => (elements.get(id) ?? null) as T | null,
+          setText: () => {},
+          mapEscape: (s: unknown) => String(s ?? ''),
+        } as unknown as AppContext['dom'],
+        actions: actions as unknown as AppContext['actions'],
+      } as AppContext;
+
+      expect(() => {
+        initViewModeAnd3dController(ctx);
+        initTerrainToolboxCoordinator(ctx);
+        (actions.setupTerrainToolbox as () => void)();
+      }).not.toThrow();
+
+      for (const hiddenId of ['terrain-toolbox', 'map-active-tool-bar', 'three-stage-container', 'mesh-res-toggle', 'sep-mesh-res', 'label-mesh-res']) {
+        const el = elements.get(hiddenId)!;
+        expect(el.hidden).toBe(true);
+        expect(el.style.display).toBe('none');
+      }
+
+      const cssRaw = fs.readFileSync(path.join(ROOT_DIR, 'frontend', 'c2-console-theme.css'), 'utf-8');
+      const cssRulesOnly = cssRaw.replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(cssRulesOnly).toContain('color-scheme: dark;');
+      expect(cssRulesOnly).toContain('#terrain-toolbox[hidden]');
+      expect(cssRulesOnly).toContain('.map-active-tool-bar[hidden]');
+      expect(cssRulesOnly).toContain('.seg[hidden]');
+      expect(/!important/.test(cssRulesOnly)).toBe(false);
+    } finally {
+      (globalThis as Record<string, unknown>).window = origWindow;
+      (globalThis as Record<string, unknown>).document = origDocument;
+    }
   });
 });

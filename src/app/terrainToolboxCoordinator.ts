@@ -1306,7 +1306,9 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     if (pickingBar) pickingBar.hidden = !isPicking;
     const mapActiveToolBar = $('map-active-tool-bar');
     if (mapActiveToolBar) {
-      mapActiveToolBar.style.display = !state.tbOpen || isPicking ? 'none' : 'inline-flex';
+      const showBar = Boolean(state.tbOpen) && !isPicking;
+      mapActiveToolBar.hidden = !showBar;
+      mapActiveToolBar.style.display = showBar ? 'inline-flex' : 'none';
     }
     updateStepGuideBanner();
     if (isPicking && pickingLabel) {
@@ -1431,9 +1433,15 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
         el.style.display = 'none';
       });
 
-      if (terrainToolbox) terrainToolbox.style.display = 'flex';
+      if (terrainToolbox) {
+        terrainToolbox.hidden = false;
+        terrainToolbox.style.display = 'flex';
+      }
       const isPicking = state.terrainToolMode !== 'idle';
-      if (mapActiveToolBar) mapActiveToolBar.style.display = isPicking ? 'none' : 'inline-flex';
+      if (mapActiveToolBar) {
+        mapActiveToolBar.hidden = isPicking;
+        mapActiveToolBar.style.display = isPicking ? 'none' : 'inline-flex';
+      }
 
       toolboxPanel?.classList.remove('is-collapsed');
       toolboxToggleBtn?.classList.add('active');
@@ -1444,8 +1452,14 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     } else {
       const detailViewport = document.querySelector('.detail-viewport');
       if (detailViewport) detailViewport.removeAttribute('data-tb-open');
-      if (terrainToolbox) terrainToolbox.style.display = 'none';
-      if (mapActiveToolBar) mapActiveToolBar.style.display = 'none';
+      if (terrainToolbox) {
+        terrainToolbox.hidden = true;
+        terrainToolbox.style.display = 'none';
+      }
+      if (mapActiveToolBar) {
+        mapActiveToolBar.hidden = true;
+        mapActiveToolBar.style.display = 'none';
+      }
 
       document.querySelectorAll<HTMLElement>('.detail-viewport > .tab-content').forEach(el => {
         el.style.display = '';
@@ -1836,6 +1850,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       })
     );
     toolboxPrecisionUi.mount();
+    setTerrainToolboxExpanded(false);
   }
 
   Object.assign(actions, {

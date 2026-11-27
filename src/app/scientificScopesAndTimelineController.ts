@@ -1668,7 +1668,9 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
       },
     });
     updateSchedulerScrubberUI();
-    drawSchedulerCharts();
+    if ($('tab-scheduler')?.classList.contains('active')) {
+      drawSchedulerCharts();
+    }
   }
 
   function updateSchedulerScrubberUI() {

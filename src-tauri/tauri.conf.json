@@ -14,15 +14,16 @@
       {
         "label": "main",
         "title": "Tactical X-Band Digital Twin (Offline Workstation)",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 1024,
-        "minHeight": 700,
+        "width": 1280,
+        "height": 760,
+        "minWidth": 960,
+        "minHeight": 600,
+        "center": true,
         "resizable": true
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri: asset: http://tauri.localhost https://tauri.localhost; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: xband-tile: asset: http://xband-tile.localhost https://xband-tile.localhost; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' data: blob: xband-tile: http://xband-tile.localhost https://xband-tile.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+      "csp": "default-src 'self' tauri: asset: http://tauri.localhost https://tauri.localhost; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: xband-tile: asset: http://xband-tile.localhost https://xband-tile.localhost; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' data: blob: xband-tile: http://xband-tile.localhost https://xband-tile.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }
   },
   "bundle": {

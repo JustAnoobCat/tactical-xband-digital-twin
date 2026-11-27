@@ -153,7 +153,7 @@ export class SimulationWorkerManager {
   public activeStepRequestId: number | undefined = undefined;
   public schedulerMode: string = 'tac_tad';
   public selectedNodeId: number = -1;
-  public currentScenarioPreset: 'ACN_ONLY' | '16_NODES' = 'ACN_ONLY';
+  public currentScenarioPreset: 'ACN_ONLY' | '16_NODES' = '16_NODES';
   public spatialLocked: boolean = false;
   public spatialRevision: number = 0;
   public liveAltitudeM: number = 5000.0;
@@ -402,8 +402,7 @@ export class SimulationWorkerManager {
     private readonly seedOffset: number = 0,
     initialScenarioPreset?: 'ACN_ONLY' | '16_NODES'
   ) {
-    const isWorkerRuntime = typeof self !== 'undefined' && typeof document === 'undefined';
-    this.currentScenarioPreset = initialScenarioPreset ?? (isWorkerRuntime ? 'ACN_ONLY' : '16_NODES');
+    this.currentScenarioPreset = initialScenarioPreset ?? '16_NODES';
 
     if (this.currentScenarioPreset === '16_NODES') {
       this.nodeRegistry = createDefault16NodeRegistry(this.seedOffset);
@@ -3229,7 +3228,7 @@ export class SimulationWorkerManager {
 // Instantiate only when executed inside a browser worker. Importing this module
 // from Node must not start timers or require Worker globals.
 if (typeof self !== 'undefined' && typeof document === 'undefined') {
-  const simWorker = new SimulationWorkerManager(0, 'ACN_ONLY');
+  const simWorker = new SimulationWorkerManager(0, '16_NODES');
   void simWorker.start();
   self.onmessage = (event: MessageEvent<WorkerInboundCommand>) => {
     simWorker.handleMessage(event.data);

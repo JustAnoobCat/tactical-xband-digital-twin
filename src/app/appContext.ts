@@ -800,7 +800,7 @@ export function createAppContext(worker: Worker): AppContext {
     radarSweepPhaseS: 0,
     pendingThreeRecenter: false,
     selectedNodeId: -1,
-    inspectorDismissed: false,
+    inspectorDismissed: true,
     nodeMoveModeActive: false,
     hoveredNodeId: null,
     hoveredLinkNodeId: null,

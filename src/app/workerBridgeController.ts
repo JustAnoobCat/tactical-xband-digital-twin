@@ -73,6 +73,8 @@ export function initWorkerBridgeController(ctx: AppContext): void {
     });
   }
 
+  let lastInspectorRefreshMs = 0;
+
   worker.onmessage = (event: MessageEvent<WorkerOutboundMessage>): void => {
     const msg = event.data;
     if (!msg) return;
@@ -118,7 +120,12 @@ export function initWorkerBridgeController(ctx: AppContext): void {
       }
       const nowBridgeMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const isSelectMenuDeferActive = nowBridgeMs < (state.selectInteractionUntilMs || 0);
-      if (!isSelectMenuDeferActive) {
+      const isInspectorOpen = Boolean(
+        !state.inspectorDismissed &&
+          !$('map-node-details')?.classList.contains('is-closed')
+      );
+      if (!isSelectMenuDeferActive && isInspectorOpen && nowBridgeMs - lastInspectorRefreshMs >= 100) {
+        lastInspectorRefreshMs = nowBridgeMs;
         actions.renderSelectedNodeDetails();
       }
       const dashboardSelect = $<HTMLSelectElement>('network-node-select');
