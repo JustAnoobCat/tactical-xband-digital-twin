@@ -176,14 +176,14 @@ console.log('\n[2/6] Verifying LinkBudgetEngine Options, Weather Cells, Isotherm
   assert.equal(linkClearWest.weatherCellRainMmH, 0.0, 'Link at (-15000,0)->(-5000,0) must have 0 storm rain');
   assert.equal(linkClearWest.rainLossDb, 0.0, 'Link away from storm cell must have 0 rain loss');
 
-  // 2c. Biome-specific freezingIsothermM (Arabian Sea 5500 m vs Ladakh 4200 m at 4500 m band)
+  // 2c. Biome-specific freezingIsothermM (Arabian Sea 5500 m vs Ladakh 4800 m at 4800-5400 m band)
   const linkMaritime = engine.evaluateLink({
     nodeType: 'soldier',
     slantRangeM: 10000,
     rf,
     env: new EnvironmentConfig({ rainRateMmH: 30 }),
-    nodeAltM: 4200,
-    acnAltM: 4800,
+    nodeAltM: 4800,
+    acnAltM: 5400,
     biomeId: 'maritime_littoral',
   });
   const linkLadakh = engine.evaluateLink({
@@ -191,13 +191,13 @@ console.log('\n[2/6] Verifying LinkBudgetEngine Options, Weather Cells, Isotherm
     slantRangeM: 10000,
     rf,
     env: new EnvironmentConfig({ rainRateMmH: 30 }),
-    nodeAltM: 4200,
-    acnAltM: 4800,
+    nodeAltM: 4800,
+    acnAltM: 5400,
     biomeId: 'alpine_mountain',
   });
   assert.ok(
     linkMaritime.rainLossDb > linkLadakh.rainLossDb * 5.0,
-    `Maritime isotherm (5500 m) rain loss (${linkMaritime.rainLossDb.toFixed(3)} dB) must far exceed Ladakh (4200 m, ${linkLadakh.rainLossDb.toFixed(3)} dB) in 4200-4800 m band`
+    `Maritime isotherm (5500 m) rain loss (${linkMaritime.rainLossDb.toFixed(3)} dB) must far exceed Ladakh (4800 m, ${linkLadakh.rainLossDb.toFixed(3)} dB) in 4800-5400 m band`
   );
 
   // 2d. Two-ray ground reflection omitted AGL fallback defaults to rxAltAglM=2.0m, txAltAglM=max(1.5, acnAlt-nodeAlt)
