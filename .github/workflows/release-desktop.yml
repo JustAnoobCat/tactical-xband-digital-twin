@@ -67,14 +67,28 @@ jobs:
           npm run build
           cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: Build Tauri v2 offline installers
+      - name: Build and publish Tauri v2 offline installers
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
+          tagName: ${{ github.ref_name }}
           releaseName: "Tactical X-Band Digital Twin v__VERSION__"
           releaseBody: "Offline cross-platform Tauri v2 desktop installers (AppImage/deb, msi/exe, dmg)."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Build Tauri v2 offline installers (workflow dispatch)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: tauri-apps/tauri-action@v0
+        with:
+          args: ${{ matrix.args }}
+
+      - name: Upload desktop bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: src-tauri/target/**/bundle/**
+          if-no-files-found: error

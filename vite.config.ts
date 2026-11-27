@@ -4,7 +4,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   base:
-    process.env.GITHUB_ACTIONS === "true"
+    process.env.VITE_PAGES_BASE === "true"
       ? "/tactical-xband-digital-twin/"
       : "./",
 

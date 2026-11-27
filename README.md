@@ -1,4 +1,4 @@
-# Tactical X-Band Air-to-Ground Network Digital Twin (`v4.1.0`)
+# Tactical X-Band Air-to-Ground Network Digital Twin (`v4.5.0`)
 
 [![CI Quality Gate](https://github.com/JustAnoobCat/tactical-xband-digital-twin/actions/workflows/ci.yml/badge.svg)](https://github.com/JustAnoobCat/tactical-xband-digital-twin/actions/workflows/ci.yml)
 [![Live Interactive Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue?logo=github)](https://justanoobcat.github.io/tactical-xband-digital-twin/)
@@ -304,7 +304,7 @@ If you utilize this Digital Twin platform, its mathematical formulations, or its
 @software{tactical_xband_digital_twin_2026,
   title = {Tactical X-Band Air-to-Ground Network Digital Twin},
   year = {2026},
-  version = {4.1.0},
+  version = {4.5.0},
   url = {https://github.com/JustAnoobCat/tactical-xband-digital-twin}
 }
 ```

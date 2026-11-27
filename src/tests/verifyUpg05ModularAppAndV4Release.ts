@@ -1,13 +1,14 @@
 /**
  * src/tests/verifyUpg05ModularAppAndV4Release.ts
  *
- * UPG-05 / V41-01 (v4.1.0 Milestone) Verification Suite (Suite 136):
+ * UPG-05 / V41-01 (v4.x Release Milestone) Verification Suite (Suite 136):
  * 1. Modularity & Strict Typing: `src/main.ts` line count is strictly < 3,000 lines, `src/app/` contains
  *    >= 5 cohesive `.ts` modules with zero `eval(` / `new Function(`, zero circular imports,
  *    and ZERO `@ts-nocheck` / `@ts-ignore` directives across `src/main.ts` & `src/app/*.ts`.
  * 2. Hardening: PNG/JPG heightmap FileReader in `src/app/terrainUploadController.ts` attaches `onerror`.
  * 3. Version symmetry: `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`,
- *    `src-tauri/Cargo.toml`, `crates/xband-physics/Cargo.toml`, and `README.md` all declare `4.1.0`,
+ *    `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `crates/xband-physics/Cargo.toml`,
+ *    `crates/xband-physics/Cargo.lock`, and `README.md` share identical semver >= `4.5.0`,
  *    and `.github/workflows/ci.yml` invokes `npm run test:fast`.
  * 4. Strict CSP & Lazy Bundle Split: `index.html` retains strict CSP (0 inline `<script>` bodies,
  *    0 inline `on*=` attributes) and `dist/index.html` excludes eager `vendor-three` / `vendor-maplibre` chunks.
@@ -34,8 +35,29 @@ function check(name: string, fn: () => void): void {
   }
 }
 
+function parseSemver(version: string): [number, number, number] {
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/.exec(version.trim());
+  assert.ok(m, `Invalid semver string: "${version}"`);
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function compareSemver(a: string, b: string): number {
+  const [majA, minA, patA] = parseSemver(a);
+  const [majB, minB, patB] = parseSemver(b);
+  if (majA !== majB) return majA - majB;
+  if (minA !== minB) return minA - minB;
+  return patA - patB;
+}
+
+function readCargoLockPackageVersion(lockText: string, packageName: string): string {
+  const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = new RegExp(`\\[\\[package\\]\\]\\s+name\\s*=\\s*"${escaped}"\\s+version\\s*=\\s*"([^"]+)"`, 'm').exec(lockText);
+  assert.ok(m, `Cargo.lock must contain [[package]] entry for ${packageName}`);
+  return m[1];
+}
+
 console.log('================================================================================');
-console.log('  UPG-05 / V41-01 STRICT TS src/app/* & v4.1.0 RELEASE VERIFICATION (SUITE 136)');
+console.log('  UPG-05 / V41-01 STRICT TS src/app/* & RELEASE SYMMETRY VERIFICATION (SUITE 136)');
 console.log('================================================================================');
 
 check('1. src/main.ts < 3,000 lines, src/app/ >= 5 modules, zero eval/Function/@ts-nocheck/@ts-ignore, zero circular imports', () => {
@@ -108,26 +130,46 @@ check('2. PNG/JPG heightmap FileReader in src/app/terrainUploadController.ts att
   assert.ok(windowSlice.includes('img.onerror'), 'PNG/JPG Image loader handler must attach img.onerror');
 });
 
-check('3. Version 4.1.0 symmetry across package, Tauri, Rust crate, README.md & CI Vitest gate', () => {
+check('3. Dynamic semver parity (>= 4.5.0) across package, Tauri, Rust crates, Cargo locks, README.md & CI Vitest gate', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
-  assert.equal(pkg.version, '4.1.0', 'package.json version must be 4.1.0');
+  const expectedVersion = String(pkg.version || '');
+  assert.ok(
+    compareSemver(expectedVersion, '4.5.0') >= 0,
+    `package.json version must be valid semver >= 4.5.0 (got "${expectedVersion}")`
+  );
 
   const pkgLock = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package-lock.json'), 'utf8'));
-  assert.equal(pkgLock.version, '4.1.0', 'package-lock.json root version must be 4.1.0');
-  assert.equal(pkgLock.packages?.['']?.version, '4.1.0', 'package-lock.json packages[""] version must be 4.1.0');
+  assert.equal(pkgLock.version, expectedVersion, `package-lock.json root version must equal ${expectedVersion}`);
+  assert.equal(pkgLock.packages?.['']?.version, expectedVersion, `package-lock.json packages[""] version must equal ${expectedVersion}`);
 
   const tauriConf = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'src-tauri', 'tauri.conf.json'), 'utf8'));
-  assert.equal(tauriConf.version, '4.1.0', 'src-tauri/tauri.conf.json version must be 4.1.0');
+  assert.equal(tauriConf.version, expectedVersion, `src-tauri/tauri.conf.json version must equal ${expectedVersion}`);
 
   const tauriCargo = fs.readFileSync(path.join(ROOT_DIR, 'src-tauri', 'Cargo.toml'), 'utf8');
-  assert.match(tauriCargo, /^version\s*=\s*"4\.1\.0"/m, 'src-tauri/Cargo.toml version must be 4.1.0');
+  const tauriCargoVersion = tauriCargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+  assert.equal(tauriCargoVersion, expectedVersion, `src-tauri/Cargo.toml version must equal ${expectedVersion}`);
+
+  const tauriCargoLock = fs.readFileSync(path.join(ROOT_DIR, 'src-tauri', 'Cargo.lock'), 'utf8');
+  assert.equal(
+    readCargoLockPackageVersion(tauriCargoLock, 'tactical-xband-digital-twin'),
+    expectedVersion,
+    `src-tauri/Cargo.lock tactical-xband-digital-twin version must equal ${expectedVersion}`
+  );
 
   const rustCargo = fs.readFileSync(path.join(ROOT_DIR, 'crates', 'xband-physics', 'Cargo.toml'), 'utf8');
-  assert.match(rustCargo, /^version\s*=\s*"4\.1\.0"/m, 'crates/xband-physics/Cargo.toml version must be 4.1.0');
+  const rustCargoVersion = rustCargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+  assert.equal(rustCargoVersion, expectedVersion, `crates/xband-physics/Cargo.toml version must equal ${expectedVersion}`);
+
+  const rustCargoLock = fs.readFileSync(path.join(ROOT_DIR, 'crates', 'xband-physics', 'Cargo.lock'), 'utf8');
+  assert.equal(
+    readCargoLockPackageVersion(rustCargoLock, 'xband-physics'),
+    expectedVersion,
+    `crates/xband-physics/Cargo.lock xband-physics version must equal ${expectedVersion}`
+  );
 
   const readme = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
-  assert.ok(readme.includes('version = {4.1.0}'), 'README.md BibTeX citation must declare version = {4.1.0}');
-  assert.ok(readme.includes('v4.1.0'), 'README.md header must declare v4.1.0');
+  assert.ok(readme.includes(`version = {${expectedVersion}}`), `README.md BibTeX citation must declare version = {${expectedVersion}}`);
+  assert.ok(readme.includes(`v${expectedVersion}`), `README.md header must declare v${expectedVersion}`);
   assert.ok(readme.includes('2.32'), 'README.md must document updated ~2.32 ms step time');
   assert.ok(readme.includes('src/app/') || readme.includes('app/'), 'README.md must document modular src/app/ architecture');
   assert.ok(readme.includes('136'), 'README.md must document 136 verification suites');
@@ -171,4 +213,4 @@ check('5. scripts/run_all_verifications.mjs registers 136 suites including Suite
   assert.ok(runnerSrc.includes("'verify:upg05-modular-app-v4'"), 'Suite 136 id verify:upg05-modular-app-v4 must be registered');
 });
 
-console.log('\n[UPG-05 / V41-01] ALL CHECKS PASSED — Strict TypeScript src/app/* & v4.1.0 release verified.\n');
+console.log('\n[UPG-05 / V41-01] ALL CHECKS PASSED — Strict TypeScript src/app/* & release symmetry verified.\n');

@@ -46,8 +46,10 @@ console.log('='.repeat(92));
 // -----------------------------------------------------------------------------
 console.log('\n[1/5] Verifying Offline Relative Build, PWA Assets & Strict CSP...');
 
-check('vite.config.ts uses relative ./ local base for offline/file/tauri portability', () => {
+check('vite.config.ts uses relative ./ local base by default (including Tauri CI) and gates subpath on VITE_PAGES_BASE', () => {
   const viteCfg = readFileSync(resolve(ROOT_DIR, 'vite.config.ts'), 'utf8');
+  assert.ok(viteCfg.includes('process.env.VITE_PAGES_BASE === "true"'), 'Pages subpath must be gated on VITE_PAGES_BASE');
+  assert.equal(viteCfg.includes('GITHUB_ACTIONS'), false, 'vite.config.ts must not gate base on GITHUB_ACTIONS');
   assert.ok(viteCfg.includes('? "/tactical-xband-digital-twin/"'), 'CI subpath must remain intact');
   assert.ok(viteCfg.includes(': "./"'), 'Local/desktop build base must be "./"');
 });
@@ -289,13 +291,26 @@ check('dist/index.html uses environment-appropriate asset paths and maintains st
   const distHtml = readFileSync(distIndexPath, 'utf8');
 
   assert.equal(/(["'])\/assets\//.test(distHtml), false, 'dist/index.html must contain zero bare root /assets/ paths');
-  if (process.env.GITHUB_ACTIONS === 'true') {
+  if (process.env.VITE_PAGES_BASE === 'true') {
     assert.ok(
-      distHtml.includes('/tactical-xband-digital-twin/assets/') || distHtml.includes('./assets/'),
-      'dist/index.html must reference /tactical-xband-digital-twin/assets/ or ./assets/ paths in GitHub Actions'
+      distHtml.includes('/tactical-xband-digital-twin/assets/'),
+      'dist/index.html must reference /tactical-xband-digital-twin/assets/ paths when VITE_PAGES_BASE=true'
+    );
+    assert.equal(
+      distHtml.includes('./assets/'),
+      false,
+      'dist/index.html must not emit relative ./assets/ paths when VITE_PAGES_BASE=true'
     );
   } else {
-    assert.ok(distHtml.includes('./assets/'), 'dist/index.html must reference relative ./assets/ paths');
+    assert.ok(
+      distHtml.includes('./assets/'),
+      'dist/index.html must reference relative ./assets/ paths (including GITHUB_ACTIONS=true without VITE_PAGES_BASE=true)'
+    );
+    assert.equal(
+      distHtml.includes('/tactical-xband-digital-twin/assets/'),
+      false,
+      'dist/index.html must not embed /tactical-xband-digital-twin/assets/ unless VITE_PAGES_BASE=true'
+    );
   }
   const scriptBodyMatches = [...distHtml.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   for (const m of scriptBodyMatches) {
