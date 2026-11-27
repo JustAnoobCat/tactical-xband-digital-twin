@@ -29,7 +29,7 @@ import {
   type SquadNodeForBuddyEval,
   type AiNodeRecoveryRecommendation,
 } from '../core/tacticalAiPathfinder';
-import type { LinkStatus } from '../core/linkBudget';
+import { LinkBudgetEngine, type LinkStatus } from '../core/linkBudget';
 import type { Position3D } from '../shared/types';
 
 export type AiBlackoutForecast = AiBlackoutForecastResult;
@@ -277,30 +277,41 @@ export class EdgeAiCopilotCoordinator {
     },
     squadCandidates: SquadNodeForBuddyEval[],
     getElevationAt: (x: number, y: number) => number,
-    carrierFrequencyHz: number
+    carrierFrequencyHz: number,
+    channelBandwidthHz: number = 5.0e6
   ): AiBuddyRelayResult {
     return evaluateAiBuddyRelayRescue(
       targetNode,
       squadCandidates,
       getElevationAt,
-      carrierFrequencyHz
+      carrierFrequencyHz,
+      channelBandwidthHz
     );
   }
 
   /**
    * Evaluates Pillar 4: LPI/LPD Dynamic Power Throttling.
+   * Preserves a +2.5 dB fade margin above the active MODCOD threshold (floored at targetSinrDb).
    */
   public evaluateLpiStealth(
     nominalTxPowerDbm: number,
     currentSinrDb: number,
     isOutage: boolean,
-    targetSinrDb: number = 18.5
+    targetSinrDb: number = 18.5,
+    activeModcodMinSnrDb?: number
   ): AiLpiStealthResult {
+    const resolvedModcodMinSnrDb =
+      activeModcodMinSnrDb !== undefined && Number.isFinite(activeModcodMinSnrDb)
+        ? activeModcodMinSnrDb
+        : LinkBudgetEngine.selectModCod(currentSinrDb).minSnrDb;
+    const effectiveTargetDb = Number.isFinite(resolvedModcodMinSnrDb)
+      ? Math.max(targetSinrDb, resolvedModcodMinSnrDb + 2.5)
+      : targetSinrDb;
     return computeAiLpiStealthPower(
       nominalTxPowerDbm,
       currentSinrDb,
       isOutage,
-      targetSinrDb
+      effectiveTargetDb
     );
   }
 
@@ -314,7 +325,8 @@ export class EdgeAiCopilotCoordinator {
     getAcnPosAtDt: (dtS: number) => Position3D,
     getElevationAt: (x: number, y: number) => number,
     simTimeS: number,
-    carrierFrequencyHz: number
+    carrierFrequencyHz: number,
+    channelBandwidthHz: number = 5.0e6
   ): AiBlackoutForecastResult {
     return predictNodeBlackoutCountdown(
       nodePosition,
@@ -323,7 +335,8 @@ export class EdgeAiCopilotCoordinator {
       getAcnPosAtDt,
       getElevationAt,
       simTimeS,
-      carrierFrequencyHz
+      carrierFrequencyHz,
+      channelBandwidthHz
     );
   }
 
@@ -334,13 +347,15 @@ export class EdgeAiCopilotCoordinator {
     pinnedNodePos: Position3D,
     acnCenterPos: Position3D,
     getElevationAt: (x: number, y: number) => number,
-    carrierFrequencyHz: number
+    carrierFrequencyHz: number,
+    channelBandwidthHz: number = 5.0e6
   ): AiSkyShepherdResult {
     return computeAiSkyShepherdUavOffset(
       pinnedNodePos,
       acnCenterPos,
       getElevationAt,
-      carrierFrequencyHz
+      carrierFrequencyHz,
+      channelBandwidthHz
     );
   }
 }

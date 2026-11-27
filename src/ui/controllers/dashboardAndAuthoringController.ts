@@ -28,6 +28,7 @@ import {
 import { evaluateTerminalVsaMetrics } from '../../core/vsaConstellationEngine';
 import { evaluateBarrierLinkIntersections } from '../../core/cadObstacleSlicerEngine';
 import { sampleDemSafe } from '../terrainToolboxAnalysis';
+import { shouldDeferSelectMutation } from './telemetryDomUpdaters';
 
 export interface TDMAFrameDraft {
   frameDurationMs: number;
@@ -262,8 +263,10 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
       if (altInp && document.activeElement !== altInp) altInp.value = String(committedFlightParams.acn_altitude_m);
 
       const modeSel = $('traj-altitude-mode') as HTMLSelectElement | null;
-      if (modeSel && document.activeElement !== modeSel && pendingAltitudeMode === null) {
-        modeSel.value = committedFlightParams.altitude_mode;
+      if (modeSel && !shouldDeferSelectMutation(modeSel) && pendingAltitudeMode === null) {
+        if (modeSel.value !== committedFlightParams.altitude_mode) {
+          modeSel.value = committedFlightParams.altitude_mode;
+        }
         updateAltitudeModeUI(committedFlightParams.altitude_mode);
       }
 
@@ -332,7 +335,9 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
     if (commitLbl) {
       commitLbl.textContent = `Active: ${committedTrajectoryMode === 'ellipse' ? 'Ellipse' : 'Closed waypoint route'}`;
     }
-    root.value = draft.mode;
+    if (!shouldDeferSelectMutation(root) && root.value !== draft.mode) {
+      root.value = draft.mode;
+    }
     const elEllipse = $('ellipse-editor');
     const elWaypoint = $('waypoint-editor');
     if (elEllipse) elEllipse.hidden = draft.mode !== 'ellipse';
@@ -922,23 +927,41 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
   function syncObstacleTargetNodeSelect(rawNodes: readonly any[]): void {
     const sel = $('tb-obs-target-node-select') as HTMLSelectElement | null;
     if (!sel) return;
+    if (shouldDeferSelectMutation(sel)) {
+      sel.dataset.pendingOptSync = '1';
+      return;
+    }
     const prev = sel.value;
     const items = (rawNodes || [])
       .filter((n: any) => n && Number.isFinite(Number(n.node_id ?? n.nodeId)))
       .map((n: any) => {
         const id = Number(n.node_id ?? n.nodeId);
-        const role = (n.node_type === 'mcp' || n.nodeType === 'mcp') ? 'MCP' : 'Soldier';
+        const rawRole = n.node_role ?? n.node_type ?? n.nodeType;
+        const role = rawRole === 'convoy' ? 'Convoy' : rawRole === 'mcp' ? 'MCP' : 'Soldier';
         const snr = Number(n.snr_db ?? n.snrDb);
         const tag = Number.isFinite(snr) ? `${snr.toFixed(1)} dB` : (n.terrain_is_los === false ? 'Blocked' : 'Active');
         return { value: String(id), label: `S${id} · ${role} (${tag})` };
       });
     if (items.length === 0) return;
     const sig = items.map((i) => `${i.value}:${i.label}`).join('|');
-    if (sel.dataset.nodeSig === sig) return;
+    if (sel.dataset.optSig === sig || sel.dataset.nodeSig === sig) {
+      sel.dataset.optSig = sig;
+      sel.dataset.nodeSig = sig;
+      return;
+    }
+    sel.dataset.optSig = sig;
     sel.dataset.nodeSig = sig;
-    sel.innerHTML =
-      `<option value="none">Pick a ground node…</option>` +
-      items.map((i) => `<option value="${escapeHtml(i.value)}">${escapeHtml(i.label)}</option>`).join('');
+    const doc = sel.ownerDocument ?? document;
+    const placeholder = doc.createElement('option');
+    placeholder.value = 'none';
+    placeholder.textContent = 'Pick a ground node…';
+    const optionEls = items.map((i) => {
+      const opt = doc.createElement('option');
+      opt.value = i.value;
+      opt.textContent = i.label;
+      return opt;
+    });
+    sel.replaceChildren(placeholder, ...optionEls);
     if (prev && items.some((i) => i.value === prev)) {
       sel.value = prev;
     } else if (items.length > 0 && prev === 'none') {
@@ -1330,7 +1353,11 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
     setVal('tdma-guard-us', tdmaDraft.guardIntervalUs);
     setVal('tdma-min-slot-us', tdmaDraft.minSlotDurationUs);
     setVal('tdma-max-slot-ms', tdmaDraft.maxSlotDurationMs);
-    setVal('tdma-policy', tdmaDraft.uplinkPolicy || 'equal_active');
+    const policySel = $('tdma-policy') as HTMLSelectElement | null;
+    if (policySel && !shouldDeferSelectMutation(policySel)) {
+      const nextPolicy = tdmaDraft.uplinkPolicy || 'equal_active';
+      if (policySel.value !== nextPolicy) policySel.value = nextPolicy;
+    }
     setVal('tdma-fixed-slots', tdmaDraft.fixedSlotCount ?? 16);
 
     const fixedContainer = $('tdma-fixed-slots-container');
@@ -1354,7 +1381,7 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
     };
 
     const presetSelect = $('tdma-preset-select') as HTMLSelectElement | null;
-    if (presetSelect) {
+    if (presetSelect && !shouldDeferSelectMutation(presetSelect)) {
       let matchedKey = 'custom';
       for (const [key, preset] of Object.entries(TDMA_PRESETS_UI)) {
         if (
@@ -1370,7 +1397,7 @@ export function createDashboardAndAuthoringController(deps: DashboardAndAuthorin
           break;
         }
       }
-      presetSelect.value = matchedKey;
+      if (presetSelect.value !== matchedKey) presetSelect.value = matchedKey;
     }
 
     syncInputsFromDraft();

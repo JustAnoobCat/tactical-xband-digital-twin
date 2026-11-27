@@ -13,6 +13,13 @@ import {
   clampTimelineDockHeight,
 } from '../app/scientificScopesAndTimelineController';
 import { SimulationWorkerManager } from '../worker/simWorker';
+import { EdgeAiCopilotCoordinator } from '../worker/aiCopilotCoordinator';
+import {
+  AI_LINK_BUDGET_CONSTANTS,
+  EdgeAiQTable,
+  computeAiLpiStealthPower,
+  evaluateFastLinkSinr,
+} from '../core/tacticalAiPathfinder';
 import {
   NetworkPerformanceHistory,
   aggregateTeamNetworkSample,
@@ -365,5 +372,115 @@ describe('C2-TEAMS-AND-UX-01: 2D Radar Elliptical ACN, Non-Blocking Popover, Ren
 
     const simWorkerLines = readFileSync(path.join(ROOT_DIR, 'src', 'worker', 'simWorker.ts'), 'utf8').split('\n').length;
     expect(simWorkerLines).toBeLessThan(3250);
+  });
+
+  it('T6: FIX-CONVOY-01 — NODE_UPDATE with role="convoy" runs 10 ticks on real SimulationWorkerManager without throwing and reports valid link budget', () => {
+    const sim = new SimulationWorkerManager(0, '16_NODES');
+    const captured: TelemetryFrame[] = [];
+    (sim as any).emitHostMessage = (msg: any) => {
+      if (msg?.type === 'TELEMETRY_FRAME' && msg.frame) {
+        captured.push(msg.frame as TelemetryFrame);
+      }
+    };
+
+    const upd = sim.handleMessage({
+      type: 'NODE_UPDATE',
+      node_id: 2,
+      role: 'convoy',
+    });
+    expect(upd.accepted).toBe(true);
+
+    expect(() => {
+      for (let i = 0; i < 10; i++) {
+        sim.tickSimulation(true);
+      }
+    }).not.toThrow();
+
+    expect(captured.length).toBe(10);
+    const lastFrame = captured[captured.length - 1];
+    const convoyNode = lastFrame.nodes_telemetry.find((n) => n.node_id === 2);
+    expect(convoyNode).toBeDefined();
+    expect(convoyNode!.node_role).toBe('convoy');
+    expect(Number.isFinite(convoyNode!.tx_power_dbm)).toBe(true);
+    expect(convoyNode!.tx_power_dbm).toBeGreaterThan(0);
+    expect(Number.isFinite(convoyNode!.snr_db)).toBe(true);
+    expect(Number.isFinite(convoyNode!.bitrate_mbps)).toBe(true);
+    expect(convoyNode!.bitrate_mbps).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(convoyNode!.slant_range_km)).toBe(true);
+    expect(convoyNode!.slant_range_km).toBeGreaterThanOrEqual(0);
+    expect(typeof convoyNode!.modcod_name).toBe('string');
+    expect(convoyNode!.modcod_name.length).toBeGreaterThan(0);
+  });
+
+  it('T7: FIX-EDGEAI-01 — EdgeAiQTable non-aliasing for nodeId >= 16, 5 MHz vs 1 MHz SINR scaling & MODCOD-aware LPI margin', () => {
+    // 1. EdgeAiQTable preserves 1 KB Float32Array(256) and avoids nodeId=16 aliasing nodeId=0
+    const qTable = new EdgeAiQTable();
+    expect(qTable.qTable.length).toBe(256);
+    expect(qTable.qTable.byteLength).toBe(1024);
+
+    const q0 = qTable.updateQValue(0, 3, 12.0, 0.25);
+    const q16 = qTable.updateQValue(16, 3, 28.0, 0.25);
+    const qNeg = qTable.updateQValue(-1, 3, 20.0, 0.25);
+    expect(q0).toBeCloseTo(3.0, 6);
+    expect(q16).toBeCloseTo(7.0, 6);
+    expect(qNeg).toBeCloseTo(5.0, 6);
+    expect(qTable.getQValue(0, 3)).toBeCloseTo(3.0, 6);
+    expect(qTable.getQValue(16, 3)).toBeCloseTo(7.0, 6);
+    expect(qTable.getQValue(-1, 3)).toBeCloseTo(5.0, 6);
+    qTable.reset();
+    expect(qTable.getQValue(0, 3)).toBe(0);
+    expect(qTable.getQValue(16, 3)).toBe(0);
+    expect(qTable.getQValue(-1, 3)).toBe(0);
+
+    // 2. Canonical 5.0 MHz alignment & 5 MHz vs 1 MHz thermal noise scaling (~6.99 dB)
+    expect(AI_LINK_BUDGET_CONSTANTS.channelBandwidthHz).toBe(5.0e6);
+    expect(AI_LINK_BUDGET_CONSTANTS.noisePowerDbm).toBeCloseTo(-101.99, 2);
+    expect(AI_LINK_BUDGET_CONSTANTS.cableLossDb + AI_LINK_BUDGET_CONSTANTS.implMarginDb).toBeCloseTo(5.0, 6);
+
+    const flatElev = () => 3000.0;
+    const nodePos: [number, number, number] = [0, 0, 3002];
+    const acnPos: [number, number, number] = [0, 20000, 5000];
+    const resDefault = evaluateFastLinkSinr(nodePos, acnPos, flatElev);
+    const res5MHz = evaluateFastLinkSinr(
+      nodePos,
+      acnPos,
+      flatElev,
+      AI_LINK_BUDGET_CONSTANTS.txPowerDbm,
+      AI_LINK_BUDGET_CONSTANTS.txGainDbi,
+      AI_LINK_BUDGET_CONSTANTS.rxGainDbi,
+      undefined,
+      10,
+      5.0e6
+    );
+    const res1MHz = evaluateFastLinkSinr(
+      nodePos,
+      acnPos,
+      flatElev,
+      AI_LINK_BUDGET_CONSTANTS.txPowerDbm,
+      AI_LINK_BUDGET_CONSTANTS.txGainDbi,
+      AI_LINK_BUDGET_CONSTANTS.rxGainDbi,
+      undefined,
+      10,
+      1.0e6
+    );
+    expect(resDefault.sinrDb).toBeCloseTo(res5MHz.sinrDb, 6);
+    expect(res1MHz.sinrDb - res5MHz.sinrDb).toBeCloseTo(10 * Math.log10(5.0), 2);
+
+    // 3. MODCOD-aware LPI margin protection while keeping computeAiLpiStealthPower default 18.5 dB
+    const directLpi = computeAiLpiStealthPower(30.0, 30.0, false);
+    expect(directLpi.lpiTxPowerDbm).toBeCloseTo(18.5, 4);
+
+    const coordinator = new EdgeAiCopilotCoordinator();
+    // At 26 dB SINR, active MODCOD is 64-APSK 5/6 (minSnrDb = 22.0 dB) -> target = 24.5 dB
+    const lpi64Apsk = coordinator.evaluateLpiStealth(36.0, 26.0, false, 18.5);
+    expect(lpi64Apsk.mode).toBe('LPI_STEALTH_THROTTLED');
+    expect(lpi64Apsk.reductionDb).toBeCloseTo(1.5, 4);
+    expect(lpi64Apsk.lpiTxPowerDbm).toBeCloseTo(34.5, 4);
+
+    // At 19.5 dB SINR, active MODCOD is 32-APSK 3/4 (minSnrDb = 17.5 dB) -> target = 20.0 dB > 19.5 dB
+    const lpi32Apsk = coordinator.evaluateLpiStealth(36.0, 19.5, false, 18.5);
+    expect(lpi32Apsk.mode).toBe('MAX_BOOST_DIFFRACTION');
+    expect(lpi32Apsk.reductionDb).toBe(0);
+    expect(lpi32Apsk.lpiTxPowerDbm).toBe(36.0);
   });
 });

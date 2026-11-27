@@ -49,6 +49,7 @@ import {
   drawEcdfDelayScope as renderEcdfDelayScope,
   drawSensitivitySweepScope as renderSensitivitySweepScope,
 } from '../ui/scientificScopesRenderer.ts';
+import { shouldDeferSelectMutation } from '../ui/controllers/telemetryDomUpdaters.ts';
 
 /**
  * Pure timeline dock height clamp allowing vertical stretch up to workspaceHeightPx - 96px.
@@ -428,9 +429,13 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
     }
   }
 
-  function updateNetworkNodeOptions(nodes: any[]) {
+  function updateNetworkNodeOptions(nodes: readonly any[]) {
     const select = $<HTMLSelectElement>('network-node-select');
     if (!select) return;
+    if (shouldDeferSelectMutation(select)) {
+      select.dataset.pendingOptSync = '1';
+      return;
+    }
     const teams = collectTeamsFromNodes(nodes);
     const signature = nodes
       .map(
@@ -438,8 +443,9 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
           `${node.node_id}:${node.name || ''}:${node.team_id || ''}:${node.team_name || ''}:${node.link_outage === false ? 'up' : 'down'}`
       )
       .join('|');
-    if (signature === state.networkNodeOptionsSignature) return;
+    if (signature === state.networkNodeOptionsSignature && select.dataset.optSig === signature) return;
     state.networkNodeOptionsSignature = signature;
+    select.dataset.optSig = signature;
     const selectedVals = new Set(Array.from(select.selectedOptions).map((option: any) => String(option.value)));
     const ids = nodes.map((node) => node.node_id);
 
@@ -4176,6 +4182,7 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
 
   Object.assign(actions, {
     drawNetworkCharts,
+    updateNetworkNodeOptions,
     ingestNetworkPerformance,
     updateStepControlUI,
     updatePauseButtonUI,

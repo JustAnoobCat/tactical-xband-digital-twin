@@ -84,6 +84,22 @@ export interface TelemetryDomUpdaters {
 }
 
 // ============================================================================
+// Select Focus / Interaction Guard
+// ============================================================================
+
+/**
+ * Returns true when a <select> is focused or actively interacting (menu open),
+ * so telemetry-driven option rebuilds or value overwrites defer cleanly.
+ */
+export function shouldDeferSelectMutation(selectEl: HTMLSelectElement | null): boolean {
+  if (!selectEl) return false;
+  if (selectEl.dataset?.selectInteracting === 'true') return true;
+  const doc = selectEl.ownerDocument ?? (typeof document !== 'undefined' ? document : null);
+  if (doc && doc.activeElement === selectEl) return true;
+  return false;
+}
+
+// ============================================================================
 // Controller Factory
 // ============================================================================
 
@@ -99,14 +115,27 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     return doc ? doc.getElementById(id) : null;
   };
 
+  const setTextIfChanged = (el: HTMLElement | null, text: string): void => {
+    if (el && el.textContent !== text) el.textContent = text;
+  };
+  const setClassIfChanged = (el: HTMLElement | null, cls: string): void => {
+    if (el && el.className !== cls) el.className = cls;
+  };
+  const setStyleColorIfChanged = (el: HTMLElement | null, color: string): void => {
+    if (el && el.style.color !== color) el.style.color = color;
+  };
+  const setStyleWidthIfChanged = (el: HTMLElement | null, width: string): void => {
+    if (el && el.style.width !== width) el.style.width = width;
+  };
+  const setStyleBgIfChanged = (el: HTMLElement | null, bg: string): void => {
+    if (el && el.style.backgroundColor !== bg) el.style.backgroundColor = bg;
+  };
+
   let lastOpsFleetSignature = '';
 
   function resetTelemetryDomState(): void {
     lastOpsFleetSignature = '';
-    const topThru = $('topbar-agg-thruput');
-    if (topThru) {
-      topThru.textContent = '-- Mbps';
-    }
+    setTextIfChanged($('topbar-agg-thruput'), '-- Mbps');
   }
 
   function getOpsFleetSignature(): string {
@@ -118,13 +147,14 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     if (!topThru) return;
 
     if (typeof rxGoodputMbps === 'number') {
-      topThru.textContent = Number.isFinite(rxGoodputMbps)
-        ? `${rxGoodputMbps.toFixed(2)} Mbps`
-        : '-- Mbps';
+      setTextIfChanged(
+        topThru,
+        Number.isFinite(rxGoodputMbps) ? `${rxGoodputMbps.toFixed(2)} Mbps` : '-- Mbps'
+      );
     } else if (typeof rxGoodputMbps === 'string' && rxGoodputMbps.trim().length > 0) {
-      topThru.textContent = rxGoodputMbps;
+      setTextIfChanged(topThru, rxGoodputMbps);
     } else {
-      topThru.textContent = '-- Mbps';
+      setTextIfChanged(topThru, '-- Mbps');
     }
   }
 
@@ -179,9 +209,7 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
         abrActive
     );
     const btn = $('btn-hifi-all-toggle');
-    if (btn) {
-      btn.textContent = allOn ? 'Baseline Mode' : 'Enable All Models';
-    }
+    setTextIfChanged(btn, allOn ? 'Baseline Mode' : 'Enable All Models');
 
     const attReadout = $('hifi-attitude-readout');
     if (attReadout) {
@@ -190,11 +218,11 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
         const pitch = (hifi?.uav_pitch_deg ?? 0).toFixed(1);
         const meanLoss = (hifi?.mean_airframe_shadow_loss_db ?? 0).toFixed(1);
         const maxLoss = (hifi?.max_airframe_shadow_loss_db ?? 0).toFixed(1);
-        attReadout.textContent = `R:${roll} deg P:${pitch} deg | Loss:${meanLoss} dB (max ${maxLoss} dB)`;
-        attReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(attReadout, `R:${roll} deg P:${pitch} deg | Loss:${meanLoss} dB (max ${maxLoss} dB)`);
+        setStyleColorIfChanged(attReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        attReadout.textContent = 'Off (0.0 dB)';
-        attReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(attReadout, 'Off (0.0 dB)');
+        setStyleColorIfChanged(attReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
 
@@ -203,11 +231,11 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
       if (flags?.enableCorrelatedRicianFading) {
         const fading = (hifi?.mean_correlated_fading_db ?? 0).toFixed(1);
         const coh = (hifi?.coherence_time_ms ?? 0).toFixed(1);
-        ricReadout.textContent = `Fading: ${fading} dB | Tc: ${coh} ms`;
-        ricReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(ricReadout, `Fading: ${fading} dB | Tc: ${coh} ms`);
+        setStyleColorIfChanged(ricReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        ricReadout.textContent = 'Off (AWGN)';
-        ricReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(ricReadout, 'Off (AWGN)');
+        setStyleColorIfChanged(ricReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
 
@@ -218,11 +246,11 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
         const olla = (hifi?.mean_olla_offset_db ?? 0).toFixed(1);
         const retx = hifi?.harq_retransmissions_total ?? 0;
         const guardEff = ((hifi?.dynamic_guard_efficiency ?? 1) * 100).toFixed(1);
-        harqReadout.textContent = `Lag:${lag}f | OLLA:${olla} dB | Retx:${retx} | Guard:${guardEff}%`;
-        harqReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(harqReadout, `Lag:${lag}f | OLLA:${olla} dB | Retx:${retx} | Guard:${guardEff}%`);
+        setStyleColorIfChanged(harqReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        harqReadout.textContent = 'Off (Static Guard)';
-        harqReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(harqReadout, 'Off (Static Guard)');
+        setStyleColorIfChanged(harqReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
 
@@ -230,22 +258,22 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     if (dubReadout) {
       if (flags?.enableDubinsKinematics) {
         const rMin = (hifi?.dubins_min_turn_radius_m ?? 0).toFixed(0);
-        dubReadout.textContent = `R_min: ${rMin} m | Kinematics Active`;
-        dubReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(dubReadout, `R_min: ${rMin} m | Kinematics Active`);
+        setStyleColorIfChanged(dubReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        dubReadout.textContent = 'Off (Unconstrained)';
-        dubReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(dubReadout, 'Off (Unconstrained)');
+        setStyleColorIfChanged(dubReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
 
     const viewReadout = $('hifi-viewshed-readout');
     if (viewReadout) {
       if (flags?.viewshedFidelityMode === 'link-budget-parity') {
-        viewReadout.textContent = 'Mode: LINK-BUDGET-PARITY (Ray Marching)';
-        viewReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(viewReadout, 'Mode: LINK-BUDGET-PARITY (Ray Marching)');
+        setStyleColorIfChanged(viewReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        viewReadout.textContent = 'Mode: FAST (Amortized)';
-        viewReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(viewReadout, 'Mode: FAST (Amortized)');
+        setStyleColorIfChanged(viewReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
 
@@ -256,18 +284,18 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
         const rate = (transportAbr?.mean_video_bitrate_mbps ?? 0).toFixed(2);
         const tier = transportAbr?.active_video_tier_label ?? '1080P_HD';
         const scale = (transportAbr?.mean_closed_loop_capacity_scale ?? 1.0).toFixed(2);
-        abrReadout.textContent = `${tier} (${rate} Mbps) | Cwnd:${cwnd} | Scale:${scale}`;
-        abrReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(abrReadout, `${tier} (${rate} Mbps) | Cwnd:${cwnd} | Scale:${scale}`);
+        setStyleColorIfChanged(abrReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        abrReadout.textContent = 'Off (Fixed Bitrate)';
-        abrReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(abrReadout, 'Off (Fixed Bitrate)');
+        setStyleColorIfChanged(abrReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
 
     // EW / ECCM & GNSS Spoofing Controls (V3-03)
     const eccmSelect = $('ew-eccm-mode-select') as HTMLSelectElement | null;
-    if (eccmSelect && ewEccm?.eccm_mode && doc.activeElement !== eccmSelect) {
-      eccmSelect.value = ewEccm.eccm_mode;
+    if (eccmSelect && ewEccm?.eccm_mode && !shouldDeferSelectMutation(eccmSelect)) {
+      if (eccmSelect.value !== ewEccm.eccm_mode) eccmSelect.value = ewEccm.eccm_mode;
     }
     const mvdrBox = $('toggle-ew-mvdr') as HTMLInputElement | null;
     if (mvdrBox && ewEccm && doc.activeElement !== mvdrBox) {
@@ -279,18 +307,19 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     }
     const spoofInput = $('ew-gnss-spoof-input') as HTMLInputElement | null;
     if (spoofInput && ewEccm && doc.activeElement !== spoofInput) {
-      spoofInput.value = String(ewEccm.gnss_spoofing_rate_us_per_sec ?? 0);
+      const nextVal = String(ewEccm.gnss_spoofing_rate_us_per_sec ?? 0);
+      if (spoofInput.value !== nextVal) spoofInput.value = nextVal;
     }
 
     const mvdrReadout = $('hifi-mvdr-readout');
     if (mvdrReadout) {
       if (ewEccm?.mvdr_null_steering_enabled) {
         const nullRej = (ewEccm.mean_spatial_null_rejection_db ?? 0).toFixed(1);
-        mvdrReadout.textContent = `Active (${nullRej} dB null)`;
-        mvdrReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(mvdrReadout, `Active (${nullRej} dB null)`);
+        setStyleColorIfChanged(mvdrReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        mvdrReadout.textContent = 'Off (Omni)';
-        mvdrReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(mvdrReadout, 'Off (Omni)');
+        setStyleColorIfChanged(mvdrReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
 
@@ -299,11 +328,11 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
       if (ewEccm?.adversary_esm_enabled) {
         const rdet = (ewEccm.esm_detection_radius_km ?? 0).toFixed(1);
         const pInt = ((ewEccm.max_intercept_probability ?? 0) * 100).toFixed(0);
-        esmReadout.textContent = `R_det: ${rdet} km | P_int: ${pInt}%`;
-        esmReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(esmReadout, `R_det: ${rdet} km | P_int: ${pInt}%`);
+        setStyleColorIfChanged(esmReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        esmReadout.textContent = 'Off (No Intercept)';
-        esmReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(esmReadout, 'Off (No Intercept)');
+        setStyleColorIfChanged(esmReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
 
@@ -318,10 +347,15 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
         const taDrift = (ewEccm.gnss_ta_drift_us ?? 0).toFixed(1);
         const suppressed = ewEccm.jammer_suppressed ? ' [SUPPRESSED]' : '';
         const collision = ewEccm.gnss_spoof_slot_collision ? ' [SLOT COLLISION]' : '';
-        ewReadout.textContent = `ECCM: ${mode} (+${gp} dB) | MVDR: ${nullRej} dB${suppressed} | J_eff: ${jeff} dBm | ESM R_det: ${rdet} km | TA Drift: ${taDrift} \u03bcs${collision}`;
+        setTextIfChanged(
+          ewReadout,
+          `ECCM: ${mode} (+${gp} dB) | MVDR: ${nullRej} dB${suppressed} | J_eff: ${jeff} dBm | ESM R_det: ${rdet} km | TA Drift: ${taDrift} \u03bcs${collision}`
+        );
       } else {
-        ewReadout.textContent =
-          'ECCM: NONE (0.0 dB) | MVDR Null: 0.0 dB | J_eff: -- dBm | ESM R_det: -- km | TA Drift: 0.0 \u03bcs';
+        setTextIfChanged(
+          ewReadout,
+          'ECCM: NONE (0.0 dB) | MVDR Null: 0.0 dB | J_eff: -- dBm | ESM R_det: -- km | TA Drift: 0.0 \u03bcs'
+        );
       }
     }
 
@@ -348,16 +382,21 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
           ? Math.round(aero.endurance_remaining_min)
           : 480;
       const cfitStatus = aero?.cfit_pull_up_active ? 'PULL-UP ACTIVE' : 'SAFE';
-      cmReadout.textContent = `Constellation: ${acnCount} ACN${
-        acnCount > 1 ? 's' : ''
-      } | MANET: ${
-        manetActive
-          ? `${constellationMobility.manet_active_routes.length} routes (${constellationMobility.manet_mean_e2e_mbps} Mbps)`
-          : 'OFF'
-      } | Convoy: ${convoyCount > 0 ? `${convoyCount} units` : 'OFF'} | Wind: ${windSpeed} m/s (Crab ${crab}°) | Endurance: ${endurance} min | CFIT: ${cfitStatus}`;
+      setTextIfChanged(
+        cmReadout,
+        `Constellation: ${acnCount} ACN${
+          acnCount > 1 ? 's' : ''
+        } | MANET: ${
+          manetActive
+            ? `${constellationMobility.manet_active_routes.length} routes (${constellationMobility.manet_mean_e2e_mbps} Mbps)`
+            : 'OFF'
+        } | Convoy: ${convoyCount > 0 ? `${convoyCount} units` : 'OFF'} | Wind: ${windSpeed} m/s (Crab ${crab}°) | Endurance: ${endurance} min | CFIT: ${cfitStatus}`
+      );
     } else {
-      cmReadout.textContent =
-        'Constellation: 1 ACN | MANET: OFF | Convoy: OFF | Wind: 0 m/s (Crab 0.0°) | Endurance: 480 min | CFIT: SAFE';
+      setTextIfChanged(
+        cmReadout,
+        'Constellation: 1 ACN | MANET: OFF | Convoy: OFF | Wind: 0 m/s (Crab 0.0°) | Endurance: 480 min | CFIT: SAFE'
+      );
     }
   }
 
@@ -366,7 +405,7 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     if (!doc || !msg) return;
 
     const sectorSelect = $('dem-sector-select') as HTMLSelectElement | null;
-    if (sectorSelect && doc.activeElement !== sectorSelect) {
+    if (sectorSelect && !shouldDeferSelectMutation(sectorSelect)) {
       const curBiome = msg.biome_id || msg.frame?.biome_id || 'alpine_mountain';
       const curTerrainMode = msg.terrain_mode || msg.frame?.terrain_mode;
       if (curBiome === 'alpine_mountain') {
@@ -387,8 +426,13 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
       const normPreset = sectorSelect.value === 'alpine_mountain' ? 'ladakh' : sectorSelect.value;
       doc.querySelectorAll?.('#tb-dem-quick-switch .tb-dem-preset-btn[data-dem-preset]')?.forEach((btn) => {
         const active = btn.getAttribute('data-dem-preset') === normPreset;
-        btn.classList.toggle('is-active', active);
-        btn.setAttribute('aria-pressed', String(active));
+        if (btn.classList.contains('is-active') !== active) {
+          btn.classList.toggle('is-active', active);
+        }
+        const activeStr = String(active);
+        if (btn.getAttribute('aria-pressed') !== activeStr) {
+          btn.setAttribute('aria-pressed', activeStr);
+        }
       });
     }
 
@@ -398,8 +442,8 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     }
 
     const polSel = $('biome-pol-select') as HTMLSelectElement | null;
-    if (polSel && doc.activeElement !== polSel && msg.polarization_mode) {
-      polSel.value = msg.polarization_mode;
+    if (polSel && !shouldDeferSelectMutation(polSel) && msg.polarization_mode) {
+      if (polSel.value !== msg.polarization_mode) polSel.value = msg.polarization_mode;
     }
 
     const emReadout = $('biome-em-readout');
@@ -410,11 +454,11 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
         const veg = (msg.mean_foliage_loss_db ?? 0).toFixed(1);
         const dust = (msg.mean_dust_loss_db ?? 0).toFixed(1);
         const pol = (msg.mean_pol_loss_db ?? 0).toFixed(1);
-        emReadout.textContent = `2-Ray: ${twoRay} dB | Veg: ${veg} dB | Dust: ${dust} dB | Pol: ${pol} dB`;
-        emReadout.style.color = 'var(--lo-accent, #38bdf8)';
+        setTextIfChanged(emReadout, `2-Ray: ${twoRay} dB | Veg: ${veg} dB | Dust: ${dust} dB | Pol: ${pol} dB`);
+        setStyleColorIfChanged(emReadout, 'var(--lo-accent, #38bdf8)');
       } else {
-        emReadout.textContent = 'Off (Baseline FSPL)';
-        emReadout.style.color = 'var(--lo-text-muted, #8b949e)';
+        setTextIfChanged(emReadout, 'Off (Baseline FSPL)');
+        setStyleColorIfChanged(emReadout, 'var(--lo-text-muted, #8b949e)');
       }
     }
   }
@@ -428,21 +472,21 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
 
     if (nodeList.length === 0 || !report) {
       if (opsOverallBadge) {
-        opsOverallBadge.textContent = 'STANDBY';
-        opsOverallBadge.className = 'kpi-badge badge-neutral';
+        setTextIfChanged(opsOverallBadge, 'STANDBY');
+        setClassIfChanged(opsOverallBadge, 'kpi-badge badge-neutral');
       }
       for (const qosId of [69, 65, 67, 70]) {
         const vEl = $(`ops-qos-${qosId}-val`);
         const bEl = $(`ops-qos-${qosId}-bar`);
         if (vEl) {
-          vEl.textContent = '-- ms · --';
-          vEl.className = 'c2-qos-val';
-          vEl.style.color = '';
+          setTextIfChanged(vEl, '-- ms · --');
+          setClassIfChanged(vEl, 'c2-qos-val');
+          setStyleColorIfChanged(vEl, '');
         }
         if (bEl) {
-          bEl.style.width = '0%';
-          bEl.className = 'c2-bar-fill is-accent';
-          bEl.style.backgroundColor = '';
+          setStyleWidthIfChanged(bEl, '0%');
+          setClassIfChanged(bEl, 'c2-bar-fill is-accent');
+          setStyleBgIfChanged(bEl, '');
         }
       }
       return;
@@ -451,14 +495,14 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     if (opsOverallBadge && typeof report.overallSlaCompliancePct === 'number') {
       const overallPct = report.overallSlaCompliancePct;
       if (overallPct >= 95.0) {
-        opsOverallBadge.textContent = `${overallPct.toFixed(0)}% PASS`;
-        opsOverallBadge.className = 'kpi-badge badge-emerald';
+        setTextIfChanged(opsOverallBadge, `${overallPct.toFixed(0)}% PASS`);
+        setClassIfChanged(opsOverallBadge, 'kpi-badge badge-emerald');
       } else if (overallPct >= 75.0) {
-        opsOverallBadge.textContent = `${overallPct.toFixed(0)}% WARN`;
-        opsOverallBadge.className = 'kpi-badge badge-amber';
+        setTextIfChanged(opsOverallBadge, `${overallPct.toFixed(0)}% WARN`);
+        setClassIfChanged(opsOverallBadge, 'kpi-badge badge-amber');
       } else {
-        opsOverallBadge.textContent = `${overallPct.toFixed(0)}% BREACH`;
-        opsOverallBadge.className = 'kpi-badge badge-danger';
+        setTextIfChanged(opsOverallBadge, `${overallPct.toFixed(0)}% BREACH`);
+        setClassIfChanged(opsOverallBadge, 'kpi-badge badge-danger');
       }
     }
 
@@ -474,30 +518,30 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
       const headroomText = headroomVal > 0 ? `+${headroomVal}%` : `${headroomVal}%`;
 
       if (vEl) {
-        vEl.textContent = `${sojournMs.toFixed(1)} ms · ${headroomText}`;
+        setTextIfChanged(vEl, `${sojournMs.toFixed(1)} ms · ${headroomText}`);
         if (pct > 100) {
-          vEl.className = 'c2-qos-val c-bad';
-          vEl.style.color = 'var(--lo-err, #ef4444)';
+          setClassIfChanged(vEl, 'c2-qos-val c-bad');
+          setStyleColorIfChanged(vEl, 'var(--lo-err, #ef4444)');
         } else if (pct > 75) {
-          vEl.className = 'c2-qos-val is-warn';
-          vEl.style.color = '';
+          setClassIfChanged(vEl, 'c2-qos-val is-warn');
+          setStyleColorIfChanged(vEl, '');
         } else {
-          vEl.className = 'c2-qos-val';
-          vEl.style.color = '';
+          setClassIfChanged(vEl, 'c2-qos-val');
+          setStyleColorIfChanged(vEl, '');
         }
       }
 
       if (bEl) {
-        bEl.style.width = `${Math.min(100, Math.round(pct))}%`;
+        setStyleWidthIfChanged(bEl, `${Math.min(100, Math.round(pct))}%`);
         if (pct > 100) {
-          bEl.className = 'c2-bar-fill';
-          bEl.style.backgroundColor = 'var(--lo-err, #ef4444)';
+          setClassIfChanged(bEl, 'c2-bar-fill');
+          setStyleBgIfChanged(bEl, 'var(--lo-err, #ef4444)');
         } else if (pct > 75) {
-          bEl.className = 'c2-bar-fill is-warn';
-          bEl.style.backgroundColor = '';
+          setClassIfChanged(bEl, 'c2-bar-fill is-warn');
+          setStyleBgIfChanged(bEl, '');
         } else {
-          bEl.className = 'c2-bar-fill is-accent';
-          bEl.style.backgroundColor = '';
+          setClassIfChanged(bEl, 'c2-bar-fill is-accent');
+          setStyleBgIfChanged(bEl, '');
         }
       }
     }
@@ -520,9 +564,10 @@ export function createTelemetryDomUpdaters(deps?: TelemetryDomUpdatersDeps): Tel
     const checkedIds = deps?.getCheckedFleetNodeIds?.();
 
     if (countBadge) {
-      countBadge.textContent = teamFilter
-        ? `${nodeList.length}/${allNodes.length} TEAM`
-        : `${allNodes.length} ACTIVE`;
+      setTextIfChanged(
+        countBadge,
+        teamFilter ? `${nodeList.length}/${allNodes.length} TEAM` : `${allNodes.length} ACTIVE`
+      );
     }
 
     if (nodeList.length === 0) {

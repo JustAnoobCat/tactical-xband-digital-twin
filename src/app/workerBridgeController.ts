@@ -9,6 +9,7 @@ import type {
 import type { ObstacleCommandResult } from '../ui/obstacleEditorState.ts';
 import { routeCommandResult } from '../ui/commandResultRouter.ts';
 import { SystemHealthHud } from '../ui/systemHealthHud.ts';
+import { shouldDeferSelectMutation } from '../ui/controllers/telemetryDomUpdaters.ts';
 
 export function initWorkerBridgeController(ctx: AppContext): void {
   const { worker, state, engines, dom, actions } = ctx;
@@ -68,6 +69,7 @@ export function initWorkerBridgeController(ctx: AppContext): void {
         pduDissector,
         viewshed: true,
       },
+      uiPublishIntervalTicks: 2,
     });
   }
 
@@ -114,17 +116,27 @@ export function initWorkerBridgeController(ctx: AppContext): void {
         const tip = $('map-node-tooltip');
         if (tip) tip.style.display = 'none';
       }
-      actions.renderSelectedNodeDetails();
+      const nowBridgeMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const isSelectMenuDeferActive = nowBridgeMs < (state.selectInteractionUntilMs || 0);
+      if (!isSelectMenuDeferActive) {
+        actions.renderSelectedNodeDetails();
+      }
       const dashboardSelect = $<HTMLSelectElement>('network-node-select');
-      const dashboardOption = Array.from(dashboardSelect?.options || []).find(
-        option => Number(option.value) === state.selectedNodeId
-      );
-      if (dashboardOption && !dashboardOption.selected) {
-        dashboardOption.selected = true;
-        actions.drawNetworkCharts();
+      if (dashboardSelect) {
+        if (shouldDeferSelectMutation(dashboardSelect)) {
+          dashboardSelect.dataset.pendingOptSync = '1';
+        } else {
+          const dashboardOption = Array.from(dashboardSelect.options || []).find(
+            option => Number(option.value) === state.selectedNodeId
+          );
+          if (dashboardOption && !dashboardOption.selected) {
+            dashboardOption.selected = true;
+            if (!isSelectMenuDeferActive) actions.drawNetworkCharts();
+          }
+        }
       }
       const hoverNodeId = state.hoveredLinkNodeId ?? state.hoveredNodeId;
-      if (state.activeMapHoverRenderer && state.mapHoverPoint && hoverNodeId !== null) {
+      if (!isSelectMenuDeferActive && state.activeMapHoverRenderer && state.mapHoverPoint && hoverNodeId !== null) {
         actions.renderNodeHoverTooltip(
           hoverNodeId,
           state.mapHoverPoint,
@@ -133,7 +145,7 @@ export function initWorkerBridgeController(ctx: AppContext): void {
       }
       actions.ingestNetworkPerformance(msg.frame);
       const activeTabId = document.querySelector('.tab-content.active')?.id;
-      if (activeTabId === 'tab-registration') {
+      if (!isSelectMenuDeferActive && activeTabId === 'tab-registration') {
         actions.renderRegistration(msg.frame);
       }
       if (msg.frame && msg.frame.terrain_bounds) {
@@ -152,51 +164,53 @@ export function initWorkerBridgeController(ctx: AppContext): void {
       actions.syncTrajectoryEditorFromWorker(msg.frame.trajectory_config);
       actions.syncTdmaEditorFromWorker(msg.frame.tdma_frame_config);
       actions.updateDashboardDOM(msg.frame);
-      actions.updateHiFiPhysicsUI(
-        msg.frame.hifi_telemetry,
-        msg.frame.transport_abr_telemetry,
-        msg.frame.ew_eccm_telemetry,
-        msg.frame.constellation_mobility_telemetry
-      ); // updateHiFiPhysicsUI(msg.frame.hifi_telemetry)
-      actions.updateBiomePhysicsUI(msg);
-      if (state.terrainMapMode === 'maplibre' && state.stageViewMode === '2d' && state.mapLibreInitialized) {
-        const nowMs = performance.now();
-        if (nowMs - state.lastMapLibreOverlaySyncMs >= 150 && !actions.isMapLibreDynamicSourceBusy()) {
-          state.lastMapLibreOverlaySyncMs = nowMs;
-          actions.updateMapLibreOverlay();
+      if (!isSelectMenuDeferActive) {
+        actions.updateHiFiPhysicsUI(
+          msg.frame.hifi_telemetry,
+          msg.frame.transport_abr_telemetry,
+          msg.frame.ew_eccm_telemetry,
+          msg.frame.constellation_mobility_telemetry
+        ); // updateHiFiPhysicsUI(msg.frame.hifi_telemetry)
+        actions.updateBiomePhysicsUI(msg);
+        if (state.terrainMapMode === 'maplibre' && state.stageViewMode === '2d' && state.mapLibreInitialized) {
+          const nowMs = performance.now();
+          if (nowMs - state.lastMapLibreOverlaySyncMs >= 150 && !actions.isMapLibreDynamicSourceBusy()) {
+            state.lastMapLibreOverlaySyncMs = nowMs;
+            actions.updateMapLibreOverlay();
+          }
         }
-      }
-      if (state.threeController && state.stageViewMode === '3d' && !(simTimelineController?.isHistoricalInspecting)) {
-        state.threeController.updateTelemetry(msg.frame);
-      }
-      diagnosticsTracker.renderIntoDom(
-        msg.frame,
-        {
-          spatialCount: simSpatialBuffer.count,
-          spatialCapacity: simSpatialBuffer.capacity,
-          epochCount: simEpochStore.count,
-          epochCapacity: simEpochStore.capacity,
-        },
-        {
-          cadenceId: 'diag-ipc-cadence',
-          jitterId: 'diag-ipc-jitter',
-          pacingId: 'diag-worker-pacing',
-          lookaheadSummaryId: 'diag-lookahead-state',
-          buffersId: 'diag-history-buffers',
-          revisionId: 'diag-revision-meta',
-          jsonId: 'diag-raw-json-pre',
-        },
-        { isPanelVisible: actions.isDiagnosticsPanelVisible() }
-      );
-      actions.observeTelemetryTiming(msg.frame);
-      if (actions.isDiagnosticsPanelVisible()) {
-        actions.renderWorkerJitterProfiler(msg.frame);
-        getSystemHealthHud().update({
-          frame: msg.frame,
-          rollingStepSamples: state.rollingWorkerStepSamples,
-          rollingInterFrameDeltas: state.rollingWorkerInterFrameDeltas,
-          recordedEventsCount: flightRecorder.getEventCount(),
-        });
+        if (state.threeController && state.stageViewMode === '3d' && !(simTimelineController?.isHistoricalInspecting)) {
+          state.threeController.updateTelemetry(msg.frame);
+        }
+        diagnosticsTracker.renderIntoDom(
+          msg.frame,
+          {
+            spatialCount: simSpatialBuffer.count,
+            spatialCapacity: simSpatialBuffer.capacity,
+            epochCount: simEpochStore.count,
+            epochCapacity: simEpochStore.capacity,
+          },
+          {
+            cadenceId: 'diag-ipc-cadence',
+            jitterId: 'diag-ipc-jitter',
+            pacingId: 'diag-worker-pacing',
+            lookaheadSummaryId: 'diag-lookahead-state',
+            buffersId: 'diag-history-buffers',
+            revisionId: 'diag-revision-meta',
+            jsonId: 'diag-raw-json-pre',
+          },
+          { isPanelVisible: actions.isDiagnosticsPanelVisible() }
+        );
+        actions.observeTelemetryTiming(msg.frame);
+        if (actions.isDiagnosticsPanelVisible()) {
+          actions.renderWorkerJitterProfiler(msg.frame);
+          getSystemHealthHud().update({
+            frame: msg.frame,
+            rollingStepSamples: state.rollingWorkerStepSamples,
+            rollingInterFrameDeltas: state.rollingWorkerInterFrameDeltas,
+            recordedEventsCount: flightRecorder.getEventCount(),
+          });
+        }
       }
     } else if (msg.type === 'PROFILE_FRAME') {
       // Stale-response protection: discard if the serial is not strictly newer than the

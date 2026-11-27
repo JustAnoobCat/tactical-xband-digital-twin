@@ -42,7 +42,7 @@ import {
 import { ActiveTransferManager, type NodeTransferState, getDefaultPayloadBytes } from '../core/transferManager';
 import { EdgeAiCopilotCoordinator, type ActiveAiMovement } from './aiCopilotCoordinator';
 import {
-  EdgeAiQTable, computeAiRecoveryAdvisory, computeToblerWalkingSpeedMs, evaluateAiBuddyRelayRescue, computeAiSkyShepherdUavOffset, computeAiLpiStealthPower, predictNodeBlackoutCountdown, type AiNodeRecoveryRecommendation, type AiBuddyRelayResult, type AiSkyShepherdResult, type AiLpiStealthResult, type AiBlackoutForecastResult, type SquadNodeForBuddyEval, type FixedWingKinematicConstraints,
+  EdgeAiQTable, computeAiRecoveryAdvisory, computeToblerWalkingSpeedMs, evaluateAiBuddyRelayRescue, computeAiSkyShepherdUavOffset, predictNodeBlackoutCountdown, type AiNodeRecoveryRecommendation, type AiBuddyRelayResult, type AiSkyShepherdResult, type AiLpiStealthResult, type AiBlackoutForecastResult, type SquadNodeForBuddyEval, type FixedWingKinematicConstraints,
 } from '../core/tacticalAiPathfinder';
 import {
   ACNTrajectory, createACNTrajectory, NodeTerrainState, PredictiveLookAheadEngine, PredictiveState, computeAirframeAttitude,
@@ -837,11 +837,13 @@ export class SimulationWorkerManager {
           ? (this.rfConfig.mcpTxPowerDbm ?? 40.0)
           : (this.rfConfig.soldierTxPowerDbm ?? 30.0);
         if (this.aiLpiStealthEnabled) {
+          const activeModcodMinSnrDb = LinkBudgetEngine.selectModCod(sinrDb, this.rfConfig).minSnrDb;
           const lpiResult = this.aiCoordinator.evaluateLpiStealth(
             nominalTxPowerDbm,
             sinrDb,
             isOutage,
-            18.5
+            18.5,
+            activeModcodMinSnrDb
           );
           this.aiLpiStealthResults.set(nid, lpiResult);
         } else {
@@ -861,7 +863,8 @@ export class SimulationWorkerManager {
           (dtS: number) => this.trajectoryEngine.getAcnPosition(t + dtS),
           (x, y) => this.terrainEngine.getElevation(x, y),
           t,
-          this.rfConfig.carrierFrequencyHz
+          this.rfConfig.carrierFrequencyHz,
+          this.rfConfig.channelBandwidthHz
         );
         this.aiBlackoutForecasts.set(nid, blackoutForecast);
       }
@@ -879,7 +882,8 @@ export class SimulationWorkerManager {
             pinnedNode.position,
             centerPos,
             (x, y) => this.terrainEngine.getElevation(x, y),
-            this.rfConfig.carrierFrequencyHz
+            this.rfConfig.carrierFrequencyHz,
+            this.rfConfig.channelBandwidthHz
           );
           this.aiSkyShepherdDirective = shepherdRes.shepherdDirectiveText;
         }
@@ -1299,7 +1303,8 @@ export class SimulationWorkerManager {
       if (this.aiLpiStealthEnabled) {
         if (!this.lpiSavedTxPowerByNode.has(nid)) this.lpiSavedTxPowerByNode.set(nid, node.txPowerDbm);
         const nominalTxPowerDbm = this.lpiSavedTxPowerByNode.get(nid) ?? (node.nodeType === 'mcp' ? (this.rfConfig.mcpTxPowerDbm ?? 40.0) : (this.rfConfig.soldierTxPowerDbm ?? 36.0));
-        const lpiResult = computeAiLpiStealthPower(nominalTxPowerDbm, this.linkStatuses.get(nid)?.snrDb ?? 20.0, !obstruction.isLos || (obstruction.obstacleBlocked ?? false), 18.5);
+        const curSnrDb = this.linkStatuses.get(nid)?.snrDb ?? 20.0;
+        const lpiResult = this.aiCoordinator.evaluateLpiStealth(nominalTxPowerDbm, curSnrDb, !obstruction.isLos || (obstruction.obstacleBlocked ?? false), 18.5, LinkBudgetEngine.selectModCod(curSnrDb, this.rfConfig).minSnrDb);
         this.aiLpiStealthResults.set(nid, lpiResult);
         customTxPowerDbm = lpiResult.lpiTxPowerDbm;
         node.txPowerDbm = customTxPowerDbm;

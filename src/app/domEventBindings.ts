@@ -39,6 +39,7 @@ import {
   normalizeTeamId,
   parseTeamSelection,
 } from '../core/nodeRegistry.ts';
+import { shouldDeferSelectMutation } from '../ui/controllers/telemetryDomUpdaters.ts';
 
 const TABS = [
   'tab-overview',
@@ -1662,21 +1663,26 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
 
     const teamSel = $<HTMLSelectElement>('node-modal-team');
     const customTeamInput = $<HTMLInputElement>('node-modal-team-custom');
-    if (teamSel) {
+    if (teamSel && !shouldDeferSelectMutation(teamSel)) {
       const mergedTeams = new Map<string, string>();
       for (const t of DEFAULT_TACTICAL_TEAMS) mergedTeams.set(t.teamId, t.teamName);
       for (const t of collectTeamsFromNodes(nodes)) mergedTeams.set(t.teamId, t.teamName);
-      teamSel.innerHTML = '';
-      for (const [tid, tname] of mergedTeams.entries()) {
-        const opt = document.createElement('option');
-        opt.value = tid;
-        opt.textContent = tname;
-        teamSel.appendChild(opt);
+      const teamOptSig = Array.from(mergedTeams.entries()).map(([tid, tname]) => `${tid}:${tname}`).join('|');
+      if (teamSel.dataset.optSig !== teamOptSig) {
+        teamSel.dataset.optSig = teamOptSig;
+        const optEls: HTMLOptionElement[] = [];
+        for (const [tid, tname] of mergedTeams.entries()) {
+          const opt = document.createElement('option');
+          opt.value = tid;
+          opt.textContent = tname;
+          optEls.push(opt);
+        }
+        const customOpt = document.createElement('option');
+        customOpt.value = '__custom__';
+        customOpt.textContent = '+ Create Custom Team…';
+        optEls.push(customOpt);
+        teamSel.replaceChildren(...optEls);
       }
-      const customOpt = document.createElement('option');
-      customOpt.value = '__custom__';
-      customOpt.textContent = '+ Create Custom Team…';
-      teamSel.appendChild(customOpt);
 
       const nodeTeamId = node.team_id ? normalizeTeamId(node.team_id) : (node.team_name ? normalizeTeamId(node.team_name) : 'alpha');
       if (mergedTeams.has(nodeTeamId)) {
@@ -2142,7 +2148,13 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'ntn-node-select', 'eud-node-select'].forEach(
       (id) => {
         const sel = $<HTMLSelectElement>(id);
-        if (sel) sel.value = String(nid);
+        if (!sel) return;
+        if (shouldDeferSelectMutation(sel)) {
+          sel.dataset.pendingOptSync = '1';
+          return;
+        }
+        const nextVal = String(nid);
+        if (sel.value !== nextVal) sel.value = nextVal;
       }
     );
     state.selectedNtnNodeId = Number(nid);
@@ -2183,7 +2195,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
         syncNodeDropdowns(state.selectedNodeId);
         ['quickNodeSelect', 'termNodeSelect'].forEach((id) => {
           const sel = $<HTMLSelectElement>(id);
-          if (sel) sel.value = `team:${teamKey}`;
+          if (sel && !shouldDeferSelectMutation(sel)) sel.value = `team:${teamKey}`;
         });
         const teamDisplayName = members[0].team_name || teamKey;
         setText('wf-target-node-badge', `TEAM: ${teamDisplayName} · Focus Node ${worst.node_id}`);
@@ -2225,6 +2237,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
       const trafficSel = $<HTMLSelectElement>('traffic-node-select');
       if (
         trafficSel &&
+        !shouldDeferSelectMutation(trafficSel) &&
         Array.from(trafficSel.options).some((o: HTMLOptionElement) => Number(o.value) === state.selectedNodeId)
       ) {
         trafficSel.value = String(state.selectedNodeId);
@@ -3595,6 +3608,109 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     scheduleResizeCanvases,
   });
 
+  let selectPriorityBound = false;
+  function flushDeferredSelectSync(sel: HTMLSelectElement): void {
+    if (!state.latestTelemetry) return;
+    const nodes = state.latestTelemetry.nodes_telemetry;
+    const id = sel.id;
+    if (
+      id === 'quickNodeSelect' ||
+      id === 'termNodeSelect' ||
+      id === 'vsa-node-select' ||
+      id === 'eud-node-select' ||
+      id === 'ops-fleet-team-filter'
+    ) {
+      if (nodes) actions.populateDropdownsOnce(nodes);
+      if (
+        state.selectedNodeId >= 0 &&
+        (id === 'quickNodeSelect' ||
+          id === 'termNodeSelect' ||
+          id === 'vsa-node-select' ||
+          id === 'eud-node-select')
+      ) {
+        syncNodeDropdowns(state.selectedNodeId);
+      }
+    } else if (id === 'ntn-node-select') {
+      actions.renderNtnSignalingAnalyzer(state.latestTelemetry);
+    } else if (id === 'traffic-node-select') {
+      actions.renderNetworkTrafficInventory(state.latestTelemetry);
+    } else if (id === 'network-node-select') {
+      if (nodes) actions.updateNetworkNodeOptions(nodes);
+    } else if (id === 'tb-obs-target-node-select') {
+      actions.getDashboardAndAuthoringController().recomputeCadObstacleAnalysis();
+    } else {
+      actions.updateDashboardDOM(state.latestTelemetry, true);
+    }
+  }
+
+  function initSelectInteractionPriorityGuards(): void {
+    if (selectPriorityBound || typeof document === 'undefined') return;
+    selectPriorityBound = true;
+
+    const markSelectActive = (sel: HTMLSelectElement): void => {
+      if (state.activeSelectElement && state.activeSelectElement !== sel) {
+        delete state.activeSelectElement.dataset.selectInteracting;
+      }
+      sel.dataset.selectInteracting = 'true';
+      state.activeSelectElement = sel;
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      state.selectInteractionUntilMs = now + 250;
+    };
+
+    const clearSelectActive = (sel: HTMLSelectElement): void => {
+      delete sel.dataset.selectInteracting;
+      if (state.activeSelectElement === sel) state.activeSelectElement = null;
+      state.selectInteractionUntilMs = 0;
+      if (sel.dataset.pendingOptSync === '1') {
+        delete sel.dataset.pendingOptSync;
+        queueMicrotask(() => flushDeferredSelectSync(sel));
+      }
+      actions.markUiDirtyAndWake?.();
+    };
+
+    document.addEventListener(
+      'pointerdown',
+      (e: Event) => {
+        const sel = (e.target as HTMLElement | null)?.closest?.('select') as HTMLSelectElement | null;
+        if (sel) {
+          markSelectActive(sel);
+        } else if (state.activeSelectElement && document.activeElement !== state.activeSelectElement) {
+          delete state.activeSelectElement.dataset.selectInteracting;
+          state.activeSelectElement = null;
+          state.selectInteractionUntilMs = 0;
+        }
+      },
+      true
+    );
+
+    document.addEventListener(
+      'focusin',
+      (e: Event) => {
+        const sel = (e.target as HTMLElement | null)?.closest?.('select') as HTMLSelectElement | null;
+        if (sel) markSelectActive(sel);
+      },
+      true
+    );
+
+    document.addEventListener(
+      'change',
+      (e: Event) => {
+        const sel = (e.target as HTMLElement | null)?.closest?.('select') as HTMLSelectElement | null;
+        if (sel) clearSelectActive(sel);
+      },
+      true
+    );
+
+    document.addEventListener(
+      'blur',
+      (e: Event) => {
+        const sel = (e.target as HTMLElement | null)?.closest?.('select') as HTMLSelectElement | null;
+        if (sel) clearSelectActive(sel);
+      },
+      true
+    );
+  }
+
   function finalizeDomSetup() {
     const radarContainer = $('radar-container');
     state.mapLayersPanel = radarContainer
@@ -3611,6 +3727,7 @@ export function initDomEventBindings(ctx: AppContext): { finalizeDomSetup: () =>
     syncMapLegendVisibility();
     syncRfQuickToggleButtons();
 
+    initSelectInteractionPriorityGuards();
     bindUxAndOverlayListeners();
     refreshTrajectoryEditor();
     refreshObstacleEditor();

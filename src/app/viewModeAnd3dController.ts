@@ -32,6 +32,7 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
   let mapLibreDepsPromise: Promise<MapLibreDependenciesBundle> | null = null;
   let threeSelectedThisClick = false;
   let lastSweepWallMs = 0;
+  let lastRadarDrawMs = 0;
   const wiredElements = new WeakSet<HTMLElement>();
 
   async function loadThreeStageModule(): Promise<typeof import('../ui/three/threeSceneController.ts')> {
@@ -652,11 +653,15 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
     }
     try {
       const now = typeof timestampMs === 'number' ? timestampMs : performance.now();
+      const nowPerf = typeof performance !== 'undefined' ? performance.now() : now;
+      const isSelectMenuDeferActive = nowPerf < (state.selectInteractionUntilMs || 0);
       const simTimelineController = state.simTimelineController;
       const isPlayingHistory = Boolean(simTimelineController?.isPlayingHistory);
       const stageViewMode = state.stageViewMode;
       const is3dMode = stageViewMode === '3d';
-      const allowSecondaryRedraw = !is3dMode || now - state.last3dSecondaryCanvasThrottleMs >= 125; // 8 Hz (125 ms) throttling in 3D mode
+      const allowSecondaryRedraw =
+        !isSelectMenuDeferActive &&
+        (!is3dMode || now - state.last3dSecondaryCanvasThrottleMs >= 125); // 8 Hz (125 ms) throttling in 3D mode
 
       if (!state.isPaused && !isPlayingHistory) {
         const dtSweepS = lastSweepWallMs > 0 ? Math.min(0.1, Math.max(0, (now - lastSweepWallMs) / 1000)) : 0;
@@ -681,12 +686,12 @@ export function initViewModeAnd3dController(ctx: AppContext): void {
         actions.syncZoomHudReadout?.();
       }
 
-      // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty or active playback (skips when in 3D mode)
-      if (stageViewMode !== '3d' &&
-        (state.radarNeedsRender || isPlayingHistory || !state.isPaused)
-      ) {
+      // 1. Radar canvas is in .persistent-map-panel (left column) - renders when dirty or ~30 FPS decorative sweep when running (skips in 3D or while a <select> menu is opening)
+      const dueForDecorativeSweep = (!state.isPaused || isPlayingHistory) && now - lastRadarDrawMs >= 33;
+      if (stageViewMode !== '3d' && !isSelectMenuDeferActive && (state.radarNeedsRender || dueForDecorativeSweep)) {
         actions.drawRadar();
         state.radarNeedsRender = false;
+        lastRadarDrawMs = now;
       }
 
       // 2. Analytical workspace canvases in right-hand column - gated by active tab (throttled to 8 Hz in 3D mode)

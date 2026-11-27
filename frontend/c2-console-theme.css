@@ -1059,7 +1059,8 @@ body.is-historical-mode .historical-mode-banner {
   align-items: center;
   gap: 4px;
   padding: 5px;
-  background: rgba(15, 19, 28, 0.94);
+  background: rgba(10, 14, 22, 0.92);
+  backdrop-filter: none;
   border: 1px solid var(--lo-line-strong);
   border-radius: var(--r-md);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -1335,7 +1336,8 @@ body.is-historical-mode .historical-mode-banner {
   z-index: 22;
   max-width: calc(100% - 340px);
   padding: 5px 10px;
-  background: rgba(13, 16, 22, 0.92);
+  background: rgba(10, 14, 22, 0.92);
+  backdrop-filter: none;
   border: 1px solid var(--lo-line-strong);
   border-radius: var(--r-sm);
   font-family: var(--lo-mono);
@@ -1652,6 +1654,7 @@ body.is-historical-mode .historical-mode-banner {
   overflow: hidden;
   padding: 12px 14px;
   background: var(--lo-surface);
+  backdrop-filter: none;
   border: 1px solid var(--lo-line-strong);
   border-radius: var(--r-md);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.58);
@@ -5178,7 +5181,8 @@ details.c2-card[open] > summary {
   padding: 0 8px;
   border-radius: var(--r-sm);
   border: 1px solid rgba(56, 189, 248, 0.35);
-  background: rgba(13, 16, 22, 0.85);
+  background: rgba(10, 14, 22, 0.92);
+  backdrop-filter: none;
   color: var(--lo-accent-bright);
   font-family: var(--lo-mono);
   font-size: 10.5px;

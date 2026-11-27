@@ -69,11 +69,28 @@ function projectCartographicToGeodetic(
     return cartesianToGeodetic(xM, yM);
   }
 
-  const mPerDegLat = biomeMeta?.halfHeightM ?? METERS_PER_DEG_LAT;
-  const mPerDegLon =
-    biomeMeta?.halfWidthM ??
-    (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
-      Math.cos((centerLat * Math.PI) / 180.0);
+  const isCustomOriginOverride =
+    hasCustomOrigin &&
+    (!biomeMeta ||
+      Math.abs(centerLat - biomeMeta.centerLatDeg) > 1e-6 ||
+      Math.abs(centerLon - biomeMeta.centerLonDeg) > 1e-6);
+  const hasMetaBounds =
+    !isCustomOriginOverride &&
+    biomeMeta !== undefined &&
+    Number.isFinite(biomeMeta.minLatDeg) &&
+    Number.isFinite(biomeMeta.maxLatDeg) &&
+    Number.isFinite(biomeMeta.minLonDeg) &&
+    Number.isFinite(biomeMeta.maxLonDeg);
+  const mPerDegLat = hasMetaBounds
+    ? biomeMeta!.halfHeightM / Math.max(1e-9, (biomeMeta!.maxLatDeg - biomeMeta!.minLatDeg) * 0.5)
+    : METERS_PER_DEG_LAT;
+  const mPerDegLon = hasMetaBounds
+    ? biomeMeta!.halfWidthM / Math.max(1e-9, (biomeMeta!.maxLonDeg - biomeMeta!.minLonDeg) * 0.5)
+    : Math.max(
+        1000.0,
+        (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
+          Math.cos((centerLat * Math.PI) / 180.0)
+      );
 
   return {
     latDeg: centerLat + yM / mPerDegLat,

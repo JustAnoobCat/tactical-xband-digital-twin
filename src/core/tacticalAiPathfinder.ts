@@ -95,11 +95,13 @@ export const AI_LINK_BUDGET_CONSTANTS = {
   txPowerDbm: 36.0,       // 4.0 W Soldier Manpack PA (RFConfig default)
   txGainDbi: 3.0,         // Soldier omni whip antenna gain
   rxGainDbi: 16.0,        // ACN peak horn array gain
-  noisePowerDbm: -108.98, // Receiver thermal noise floor + 5.0 dB NF over 1.0 MHz
+  channelBandwidthHz: 5.0e6, // Canonical 5.0 MHz tactical channel bandwidth
+  noiseFigureDb: 5.0,     // Receiver front-end noise figure (dB)
+  noisePowerDbm: -101.99, // Receiver thermal noise floor + 5.0 dB NF over 5.0 MHz
   gasLossBaselineDb: 0.0, // Atmospheric absorption baseline
   specificGasLossDbPerKm: 0.012, // ITU-R P.676 absorption at 8.0 GHz
-  cableLossDb: 1.5,       // RF feedline & connector loss
-  implMarginDb: 2.5,      // Implementation & polarization margin
+  cableLossDb: 3.0,       // RF feedline & connector loss
+  implMarginDb: 2.0,      // Implementation & polarization margin (3.0 + 2.0 = 5.0 dB)
 };
 
 export const COMPASS_16_SECTORS = COMPASS_16_CARDINALS;
@@ -338,6 +340,7 @@ export function evaluateGroundPathWalkability(
  */
 export class EdgeAiQTable {
   public readonly qTable: Float32Array;
+  private readonly overflowQ: Map<number, Float32Array> = new Map();
 
   constructor() {
     this.qTable = new Float32Array(256);
@@ -349,9 +352,12 @@ export class EdgeAiQTable {
   }
 
   public getQValue(nodeId: number, sectorIdx16: number): number {
-    const n = Math.abs(nodeId) % 16;
-    const s = Math.abs(sectorIdx16) % 16;
-    return this.qTable[n * 16 + s];
+    const s = Math.abs(Math.trunc(sectorIdx16)) % 16;
+    if (Number.isInteger(nodeId) && nodeId >= 0 && nodeId < 16) {
+      return this.qTable[nodeId * 16 + s];
+    }
+    const row = this.overflowQ.get(nodeId);
+    return row ? row[s] : 0.0;
   }
 
   public updateQValue(
@@ -360,19 +366,28 @@ export class EdgeAiQTable {
     observedSinrDb: number,
     learningRate: number = 0.15
   ): number {
-    const n = Math.abs(nodeId) % 16;
-    const s = Math.abs(sectorIdx16) % 16;
-    const idx = n * 16 + s;
-
+    const s = Math.abs(Math.trunc(sectorIdx16)) % 16;
     // Clamp observed SINR to [-10, 30] dB operational bounds
     const clampedSinr = Math.max(-10.0, Math.min(30.0, observedSinrDb));
-    const currentQ = this.qTable[idx];
-    this.qTable[idx] = (1.0 - learningRate) * currentQ + learningRate * clampedSinr;
-    return this.qTable[idx];
+    if (Number.isInteger(nodeId) && nodeId >= 0 && nodeId < 16) {
+      const idx = nodeId * 16 + s;
+      const currentQ = this.qTable[idx];
+      this.qTable[idx] = (1.0 - learningRate) * currentQ + learningRate * clampedSinr;
+      return this.qTable[idx];
+    }
+    let row = this.overflowQ.get(nodeId);
+    if (!row) {
+      row = new Float32Array(16);
+      this.overflowQ.set(nodeId, row);
+    }
+    const currentQ = row[s];
+    row[s] = (1.0 - learningRate) * currentQ + learningRate * clampedSinr;
+    return row[s];
   }
 
   public reset(): void {
     this.qTable.fill(0.0);
+    this.overflowQ.clear();
   }
 }
 
@@ -971,7 +986,8 @@ export function evaluateFastLinkSinr(
   txGainDbi: number = AI_LINK_BUDGET_CONSTANTS.txGainDbi,
   rxGainDbi: number = AI_LINK_BUDGET_CONSTANTS.rxGainDbi,
   rfFreqHz: number = DEFAULT_AI_RF_FREQ_HZ,
-  numRaySteps: number = 10
+  numRaySteps: number = 10,
+  channelBandwidthHz: number = AI_LINK_BUDGET_CONSTANTS.channelBandwidthHz
 ): FastLinkSinrResult {
   const dx = posB[0] - posA[0];
   const dy = posB[1] - posA[1];
@@ -1014,11 +1030,18 @@ export function evaluateFastLinkSinr(
   const slantRangeKm = Math.max(0.01, slantDistM / 1000.0);
   const fsplDb = computeFsplDb(slantDistM, rfFreqHz, SPEED_OF_LIGHT_M_S);
   const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantDistM, posA[2], posB[2], rfFreqHz);
-  const cableLossDb = AI_LINK_BUDGET_CONSTANTS.cableLossDb ?? 1.5;
-  const implMarginDb = AI_LINK_BUDGET_CONSTANTS.implMarginDb ?? 2.5;
+  const cableLossDb = AI_LINK_BUDGET_CONSTANTS.cableLossDb ?? 3.0;
+  const implMarginDb = AI_LINK_BUDGET_CONSTANTS.implMarginDb ?? 2.0;
+  const effBwHz = Number.isFinite(channelBandwidthHz) && channelBandwidthHz > 0
+    ? channelBandwidthHz
+    : AI_LINK_BUDGET_CONSTANTS.channelBandwidthHz;
+  const { pNoiseDbm: noisePowerDbm } = LinkBudgetEngine.computeThermalNoiseFloorDbm(
+    effBwHz,
+    AI_LINK_BUDGET_CONSTANTS.noiseFigureDb
+  );
 
   const pRxDbm = txPowerDbm + txGainDbi + rxGainDbi - fsplDb - diffLossDb - gasLossDb - cableLossDb - implMarginDb;
-  const sinrDb = Math.max(-25.0, Math.min(35.0, pRxDbm - AI_LINK_BUDGET_CONSTANTS.noisePowerDbm));
+  const sinrDb = Math.max(-25.0, Math.min(35.0, pRxDbm - noisePowerDbm));
 
   return {
     sinrDb,
@@ -1111,7 +1134,8 @@ export function evaluateAiBuddyRelayRescue(
       3.0,  // omni/patch antenna
       3.0,  // omni/patch antenna
       rfFreqHz,
-      10
+      10,
+      channelBandwidthHz
     );
 
     if (peerLink.sinrDb < -2.85) continue; // Peer link in outage
@@ -1255,7 +1279,8 @@ export function computeAiSkyShepherdUavOffset(
   pinnedNodePos: Position3D,
   currentAcnCenter: Position3D,
   getElevationAt: (x: number, y: number) => number,
-  rfFreqHz: number = DEFAULT_AI_RF_FREQ_HZ
+  rfFreqHz: number = DEFAULT_AI_RF_FREQ_HZ,
+  channelBandwidthHz: number = AI_LINK_BUDGET_CONSTANTS.channelBandwidthHz
 ): AiSkyShepherdResult {
   const pinnedX = pinnedNodePos[0];
   const pinnedY = pinnedNodePos[1];
@@ -1303,7 +1328,8 @@ export function computeAiSkyShepherdUavOffset(
         AI_LINK_BUDGET_CONSTANTS.txGainDbi,
         AI_LINK_BUDGET_CONSTANTS.rxGainDbi,
         rfFreqHz,
-        10
+        10,
+        channelBandwidthHz
       );
 
       if (link.sinrDb > bestSinrDb) {
@@ -1409,7 +1435,8 @@ export function predictNodeBlackoutCountdown(
     | ((dtS: number) => Position3D),
   getElevationAt: (x: number, y: number) => number,
   currentSimTimeS: number = 0,
-  rfFreqHz: number = DEFAULT_AI_RF_FREQ_HZ
+  rfFreqHz: number = DEFAULT_AI_RF_FREQ_HZ,
+  channelBandwidthHz: number = AI_LINK_BUDGET_CONSTANTS.channelBandwidthHz
 ): AiBlackoutForecastResult {
   if (currentIsOutage || currentSinrDb < -2.85) {
     return {
@@ -1453,7 +1480,8 @@ export function predictNodeBlackoutCountdown(
       AI_LINK_BUDGET_CONSTANTS.txGainDbi,
       AI_LINK_BUDGET_CONSTANTS.rxGainDbi,
       rfFreqHz,
-      10
+      10,
+      channelBandwidthHz
     );
 
     if (link.sinrDb < -2.85) {

@@ -846,6 +846,16 @@ function drawTacticalEquipmentOverlays(
 
 export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
   let activeLabelPlacer: CanvasLabelPlacer | null = null;
+  let staticBgCanvas: HTMLCanvasElement | null = null;
+  let staticBgCtx: CanvasRenderingContext2D | null = null;
+  let staticCacheKey = '';
+  let staticCacheHits = 0;
+  let staticCacheMisses = 0;
+  let staticTileRevision = 0;
+  let backdropRefRevision = 0;
+  let lastBackdropRef: HTMLCanvasElement | null = null;
+  let vsCanvasRefRevision = 0;
+  let lastVsCanvasRef: HTMLCanvasElement | null = null;
 
   const getViewport = (w: number, h: number): RadarViewport => {
     const pan = deps.getPanOffset();
@@ -909,136 +919,231 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
     const mapLayers = deps.getMapLayerRegistry();
     const palette = getLatticeCanvasPalette();
 
-    // 1. Base substrate
-    ctx.fillStyle = palette.voidBg;
-    ctx.fillRect(0, 0, w, h);
-
-    // 2. Terrain DEM bounds & exterior world satellite basemap (Radar SAT mode when zoomed out past DEM)
+    // 1–4. Cached static background layer (substrate, world tiles, DEM hillshade/slope/ridge, probe heatmap, cartography/MGRS)
     const visTerrainDem = mapLayers?.getEffectiveVisibility('base.terrainDem', focusCtx) ?? true;
     const opTerrainDem = mapLayers?.getLayerOpacity('base.terrainDem') ?? 0.8;
-    const activeBackdrop = deps.getBackdropMode() !== 'relief' ? deps.getBackdropCanvas() : deps.getHillshadeCanvas();
-    const isSatelliteTerrainMode = deps.getTerrainMode?.() === 'real';
+    const backdropMode = deps.getBackdropMode();
+    const activeBackdrop = backdropMode !== 'relief' ? deps.getBackdropCanvas() : deps.getHillshadeCanvas();
+    const terrainMode = deps.getTerrainMode?.() ?? '';
+    const isSatelliteTerrainMode = terrainMode === 'real';
     const worldTileLayer = deps.getWorldTileLayer?.() ?? null;
-
-    const terrainBounds = (activeBackdrop && visTerrainDem)
-      ? computeTerrainScreenBounds(
-          deps.getActiveTerrainBounds(),
-          300000,
-          geometry,
-          deps.getPanOffset()
-        )
-      : null;
-
-    if (isSatelliteTerrainMode && worldTileLayer) {
-      const fullyCoveredByDem = Boolean(
-        terrainBounds &&
-        terrainBounds.isRealMode &&
-        terrainBounds.tl.x <= 0 &&
-        terrainBounds.tl.y <= 0 &&
-        terrainBounds.br.x >= w &&
-        terrainBounds.br.y >= h
-      );
-      if (!fullyCoveredByDem) {
-        ctx.save();
-        if (terrainBounds && terrainBounds.isRealMode && terrainBounds.width > 1 && terrainBounds.height > 1) {
-          // Clip world satellite imagery strictly OUTSIDE the Ladakh DEM coverage box so
-          // Radar mode always keeps its authentic dark-mode DEM hillshade inside the AO.
-          ctx.beginPath();
-          ctx.rect(0, 0, w, h);
-          ctx.rect(terrainBounds.tl.x, terrainBounds.tl.y, terrainBounds.width, terrainBounds.height);
-          ctx.clip('evenodd');
-        }
-        worldTileLayer.draw(ctx, vp, () => {
-          deps.markDirty?.();
-        });
-        ctx.restore();
-      }
-    }
-
-    if (activeBackdrop && visTerrainDem && terrainBounds) {
-      ctx.save();
-      ctx.imageSmoothingEnabled = true;
-      ctx.globalAlpha = opTerrainDem;
-      ctx.drawImage(activeBackdrop, terrainBounds.tl.x, terrainBounds.tl.y, terrainBounds.width, terrainBounds.height);
-      ctx.restore();
-
-      // Satellite DEM coverage boundary if in real mode
-      const visDemBoundary = mapLayers?.getEffectiveVisibility('base.demBoundary', focusCtx) ?? true;
-      if (visDemBoundary && terrainBounds.isRealMode) {
-        if (terrainBounds.width >= 20 && terrainBounds.height >= 20) {
-          const boundaryGeom = computeDemBoundaryGeometry(terrainBounds, w, h, deps.getActiveTerrainBounds());
-          if (boundaryGeom) {
-            renderDemCoverageBoundary(ctx, boundaryGeom, MONO);
-          }
-        } else {
-          // Compact AO locator reticle when zoomed out to continental/world scale
-          const cx = (terrainBounds.tl.x + terrainBounds.br.x) * 0.5;
-          const cy = (terrainBounds.tl.y + terrainBounds.br.y) * 0.5;
-          const aoLabel = resolveActiveAoLabel(deps.getActiveTerrainBounds(), deps.getLatestTelemetry());
-          ctx.save();
-          ctx.strokeStyle = palette.degraded;
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(cx - 7, cy - 7, 14, 14);
-          ctx.font = `bold 10px ${MONO}`;
-          ctx.fillStyle = palette.degraded;
-          ctx.fillText(aoLabel, cx - 24, cy + 17);
-          ctx.restore();
-        }
-      }
-    }
-
-    // 2b. Probe RF Signal Propagation Heat Map Overlay (draped over DEM relief, under links/nodes/HUD)
+    const visDemBoundary = mapLayers?.getEffectiveVisibility('base.demBoundary', focusCtx) ?? true;
     const rawTbState = deps.getToolboxState() || {};
     const vsRes = rawTbState.viewshedResult;
-    const vsCanvas = rawTbState.viewshedCanvas;
+    const vsCanvas = rawTbState.viewshedCanvas as HTMLCanvasElement | null | undefined;
     const hmCfg = rawTbState.probeHeatmapConfig;
     const hmEnabled = hmCfg ? hmCfg.enabled !== false : true;
     const showProbeHm =
       rawTbState.activeMode === 'probe' ||
       rawTbState.activeMode === 'dem' ||
       rawTbState.toolMode === 'probe';
-    if (showProbeHm && hmEnabled && vsCanvas && vsRes?.isSiteWithinCoverage && Number.isFinite(vsRes.radiusM)) {
-      const r = vsRes.radiusM;
-      const nw = worldToScreen(vsRes.siteXM - r, vsRes.siteYM + r, w, h);
-      const se = worldToScreen(vsRes.siteXM + r, vsRes.siteYM - r, w, h);
-      const drawW = se.x - nw.x;
-      const drawH = se.y - nw.y;
-      if (drawW > 4 && drawH > 4) {
-        const opacity = Number.isFinite(hmCfg?.opacity)
-          ? Math.max(0.15, Math.min(0.95, Number(hmCfg.opacity)))
-          : 0.72;
-        ctx.save();
-        ctx.imageSmoothingEnabled = hmCfg?.mode !== 'viewshed';
-        ctx.globalAlpha = opacity;
-        ctx.drawImage(vsCanvas, nw.x, nw.y, drawW, drawH);
-        ctx.restore();
-      }
+
+    if (activeBackdrop !== lastBackdropRef) {
+      lastBackdropRef = activeBackdrop;
+      backdropRefRevision++;
+    }
+    if ((vsCanvas ?? null) !== lastVsCanvasRef) {
+      lastVsCanvasRef = vsCanvas ?? null;
+      vsCanvasRefRevision++;
     }
 
-    // 3. Label placer initialization
+    const activeBoundsForCarto = deps.getActiveTerrainBounds() as any;
+    const activeTelForCarto = deps.getLatestTelemetry();
+    const activeBiomeIdForCarto = (activeTelForCarto?.biome_id ?? activeBoundsForCarto?.biomeId) as BiomeId | undefined;
+    const panOffset = deps.getPanOffset();
+    const mgrsActive = deps.isMgrsGridActive();
+    const dpr =
+      typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0
+        ? window.devicePixelRatio
+        : 1;
+    const tileLoadGen = worldTileLayer?.getLoadGeneration?.() ?? 0;
+    const tileLoadedCnt = worldTileLayer?.getLoadedTileCount?.() ?? 0;
+    const airGap = worldTileLayer?.isAirGapOfflineOnly?.() ?? false;
+    const boundsSig = activeBoundsForCarto
+      ? `${activeBoundsForCarto.centerLatDeg ?? ''},${activeBoundsForCarto.centerLonDeg ?? ''},${activeBoundsForCarto.minX ?? ''},${activeBoundsForCarto.maxX ?? ''},${activeBoundsForCarto.minY ?? ''},${activeBoundsForCarto.maxY ?? ''},${activeBoundsForCarto.halfWidthM ?? ''},${activeBoundsForCarto.halfHeightM ?? ''}`
+      : '';
+    const probeHmSig =
+      showProbeHm && hmEnabled && vsCanvas && vsRes?.isSiteWithinCoverage && Number.isFinite(vsRes.radiusM)
+        ? `${vsCanvasRefRevision}:${vsRes.siteXM}:${vsRes.siteYM}:${vsRes.radiusM}:${hmCfg?.mode ?? ''}:${hmCfg?.palette ?? ''}:${hmCfg?.opacity ?? ''}:${hmCfg?.showContours ?? ''}`
+        : 'none';
+    const nextStaticKey = [
+      w,
+      h,
+      dpr,
+      vp.rangeM,
+      panOffset.xM,
+      panOffset.yM,
+      activeBiomeIdForCarto ?? '',
+      terrainMode,
+      backdropMode,
+      backdropRefRevision,
+      boundsSig,
+      staticTileRevision,
+      tileLoadGen,
+      tileLoadedCnt,
+      airGap ? 1 : 0,
+      visTerrainDem ? 1 : 0,
+      opTerrainDem,
+      visDemBoundary ? 1 : 0,
+      mgrsActive ? 1 : 0,
+      palette.voidBg,
+      probeHmSig,
+    ].join('|');
+
+    const renderStaticLayerInto = (bgCtx: CanvasRenderingContext2D): void => {
+      // 1. Base substrate
+      bgCtx.fillStyle = palette.voidBg;
+      bgCtx.fillRect(0, 0, w, h);
+
+      // 2. Terrain DEM bounds & exterior world satellite basemap (Radar SAT mode when zoomed out past DEM)
+      const terrainBounds = (activeBackdrop && visTerrainDem)
+        ? computeTerrainScreenBounds(
+            deps.getActiveTerrainBounds(),
+            300000,
+            geometry,
+            panOffset
+          )
+        : null;
+
+      if (isSatelliteTerrainMode && worldTileLayer) {
+        const fullyCoveredByDem = Boolean(
+          terrainBounds &&
+          terrainBounds.isRealMode &&
+          terrainBounds.tl.x <= 0 &&
+          terrainBounds.tl.y <= 0 &&
+          terrainBounds.br.x >= w &&
+          terrainBounds.br.y >= h
+        );
+        if (!fullyCoveredByDem) {
+          bgCtx.save();
+          if (terrainBounds && terrainBounds.isRealMode && terrainBounds.width > 1 && terrainBounds.height > 1) {
+            // Clip world satellite imagery strictly OUTSIDE the Ladakh DEM coverage box so
+            // Radar mode always keeps its authentic dark-mode DEM hillshade inside the AO.
+            bgCtx.beginPath();
+            bgCtx.rect(0, 0, w, h);
+            bgCtx.rect(terrainBounds.tl.x, terrainBounds.tl.y, terrainBounds.width, terrainBounds.height);
+            bgCtx.clip('evenodd');
+          }
+          worldTileLayer.draw(bgCtx, vp, () => {
+            staticTileRevision++;
+            staticCacheKey = '';
+            deps.markDirty?.();
+          });
+          bgCtx.restore();
+        }
+      }
+
+      if (activeBackdrop && visTerrainDem && terrainBounds) {
+        bgCtx.save();
+        bgCtx.imageSmoothingEnabled = true;
+        bgCtx.globalAlpha = opTerrainDem;
+        bgCtx.drawImage(activeBackdrop, terrainBounds.tl.x, terrainBounds.tl.y, terrainBounds.width, terrainBounds.height);
+        bgCtx.restore();
+
+        // Satellite DEM coverage boundary if in real mode
+        if (visDemBoundary && terrainBounds.isRealMode) {
+          if (terrainBounds.width >= 20 && terrainBounds.height >= 20) {
+            const boundaryGeom = computeDemBoundaryGeometry(terrainBounds, w, h, deps.getActiveTerrainBounds());
+            if (boundaryGeom) {
+              renderDemCoverageBoundary(bgCtx, boundaryGeom, MONO);
+            }
+          } else {
+            // Compact AO locator reticle when zoomed out to continental/world scale
+            const cx = (terrainBounds.tl.x + terrainBounds.br.x) * 0.5;
+            const cy = (terrainBounds.tl.y + terrainBounds.br.y) * 0.5;
+            const aoLabel = resolveActiveAoLabel(deps.getActiveTerrainBounds(), deps.getLatestTelemetry());
+            bgCtx.save();
+            bgCtx.strokeStyle = palette.degraded;
+            bgCtx.lineWidth = 1.5;
+            bgCtx.strokeRect(cx - 7, cy - 7, 14, 14);
+            bgCtx.font = `bold 10px ${MONO}`;
+            bgCtx.fillStyle = palette.degraded;
+            bgCtx.fillText(aoLabel, cx - 24, cy + 17);
+            bgCtx.restore();
+          }
+        }
+      }
+
+      // 2b. Probe RF Signal Propagation Heat Map Overlay (draped over DEM relief, under links/nodes/HUD)
+      if (showProbeHm && hmEnabled && vsCanvas && vsRes?.isSiteWithinCoverage && Number.isFinite(vsRes.radiusM)) {
+        const r = vsRes.radiusM;
+        const nw = worldToScreen(vsRes.siteXM - r, vsRes.siteYM + r, w, h);
+        const se = worldToScreen(vsRes.siteXM + r, vsRes.siteYM - r, w, h);
+        const drawW = se.x - nw.x;
+        const drawH = se.y - nw.y;
+        if (drawW > 4 && drawH > 4) {
+          const opacity = Number.isFinite(hmCfg?.opacity)
+            ? Math.max(0.15, Math.min(0.95, Number(hmCfg.opacity)))
+            : 0.72;
+          bgCtx.save();
+          bgCtx.imageSmoothingEnabled = hmCfg?.mode !== 'viewshed';
+          bgCtx.globalAlpha = opacity;
+          bgCtx.drawImage(vsCanvas, nw.x, nw.y, drawW, drawH);
+          bgCtx.restore();
+        }
+      }
+
+      // 4. Cartographic Overlays (Scale bar, True North, optional MGRS grid)
+      drawCartographicOverlays(bgCtx, {
+        width: w,
+        height: h,
+        metersPerPixel: 1.0 / (geometry.scale || 1.0),
+        showMgrsGrid: mgrsActive,
+        biomeId: activeBiomeIdForCarto,
+        originLatDeg: activeBoundsForCarto?.centerLatDeg ?? worldTileLayer?.getOrigin?.()?.latDeg,
+        originLonDeg: activeBoundsForCarto?.centerLonDeg ?? worldTileLayer?.getOrigin?.()?.lonDeg,
+        screenToWorld: (sx, sy) => {
+          const pt = screenToWorld(sx, sy, w, h);
+          return { x: pt.xM, y: pt.yM };
+        },
+        worldToScreen: (wx, wy) => worldToScreen(wx, wy, w, h),
+      });
+    };
+
+    const canUseOffscreen =
+      typeof document !== 'undefined' && typeof document.createElement === 'function';
+    if (canUseOffscreen) {
+      if (!staticBgCanvas) {
+        staticBgCanvas = document.createElement('canvas');
+        staticBgCtx = staticBgCanvas.getContext('2d');
+      }
+      const targetPxW = Math.max(1, Math.round(w * dpr));
+      const targetPxH = Math.max(1, Math.round(h * dpr));
+      if (staticBgCanvas && staticBgCtx) {
+        if (staticBgCanvas.width !== targetPxW || staticBgCanvas.height !== targetPxH) {
+          staticBgCanvas.width = targetPxW;
+          staticBgCanvas.height = targetPxH;
+          staticCacheKey = '';
+        }
+        if (staticCacheKey === nextStaticKey) {
+          staticCacheHits++;
+        } else {
+          staticCacheMisses++;
+          staticBgCtx.save();
+          staticBgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          staticBgCtx.clearRect(0, 0, w, h);
+          renderStaticLayerInto(staticBgCtx);
+          staticBgCtx.restore();
+          staticCacheKey = nextStaticKey;
+        }
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(staticBgCanvas, 0, 0, w, h);
+        ctx.restore();
+      } else {
+        staticCacheMisses++;
+        renderStaticLayerInto(ctx);
+      }
+    } else {
+      staticCacheMisses++;
+      renderStaticLayerInto(ctx);
+    }
+
+    // 3. Label placer initialization (dynamic nodes/ACNs placed per frame)
     activeLabelPlacer = createLabelPlacer(w, h, 4, 3);
     activeLabelPlacer.reserveRect(0, 0, 48, h);
     activeLabelPlacer.reserveRect(Math.max(0, w - 122), Math.max(0, h - 42), 114, 34);
     activeLabelPlacer.reserveRect(8, Math.max(0, h - 38), 256, 30);
-
-    // 4. Cartographic Overlays (Scale bar, True North, optional MGRS grid)
-    const activeBoundsForCarto = deps.getActiveTerrainBounds() as any;
-    const activeTelForCarto = deps.getLatestTelemetry();
-    const activeBiomeIdForCarto = (activeTelForCarto?.biome_id ?? activeBoundsForCarto?.biomeId) as BiomeId | undefined;
-    drawCartographicOverlays(ctx, {
-      width: w,
-      height: h,
-      metersPerPixel: 1.0 / (geometry.scale || 1.0),
-      showMgrsGrid: deps.isMgrsGridActive(),
-      biomeId: activeBiomeIdForCarto,
-      originLatDeg: activeBoundsForCarto?.centerLatDeg ?? worldTileLayer?.getOrigin?.()?.latDeg,
-      originLonDeg: activeBoundsForCarto?.centerLonDeg ?? worldTileLayer?.getOrigin?.()?.lonDeg,
-      screenToWorld: (sx, sy) => {
-        const pt = screenToWorld(sx, sy, w, h);
-        return { x: pt.xM, y: pt.yM };
-      },
-      worldToScreen: (wx, wy) => worldToScreen(wx, wy, w, h),
-    });
 
     // 5. Telemetry & Links
     const isHist = Boolean(deps.getHistoricalSnapshot());
@@ -1348,6 +1453,14 @@ export function createRadar2dRenderer(deps: Radar2dRendererDeps) {
       return findAoSwathCornerHit(px, py, getViewport(w, h), tbState?.aoSwathBox, thresholdPx, (x, y) => worldToScreen(x, y, w, h));
     },
     getActiveLabelPlacer: () => activeLabelPlacer,
+    getStaticCacheStats: () => ({
+      hits: staticCacheHits,
+      misses: staticCacheMisses,
+      key: staticCacheKey,
+    }),
+    invalidateStaticCache: () => {
+      staticCacheKey = '';
+    },
   };
 }
 

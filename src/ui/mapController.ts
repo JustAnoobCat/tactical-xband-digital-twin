@@ -192,10 +192,18 @@ export class MapController {
     const centerLat = meta?.centerLatDeg ?? def?.centerLatDeg ?? GEODESY_ORIGIN_LAT_DEG;
     const centerLon = meta?.centerLonDeg ?? def?.centerLonDeg ?? GEODESY_ORIGIN_LON_DEG;
 
-    const mPerDegLat = meta?.halfHeightM ?? METERS_PER_DEG_LAT;
-    const mPerDegLon =
-      meta?.halfWidthM ??
-      (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
+    const hasBounds =
+      meta !== undefined &&
+      Number.isFinite(meta.minLatDeg) &&
+      Number.isFinite(meta.maxLatDeg) &&
+      Number.isFinite(meta.minLonDeg) &&
+      Number.isFinite(meta.maxLonDeg);
+    const mPerDegLat = hasBounds
+      ? meta.halfHeightM / Math.max(1e-9, (meta.maxLatDeg - meta.minLatDeg) * 0.5)
+      : METERS_PER_DEG_LAT;
+    const mPerDegLon = hasBounds
+      ? meta.halfWidthM / Math.max(1e-9, (meta.maxLonDeg - meta.minLonDeg) * 0.5)
+      : (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
         Math.cos((centerLat * Math.PI) / 180.0);
 
     return {

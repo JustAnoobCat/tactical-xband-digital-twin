@@ -29,6 +29,7 @@ import {
   type WorkspaceTilesTelemetryInput,
   type WorkspaceTileId,
 } from './workspaceTilesManager';
+import { shouldDeferSelectMutation } from './controllers/telemetryDomUpdaters';
 
 export interface ProbeHeatmapConfig {
   readonly enabled: boolean;
@@ -1688,31 +1689,40 @@ export function createToolboxPrecisionUi(deps: ToolboxPrecisionUiDeps = {}): Too
   function syncNodeDropdown(doc: Document, rawNodes: readonly any[] | undefined): void {
     const sel = doc.getElementById('tb-obs-target-node-select') as HTMLSelectElement | null;
     if (!sel || !Array.isArray(rawNodes) || rawNodes.length === 0) return;
+    if (shouldDeferSelectMutation(sel)) {
+      sel.dataset.pendingOptSync = '1';
+      return;
+    }
     const prev = sel.value;
     const items = rawNodes
       .filter((n: any) => n && Number.isFinite(Number(n.node_id ?? n.nodeId)))
       .map((n: any) => {
         const id = Number(n.node_id ?? n.nodeId);
-        const role = (n.node_type === 'mcp' || n.nodeType === 'mcp') ? 'MCP' : 'Soldier';
+        const rawRole = n.node_role ?? n.node_type ?? n.nodeType;
+        const role = rawRole === 'convoy' ? 'Convoy' : rawRole === 'mcp' ? 'MCP' : 'Soldier';
         const snr = Number(n.snr_db ?? n.snrDb);
         const tag = Number.isFinite(snr) ? `${snr.toFixed(1)} dB` : (n.terrain_is_los === false ? 'Blocked' : 'Active');
         return { value: String(id), label: `S${id} · ${role} (${tag})` };
       });
     if (items.length === 0) return;
     const sig = items.map((i) => `${i.value}:${i.label}`).join('|');
-    if (sel.dataset.nodeSig === sig) return;
+    if (sel.dataset.optSig === sig || sel.dataset.nodeSig === sig) {
+      sel.dataset.optSig = sig;
+      sel.dataset.nodeSig = sig;
+      return;
+    }
+    sel.dataset.optSig = sig;
     sel.dataset.nodeSig = sig;
-    sel.innerHTML = '';
     const placeholder = doc.createElement('option');
     placeholder.value = 'none';
     placeholder.textContent = 'Pick a ground node…';
-    sel.appendChild(placeholder);
-    for (const item of items) {
+    const optionEls = items.map((item) => {
       const opt = doc.createElement('option');
       opt.value = item.value;
       opt.textContent = item.label;
-      sel.appendChild(opt);
-    }
+      return opt;
+    });
+    sel.replaceChildren(placeholder, ...optionEls);
     if (prev && items.some((i) => i.value === prev)) {
       sel.value = prev;
     } else if (items.length > 0) {

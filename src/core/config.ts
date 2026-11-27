@@ -131,6 +131,7 @@ export class RFConfig implements IRFConfig {
       case 'command_post':
       case 'main_command_post':
       case 'vehicular':
+      case 'convoy':
         return {
           txPowerDbm: this.mcpTxPowerDbm,
           antennaGainDbi: this.mcpAntennaGainDbi,

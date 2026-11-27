@@ -51,6 +51,7 @@ import { initCommandPaletteController } from '../ui/controllers/commandPaletteCo
 import { createDashboardAndAuthoringController } from '../ui/controllers/dashboardAndAuthoringController.ts';
 import { computeWebMercatorZoomLevel } from '../ui/cartographyRenderer.ts';
 import { BIOME_DEM_METADATA } from '../core/terrain.ts';
+import { shouldDeferSelectMutation } from '../ui/controllers/telemetryDomUpdaters.ts';
 
 export function initDashboardRenderOrchestrator(ctx: AppContext) {
   const { state, engines, dom, actions } = ctx;
@@ -252,18 +253,25 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         });
       }
 
-      const currentOptionCount = selectEl.options.length;
-      if (currentOptionCount !== nodes.length) {
-        const currentVal = state.selectedNtnNodeId;
-        selectEl.innerHTML = nodes
-          .map(
-            n =>
-              `<option value="${Number(n.node_id)}" ${n.node_id === currentVal ? 'selected' : ''}>${escapeHtml(n.name || `Node ${n.node_id}`)}</option>`
-          )
-          .join('');
-        if (!nodes.some(n => n.node_id === state.selectedNtnNodeId)) {
-          state.selectedNtnNodeId = nodes[0]?.node_id ?? 1;
-          selectEl.value = String(state.selectedNtnNodeId);
+      if (shouldDeferSelectMutation(selectEl)) {
+        selectEl.dataset.pendingOptSync = '1';
+      } else {
+        const optSig = nodes.map(n => `${n.node_id}:${n.name || ''}`).join('|');
+        if (selectEl.dataset.optSig !== optSig || selectEl.options.length !== nodes.length) {
+          selectEl.dataset.optSig = optSig;
+          const currentVal = state.selectedNtnNodeId;
+          const optEls = nodes.map(n => {
+            const opt = document.createElement('option');
+            opt.value = String(Number(n.node_id));
+            opt.textContent = n.name || `Node ${n.node_id}`;
+            if (n.node_id === currentVal) opt.selected = true;
+            return opt;
+          });
+          selectEl.replaceChildren(...optEls);
+          if (!nodes.some(n => n.node_id === state.selectedNtnNodeId)) {
+            state.selectedNtnNodeId = nodes[0]?.node_id ?? 1;
+            selectEl.value = String(state.selectedNtnNodeId);
+          }
         }
       }
     }
@@ -698,7 +706,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     }
     state.selectedNodeId = nodeId;
     const networkSelect = $<HTMLSelectElement>('network-node-select');
-    if (networkSelect) {
+    if (networkSelect && !shouldDeferSelectMutation(networkSelect)) {
       const selectedCount = networkSelect.selectedOptions ? networkSelect.selectedOptions.length : 0;
       if (selectedCount < 2) {
         Array.from(networkSelect.options).forEach((opt: HTMLOptionElement) => {
@@ -729,7 +737,11 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       renderVsaScope(sel, state.latestTelemetry);
       state.selectedTrafficNodeId = state.selectedNodeId;
       const trafficSel = $<HTMLSelectElement>('traffic-node-select');
-      if (trafficSel && Array.from(trafficSel.options).some((o: HTMLOptionElement) => Number(o.value) === state.selectedNodeId)) {
+      if (
+        trafficSel &&
+        !shouldDeferSelectMutation(trafficSel) &&
+        Array.from(trafficSel.options).some((o: HTMLOptionElement) => Number(o.value) === state.selectedNodeId)
+      ) {
         trafficSel.value = String(state.selectedNodeId);
       }
       renderNetworkTrafficInventory(state.latestTelemetry);
@@ -843,7 +855,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     if (!selNode) return;
 
     const eudSel = $<HTMLSelectElement>('eud-node-select');
-    if (eudSel && String(eudSel.value) !== String(selNode.node_id)) {
+    if (eudSel && !shouldDeferSelectMutation(eudSel) && String(eudSel.value) !== String(selNode.node_id)) {
       eudSel.value = String(selNode.node_id);
     }
 
@@ -1171,41 +1183,56 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const teams = Array.isArray(nodes) ? collectTeamsFromNodes(nodes) : [];
     const fleetFilter = $<HTMLSelectElement>('ops-fleet-team-filter');
     if (fleetFilter && Array.isArray(nodes)) {
-      const filterKey = teams.map(t => `${t.teamId}:${t.teamName}:${t.nodeIds.length}`).join(',');
-      if (fleetFilter.dataset.lastKey !== filterKey) {
-        fleetFilter.dataset.lastKey = filterKey;
-        const prevVal = state.opsFleetTeamFilter ? `team:${state.opsFleetTeamFilter}` : 'all';
-        fleetFilter.innerHTML = '';
-        const allOpt = document.createElement('option');
-        allOpt.value = 'all';
-        allOpt.textContent = `All Teams (${nodes.length})`;
-        fleetFilter.appendChild(allOpt);
-        teams.forEach(t => {
-          const opt = document.createElement('option');
-          opt.value = `team:${t.teamId}`;
-          opt.textContent = `${t.teamName} (${t.nodeIds.length})`;
-          fleetFilter.appendChild(opt);
-        });
-        fleetFilter.value = Array.from(fleetFilter.options).some(o => o.value === prevVal) ? prevVal : 'all';
+      if (shouldDeferSelectMutation(fleetFilter)) {
+        fleetFilter.dataset.pendingOptSync = '1';
+      } else {
+        const filterKey = teams.map(t => `${t.teamId}:${t.teamName}:${t.nodeIds.length}`).join(',');
+        if (fleetFilter.dataset.optSig !== filterKey || fleetFilter.dataset.lastKey !== filterKey) {
+          fleetFilter.dataset.optSig = filterKey;
+          fleetFilter.dataset.lastKey = filterKey;
+          const prevVal = state.opsFleetTeamFilter ? `team:${state.opsFleetTeamFilter}` : 'all';
+          const optEls: HTMLOptionElement[] = [];
+          const allOpt = document.createElement('option');
+          allOpt.value = 'all';
+          allOpt.textContent = `All Teams (${nodes.length})`;
+          optEls.push(allOpt);
+          teams.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = `team:${t.teamId}`;
+            opt.textContent = `${t.teamName} (${t.nodeIds.length})`;
+            optEls.push(opt);
+          });
+          fleetFilter.replaceChildren(...optEls);
+          fleetFilter.value = Array.from(fleetFilter.options).some(o => o.value === prevVal) ? prevVal : 'all';
+        }
       }
     }
 
     ['quickNodeSelect', 'termNodeSelect', 'vsa-node-select', 'eud-node-select'].forEach(id => {
       const sel = $<HTMLSelectElement>(id);
       if (!sel || !Array.isArray(nodes)) return;
+      if (shouldDeferSelectMutation(sel)) {
+        sel.dataset.pendingOptSync = '1';
+        return;
+      }
       if (nodes.length === 0) {
-        if (sel.dataset.lastKey === 'empty' && sel.options.length === 1) return;
+        if (sel.dataset.optSig === 'empty' && sel.dataset.lastKey === 'empty' && sel.options.length === 1) return;
+        sel.dataset.optSig = 'empty';
         sel.dataset.lastKey = 'empty';
-        sel.innerHTML = '<option value="-1">No ground terminals (ACN only)</option>';
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '-1';
+        emptyOpt.textContent = 'No ground terminals (ACN only)';
+        sel.replaceChildren(emptyOpt);
         sel.value = '-1';
         return;
       }
       const key =
         nodes.map(n => `${n.node_id}:${n.name}:${n.node_role || n.node_type}:${n.team_id || ''}:${n.team_name || ''}`).join(',');
-      if (sel.dataset.lastKey === key && sel.options.length >= nodes.length) return;
+      if (sel.dataset.optSig === key && sel.dataset.lastKey === key && sel.options.length >= nodes.length) return;
+      sel.dataset.optSig = key;
       sel.dataset.lastKey = key;
-      sel.innerHTML = '';
 
+      const children: HTMLElement[] = [];
       const supportsTeamOptgroup = id === 'quickNodeSelect' || id === 'termNodeSelect';
       if (supportsTeamOptgroup && teams.length > 0) {
         const teamGroup = document.createElement('optgroup');
@@ -1216,7 +1243,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
           opt.textContent = `Team: ${t.teamName} (${t.nodeIds.length} nodes)`;
           teamGroup.appendChild(opt);
         });
-        sel.appendChild(teamGroup);
+        children.push(teamGroup);
       }
 
       const termGroup = supportsTeamOptgroup ? document.createElement('optgroup') : null;
@@ -1227,9 +1254,11 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         opt.value = String(n.node_id);
         const teamSuffix = n.team_name ? ` [${n.team_name}]` : '';
         opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id} - ${role}${teamSuffix}`;
-        (termGroup || sel).appendChild(opt);
+        if (termGroup) termGroup.appendChild(opt);
+        else children.push(opt);
       });
-      if (termGroup) sel.appendChild(termGroup);
+      if (termGroup) children.push(termGroup);
+      sel.replaceChildren(...children);
 
       if (supportsTeamOptgroup && state.selectedTeamId) {
         const teamVal = `team:${state.selectedTeamId}`;
@@ -1722,45 +1751,51 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     const nodeSel = $<HTMLSelectElement>('traffic-node-select');
     const teams = collectTeamsFromNodes(nodes);
     if (nodeSel && nodes.length > 0) {
-      const key =
-        nodes.map(n => `${n.node_id}:${n.name}:${n.team_id || ''}:${n.team_name || ''}`).join(',');
-      if (nodeSel.dataset.lastKey !== key) {
-        nodeSel.dataset.lastKey = key;
-        nodeSel.innerHTML = '';
-        const allOpt = document.createElement('option');
-        allOpt.value = 'all';
-        allOpt.textContent = `All Nodes (${nodes.length})`;
-        nodeSel.appendChild(allOpt);
-        if (teams.length > 0) {
-          const teamGroup = document.createElement('optgroup');
-          teamGroup.label = 'Tactical Teams';
-          teams.forEach(t => {
+      if (shouldDeferSelectMutation(nodeSel)) {
+        nodeSel.dataset.pendingOptSync = '1';
+      } else {
+        const key =
+          nodes.map(n => `${n.node_id}:${n.name}:${n.team_id || ''}:${n.team_name || ''}`).join(',');
+        if (nodeSel.dataset.optSig !== key || nodeSel.dataset.lastKey !== key) {
+          nodeSel.dataset.optSig = key;
+          nodeSel.dataset.lastKey = key;
+          const children: HTMLElement[] = [];
+          const allOpt = document.createElement('option');
+          allOpt.value = 'all';
+          allOpt.textContent = `All Nodes (${nodes.length})`;
+          children.push(allOpt);
+          if (teams.length > 0) {
+            const teamGroup = document.createElement('optgroup');
+            teamGroup.label = 'Tactical Teams';
+            teams.forEach(t => {
+              const opt = document.createElement('option');
+              opt.value = `team:${t.teamId}`;
+              opt.textContent = `Team: ${t.teamName} (${t.nodeIds.length} nodes)`;
+              teamGroup.appendChild(opt);
+            });
+            children.push(teamGroup);
+          }
+          const termGroup = document.createElement('optgroup');
+          termGroup.label = 'Individual Terminals';
+          nodes.forEach(n => {
             const opt = document.createElement('option');
-            opt.value = `team:${t.teamId}`;
-            opt.textContent = `Team: ${t.teamName} (${t.nodeIds.length} nodes)`;
-            teamGroup.appendChild(opt);
+            opt.value = String(n.node_id);
+            opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id}${n.team_name ? ` [${n.team_name}]` : ''}`;
+            termGroup.appendChild(opt);
           });
-          nodeSel.appendChild(teamGroup);
-        }
-        const termGroup = document.createElement('optgroup');
-        termGroup.label = 'Individual Terminals';
-        nodes.forEach(n => {
-          const opt = document.createElement('option');
-          opt.value = String(n.node_id);
-          opt.textContent = `Node ${n.node_id}: ${n.name || 'S' + n.node_id}${n.team_name ? ` [${n.team_name}]` : ''}`;
-          termGroup.appendChild(opt);
-        });
-        nodeSel.appendChild(termGroup);
+          children.push(termGroup);
+          nodeSel.replaceChildren(...children);
 
-        if (state.selectedTrafficTeamId && Array.from(nodeSel.options).some(o => o.value === `team:${state.selectedTrafficTeamId}`)) {
-          nodeSel.value = `team:${state.selectedTrafficTeamId}`;
-        } else if (state.selectedTrafficNodeId === -1) {
-          nodeSel.value = 'all';
-        } else if (nodes.some(n => n.node_id === state.selectedTrafficNodeId)) {
-          nodeSel.value = String(state.selectedTrafficNodeId);
-        } else {
-          state.selectedTrafficNodeId = nodes[0].node_id;
-          nodeSel.value = String(state.selectedTrafficNodeId);
+          if (state.selectedTrafficTeamId && Array.from(nodeSel.options).some(o => o.value === `team:${state.selectedTrafficTeamId}`)) {
+            nodeSel.value = `team:${state.selectedTrafficTeamId}`;
+          } else if (state.selectedTrafficNodeId === -1) {
+            nodeSel.value = 'all';
+          } else if (nodes.some(n => n.node_id === state.selectedTrafficNodeId)) {
+            nodeSel.value = String(state.selectedTrafficNodeId);
+          } else {
+            state.selectedTrafficNodeId = nodes[0].node_id;
+            nodeSel.value = String(state.selectedTrafficNodeId);
+          }
         }
       }
     }
@@ -2313,7 +2348,7 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       : '';
     const hasNodeListTransition = Boolean(frame.nodes_telemetry && nodesKey !== state.lastRenderedNodesKey);
     const nowMs = performance.now();
-    if (!force && !hasNodeListTransition && nowMs - lastDomUpdateMs < DOM_UPDATE_INTERVAL_MS) {
+    if (!force && !hasNodeListTransition && (nowMs < (state.selectInteractionUntilMs || 0) || nowMs - lastDomUpdateMs < DOM_UPDATE_INTERVAL_MS)) {
       return;
     }
     lastDomUpdateMs = nowMs;
@@ -2872,8 +2907,9 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         btn.className = isOnline ? 'primary' : 'secondary';
       }
       const schedSel = $<HTMLSelectElement>('sci-relay-select');
-      if (schedSel && document.activeElement !== schedSel) {
-        schedSel.value = isOnline ? 'active' : 'disabled';
+      if (schedSel && !shouldDeferSelectMutation(schedSel)) {
+        const nextRelayVal = isOnline ? 'active' : 'disabled';
+        if (schedSel.value !== nextRelayVal) schedSel.value = nextRelayVal;
       }
       const count = frame.relayed_node_count ?? 0;
       const sec = frame.relay_backhaul_sector_id !== undefined ? `S${frame.relay_backhaul_sector_id}` : '—';
@@ -2884,16 +2920,15 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
 
     if (frame.rician_fading_enabled !== undefined || frame.cqi_feedback_delay_ms !== undefined) {
       const sel = $<HTMLSelectElement>('sci-fading-cqi-select');
-      if (sel && document.activeElement !== sel) {
-        if (!frame.rician_fading_enabled) {
-          sel.value = 'awgn-0ms';
-        } else if ((frame.cqi_feedback_delay_ms ?? 0) === 0) {
-          sel.value = 'rician-0ms';
-        } else if (frame.cqi_feedback_delay_ms === 20) {
-          sel.value = 'rician-20ms';
-        } else {
-          sel.value = 'rician-40ms';
-        }
+      if (sel && !shouldDeferSelectMutation(sel)) {
+        const nextFadingVal = !frame.rician_fading_enabled
+          ? 'awgn-0ms'
+          : (frame.cqi_feedback_delay_ms ?? 0) === 0
+            ? 'rician-0ms'
+            : frame.cqi_feedback_delay_ms === 20
+              ? 'rician-20ms'
+              : 'rician-40ms';
+        if (sel.value !== nextFadingVal) sel.value = nextFadingVal;
       }
       const modeStr = !frame.rician_fading_enabled
         ? 'AWGN (0 ms delay)'
@@ -2904,15 +2939,15 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
     // MENTOR-02: Sync Waveform Control & Tactical Equipment Spawner UI
     if (frame.mcs_mode !== undefined) {
       const modeSel = $<HTMLSelectElement>('mcs-mode-select');
-      if (modeSel && document.activeElement !== modeSel) {
+      if (modeSel && !shouldDeferSelectMutation(modeSel) && modeSel.value !== frame.mcs_mode) {
         modeSel.value = frame.mcs_mode;
       }
       const modSel = $<HTMLSelectElement>('manual-mod-select');
-      if (modSel && document.activeElement !== modSel && frame.manual_modulation) {
+      if (modSel && !shouldDeferSelectMutation(modSel) && frame.manual_modulation && modSel.value !== frame.manual_modulation) {
         modSel.value = frame.manual_modulation;
       }
       const fecSel = $<HTMLSelectElement>('manual-fec-select');
-      if (fecSel && document.activeElement !== fecSel && frame.manual_fec) {
+      if (fecSel && !shouldDeferSelectMutation(fecSel) && frame.manual_fec && fecSel.value !== frame.manual_fec) {
         fecSel.value = frame.manual_fec;
       }
       setText(

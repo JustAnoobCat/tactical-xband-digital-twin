@@ -410,6 +410,8 @@ export interface AppState {
   lastRenderedNodesKey: string;
   lastOpsFleetSignature: string;
   pendingNodeTarget?: { mode: string; nodeId: number; name?: string; requestId?: string } | null;
+  activeSelectElement: HTMLSelectElement | null;
+  selectInteractionUntilMs: number;
 }
 
 export interface AppActions {
@@ -571,6 +573,7 @@ export interface AppActions {
 
   // scientificScopesAndTimelineController
   drawNetworkCharts: () => void;
+  updateNetworkNodeOptions: (nodes: readonly any[]) => void;
   ingestNetworkPerformance: (frame: TelemetryFrame) => void;
   updateStepControlUI: (enabled?: boolean) => void;
   updatePauseButtonUI: () => void;
@@ -1004,6 +1007,8 @@ export function createAppContext(worker: Worker): AppContext {
     handleTimelineInspectorReset: () => {},
     lastRenderedNodesKey: '',
     lastOpsFleetSignature: '',
+    activeSelectElement: null,
+    selectInteractionUntilMs: 0,
   };
 
   const historyBuffer = new SimulationHistoryBuffer(3000);
