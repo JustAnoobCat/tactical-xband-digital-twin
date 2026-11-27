@@ -137,6 +137,15 @@ export class NetworkPerformanceHistory {
     this.frameCounter += 1;
     if (this.frameCounter % this.sampleEveryFrames !== 0) return null;
 
+    // Prune deleted node entries so removed node IDs do not retain stale byte accumulators
+    const activeIds = new Set(frame.nodes.map(n => n.node_id));
+    for (const id of this.lastDeliveredBytes.keys()) {
+      if (!activeIds.has(id)) this.lastDeliveredBytes.delete(id);
+    }
+    for (const id of this.cumulativeTransferredBytes.keys()) {
+      if (!activeIds.has(id)) this.cumulativeTransferredBytes.delete(id);
+    }
+
     const nodes = frame.nodes.map(node => {
       const delivered = node.transfer_state && finite(node.transfer_state.delivered_bytes)
         ? Math.max(0, node.transfer_state.delivered_bytes)

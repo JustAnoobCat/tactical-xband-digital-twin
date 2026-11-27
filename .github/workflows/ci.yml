@@ -127,6 +127,8 @@ jobs:
         run: npm run build
 
       - name: Run Playwright multi-viewport browser UX verification
-        run: node scripts/verify-browser-ux.mjs
+        run: |
+          node scripts/verify-browser-ux.mjs
+          REQUIRE_PLAYWRIGHT=true npx tsx src/tests/verifyTauri01DesktopShell.ts
         env:
           CI: "true"

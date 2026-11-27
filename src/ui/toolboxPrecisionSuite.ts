@@ -2559,7 +2559,10 @@ export function createToolboxRuntimeBridge(rt: any): ToolboxPrecisionUiDeps {
       ];
       const acnHeading = Number.isFinite(tel?.acn_heading_deg) ? tel.acn_heading_deg : 0;
       const cur = rt.getProbeSite?.() || { xM: rt.getPan?.()?.x ?? 0, yM: rt.getPan?.()?.y ?? 0 };
-      const getElev = (x: number, y: number) => sampleDemSafe(te, x, y).elevationM || 3500;
+      const getElev = (x: number, y: number) => {
+        const e = sampleDemSafe(te, x, y).elevationM;
+        return Number.isFinite(e) ? e : 0;
+      };
       let bestX = cur.xM;
       let bestY = cur.yM;
       let bestScore = -Infinity;
@@ -2581,7 +2584,9 @@ export function createToolboxRuntimeBridge(rt: any): ToolboxPrecisionUiDeps {
           }
         }
       }
-      const geo = cartesianToGeodetic(bestX, bestY);
+      const geo = typeof (te as { worldToLatLon?: (x: number, y: number) => { latDeg: number; lonDeg: number } } | undefined)?.worldToLatLon === 'function'
+        ? (te as { worldToLatLon: (x: number, y: number) => { latDeg: number; lonDeg: number } }).worldToLatLon(bestX, bestY)
+        : cartesianToGeodetic(bestX, bestY);
       rt.setProbeSite?.({ xM: bestX, yM: bestY, lng: geo.lonDeg, lat: geo.latDeg });
       rt.setToolMode?.('idle');
       rt.recomputeProbeAnalysis?.();
@@ -2600,9 +2605,15 @@ export function createToolboxRuntimeBridge(rt: any): ToolboxPrecisionUiDeps {
         rt.setStatus?.('Click on the map to pick a probe site first.');
         return;
       }
-      if (unitType === 'jammer') {
-        rt.sendCommand?.({ type: 'CONFIG_UPDATE', params: { jammer_x_m: site.xM, jammer_y_m: site.yM, jammer_active: true } });
-        rt.setStatus?.(`Relocated EW Jammer to (${Math.round(site.xM)}, ${Math.round(site.yM)}) m.`);
+      if (unitType === 'jammer' || unitType === 'barrage_jammer') {
+        rt.sendCommand?.({
+          type: 'EQUIPMENT_ADD',
+          equipment_type: 'barrage_jammer',
+          label: 'PROBE-JAMMER',
+          x_m: site.xM,
+          y_m: site.yM,
+        });
+        rt.setStatus?.(`Deployed Barrage Jammer at (${Math.round(site.xM)}, ${Math.round(site.yM)}) m.`);
       } else {
         const role = unitType === 'mcp' ? 'mcp' : 'soldier';
         const mastEl = typeof document !== 'undefined' ? (document.getElementById('tb-probe-mast-input') as HTMLInputElement | null) : null;
@@ -2725,7 +2736,10 @@ export function createToolboxRuntimeBridge(rt: any): ToolboxPrecisionUiDeps {
       const nx = Number(node.x_m ?? node.position?.[0] ?? 0);
       const ny = Number(node.y_m ?? node.position?.[1] ?? 0);
       const te = rt.getTerrainEngine?.();
-      const getElev = (x: number, y: number) => sampleDemSafe(te, x, y).elevationM || 3500;
+      const getElev = (x: number, y: number) => {
+        const e = sampleDemSafe(te, x, y).elevationM;
+        return Number.isFinite(e) ? e : 0;
+      };
       const spec = generatePerpendicularLinkSlicerObstacle({ x: nx, y: ny }, acnPos, getElev, 0.35, 1600);
       const rotDeg = computeBarrierWallRotationDeg(spec.v1, spec.v2);
       const wallLen = Math.max(200, Math.hypot(spec.v2.x - spec.v1.x, spec.v2.y - spec.v1.y));

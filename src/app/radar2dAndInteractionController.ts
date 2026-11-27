@@ -856,7 +856,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
             return;
           }
         }
-        const geo = cartesianToGeodetic(world.x, world.y);
+        const geo = mainTerrainEngine.worldToLatLon(world.x, world.y);
         actions.handleToolboxMapClick({ x: world.x, y: world.y, lng: geo.lonDeg, lat: geo.latDeg });
         return;
       }
@@ -869,7 +869,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
         }
       }
       if (state.tbActiveMode === 'probe') {
-        const geo = cartesianToGeodetic(world.x, world.y);
+        const geo = mainTerrainEngine.worldToLatLon(world.x, world.y);
         state.tbProbeSite = { xM: world.x, yM: world.y, lng: geo.lonDeg, lat: geo.latDeg };
         actions.recomputeProbeAnalysis();
         if (state.tbCursorProbeLive) {
@@ -1156,7 +1156,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
       if (state.terrainToolMode === 'transect-2pt' && state.tbTransectWaypoints.length === 1) {
         const wpA = state.tbTransectWaypoints[0];
         const [snapX, snapY] = snapPointToAngleIncrement(wpA.xM, wpA.yM, state.mouseWorldX, state.mouseWorldY, 15);
-        const geo = cartesianToGeodetic(snapX, snapY);
+        const geo = mainTerrainEngine.worldToLatLon(snapX, snapY);
         state.tbRubberBandPoint = { x: snapX, y: snapY, lng: geo.lonDeg, lat: geo.latDeg, isAngleSnapped: true };
         state.tbActiveSnap = null;
         actions.recomputeRubberBandPreview(state.tbRubberBandPoint);
@@ -1169,7 +1169,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
     if (e.key === 'Shift') {
       state.isShiftKeyDown = false;
       if (state.terrainToolMode === 'transect-2pt' && state.tbTransectWaypoints.length === 1) {
-        const geo = cartesianToGeodetic(state.mouseWorldX, state.mouseWorldY);
+        const geo = mainTerrainEngine.worldToLatLon(state.mouseWorldX, state.mouseWorldY);
         state.tbRubberBandPoint = { x: state.mouseWorldX, y: state.mouseWorldY, lng: geo.lonDeg, lat: geo.latDeg };
         actions.recomputeRubberBandPreview(state.tbRubberBandPoint);
         drawRadar();
@@ -1260,7 +1260,7 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
         targetX = sX;
         targetY = sY;
       }
-      const geo = cartesianToGeodetic(targetX, targetY);
+      const geo = mainTerrainEngine.worldToLatLon(targetX, targetY);
       state.tbTransectWaypoints[state.draggedToolboxVertex.index] = {
         xM: targetX,
         yM: targetY,
@@ -1357,24 +1357,24 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
         const wpA = state.tbTransectWaypoints[0];
         if (state.isShiftKeyDown) {
           const [snapX, snapY] = snapPointToAngleIncrement(wpA.xM, wpA.yM, state.mouseWorldX, state.mouseWorldY, 15);
-          const geo = cartesianToGeodetic(snapX, snapY);
+          const geo = mainTerrainEngine.worldToLatLon(snapX, snapY);
           state.tbRubberBandPoint = { x: snapX, y: snapY, lng: geo.lonDeg, lat: geo.latDeg, isAngleSnapped: true };
           state.tbActiveSnap = null;
         } else {
           const snap = actions.findMagneticSnapTarget(px, py, w, h, 15);
           state.tbActiveSnap = snap;
           if (snap) {
-            const geo = cartesianToGeodetic(snap.xM, snap.yM);
+            const geo = mainTerrainEngine.worldToLatLon(snap.xM, snap.yM);
             state.tbRubberBandPoint = { x: snap.xM, y: snap.yM, lng: geo.lonDeg, lat: geo.latDeg, snapLabel: snap.label };
           } else {
-            const geo = cartesianToGeodetic(state.mouseWorldX, state.mouseWorldY);
+            const geo = mainTerrainEngine.worldToLatLon(state.mouseWorldX, state.mouseWorldY);
             state.tbRubberBandPoint = { x: state.mouseWorldX, y: state.mouseWorldY, lng: geo.lonDeg, lat: geo.latDeg };
           }
         }
         actions.recomputeRubberBandPreview(state.tbRubberBandPoint);
         drawRadar();
       } else if (state.terrainToolMode === 'transect-poly' && state.tbTransectWaypoints.length >= 1) {
-        const geo = cartesianToGeodetic(state.mouseWorldX, state.mouseWorldY);
+        const geo = mainTerrainEngine.worldToLatLon(state.mouseWorldX, state.mouseWorldY);
         state.tbRubberBandPoint = { x: state.mouseWorldX, y: state.mouseWorldY, lng: geo.lonDeg, lat: geo.latDeg };
         actions.recomputeRubberBandPreview(state.tbRubberBandPoint);
         drawRadar();
@@ -1465,7 +1465,10 @@ export function initRadar2dAndInteractionController(ctx: AppContext) {
           mastM,
           acnPos,
           acnHeading,
-          (x, y) => sampleDemSafe(mainTerrainEngine, x, y).elevationM || 3500,
+          (x, y) => {
+            const e = sampleDemSafe(mainTerrainEngine, x, y).elevationM;
+            return Number.isFinite(e) ? e : 0;
+          },
           state.tbProbePinnedP1
         );
         actions.updateProbeUiReadouts(state.tbCursorProbeLive);

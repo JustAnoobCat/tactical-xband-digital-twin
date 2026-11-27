@@ -224,7 +224,10 @@ export class ActiveTransferManager {
         trans.statusMessage = 'RE-EMERGED: Resuming uplink transfer.';
       }
 
-      const currDrops = node.queue.droppedDelayCount + node.queue.droppedOverflowCount;
+      const currDrops =
+        typeof (node.queue as { getClassDropCount?: (q: number) => number }).getClassDropCount === 'function'
+          ? node.queue.getClassDropCount(targetQos)
+          : (node.queue.droppedDelayCount + node.queue.droppedOverflowCount);
       const deltaDrops = Math.max(0, currDrops - trans.lastQueueDrops);
       trans.lastQueueDrops = currDrops;
 

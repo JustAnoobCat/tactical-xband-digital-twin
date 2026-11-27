@@ -1,5 +1,5 @@
 config_id,config_label,goodput_mean,goodput_ci95_half,bler_mean,bler_ci95_half,outage_mean,outage_ci95_half,snr_mean,snr_ci95_half
-baseline-idealized,"1. Baseline Idealized",1.66890,0.01992,0.45263,0.01236,0.41222,0.01396,7.8408,0.2299
-multiedge-attitude,"2. Multi-Edge & Attitude",1.24665,0.01586,0.61223,0.00664,0.58556,0.00726,0.4946,0.2299
-delayed-cqi-unprotected,"3. Delayed-CQI Unprotected",0.93384,0.02788,0.71997,0.00967,0.55611,0.00902,0.4946,0.2299
-full-realistic-olla-harq,"4. Full Realistic Stack",0.99438,0.02607,0.68021,0.00842,0.56889,0.00861,0.4946,0.2299
+baseline-idealized,"1. Baseline Idealized",1.76176,0.01989,0.39100,0.01479,0.34944,0.01749,9.1479,0.2299
+multiedge-attitude,"2. Multi-Edge & Attitude",1.30884,0.01683,0.58469,0.00824,0.55500,0.00983,1.8017,0.2299
+delayed-cqi-unprotected,"3. Delayed-CQI Unprotected",0.99590,0.03079,0.69829,0.01010,0.52333,0.01079,1.8017,0.2299
+full-realistic-olla-harq,"4. Full Realistic Stack",1.05281,0.02415,0.66121,0.00863,0.54333,0.00742,1.8017,0.2299

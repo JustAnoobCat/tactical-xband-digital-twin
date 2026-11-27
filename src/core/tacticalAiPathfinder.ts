@@ -280,12 +280,38 @@ export function evaluateGroundPathWalkability(
     let prevX = pStart[0];
     let prevY = pStart[1];
     let prevZ = getElevationAt(prevX, prevY);
+    if (!Number.isFinite(prevZ)) {
+      return {
+        isWalkable: false,
+        totalPathDistM,
+        totalEtaSeconds,
+        maxStepSlopeDeg,
+        maxAllowedSlopeDeg,
+        blockedByObstacle: false,
+        exceededSlopeLimit: false,
+        failedLegIndex: m,
+        failedStepIndex: 0,
+      };
+    }
 
     for (let k = 1; k <= numSteps; k++) {
       const u = k / numSteps;
       const curX = pStart[0] + u * legDx;
       const curY = pStart[1] + u * legDy;
       const curZ = getElevationAt(curX, curY);
+      if (!Number.isFinite(curZ)) {
+        return {
+          isWalkable: false,
+          totalPathDistM: totalPathDistM + (k - 1) * deltaS,
+          totalEtaSeconds,
+          maxStepSlopeDeg,
+          maxAllowedSlopeDeg,
+          blockedByObstacle: false,
+          exceededSlopeLimit: false,
+          failedLegIndex: m,
+          failedStepIndex: k,
+        };
+      }
 
       const deltaZ = curZ - prevZ;
       const thetaStepDeg = Math.abs((Math.atan2(deltaZ, deltaS) * 180.0) / Math.PI);
@@ -366,6 +392,9 @@ export class EdgeAiQTable {
     observedSinrDb: number,
     learningRate: number = 0.15
   ): number {
+    if (!Number.isFinite(observedSinrDb) || !Number.isFinite(learningRate)) {
+      return this.getQValue(nodeId, sectorIdx16);
+    }
     const s = Math.abs(Math.trunc(sectorIdx16)) % 16;
     // Clamp observed SINR to [-10, 30] dB operational bounds
     const clampedSinr = Math.max(-10.0, Math.min(30.0, observedSinrDb));
@@ -593,7 +622,7 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
   // 3 Radial Distances: 120m (immediate local high ground), 320m (ridge saddle), 650m (prominent crest)
   const candidateRadiiM = [120.0, 320.0, 650.0];
 
-  const wavelengthM = SPEED_OF_LIGHT_M_S / rfFreqHz;
+  const wavelengthM = rf.wavelengthM;
   const NUM_RAY_STEPS = 10;
 
   let bestUtility = -Infinity;
@@ -725,12 +754,16 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
       let isRayLoS = true;
       let maxNu = -999.0;
 
-      for (let step = 1; step <= NUM_RAY_STEPS; step++) {
+      for (let step = 1; step < NUM_RAY_STEPS; step++) {
         const u = step / NUM_RAY_STEPS;
         const sM = u * horizDistAcnM;
         const sx = candX + u * rayDx;
         const sy = candY + u * rayDy;
         const zDem = getElevationAt(sx, sy);
+        if (!Number.isFinite(zDem)) {
+          isRayLoS = false;
+          continue;
+        }
 
         // Effective Earth curvature bulge (4/3 R_eff)
         const chordBulgeM = computeEarthBulgeM(sM, horizDistAcnM - sM, DEFAULT_AI_K_FACTOR, DEFAULT_AI_EARTH_RADIUS_M);
@@ -822,7 +855,7 @@ export function computeAiRecoveryAdvisory(params: AiRecoveryAdvisoryParams): AiN
         zAntM,
         acnZ
       );
-      const candSinrDb = candLink.snrDb;
+      const candSinrDb = (candLink as { sinrDb?: number }).sinrDb ?? candLink.snrDb;
 
       // Query online Q-table for historical spatial sector reward
       const sectorIdx = qTable.getSectorIndex(bearingDeg);
@@ -999,12 +1032,16 @@ export function evaluateFastLinkSinr(
   let isLoS = true;
   let maxNu = -999.0;
 
-  for (let step = 1; step <= numRaySteps; step++) {
+  for (let step = 1; step < numRaySteps; step++) {
     const u = step / numRaySteps;
     const sM = u * horizDistM;
     const sx = posA[0] + u * dx;
     const sy = posA[1] + u * dy;
     const zDem = getElevationAt(sx, sy);
+    if (!Number.isFinite(zDem)) {
+      isLoS = false;
+      continue;
+    }
 
     const chordBulgeM = computeEarthBulgeM(sM, horizDistM - sM, DEFAULT_AI_K_FACTOR, DEFAULT_AI_EARTH_RADIUS_M);
     const effTerrainZ = zDem + chordBulgeM;
@@ -1280,12 +1317,29 @@ export function computeAiSkyShepherdUavOffset(
   currentAcnCenter: Position3D,
   getElevationAt: (x: number, y: number) => number,
   rfFreqHz: number = DEFAULT_AI_RF_FREQ_HZ,
-  channelBandwidthHz: number = AI_LINK_BUDGET_CONSTANTS.channelBandwidthHz
+  channelBandwidthHz: number = AI_LINK_BUDGET_CONSTANTS.channelBandwidthHz,
+  rfConfig?: RFConfig
 ): AiSkyShepherdResult {
   const pinnedX = pinnedNodePos[0];
   const pinnedY = pinnedNodePos[1];
   const pinnedElev = getElevationAt(pinnedX, pinnedY);
+  if (!Number.isFinite(pinnedElev)) {
+    return {
+      deltaXM: 0.0,
+      deltaYM: 0.0,
+      deltaAltM: 0.0,
+      predictedPinnedSinrDb: -99.0,
+      isShepherdFeasible: false,
+      shepherdDirectiveText: 'Terrain elevation unavailable (NaN) at pinned node position.',
+    };
+  }
   const pinnedZ = resolveGroundNodeMslAltitude(pinnedNodePos, pinnedElev, 2.0);
+  const effFreqHz = rfConfig?.carrierFrequencyHz ?? rfFreqHz;
+  const effBwHz = rfConfig?.channelBandwidthHz ?? channelBandwidthHz;
+  const txPowerDbm = rfConfig?.soldierTxPowerDbm ?? AI_LINK_BUDGET_CONSTANTS.txPowerDbm;
+  const txGainDbi = rfConfig?.soldierAntennaGainDbi ?? AI_LINK_BUDGET_CONSTANTS.txGainDbi;
+  const rxGainDbi = rfConfig?.acnAntennaGainDbi ?? AI_LINK_BUDGET_CONSTANTS.rxGainDbi;
+  const minModcodSnrDb = MODCOD_TABLE[MODCOD_TABLE.length - 1]?.minSnrDb ?? -2.85;
 
   const dxPinned = pinnedX - currentAcnCenter[0];
   const dyPinned = pinnedY - currentAcnCenter[1];
@@ -1317,6 +1371,7 @@ export function computeAiSkyShepherdUavOffset(
       const candUavZ = currentAcnCenter[2] + deltaAltM;
 
       const terrainZ = getElevationAt(candUavX, candUavY);
+      if (!Number.isFinite(terrainZ)) continue;
       const aglM = candUavZ - terrainZ;
       if (aglM < 400.0) continue; // Safe clearance check
 
@@ -1324,12 +1379,12 @@ export function computeAiSkyShepherdUavOffset(
         [pinnedX, pinnedY, pinnedZ],
         [candUavX, candUavY, candUavZ],
         getElevationAt,
-        AI_LINK_BUDGET_CONSTANTS.txPowerDbm,
-        AI_LINK_BUDGET_CONSTANTS.txGainDbi,
-        AI_LINK_BUDGET_CONSTANTS.rxGainDbi,
-        rfFreqHz,
+        txPowerDbm,
+        txGainDbi,
+        rxGainDbi,
+        effFreqHz,
         10,
-        channelBandwidthHz
+        effBwHz
       );
 
       if (link.sinrDb > bestSinrDb) {
@@ -1342,7 +1397,7 @@ export function computeAiSkyShepherdUavOffset(
     }
   }
 
-  if (foundFeasible && bestSinrDb > -2.85) {
+  if (foundFeasible && bestSinrDb > minModcodSnrDb) {
     const distShift = Math.hypot(bestDeltaX, bestDeltaY);
     const bearingShift = computeBearingDeg(bestDeltaX, bestDeltaY);
     return {

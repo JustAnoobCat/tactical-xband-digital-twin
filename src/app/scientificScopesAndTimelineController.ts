@@ -1425,64 +1425,65 @@ export function initScientificScopesAndTimelineController(ctx: AppContext): void
       const histBadge = getStatusBadgeInfo(histClass.status);
 
       const linkEl = rfContext.querySelector('[data-context-link]');
-      if (linkEl) linkEl.textContent = `SNR ${rec.linkBudget.snrDb.toFixed(1)} dB (${histBadge.badgeText})`;
+      const snrFmt = Number.isFinite(rec.linkBudget.snrDb) ? `${rec.linkBudget.snrDb.toFixed(1)} dB` : '--';
+      if (linkEl) linkEl.textContent = `SNR ${snrFmt} (${histBadge.badgeText})`;
     }
 
     setText('terrain-node-label', `${rec.nodeName} [Historical #${rec.frameIndex}]`);
     setText('link-modcod-tag', rec.linkBudget.modcodName || '--');
     setText(
       'lb-slant',
-      typeof rec.linkBudget.slantRangeKm === 'number'
+      Number.isFinite(rec.linkBudget.slantRangeKm)
         ? `${rec.linkBudget.slantRangeKm.toFixed(2)} km`
         : '--'
     );
     setText(
       'lb-snr',
-      typeof rec.linkBudget.snrDb === 'number' ? `${rec.linkBudget.snrDb.toFixed(1)} dB` : '--'
+      Number.isFinite(rec.linkBudget.snrDb) ? `${rec.linkBudget.snrDb.toFixed(1)} dB` : '--'
     );
     setText(
       'lb-se',
-      typeof rec.linkBudget.spectralEfficiencyBpsHz === 'number'
+      Number.isFinite(rec.linkBudget.spectralEfficiencyBpsHz)
         ? `${rec.linkBudget.spectralEfficiencyBpsHz.toFixed(2)} bps/Hz`
         : '--'
     );
     setText(
       'lb-fspl',
-      typeof rec.linkBudget.fsplDb === 'number' ? `${rec.linkBudget.fsplDb.toFixed(1)} dB` : '--'
+      Number.isFinite(rec.linkBudget.fsplDb) ? `${rec.linkBudget.fsplDb.toFixed(1)} dB` : '--'
     );
     setText(
       'lb-diff',
-      typeof rec.linkBudget.diffractionLossDb === 'number'
+      Number.isFinite(rec.linkBudget.diffractionLossDb)
         ? `${rec.linkBudget.diffractionLossDb.toFixed(1)} dB`
         : '--'
     );
     setText(
       'lb-prx',
-      typeof rec.linkBudget.rxPowerDbm === 'number'
+      Number.isFinite(rec.linkBudget.rxPowerDbm)
         ? `${rec.linkBudget.rxPowerDbm.toFixed(1)} dBm`
         : '--'
     );
     setText(
       'lb-bulge',
-      typeof rec.linkBudget.earthBulgeM === 'number'
+      Number.isFinite(rec.linkBudget.earthBulgeM)
         ? `${rec.linkBudget.earthBulgeM.toFixed(1)} m`
         : '--'
     );
     setText(
       'lb-gas',
-      typeof rec.linkBudget.gaseousLossDb === 'number'
+      Number.isFinite(rec.linkBudget.gaseousLossDb)
         ? `${rec.linkBudget.gaseousLossDb.toFixed(2)} dB`
         : '--'
     );
     setText(
       'lb-pnoise',
-      typeof rec.linkBudget.pNoiseDbm === 'number'
+      typeof rec.linkBudget.pNoiseDbm === 'number' && Number.isFinite(rec.linkBudget.pNoiseDbm)
         ? `${rec.linkBudget.pNoiseDbm.toFixed(2)} dBm`
         : '--'
     );
     setText(
       'lb-rain',
-      typeof rec.linkBudget.rainLossDb === 'number'
+      typeof rec.linkBudget.rainLossDb === 'number' && Number.isFinite(rec.linkBudget.rainLossDb)
         ? `${rec.linkBudget.rainLossDb.toFixed(1)} dB`
         : '--'
     );

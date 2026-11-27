@@ -18,6 +18,7 @@ import {
   buildNativeDemGeometry,
   buildPerimeterSkirtGeometry,
   computeDynamicSkirtBaseMslM,
+  resolveTerrainGridSize,
   sampleDemBilinear,
 } from './terrainBuilder';
 
@@ -49,18 +50,20 @@ export function buildDecimatedDemGeometry(
   const xStep = (maxX - minX) / (N - 1);
   const yStep = (maxY - minY) / (N - 1);
 
+  const srcGrid = resolveTerrainGridSize(data);
+  const srcMax = srcGrid - 1;
   for (let r = 0; r < N; r++) {
     const yM = maxY - r * yStep;
-    const srcRow = (r * 511.0) / (N - 1);
+    const srcRow = (r * srcMax) / (N - 1);
     const v = 1.0 - r / (N - 1);
 
     for (let c = 0; c < N; c++) {
       const xM = minX + c * xStep;
-      const srcCol = (c * 511.0) / (N - 1);
+      const srcCol = (c * srcMax) / (N - 1);
       const u = c / (N - 1);
       const idx = r * N + c;
 
-      const zM = sampleDemBilinear(data.elevations, srcCol, srcRow, 512, 512);
+      const zM = sampleDemBilinear(data.elevations, srcCol, srcRow, srcGrid, srcGrid);
 
       positions[idx * 3] = xM;
       positions[idx * 3 + 1] = yM;

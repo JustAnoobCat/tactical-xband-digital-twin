@@ -135,22 +135,39 @@ export class FQCoDelQueue {
     return this._monotonicTotalDroppedBytes;
   }
 
-  private recordOverflowDrop(bytes: number, count: number = 1): void {
+  private readonly classDropCounts: Map<number, number> = new Map([
+    [69, 0],
+    [65, 0],
+    [67, 0],
+    [70, 0],
+  ]);
+
+  public getClassDropCount(qos5qi: number): number {
+    return this.classDropCounts.get(qos5qi) ?? 0;
+  }
+
+  private recordOverflowDrop(bytes: number, count: number = 1, qos5qi?: number): void {
     this.droppedOverflowCount += count;
     this._droppedOverflowBytes += bytes;
     this._totalDroppedBytes += bytes;
     this._monotonicDroppedOverflowCount += count;
     this._monotonicDroppedOverflowBytes += bytes;
     this._monotonicTotalDroppedBytes += bytes;
+    if (qos5qi !== undefined) {
+      this.classDropCounts.set(qos5qi, (this.classDropCounts.get(qos5qi) ?? 0) + count);
+    }
   }
 
-  private recordDelayDrop(bytes: number, count: number = 1): void {
+  private recordDelayDrop(bytes: number, count: number = 1, qos5qi?: number): void {
     this.droppedDelayCount += count;
     this._droppedDelayBytes += bytes;
     this._totalDroppedBytes += bytes;
     this._monotonicDroppedDelayCount += count;
     this._monotonicDroppedDelayBytes += bytes;
     this._monotonicTotalDroppedBytes += bytes;
+    if (qos5qi !== undefined) {
+      this.classDropCounts.set(qos5qi, (this.classDropCounts.get(qos5qi) ?? 0) + count);
+    }
   }
 
   private readonly subqueues: Map<number, Packet[]>;
@@ -249,7 +266,7 @@ export class FQCoDelQueue {
 
       targetQ.push(packet);
       for (let i = 0; i < evicted.length; i++) {
-        this.recordOverflowDrop(evicted[i].sizeBytes, 1);
+        this.recordOverflowDrop(evicted[i].sizeBytes, 1, evicted[i].qos5qi);
       }
       return [true, evicted];
     }
@@ -268,14 +285,14 @@ export class FQCoDelQueue {
       if (!dropped) {
         // Only C2 in buffer, cannot evict C2 for lower priority
         evicted.push(packet);
-        this.recordOverflowDrop(packet.sizeBytes, 1);
+        this.recordOverflowDrop(packet.sizeBytes, 1, packet.qos5qi);
         return [false, evicted];
       }
     }
 
     targetQ.push(packet);
     for (let i = 0; i < evicted.length; i++) {
-      this.recordOverflowDrop(evicted[i].sizeBytes, 1);
+      this.recordOverflowDrop(evicted[i].sizeBytes, 1, evicted[i].qos5qi);
     }
     return [true, evicted];
   }
@@ -295,7 +312,7 @@ export class FQCoDelQueue {
         // Non-C2 packets that expired at head-of-line are discarded
         if (qos !== 69 && currentSimTimeS >= pkt.deadlineS) {
           q.shift();
-          this.recordDelayDrop(pkt.sizeBytes, 1);
+          this.recordDelayDrop(pkt.sizeBytes, 1, pkt.qos5qi);
           continue;
         }
 
@@ -317,14 +334,17 @@ export class FQCoDelQueue {
 
   /**
    * Re-inserts undecoded packets at the head of their priority subqueues for HARQ retransmission
-   * without inflating totalEnqueued counters or dropping them on decode failure.
+   * without inflating totalEnqueued counters; records overflow drops if buffer ceiling is reached.
    */
   public requeueForHarq(packets: readonly Packet[]): void {
     for (let i = packets.length - 1; i >= 0; i--) {
       const pkt = packets[i];
       const q = this.subqueues.get(pkt.qos5qi);
       if (!q) continue;
-      if (this.getTotalPackets() >= this.maxBufferPackets) continue;
+      if (this.getTotalPackets() >= this.maxBufferPackets) {
+        this.recordOverflowDrop(pkt.sizeBytes, 1, pkt.qos5qi);
+        continue;
+      }
       pkt.sojournTimeS = 0.0;
       q.unshift(pkt);
     }
@@ -344,7 +364,7 @@ export class FQCoDelQueue {
         const pkt = q[i];
         if (currentSimTimeS >= pkt.deadlineS) {
           pruned.push(pkt);
-          this.recordDelayDrop(pkt.sizeBytes, 1);
+          this.recordDelayDrop(pkt.sizeBytes, 1, pkt.qos5qi);
         } else {
           survivors.push(pkt);
         }
@@ -359,6 +379,10 @@ export class FQCoDelQueue {
     for (const q of this.subqueues.values()) {
       q.length = 0;
     }
+    this.classDropCounts.set(69, 0);
+    this.classDropCounts.set(65, 0);
+    this.classDropCounts.set(67, 0);
+    this.classDropCounts.set(70, 0);
     this.totalEnqueued = 0;
     this.droppedDelayCount = 0;
     this.droppedOverflowCount = 0;
@@ -367,6 +391,8 @@ export class FQCoDelQueue {
     this._totalDroppedBytes = 0;
   }
 }
+
+export const StrictPriority5qiQueue = FQCoDelQueue;
 
 /**
  * Tactical Ground Node Traffic Subsystem.

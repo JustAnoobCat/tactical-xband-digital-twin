@@ -1216,7 +1216,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <select id="tb-probe-unit-select" class="tb-input-sm tb-grow" aria-label="Unit Type to Deploy at Probe Point">
               <option value="soldier">Soldier Terminal (30 dBm)</option>
               <option value="mcp">Mobile Command Post (40 dBm)</option>
-              <option value="jammer">Relocate EW Jammer</option>
+              <option value="jammer">Deploy EW Barrage Jammer</option>
             </select>
             <button id="tb-probe-spawn-node" class="primary" type="button" aria-label="Spawn Ground Terminal at Probed Coordinate">Deploy</button>
           </div>
@@ -1518,7 +1518,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <span data-legend-layer="rf.fresnelZone" class="is-legend-hidden"><i class="legend-line" style="border-top-style:dashed;border-top-color:#73a6d4"></i>0.6 F₁ Corridor</span>
             <span data-legend-layer="rf.obstructionPoints" class="is-legend-hidden"><i class="legend-dot warning"></i>Crest / Hit</span>
           </div>
-          <aside id="map-node-details" class="map-node-details is-empty" data-inspector-anchor="bottom-right" aria-label="Selected ground node details">
+          <aside id="map-node-details" class="map-node-details is-empty is-closed" data-inspector-anchor="bottom-right" aria-label="Selected ground node details">
             <div class="map-node-header">
               <span class="sec-title">Selected Node</span>
               <button type="button" class="btn-close-inspector" id="btn-close-node-details" title="Close inspector" aria-label="Close inspector">×</button>
@@ -1639,7 +1639,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
               </div>
               <div class="c2-qos-row">
                 <div class="c2-qos-meta">
-                  <span class="c2-qos-name">PTT Voice · 5QI-65 (100 ms)</span>
+                  <span class="c2-qos-name">PTT Voice · 5QI-65 (75 ms)</span>
                   <span id="ops-qos-65-val" class="c2-qos-val">-- ms · --</span>
                 </div>
                 <div class="c2-bar-track"><div id="ops-qos-65-bar" class="c2-bar-fill is-accent" style="width:0%"></div></div>
@@ -1877,7 +1877,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px">ACN BODY-FRAME POLAR PATTERN [ITU-R F.1336]</div>
             <div style="font-size:11px;font-family:var(--mono);color:var(--accent);margin-bottom:8px" id="polar-scope-readout">HDG: --° | BANK: --° | HO: 0</div>
             <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11px;color:var(--text-muted)">
-              <span>Outer Circle:</span><span style="color:var(--text)">0 dB Peak Gain (15 dBi boresight)</span>
+              <span>Outer Circle:</span><span style="color:var(--text)">0 dB Peak Gain (16 dBi boresight)</span>
               <span>Amber Circle:</span><span style="color:#e09f3e">-3 dB Crossover (&plusmn;45&deg;)</span>
               <span>Inner Rings:</span><span style="color:var(--text)">-10 dB and -20 dB</span>
               <span>Sectors:</span><span><strong style="color:#38bdf8">S0 (0&deg; FWD)</strong> · <strong style="color:#4ade80">S1 (90&deg; STBD)</strong> · <strong style="color:#f59e0b">S2 (180&deg; AFT)</strong> · <strong style="color:#c084fc">S3 (270&deg; PORT)</strong></span>
@@ -1892,7 +1892,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
           <span class="sec-title">Empirical CDF: Packet Delay Distribution F(&tau;) = P(Delay &le; &tau;)</span>
           <span class="badge-sub">3GPP TS 23.501 5QI Packet Delay Budget (PDB) Benchmarking</span>
         </div>
-        <p class="lede" style="margin-bottom:12px;font-size:11.5px">Real-time cumulative distribution of queuing delays across schedulers against mission-critical 3GPP 5QI packet delay budgets (60 ms C2, 100 ms Voice, 150 ms Video, 300 ms ISR Photo).</p>
+        <p class="lede" style="margin-bottom:12px;font-size:11.5px">Real-time cumulative distribution of queuing delays across schedulers against mission-critical 3GPP 5QI packet delay budgets (60 ms C2, 75 ms Voice, 150 ms Video, 300 ms ISR Photo).</p>
         <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center">
           <div style="flex:1;min-width:320px;height:240px;position:relative;background:#0d1117;border-radius:6px;border:1px solid var(--line);overflow:hidden">
             <canvas id="ecdf-delay-canvas" width="640" height="240" aria-label="Live Empirical CDF Packet Delay Distribution Scope" style="width:100%;height:100%;display:block"></canvas>
@@ -1901,7 +1901,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">3GPP 5QI DELAY BUDGETS (PDB)</div>
             <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:10.5px;color:var(--text-muted);margin-bottom:12px">
               <span style="color:#38bdf8;font-weight:600">60 ms:</span><span>5QI 69 (Mission-Critical C2)</span>
-              <span style="color:#4ade80;font-weight:600">100 ms:</span><span>5QI 65 (MC-PTT Voice)</span>
+              <span style="color:#4ade80;font-weight:600">75 ms:</span><span>5QI 65 (MC-PTT Voice)</span>
               <span style="color:#fbbf24;font-weight:600">150 ms:</span><span>5QI 67 (Tactical Video)</span>
               <span style="color:#c084fc;font-weight:600">300 ms:</span><span>5QI 70 (ISR Photo)</span>
             </div>
@@ -3319,14 +3319,14 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
             <h3 id="rt-profiler-heading" style="margin:0;font-size:13px;font-weight:600;letter-spacing:0.04em;">50 HZ DISCRETE-EVENT ENGINE PROFILER &amp; REPRODUCIBLE RESEARCH DOSSIER</h3>
             <p style="font-size:11px;color:rgba(255,255,255,0.6);margin:3px 0 0 0;">MATLAB/Simulink-inspired 50 Hz Web Worker step execution latency histogram, RFC 3550 pacing jitter, and IEEE Transactions LaTeX dossier exporter.</p>
           </div>
-          <span id="rt-verdict-badge" class="kpi-badge badge-success" style="font-size:11px;padding:2px 8px;" aria-label="Real-time certification status">HARD_RT_CERTIFIED</span>
+          <span id="rt-verdict-badge" class="kpi-badge badge-neutral" style="font-size:11px;padding:2px 8px;" aria-label="Real-time certification status">INITIALIZING</span>
         </div>
 
         <div class="diag-live-grid" aria-label="Real-time execution metrics" style="margin-top:10px;margin-bottom:12px;">
-          <div class="diag-card"><span>Step Latency (50 Hz Budget: 20 ms)</span><strong id="rt-p50-p95-readout" style="font-size:11px;">p50 = 4.80 ms | p95 = 7.50 ms | p99 = 8.20 ms</strong></div>
-          <div class="diag-card"><span>Real-Time Deadline Headroom</span><strong id="rt-headroom-readout" style="font-size:11px;color:#10b981;">62.5%</strong></div>
-          <div class="diag-card"><span>RFC 3550 Pacing Jitter</span><strong id="rt-jitter-readout" style="font-size:11px;">0.35 ms</strong></div>
-          <div class="diag-card"><span>Worker RT Status</span><strong id="rt-status-text" style="font-size:11px;color:#38bdf8;">CERTIFIED (0 overruns)</strong></div>
+          <div class="diag-card"><span>Step Latency (50 Hz Budget: 20 ms)</span><strong id="rt-p50-p95-readout" style="font-size:11px;">p50 = -- ms | p95 = -- ms | p99 = -- ms</strong></div>
+          <div class="diag-card"><span>Real-Time Deadline Headroom</span><strong id="rt-headroom-readout" style="font-size:11px;color:#10b981;">--%</strong></div>
+          <div class="diag-card"><span>RFC 3550 Pacing Jitter</span><strong id="rt-jitter-readout" style="font-size:11px;">-- ms</strong></div>
+          <div class="diag-card"><span>Worker RT Status</span><strong id="rt-status-text" style="font-size:11px;color:#38bdf8;">INITIALIZING</strong></div>
         </div>
 
         <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:10px;margin-bottom:14px;">
@@ -3539,7 +3539,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <ul>
           <li><strong>5QI 69 (Emergency C2):</strong> Strict tactical priority, 120-packet reserved buffer ceiling, 60 ms packet delay budget (PDB). Never dropped during shadow periods.</li>
           <li><strong>5QI 65 (Mission-Critical PTT Voice):</strong> High priority, 75 ms PDB.</li>
-          <li><strong>5QI 67 (Mission-Critical Real-Time Video):</strong> Medium priority, 100 ms PDB, Poisson-distributed packet generation.</li>
+          <li><strong>5QI 67 (Mission-Critical Real-Time Video):</strong> Medium priority, 150 ms PDB, Poisson-distributed packet generation.</li>
           <li><strong>5QI 70 (Tactical Reconnaissance Photo):</strong> Background priority, 300 ms PDB.</li>
         </ul>
         <p>Total per-node buffer capacity is bounded at 400 packets. Lower-priority traffic is evicted first on buffer overflow; non-C2 packets are pruned when their sojourn delay exceeds their PDB. In Tac-TAD, <strong>Effective Physical Deadline Compression</strong> (τ_eff-TTL = min(τ_TTL, t_occ)) dynamically couples packet sojourn life to terrain obstruction look-ahead, triggering expedited transmission or managed evacuation before line-of-sight is severed.</p>
@@ -3658,7 +3658,7 @@ details.more>summary small{font-weight:400;color:var(--muted);margin-left:10px;m
         <div class="formula-card">(A-10) &nbsp; G<sub>sector</sub>(θ) = G<sub>0</sub> − min[12(θ/θ<sub>3dB</sub>)², G<sub>sidelobe</sub>]<br>         θ<sub>az,s</sub> = (ψ<sub>LOS</sub> − ψ<sub>heading</sub> − ψ<sub>sector,s</sub>) mod 360°<br>         Handover Hysteresis = 1.5 dB (prevents chattering at ±45° crossover boundaries)</div>
         <p><strong>Variables:</strong> <code>Gsector</code> is ITU-R F.1336 parabolic roll-off gain in dBi; <code>θ3dB = 65°</code>; <code>Gsidelobe = 25 dB</code>; <code>ψsector,s ∈ {0°, 90°, 180°, 270°}</code> for forward, starboard, aft, and port body-fixed quadrants. <strong>Source:</strong> <code>QuadSectorAntennaEngine</code> in <code>src/core/antennaArray.ts</code>.</p>
         <div class="formula-card">(A-11) &nbsp; FSPL = 20log₁₀(d₃D) + 20log₁₀(f<sub>c</sub>) + 20log₁₀(4π/c)<br>         L<sub>gas</sub> = ∫₀ᴰ γ<sub>gas</sub>(z(s)) ds, &nbsp;&nbsp; γ<sub>gas</sub>(z) = γ<sub>0</sub> exp(−z / H<sub>scale</sub>)<br>         L<sub>rain</sub> = γ<sub>R</sub> min(d₃D/1000, max(0, (h<sub>freeze</sub> − z<sub>node</sub>)/sin(e)))</div>
-        <p><strong>Variables:</strong> <code>Lgas</code> integrates ITU-R P.676-13 barometric scale-height absorption (H_scale = 2.0 km for H₂O, 8.0 km for dry air); <code>Lrain</code> implements ITU-R P.838-3 specific rain attenuation capped at ITU-R P.839-4 0°C isotherm freezing ceiling (h_freeze = 4,800 m MSL in Ladakh). <strong>Source:</strong> <code>LinkBudgetEngine.evaluateLink</code>.</p>
+        <p><strong>Variables:</strong> <code>Lgas</code> integrates ITU-R P.676-13 barometric scale-height absorption (H_scale = 2.0 km for H₂O, 6.0 km for dry air); <code>Lrain</code> implements ITU-R P.838-3 specific rain attenuation capped at ITU-R P.839-4 0°C isotherm freezing ceiling (h_freeze = 4,800 m MSL in Ladakh). <strong>Source:</strong> <code>LinkBudgetEngine.evaluateLink</code>.</p>
         <div class="formula-card">(A-12) &nbsp; T<sub>sky</sub> = T<sub>cosmic</sub> 10<sup>−A<sub>atm</sub>/10</sup> + T<sub>atm</sub>(1 − 10<sup>−A<sub>atm</sub>/10</sup>), &nbsp;&nbsp; T<sub>atm</sub> = 275 K, T<sub>cosmic</sub> = 2.7 K<br>         T<sub>sys</sub> = T₀(10<sup>NF/10</sup> − 1) + T<sub>sky</sub>, &nbsp;&nbsp; ΔN<sub>sky</sub> = 10log₁₀(1 + T<sub>sky</sub> / [T₀(10<sup>NF/10</sup> − 1)])<br>         SNR<sub>dB</sub> = P<sub>rx,dBm</sub> − (P<sub>noise,dBm</sub> + ΔN<sub>sky</sub>)</div>
         <p><strong>Variables:</strong> <code>Tsky</code> is antenna noise temperature from ITU-R P.618-14 atmospheric brightness coupling; <code>ΔNsky</code> is the resulting sky-noise degradation factor in dB added to receiver thermal noise. <strong>Source:</strong> <code>LinkBudgetEngine.evaluateLink</code>.</p>
 

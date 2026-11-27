@@ -645,15 +645,24 @@ export function stitchHgtTiles(
     }
   }
 
-  // Derive georeferenced Cartesian bounds with longitude scale at actual mosaic center latitude
+  // Derive georeferenced Cartesian bounds with longitude scale at actual mosaic center latitude.
+  // Non-Ladakh mosaics are centered symmetrically around local origin (0, 0).
   const tileCenterLatDeg = (minLat + maxLat) / 2.0;
+  const tileCenterLonDeg = (minLon + maxLon) / 2.0;
   const metersPerDegLon = computeMetersPerDegLon(tileCenterLatDeg);
-  const minX = (minLon - THEATER_ORIGIN_LON_DEG) * metersPerDegLon;
-  const maxX = (maxLon - THEATER_ORIGIN_LON_DEG) * metersPerDegLon;
-  const minY = (minLat - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
-  const maxY = (maxLat - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
-  const halfWidthM = (maxX - minX) / 2.0;
-  const halfHeightM = (maxY - minY) / 2.0;
+  const isLadakhRegion =
+    Math.abs(tileCenterLatDeg - THEATER_ORIGIN_LAT_DEG) <= 5.0 &&
+    Math.abs(tileCenterLonDeg - THEATER_ORIGIN_LON_DEG) <= 5.0;
+  const rawMinX = (minLon - THEATER_ORIGIN_LON_DEG) * metersPerDegLon;
+  const rawMaxX = (maxLon - THEATER_ORIGIN_LON_DEG) * metersPerDegLon;
+  const rawMinY = (minLat - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
+  const rawMaxY = (maxLat - THEATER_ORIGIN_LAT_DEG) * HGT_METERS_PER_DEG_LAT;
+  const halfWidthM = (rawMaxX - rawMinX) / 2.0;
+  const halfHeightM = (rawMaxY - rawMinY) / 2.0;
+  const minX = isLadakhRegion ? rawMinX : -halfWidthM;
+  const maxX = isLadakhRegion ? rawMaxX : halfWidthM;
+  const minY = isLadakhRegion ? rawMinY : -halfHeightM;
+  const maxY = isLadakhRegion ? rawMaxY : halfHeightM;
 
   const tileNames = tiles.map((t) => t.tileName).sort();
   const tileLabel = tileNames.length === 1 ? tileNames[0] : `PATCH [${tileNames.join(', ')}]`;

@@ -510,7 +510,8 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         ? (((histSnap.acn.headingRad * 180) / Math.PI) % 360 + 360) % 360
         : Number(liveAcn?.heading_deg ?? (((Math.atan2(vx, vy) * 180) / Math.PI + 360) % 360));
       const covKm = histSnap ? histSnap.acn.coverageRadiusKm : liveAcn?.coverage_radius_km;
-      const geo = cartesianToGeodetic(ax, ay);
+      const hGeo = mainTerrainEngine.worldToLatLon(ax, ay);
+      const geo = Number.isFinite(hGeo.latDeg) && Number.isFinite(hGeo.lonDeg) ? hGeo : cartesianToGeodetic(ax, ay);
 
       const tallySrc = histSnap
         ? histSnap.nodes.map(n => ({
@@ -572,7 +573,10 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
       const hNode = histSnap?.nodes?.find(n => n.nodeId === state.selectedNodeId);
       if (hNode) {
         const liveMeta = state.latestTelemetry?.nodes_telemetry?.find(item => item.node_id === state.selectedNodeId);
-        const hGeo = cartesianToGeodetic(hNode.posX, hNode.posY);
+        const rawHGeo = mainTerrainEngine.worldToLatLon(hNode.posX, hNode.posY);
+        const hGeo = Number.isFinite(rawHGeo.latDeg) && Number.isFinite(rawHGeo.lonDeg)
+          ? rawHGeo
+          : cartesianToGeodetic(hNode.posX, hNode.posY);
         node = {
           ...(liveMeta || {}),
           node_id: hNode.nodeId,
@@ -639,14 +643,14 @@ export function initDashboardRenderOrchestrator(ctx: AppContext) {
         'Longitude',
         typeof node.lon_deg === 'number' && Number.isFinite(node.lon_deg) ? `${node.lon_deg.toFixed(5)}°` : null,
       ],
-      ['AGL', typeof node.agl_m === 'number' ? `${node.agl_m.toFixed(1)} m` : null],
+      ['AGL', typeof node.agl_m === 'number' && Number.isFinite(node.agl_m) ? `${node.agl_m.toFixed(1)} m` : '--'],
       ['Terrain state', node.state_name],
       ['RF link', nodeLinkLabel(node)],
       [
         'SNR / MODCOD',
-        typeof node.snr_db === 'number'
+        typeof node.snr_db === 'number' && Number.isFinite(node.snr_db)
           ? `${node.snr_db.toFixed(1)} dB · ${node.modcod_name || (isTimelineHist ? 'Historical' : 'Unavailable')}`
-          : null,
+          : `-- · ${node.modcod_name || (isTimelineHist ? 'Historical' : 'Unavailable')}`,
       ],
       ['Achieved rate', rate !== 'Unavailable' ? rate : null],
       [

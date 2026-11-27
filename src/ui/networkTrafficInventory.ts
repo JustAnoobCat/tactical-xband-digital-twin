@@ -154,6 +154,7 @@ interface NodeAccumulator {
   lastDroppedPackets: number;
   cumulativeSentBytes: number;
   cumulativeDeliveredBytes: number;
+  cumulativeDlReceivedBytes: number;
   cumulativePacketsSent: number;
   cumulativePacketsReceived: number;
   cumulativePacketsLost: number;
@@ -256,6 +257,7 @@ export class NetworkTrafficTracker {
         lastDroppedPackets: 0,
         cumulativeSentBytes: 0,
         cumulativeDeliveredBytes: 0,
+        cumulativeDlReceivedBytes: 0,
         cumulativePacketsSent: 0,
         cumulativePacketsReceived: 0,
         cumulativePacketsLost: 0,
@@ -294,6 +296,7 @@ export class NetworkTrafficTracker {
 
     // Track downlink broadcast bytes if downlink telemetry is active
     const dl = frame.downlinkTelemetry;
+    let dlFrameBytes = 0;
     if (dl && dl.broadcast_active !== false) {
       const validLinks = frame.nodes.filter(n => {
         const s = classifyLinkCommunicationStatus(n).status;
@@ -302,7 +305,8 @@ export class NetworkTrafficTracker {
       const dlPhy = resolveDownlinkBroadcastPhy(frame, validLinks);
       const instantaneousDlBps = dlPhy.rfBandwidthHz * dlPhy.spectralEfficiencyBpsHz;
       const dlSec = dlPhy.dlDurationMs / 1000.0;
-      this.cumulativeDlBroadcastBytes += Math.floor((instantaneousDlBps * dlSec) / 8);
+      dlFrameBytes = Math.floor((instantaneousDlBps * dlSec) / 8);
+      this.cumulativeDlBroadcastBytes += dlFrameBytes;
     }
 
     for (const node of frame.nodes) {
@@ -313,6 +317,7 @@ export class NetworkTrafficTracker {
       const isCommsAvailable = commStatus.status === 'CONNECTED' || commStatus.status === 'DEGRADED';
       if (isCommsAvailable) {
         acc.framesWithComms += 1;
+        acc.cumulativeDlReceivedBytes += dlFrameBytes;
       }
 
       const tx = node.transfer_state;
@@ -478,8 +483,7 @@ export class NetworkTrafficTracker {
 
     const snr = finite(node.snr_db) && node.snr_db > -90 ? node.snr_db : null;
 
-    // Estimate received downlink portion for this node based on availability
-    const rxBytes = Math.floor(this.cumulativeDlBroadcastBytes * (availabilityPct / 100.0));
+    const rxBytes = acc.cumulativeDlReceivedBytes;
 
     return {
       nodeId: node.node_id,

@@ -131,8 +131,11 @@ console.log('[5/6] Verifying worker integration, profile emission, and link budg
   const frame = (sim as any).buildTelemetryFrame(sim.trajectoryEngine.getAcnPosition(sim.simTimeS));
   assert.equal(frame.selected_link_budget.channel_bandwidth_hz, 2.5e6);
 
-  // Check noise floor in selected_link_budget matches 2.5 MHz
-  const expectedNoise = 10 * Math.log10(sim.rfConfig.boltzmannConstant * sim.envConfig.atmosphericTemperatureK * 2.5e6) + 30 + sim.rfConfig.acnNoiseFigureDb;
+  // Check noise floor in selected_link_budget matches 2.5 MHz (ITU-R P.618-14 T_sys = T_sky + T0*(F-1))
+  const noiseFactorLin = Math.pow(10, sim.rfConfig.acnNoiseFigureDb / 10);
+  const tRxK = sim.envConfig.atmosphericTemperatureK * (noiseFactorLin - 1);
+  const tSkyK = frame.selected_link_budget.sky_temperature_k ?? 2.73;
+  const expectedNoise = 10 * Math.log10(sim.rfConfig.boltzmannConstant * (tSkyK + tRxK) * 2.5e6) + 30;
   close(frame.selected_link_budget.pnoise_dbm, expectedNoise, 1e-2, 'Telemetry pnoise_dbm reflects 2.5 MHz');
 
   console.log('  -> PASS: Worker authoritative telemetry reflects updated bandwidth and noise floor.');

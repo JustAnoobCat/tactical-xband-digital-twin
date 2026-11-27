@@ -732,6 +732,10 @@ export function smoothWaypointsKinematically(
         ? p0.minTerrainClearanceAltM + u * (p1.minTerrainClearanceAltM - p0.minTerrainClearanceAltM)
         : (p0.minTerrainClearanceAltM ?? p1.minTerrainClearanceAltM);
 
+      if (isPointSafe && !isPointSafe(x, y, altM)) {
+        obstacleFallbackCount++;
+      }
+
       rawInterpolated.push({ x, y, altM, minTerrainClearanceAltM: minFloor });
     }
 
@@ -750,7 +754,7 @@ export function smoothWaypointsKinematically(
       maxDescentRateObservedMs,
       isKinematicallyFeasible: audit.isFeasible,
       fallbackCount: 0,
-      obstacleFallbackCount: 0,
+      obstacleFallbackCount,
       audit,
     };
   }
@@ -818,33 +822,47 @@ export function smoothWaypointsKinematically(
     let cornerArcSamples: Array<{ x: number; y: number; altM: number; minFloor?: number }> = [];
     let usedDubinsFallback = false;
 
-    if (filletFeasible && turnDeflectionRad > 1e-4) {
-      // Inscribed tangent circular arc
-      const entryX = P_curr.x - T * Math.cos(thIn);
-      const entryY = P_curr.y - T * Math.sin(thIn);
-      const exitX = P_curr.x + T * Math.cos(thOut);
-      const exitY = P_curr.y + T * Math.sin(thOut);
-
-      // Tangent circle center
+    const buildFilletSamples = (radiusM: number, setbackM: number): Array<{ x: number; y: number; altM: number; minFloor?: number }> => {
+      const pts: Array<{ x: number; y: number; altM: number; minFloor?: number }> = [];
+      const entryX = P_curr.x - setbackM * Math.cos(thIn);
+      const entryY = P_curr.y - setbackM * Math.sin(thIn);
       const normalTh = isLeftTurn ? thIn + Math.PI / 2.0 : thIn - Math.PI / 2.0;
-      const cx = entryX + R_min * Math.cos(normalTh);
-      const cy = entryY + R_min * Math.sin(normalTh);
-
-      // Sweep angle from entry to exit
+      const cx = entryX + radiusM * Math.cos(normalTh);
+      const cy = entryY + radiusM * Math.sin(normalTh);
       const startAngleFromCenter = Math.atan2(entryY - cy, entryX - cx);
-      const arcLength = R_min * turnDeflectionRad;
+      const arcLength = radiusM * turnDeflectionRad;
       const numArcSteps = Math.max(3, Math.ceil(arcLength / sampleStepM));
-
       for (let s = 0; s <= numArcSteps; s++) {
         const u = s / numArcSteps;
         const currentAngle = isLeftTurn
           ? startAngleFromCenter + u * turnDeflectionRad
           : startAngleFromCenter - u * turnDeflectionRad;
-        const ax = cx + R_min * Math.cos(currentAngle);
-        const ay = cy + R_min * Math.sin(currentAngle);
-        const altM = P_curr.altM; // Fillet takes apex altitude as reference
-        const minFloor = P_curr.minTerrainClearanceAltM;
-        cornerArcSamples.push({ x: ax, y: ay, altM, minFloor });
+        pts.push({
+          x: cx + radiusM * Math.cos(currentAngle),
+          y: cy + radiusM * Math.sin(currentAngle),
+          altM: P_curr.altM,
+          minFloor: P_curr.minTerrainClearanceAltM,
+        });
+      }
+      return pts;
+    };
+
+    if (filletFeasible && turnDeflectionRad > 1e-4) {
+      // Try R from largest setback-feasible radius down monotonically to R_min if obstacles encroach
+      const maxFeasibleRadius = tanHalf > 1e-6 ? Math.min(maxSetbackIn, maxSetbackOut) / tanHalf : R_min;
+      const startRadius = Math.max(R_min, maxFeasibleRadius);
+      const shrinkFactors = isPointSafe && startRadius > R_min + 1e-3 ? [1.0, 0.75, 0.5, 0.25, 0.0] : [0.0];
+      for (const f of shrinkFactors) {
+        const rTry = R_min + f * (startRadius - R_min);
+        const tTry = rTry * tanHalf;
+        const candSamples = buildFilletSamples(rTry, tTry);
+        if (!isPointSafe || candSamples.every((pt) => isPointSafe(pt.x, pt.y, pt.altM))) {
+          cornerArcSamples = candSamples;
+          break;
+        }
+      }
+      if (cornerArcSamples.length === 0) {
+        cornerArcSamples = buildFilletSamples(R_min, T);
       }
     } else if (turnDeflectionRad > 1e-4) {
       // Fallback: Adjacent fillets overlap or sharp reversal -> Solve exact 6-family Dubins curve
@@ -911,6 +929,9 @@ export function smoothWaypointsKinematically(
         const ly = prevCornerExitY + u * (arcStart.y - prevCornerExitY);
         const altM = P_prev.altM + u * (P_curr.altM - P_prev.altM);
         const minFloor = P_prev.minTerrainClearanceAltM;
+        if (isPointSafe && !isPointSafe(lx, ly, altM)) {
+          obstacleFallbackCount++;
+        }
         pushPoint({ x: lx, y: ly, altM, minTerrainClearanceAltM: minFloor });
       }
 
@@ -950,6 +971,9 @@ export function smoothWaypointsKinematically(
     const fy = prevCornerExitY + u * (P_final.y - prevCornerExitY);
     const altM = waypoints[N - 2].altM + u * (P_final.altM - waypoints[N - 2].altM);
     const minFloor = P_final.minTerrainClearanceAltM;
+    if (isPointSafe && !isPointSafe(fx, fy, altM)) {
+      obstacleFallbackCount++;
+    }
     pushPoint({ x: fx, y: fy, altM, minTerrainClearanceAltM: minFloor });
   }
 

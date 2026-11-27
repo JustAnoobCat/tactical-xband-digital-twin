@@ -50,6 +50,10 @@ export interface RadarCursorReadoutInput {
   readonly halfWidthM?: number;
   /** Optional explicit coverage half-height (metres) */
   readonly halfHeightM?: number;
+  /** Optional explicit half-span latitude (degrees) matching halfHeightM */
+  readonly halfSpanLatDeg?: number;
+  /** Optional explicit half-span longitude (degrees) matching halfWidthM */
+  readonly halfSpanLonDeg?: number;
 }
 
 export interface RadarCursorReadoutResult {
@@ -88,6 +92,8 @@ export function computeRadarCursorReadout(input: RadarCursorReadoutInput): Radar
     originLonDeg,
     halfWidthM,
     halfHeightM,
+    halfSpanLatDeg,
+    halfSpanLonDeg,
   } = input;
 
   if (!isInsideRadar || !Number.isFinite(xM) || !Number.isFinite(yM)) {
@@ -130,17 +136,24 @@ export function computeRadarCursorReadout(input: RadarCursorReadoutInput): Radar
   const geo = useLadakhDefault
     ? cartesianToGeodetic(xM, yM)
     : (() => {
+        const effMeta = hasCustomOrigin ? undefined : biomeMeta;
         const covHalfH = Number.isFinite(halfHeightM) && (halfHeightM as number) > 0
           ? (halfHeightM as number)
-          : (biomeMeta?.halfHeightM ?? METERS_PER_DEG_LAT);
+          : (effMeta?.halfHeightM ?? METERS_PER_DEG_LAT);
         const covHalfW = Number.isFinite(halfWidthM) && (halfWidthM as number) > 0
           ? (halfWidthM as number)
-          : (biomeMeta?.halfWidthM ??
+          : (effMeta?.halfWidthM ??
               (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
                 Math.cos((centerLat * Math.PI) / 180.0));
+        const spanLat = Number.isFinite(halfSpanLatDeg) && (halfSpanLatDeg as number) > 0
+          ? (halfSpanLatDeg as number)
+          : (effMeta ? (effMeta.maxLatDeg - effMeta.minLatDeg) * 0.5 : 1.0);
+        const spanLon = Number.isFinite(halfSpanLonDeg) && (halfSpanLonDeg as number) > 0
+          ? (halfSpanLonDeg as number)
+          : (effMeta ? (effMeta.maxLonDeg - effMeta.minLonDeg) * 0.5 : 1.0);
         return {
-          latDeg: centerLat + yM / covHalfH,
-          lonDeg: centerLon + xM / covHalfW,
+          latDeg: centerLat + (yM / covHalfH) * spanLat,
+          lonDeg: centerLon + (xM / covHalfW) * spanLon,
           isWithinCoverage: Math.abs(xM) <= covHalfW && Math.abs(yM) <= covHalfH,
         };
       })();

@@ -16,6 +16,7 @@
     "src/core/**/*",
     "src/shared/**/*",
     "src/worker/**/*",
-    "src/ui/**/*"
+    "src/ui/**/*",
+    "src/docsWindow.ts"
   ]
 }

@@ -347,9 +347,13 @@ export class PolarViewshedEngine {
     const cellX = acnPos[0] + rangeM * sinB;
     const cellY = acnPos[1] + rangeM * cosB;
 
-    let zGround = terrain.getElevation(cellX, cellY);
+    if (typeof terrain.isWithinDemCoverage === 'function' && !terrain.isWithinDemCoverage(cellX, cellY)) {
+      return Number.NaN;
+    }
+
+    const zGround = terrain.getElevation(cellX, cellY);
     if (!Number.isFinite(zGround)) {
-      zGround = 0.0;
+      return Number.NaN;
     }
     const cellZ = zGround + 2.0; // Standard ground terminal height 2.0 m AGL
     const cellPos: Position3D = [cellX, cellY, cellZ];
@@ -362,6 +366,9 @@ export class PolarViewshedEngine {
 
     // 1. Terrain diffraction obstruction
     const obs = terrain.evaluateTerrainObstruction(cellPos, acnPos, rf, env, 150.0);
+    if (obs.isCoverageComplete === false) {
+      return Number.NaN;
+    }
     let diffLossDb = 0.0;
     if (obs.obstacleBlocked) {
       diffLossDb = 35.0;
@@ -401,7 +408,14 @@ export class PolarViewshedEngine {
     const freezingIsothermM = THEATER_BIOMES[terrain.activeBiomeId]?.freezingIsothermM ?? 4800.0;
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantDistM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantDistM, cellZ, acnPos[2], rf.carrierFrequencyHz);
-    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantDistM, env, cellZ, acnPos[2], freezingIsothermM);
+    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(
+      slantDistM,
+      env,
+      cellZ,
+      acnPos[2],
+      freezingIsothermM,
+      rf.carrierFrequencyHz
+    );
     const totalLossDb =
       fsplDb +
       diffLossDb +
@@ -414,19 +428,16 @@ export class PolarViewshedEngine {
     const { txPowerDbm, antennaGainDbi: txGainDbi } = rf.getTransmitterParams('soldier');
     const prxDbm = txPowerDbm + txGainDbi + rxGainDbi - totalLossDb;
 
-    // Thermal noise & sky temperature coupling
-    const { pNoiseDbm: pNoiseThermalDbm } = LinkBudgetEngine.computeThermalNoiseFloorDbm(
-      rf.channelBandwidthHz,
-      rf.acnNoiseFigureDb,
-      env.atmosphericTemperatureK,
-      rf.boltzmannConstant
-    );
+    // ITU-R P.618-14 Sky-Noise & Receiver Thermal Noise: T_sys = T_sky + T0 * (F - 1)
     const aAtm = gasLossDb + rainLossDb;
+    const tau = Math.pow(10.0, -aAtm / 10.0);
     const Tm = 275.0;
-    const skyTemperatureK = Tm * (1.0 - Math.pow(10.0, -aAtm / 10.0));
+    const skyTemperatureK = Tm * (1.0 - tau) + 2.73 * tau;
+    const t0 = env.atmosphericTemperatureK > 0 ? env.atmosphericTemperatureK : 290.0;
     const noiseFactor = Math.pow(10.0, rf.acnNoiseFigureDb / 10.0);
-    const skyNoiseIncreaseDb = 10.0 * Math.log10(1.0 + skyTemperatureK / (290.0 * noiseFactor));
-    const pNoiseDbm = pNoiseThermalDbm + skyNoiseIncreaseDb;
+    const tSysK = skyTemperatureK + t0 * (noiseFactor - 1.0);
+    const pNoiseW = rf.boltzmannConstant * tSysK * rf.channelBandwidthHz;
+    const pNoiseDbm = 10.0 * Math.log10(Math.max(pNoiseW, 1e-24) * 1000.0);
 
     // Contested EW Jammer interference coupling into active sector
     let pNoiseAndInterferenceDbm = pNoiseDbm;
@@ -898,7 +909,14 @@ export class PolarViewshedEngine {
           // Slant link budget to ACN (FSPL + diffraction + gas + rain + losses)
           const fsplDb = LinkBudgetEngine.computeFsplDb(dM, rf.carrierFrequencyHz, rf.speedOfLight);
           const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(dM, candZ, acnPos[2], rf.carrierFrequencyHz);
-          const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dM, env, candZ, acnPos[2], freezingIsothermM);
+          const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(
+            dM,
+            env,
+            candZ,
+            acnPos[2],
+            freezingIsothermM,
+            rf.carrierFrequencyHz
+          );
           const totalLossDb = fsplDb + diffLossDb + gasLossDb + rainLossDb + rf.cableLossDb + rf.implementationMarginDb;
 
           // Quad-sector body-frame elevation & azimuth roll-off aligned with QuadSectorAntennaEngine (90 deg az x 65 deg el, 16 dBi peak)
@@ -919,11 +937,13 @@ export class PolarViewshedEngine {
           const patternRolloffDb = Math.min(azLossDb + elLossDb, maxAttenDb);
           const effAcnGainDbi = rf.acnAntennaGainDbi - patternRolloffDb;
 
-          // Sky noise temperature increase from atmospheric + rain attenuation
+          // Sky noise temperature coupling: T_sys = T_sky + T0 * (F - 1)
           const atmoLossDb = gasLossDb + rainLossDb;
-          const tSkyK = 275.0 * (1.0 - Math.pow(10.0, -atmoLossDb / 10.0));
+          const tau = Math.pow(10.0, -atmoLossDb / 10.0);
+          const tSkyK = 275.0 * (1.0 - tau) + 2.73 * tau;
+          const t0 = env.atmosphericTemperatureK > 0 ? env.atmosphericTemperatureK : 290.0;
           const noiseFactor = Math.pow(10.0, rf.acnNoiseFigureDb / 10.0);
-          const effNoiseTempK = env.atmosphericTemperatureK * noiseFactor + tSkyK;
+          const effNoiseTempK = t0 * (noiseFactor - 1.0) + tSkyK;
           let totalInterfNoiseW = rf.boltzmannConstant * effNoiseTempK * rf.channelBandwidthHz;
 
           // Optional EW jammer ingress at ACN
@@ -939,8 +959,10 @@ export class PolarViewshedEngine {
 
           const pNoisePlusInterfDbm = 10.0 * Math.log10(Math.max(totalInterfNoiseW, 1e-22) * 1000.0);
 
-          // Relay transmitter: 30 dBm, 5 dBi directional antenna, ACN directional sector gain
-          const pRxDbm = 30.0 + 5.0 + effAcnGainDbi - totalLossDb;
+          // Config-driven relay backhaul TX power & antenna gain
+          const relayTxPowerDbm = env.relayTxPowerDbm ?? 30.0;
+          const relayGainDbi = env.relayAntennaGainDbi ?? 5.0;
+          const pRxDbm = relayTxPowerDbm + relayGainDbi + effAcnGainDbi - totalLossDb;
           const sinrDb = pRxDbm - pNoisePlusInterfDbm;
 
           sumSinrToAcn += sinrDb;
@@ -971,16 +993,27 @@ export class PolarViewshedEngine {
 
           const fsplDb = LinkBudgetEngine.computeFsplDb(dGroundM, rf.carrierFrequencyHz, rf.speedOfLight);
           const gGasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(dGroundM, gnZ, candZ, rf.carrierFrequencyHz);
-          const gRainLossDb = LinkBudgetEngine.computeRainAttenuationDb(dGroundM, env, gnZ, candZ, freezingIsothermM);
+          const gRainLossDb = LinkBudgetEngine.computeRainAttenuationDb(
+            dGroundM,
+            env,
+            gnZ,
+            candZ,
+            freezingIsothermM,
+            rf.carrierFrequencyHz
+          );
           const gAtmoLossDb = gGasLossDb + gRainLossDb;
-          const gSkyK = 275.0 * (1.0 - Math.pow(10.0, -gAtmoLossDb / 10.0));
-          const gNoiseW = baseNoiseW + rf.boltzmannConstant * gSkyK * rf.channelBandwidthHz;
+          const gTau = Math.pow(10.0, -gAtmoLossDb / 10.0);
+          const gSkyK = 275.0 * (1.0 - gTau) + 2.73 * gTau;
+          const gt0 = env.atmosphericTemperatureK > 0 ? env.atmosphericTemperatureK : 290.0;
+          const gNf = Math.pow(10.0, rf.acnNoiseFigureDb / 10.0);
+          const gNoiseW = rf.boltzmannConstant * (gSkyK + gt0 * (gNf - 1.0)) * rf.channelBandwidthHz;
           const gNoiseDbm = 10.0 * Math.log10(Math.max(gNoiseW, 1e-22) * 1000.0);
 
+          const relayRxGainDbi = env.relayAntennaGainDbi ?? 5.0;
           const pRxGroundDbm =
             soldierTxPowerDbm +
             soldierAntennaGainDbi +
-            5.0 -
+            relayRxGainDbi -
             (fsplDb + diffLossDb + gAtmoLossDb + rf.cableLossDb + rf.implementationMarginDb);
           const groundSinrDb = pRxGroundDbm - (Number.isFinite(gNoiseDbm) ? gNoiseDbm : baseNoiseDbm);
 

@@ -99,7 +99,7 @@ export const DEFAULT_WORLD_RADAR_DEM_TILE_URL =
   'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 
 const MAX_MERCATOR_LAT_DEG = 85.05112878;
-const MAX_VISIBLE_TILES_PER_FRAME = 120;
+export const MAX_VISIBLE_TILES_PER_FRAME = 48;
 const MIN_WORLD_TILE_ZOOM = 2;
 export const DEFAULT_MAX_NATIVE_TILE_ZOOM = 15;
 const MAX_WORLD_TILE_ZOOM = 18;

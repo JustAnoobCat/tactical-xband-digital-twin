@@ -42,7 +42,7 @@ import {
 import { ActiveTransferManager, type NodeTransferState, getDefaultPayloadBytes } from '../core/transferManager';
 import { EdgeAiCopilotCoordinator, type ActiveAiMovement } from './aiCopilotCoordinator';
 import {
-  EdgeAiQTable, computeAiRecoveryAdvisory, computeToblerWalkingSpeedMs, evaluateAiBuddyRelayRescue, computeAiSkyShepherdUavOffset, predictNodeBlackoutCountdown, type AiNodeRecoveryRecommendation, type AiBuddyRelayResult, type AiSkyShepherdResult, type AiLpiStealthResult, type AiBlackoutForecastResult, type SquadNodeForBuddyEval, type FixedWingKinematicConstraints,
+  EdgeAiQTable, globalEdgeAiQTable, computeAiRecoveryAdvisory, computeToblerWalkingSpeedMs, evaluateAiBuddyRelayRescue, computeAiSkyShepherdUavOffset, predictNodeBlackoutCountdown, type AiNodeRecoveryRecommendation, type AiBuddyRelayResult, type AiSkyShepherdResult, type AiLpiStealthResult, type AiBlackoutForecastResult, type SquadNodeForBuddyEval, type FixedWingKinematicConstraints,
 } from '../core/tacticalAiPathfinder';
 import {
   ACNTrajectory, createACNTrajectory, NodeTerrainState, PredictiveLookAheadEngine, PredictiveState, computeAirframeAttitude,
@@ -1420,62 +1420,43 @@ export class SimulationWorkerManager {
         const delayedIdx = Math.max(0, (cqiHist?.length ?? 1) - 1 - cqiLagFrames);
         const reportedCqi = cqiHist?.[delayedIdx] ?? ls.snrDb;
         let currentOlla = this.ollaOffsetByNode.get(nid) ?? 0.0;
-
-        const amcRes = evaluateDelayedCqiAmc({
-          reportedSnrDb: reportedCqi,
-          actualSnrDb: ls.snrDb,
-          ollaOffsetDb: currentOlla,
-        });
-
-        const isAck = amcRes.bler < 0.5 && !amcRes.isLinkOutage;
-        currentOlla = stepOllaOffsetDb(currentOlla, isAck, 0.1, 0.25, 0.0, 10.0);
-        this.ollaOffsetByNode.set(nid, currentOlla);
-
+        const isManualLock = this.rfConfig.mcsMode === 'manual_lock';
+        const isScheduled = this.lastReportTac === null || this.lastReportTac.allocations.some(a => a.nodeId === nid);
+        const canAdapt = !ls.isOutage && !isManualLock && isScheduled;
+        const amcRes = evaluateDelayedCqiAmc({ reportedSnrDb: reportedCqi, actualSnrDb: ls.snrDb, ollaOffsetDb: currentOlla });
         let harqActiveRetx = false;
-        const harqSlot = this.harqSlotByNode.get(nid);
-        if (harqSlot) {
-          const harqRes = stepHarqProcess(harqSlot, {
-            currentTimeMs: this.simTimeS * 1000.0,
-            slantRangeM: slantM,
-            actualSnrDb: ls.snrDb,
-            requiredSnrDb: amcRes.selectedModcod?.minSnrDb ?? 5.0,
-            combiningMode: 'chase',
-            maxRetransmissions: 4,
-            seed: nid * 1000 + this.frameIndex,
-          });
-          this.harqSlotByNode.set(nid, harqRes.nextSlot);
-          if (harqRes.event === 'NACK_RETRY_SCHEDULED') {
-            this.harqRetxTotal++;
-            harqActiveRetx = true;
-          } else if (harqRes.event === 'TX_PENDING_RTT') {
-            harqActiveRetx = true;
+        let isAck = true;
+        if (canAdapt) {
+          isAck = amcRes.bler < 0.5 && !amcRes.isLinkOutage;
+          currentOlla = stepOllaOffsetDb(currentOlla, isAck, 0.1, 0.25, 0.0, 10.0);
+          this.ollaOffsetByNode.set(nid, currentOlla);
+          const harqSlot = this.harqSlotByNode.get(nid);
+          if (harqSlot) {
+            const harqRes = stepHarqProcess(harqSlot, {
+              currentTimeMs: this.simTimeS * 1000.0, slantRangeM: slantM, actualSnrDb: ls.snrDb,
+              requiredSnrDb: amcRes.selectedModcod?.minSnrDb ?? 5.0, combiningMode: 'chase',
+              maxRetransmissions: 4, seed: nid * 1000 + this.frameIndex,
+            });
+            this.harqSlotByNode.set(nid, harqRes.nextSlot);
+            if (harqRes.event === 'NACK_RETRY_SCHEDULED') { this.harqRetxTotal++; harqActiveRetx = true; }
+            else if (harqRes.event === 'TX_PENDING_RTT') harqActiveRetx = true;
+            latestHarqGainDb = Math.max(latestHarqGainDb, Math.max(0.0, harqRes.combinedSnrDb - ls.snrDb));
           }
-          const harqGain = Math.max(0.0, harqRes.combinedSnrDb - ls.snrDb);
-          latestHarqGainDb = Math.max(latestHarqGainDb, harqGain);
         }
-
         const slotsPerFrame = this.tdmaConfig.fixedSlotCount ?? 16;
         const uplinkMs = Math.max(1.0, this.tdmaConfig.frameDurationMs - this.tdmaConfig.ctrlDurationMs - this.tdmaConfig.dlMinDurationMs);
-        const slotDurationMs = uplinkMs / slotsPerFrame;
         const guardRes = computeDynamicTdmaOverhead({
-          slotDurationMs,
-          slotsPerFrame,
-          slantRangeM: slantM,
-          timingAdvanceActive: true,
-          taResidualErrorM: effectiveTaResidualErrorM,
+          slotDurationMs: uplinkMs / slotsPerFrame, slotsPerFrame, slantRangeM: slantM,
+          timingAdvanceActive: true, taResidualErrorM: effectiveTaResidualErrorM,
         });
-
         const closedLoopScale = computeClosedLoopEffectiveCapacityScale({
-          dynamicGuardEfficiency: guardRes.frameDataEfficiency,
-          slotCollisionOutage: guardRes.slotCollisionOutage,
-          delayedCqiBler: amcRes.bler,
-          harqActiveRetx,
-          harqCombinedSnrMarginDb: amcRes.snrMarginDb,
+          dynamicGuardEfficiency: guardRes.frameDataEfficiency, slotCollisionOutage: guardRes.slotCollisionOutage,
+          delayedCqiBler: canAdapt ? amcRes.bler : 0.0, harqActiveRetx, harqCombinedSnrMarginDb: amcRes.snrMarginDb,
         });
         this.closedLoopCapacityScaleByNode.set(nid, closedLoopScale);
         this.guardScaleByNode.set(nid, guardRes.frameDataEfficiency);
         this.delayedCqiSnrByNode.set(nid, reportedCqi);
-        this.cqiDecodeFailureByNode.set(nid, !isAck && !amcRes.isLinkOutage);
+        this.cqiDecodeFailureByNode.set(nid, canAdapt && !isAck && !amcRes.isLinkOutage);
       }
 
       nextObstructions.set(nid, obstruction);
@@ -2153,6 +2134,8 @@ export class SimulationWorkerManager {
     this.cqiHistoryByNode.clear();
     this.harqSlotByNode.clear();
     this.harqRetxTotal = 0;
+    this.cqiDecodeFailureByNode.clear();
+    globalEdgeAiQTable.reset();
     this.aimdStateByNode.clear();
     this.abrStateByNode.clear();
     this.closedLoopCapacityScaleByNode.clear();
@@ -2584,23 +2567,26 @@ export class SimulationWorkerManager {
         if (this.spatialLocked && (validation.changesTrajectory || validation.changesTerrain || validation.hasAgl)) {
           return locked();
         }
-        this.applyRuntimeFeatureFlags(validation);
+        // Stage RF/MCS + Trajectory construction before mutating any live state so rejections stay atomic.
+        let nextRfConfig = this.rfConfig;
+        try {
+          if (p.carrier_freq_ghz !== undefined) nextRfConfig = new RFConfig({ ...nextRfConfig, carrierFrequencyHz: p.carrier_freq_ghz * 1e9 });
+          if (p.channel_bandwidth_mhz !== undefined) nextRfConfig = new RFConfig({ ...nextRfConfig, channelBandwidthHz: p.channel_bandwidth_mhz * 1e6 });
+        } catch (err) {
+          return reject(err instanceof Error ? err.message : 'Invalid RF configuration parameters.');
+        }
+        const mcsRes = applyMcsConfigUpdate(nextRfConfig, p as unknown as Record<string, unknown>);
+        if (mcsRes.error) return reject(mcsRes.error);
+        if (mcsRes.updated) nextRfConfig = mcsRes.rfConfig;
 
-        // Construct the full replacement trajectory before mutating any live configuration.
         let nextFlightConfig: ACNFlightConfig | null = validation.nextFlightConfig ?? null;
         let nextTrajectory: ACNTrajectory | null = null;
         if (validation.changesTrajectory || p.coverage_radius_km !== undefined) {
           try {
             nextFlightConfig = validation.nextFlightConfig!;
             const prevKinematics = this.trajectoryEngine.getKinematicsState();
-            nextTrajectory = createACNTrajectory(
-              nextFlightConfig,
-              prevKinematics,
-              (x, y) => this.terrainEngine.getElevation(x, y)
-            );
-            if (validation.targetSpeedMps !== undefined) {
-              nextTrajectory.setTargetSpeed(validation.targetSpeedMps, this.simTimeS);
-            }
+            nextTrajectory = createACNTrajectory(nextFlightConfig, prevKinematics, (x, y) => this.terrainEngine.getElevation(x, y));
+            if (validation.targetSpeedMps !== undefined) nextTrajectory.setTargetSpeed(validation.targetSpeedMps, this.simTimeS);
             if (validation.accelLimitMps2 !== undefined || validation.decelLimitMps2 !== undefined) {
               nextTrajectory.setLimits(validation.accelLimitMps2, validation.decelLimitMps2);
             }
@@ -2609,16 +2595,13 @@ export class SimulationWorkerManager {
           }
         }
 
-        // All validation/construction is complete before any scenario state is changed.
+        // All validation/construction passed; commit atomically.
+        this.applyRuntimeFeatureFlags(validation);
         if (validation.changesTerrain) {
           this.terrainEngine.setTerrainMode(p.terrain_mode!);
           this.resampleGroundNodeAltitudes();
         }
-        if (p.carrier_freq_ghz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, carrierFrequencyHz: p.carrier_freq_ghz * 1e9 });
-        if (p.channel_bandwidth_mhz !== undefined) this.rfConfig = new RFConfig({ ...this.rfConfig, channelBandwidthHz: p.channel_bandwidth_mhz * 1e6 });
-        const mcsRes = applyMcsConfigUpdate(this.rfConfig, p as unknown as Record<string, unknown>);
-        if (mcsRes.error) return reject(mcsRes.error);
-        if (mcsRes.updated) this.rfConfig = mcsRes.rfConfig;
+        this.rfConfig = nextRfConfig;
         if (p.rain_rate_mmh !== undefined) this.envConfig = new EnvironmentConfig({ ...this.envConfig, rainRateMmH: p.rain_rate_mmh });
         if (p.earthRadiusFactorK !== undefined && Number.isFinite(p.earthRadiusFactorK)) {
           const k = Math.max(0.5, Math.min(10.0, p.earthRadiusFactorK));
@@ -2659,6 +2642,7 @@ export class SimulationWorkerManager {
           this.tdmaConfig = validation.nextTdmaConfig;
           this.staticScheduler.setTdmaConfig(this.tdmaConfig);
           this.tacScheduler.setTdmaConfig(this.tdmaConfig);
+          this.reactiveScheduler.setTdmaConfig(this.tdmaConfig);
           this.tdmaAccumulatorS = 0.0;
 
           if (residualS > 1e-6) {

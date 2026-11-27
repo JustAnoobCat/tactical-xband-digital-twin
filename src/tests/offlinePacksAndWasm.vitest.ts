@@ -249,7 +249,7 @@ describe('Compiled WASM Parity, 520-Tile HGT, Offline Packs, GeoTIFF, SpatialBuf
       atmosphericTempK: env.atmosphericTemperatureK,
       rainRateMmH: env.rainRateMmH ?? 0.0,
       rainCellLengthKm: env.rainCellLengthKm ?? 10.0,
-      freezingIsothermM: 4200.0,
+      freezingIsothermM: 4800.0,
       jammerEnabled: Boolean(env.jammerEnabled),
       jammerBySector,
     };

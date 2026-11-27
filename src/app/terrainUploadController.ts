@@ -1,12 +1,13 @@
 // Terrain DEM upload (HGT/GeoTIFF/Heightmap), folder catalog mosaic & offline mission pack store
 import type { AppContext } from './appContext.ts';
 import type { TerrainBoundsLike } from './windowBindings.d.ts';
-import { parseHgtBuffer, decodeHgtBuffer } from '../core/hgtParser.ts';
+import { parseHgtBuffer, decodeHgtBuffer, HGT_METERS_PER_DEG_LAT } from '../core/hgtParser.ts';
 import {
   buildTileCatalog,
   clusterNeighbouringTiles,
   selectActivePatch,
   decodeAndStitchPatchAsync,
+  computeMetersPerDegLon,
 } from '../core/hgtMosaic.ts';
 import type {
   DecodedTile,
@@ -17,7 +18,7 @@ import type {
 } from '../core/hgtMosaic.ts';
 import { inferPackKind } from '../core/offlineMissionPackStore.ts';
 import type { OfflineMissionPackKind } from '../core/offlineMissionPackStore.ts';
-import { REAL_LADAKH_DEM_METADATA } from '../core/terrain.ts';
+import { BIOME_DEM_METADATA, REAL_LADAKH_DEM_METADATA } from '../core/terrain.ts';
 import type { DemGeographicMetadata } from '../core/terrain.ts';
 import { parseGeoTiffDem } from '../core/militaryGisEngine.ts';
 
@@ -339,6 +340,7 @@ export function initTerrainUploadController(ctx: AppContext): void {
           sendCustomDemZeroCopy(parseResult.elevations, parseResult.metadata);
           actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
           actions.sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
+          actions.sendCommand({ type: 'GET_HILLSHADE' });
           actions.requestTerrainMeshData(true);
           void persistOfflinePack(file.name, 'hgt', buffer);
 
@@ -374,12 +376,18 @@ export function initTerrainUploadController(ctx: AppContext): void {
             return;
           }
 
-          const minLat = parseResult.geoBounds?.minLatDeg ?? 33.5;
-          const maxLat = parseResult.geoBounds?.maxLatDeg ?? 35.5;
-          const minLon = parseResult.geoBounds?.minLonDeg ?? 75.5;
-          const maxLon = parseResult.geoBounds?.maxLonDeg ?? 77.5;
-          const halfWidthM = 91839.9774;
-          const halfHeightM = 110931.4506;
+          const biomeMeta = BIOME_DEM_METADATA[state.activeBiomeId] ?? REAL_LADAKH_DEM_METADATA;
+          const minLat = parseResult.geoBounds?.minLatDeg ?? biomeMeta.minLatDeg;
+          const maxLat = parseResult.geoBounds?.maxLatDeg ?? biomeMeta.maxLatDeg;
+          const minLon = parseResult.geoBounds?.minLonDeg ?? biomeMeta.minLonDeg;
+          const maxLon = parseResult.geoBounds?.maxLonDeg ?? biomeMeta.maxLonDeg;
+          const centerLat = (minLat + maxLat) / 2.0;
+          const halfWidthM = parseResult.geoBounds
+            ? ((maxLon - minLon) * 0.5) * computeMetersPerDegLon(centerLat)
+            : biomeMeta.halfWidthM;
+          const halfHeightM = parseResult.geoBounds
+            ? ((maxLat - minLat) * 0.5) * HGT_METERS_PER_DEG_LAT
+            : biomeMeta.halfHeightM;
           const meta: DemGeographicMetadata = {
             tileName: file.name,
             rasterWidth: parseResult.width,
@@ -388,7 +396,7 @@ export function initTerrainUploadController(ctx: AppContext): void {
             maxLatDeg: maxLat,
             minLonDeg: minLon,
             maxLonDeg: maxLon,
-            centerLatDeg: (minLat + maxLat) / 2.0,
+            centerLatDeg: centerLat,
             centerLonDeg: (minLon + maxLon) / 2.0,
             halfWidthM,
             halfHeightM,
@@ -405,6 +413,7 @@ export function initTerrainUploadController(ctx: AppContext): void {
           sendCustomDemZeroCopy(parseResult.elevationsM, meta);
           actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
           actions.sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
+          actions.sendCommand({ type: 'GET_HILLSHADE' });
           actions.requestTerrainMeshData(true);
           void persistOfflinePack(file.name, 'geotiff', buffer);
 
@@ -462,9 +471,10 @@ export function initTerrainUploadController(ctx: AppContext): void {
           }
           actions.renderHillshadeFromWorker(packedGrid, 512, 300, 'real');
 
-          // Forward elevations to worker so simulation uses this custom DEM!
+          // Forward elevations to worker using active biome georeferencing metadata
+          const activeBiomeMeta = BIOME_DEM_METADATA[state.activeBiomeId] ?? REAL_LADAKH_DEM_METADATA;
           const meta: DemGeographicMetadata = {
-            ...REAL_LADAKH_DEM_METADATA,
+            ...activeBiomeMeta,
             tileName: file.name.replace(/\.[^/.]+$/, '').toUpperCase(),
             minElevationM: minMsl,
             maxElevationM: maxMsl,
@@ -477,6 +487,7 @@ export function initTerrainUploadController(ctx: AppContext): void {
           sendCustomDemZeroCopy(floatElevations, meta);
           actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
           actions.sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
+          actions.sendCommand({ type: 'GET_HILLSHADE' });
           actions.requestTerrainMeshData(true);
 
           window.centerMapOnTerrain?.(meta);
@@ -627,6 +638,7 @@ export function initTerrainUploadController(ctx: AppContext): void {
       sendCustomDemZeroCopy(mosaic.elevations, mosaic.metadata);
       actions.sendCommand({ type: 'SET_TERRAIN_MODE', mode: 'real' });
       actions.sendCommand({ type: 'CONFIG_UPDATE', params: { terrain_mode: 'real' } });
+      actions.sendCommand({ type: 'GET_HILLSHADE' });
       actions.requestTerrainMeshData(true);
 
       // Center views on the stitched mosaic bounds

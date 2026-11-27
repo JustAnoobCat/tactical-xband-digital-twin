@@ -4,6 +4,9 @@
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 use http::{header, Method, Request, Response, StatusCode};
 use serde::Serialize;
@@ -550,7 +553,8 @@ pub fn save_offline_tile_in_dir(
         }
     }
 
-    let tmp_name = format!(".tmp.{}.{}.part", std::process::id(), validated_name);
+    let seq = TMP_FILE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp_name = format!(".tmp.{}.{}.{}.part", std::process::id(), seq, validated_name);
     let tmp_path = canonical_root.join(tmp_name);
     {
         let mut tmp_file = File::create(&tmp_path)

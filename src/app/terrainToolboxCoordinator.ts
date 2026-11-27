@@ -318,10 +318,14 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       setText('tb-transect-diffraction', '-- dB');
       setText('tb-transect-snr', '-- dB / --');
     }
+    const safeElev = (x: number, y: number): number => {
+      const e = sampleDemSafe(simCtx.terrainEngine, x, y).elevationM;
+      return Number.isFinite(e) ? e : 0;
+    };
     const wpA = state.tbTransectWaypoints[state.tbTransectWaypoints.length - 2];
     const wpB = state.tbTransectWaypoints[state.tbTransectWaypoints.length - 1];
-    const demA = sampleDemSafe(simCtx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
-    const demB = sampleDemSafe(simCtx.terrainEngine, wpB.xM, wpB.yM).elevationM || 3500;
+    const demA = safeElev(wpA.xM, wpA.yM);
+    const demB = safeElev(wpB.xM, wpB.yM);
     state.tbRulerMetrics = computeGeodeticRulerMetrics(
       { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
       { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM }
@@ -329,7 +333,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     state.tbRulerEvaluation = evaluateRulerProfileAndBlockingPeak(
       { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
       { xM: wpB.xM, yM: wpB.yM, groundElevationM: demB, mastHeightM: rxMastM },
-      (x, y) => sampleDemSafe(simCtx.terrainEngine, x, y).elevationM || 3500,
+      safeElev,
       { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3 }
     );
     setText(
@@ -342,7 +346,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     );
     if (!state.tbRulerEvaluation.isLineOfSightClear && state.tbRulerEvaluation.blockingPeak) {
       const bp = state.tbRulerEvaluation.blockingPeak;
-      const bpGeo = cartesianToGeodetic(bp.xM, bp.yM);
+      const bpGeo = simCtx.terrainEngine.worldToLatLon(bp.xM, bp.yM);
       setText(
         'tb-transect-blocking-peak',
         `Peak @ (${bpGeo.latDeg.toFixed(3)}°, ${bpGeo.lonDeg.toFixed(3)}°) · ${Math.round(bp.zMslM)} m (+${Math.round(bp.intrusionM)} m)`
@@ -370,11 +374,15 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       nodeType,
       sampleCount: 64,
     });
+    const safeElev = (x: number, y: number): number => {
+      const e = sampleDemSafe(simCtx.terrainEngine, x, y).elevationM;
+      return Number.isFinite(e) ? e : 0;
+    };
     const wpA = state.tbTransectWaypoints[state.tbTransectWaypoints.length - 1];
     const txMastM = Math.max(1, Math.min(2000, parseFloat($<HTMLInputElement>('tb-transect-tx-mast')?.value || '10') || 10));
     const rxMastM = Math.max(1, Math.min(2000, parseFloat($<HTMLInputElement>('tb-transect-rx-mast')?.value || '2') || 2));
-    const demA = sampleDemSafe(simCtx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
-    const demB = sampleDemSafe(simCtx.terrainEngine, cursorPt.x, cursorPt.y).elevationM || 3500;
+    const demA = safeElev(wpA.xM, wpA.yM);
+    const demB = safeElev(cursorPt.x, cursorPt.y);
     state.tbRulerPreviewMetrics = computeGeodeticRulerMetrics(
       { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
       { xM: cursorPt.x, yM: cursorPt.y, groundElevationM: demB, mastHeightM: rxMastM }
@@ -382,7 +390,7 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
     state.tbRulerPreviewEval = evaluateRulerProfileAndBlockingPeak(
       { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
       { xM: cursorPt.x, yM: cursorPt.y, groundElevationM: demB, mastHeightM: rxMastM },
-      (x, y) => sampleDemSafe(simCtx.terrainEngine, x, y).elevationM || 3500,
+      safeElev,
       { kFactor: Number.isFinite(kFactor) ? kFactor : 4 / 3 }
     );
     setText(
@@ -523,7 +531,10 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
         mastM,
         [acnPos[0], acnPos[1], acnPos[2]],
         acnHeading,
-        (x, y) => sampleDemSafe(simCtx.terrainEngine, x, y).elevationM || 3500,
+        (x, y) => {
+          const e = sampleDemSafe(simCtx.terrainEngine, x, y).elevationM;
+          return Number.isFinite(e) ? e : 0;
+        },
         state.tbProbePinnedP1
       );
       state.tbCursorProbeLive = probeAnalysis;
@@ -645,12 +656,15 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       maxY,
       acnPos,
       acnHeading,
-      (x, y) => sampleDemSafe(simCtx.terrainEngine, x, y).elevationM || 3500,
+      (x, y) => {
+        const e = sampleDemSafe(simCtx.terrainEngine, x, y).elevationM;
+        return Number.isFinite(e) ? e : 0;
+      },
       8
     );
 
     const rep = state.tbAoSwathReport;
-    const summitGeo = cartesianToGeodetic(rep.summitPeak.xM, rep.summitPeak.yM);
+    const summitGeo = simCtx.terrainEngine.worldToLatLon(rep.summitPeak.xM, rep.summitPeak.yM);
 
     state.tbRegionSummitResult = {
       summitX: rep.summitPeak.xM,
@@ -1074,11 +1088,12 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
   }
 
   function handleToolboxMapClick(point: { x: number; y: number; lng?: number; lat?: number }): boolean | void {
+    const projectGeo = (xM: number, yM: number) => engines.mainTerrainEngine.worldToLatLon(xM, yM);
     if (state.terrainToolMode === 'transect-2pt' || state.terrainToolMode === 'measure') {
       if (state.tbTransectWaypoints.length >= 2 || state.tbTransectWaypoints.length === 0) {
         let clickPt = point;
         if (state.tbActiveSnap) {
-          const geo = cartesianToGeodetic(state.tbActiveSnap.xM, state.tbActiveSnap.yM);
+          const geo = projectGeo(state.tbActiveSnap.xM, state.tbActiveSnap.yM);
           clickPt = { x: state.tbActiveSnap.xM, y: state.tbActiveSnap.yM, lng: geo.lonDeg, lat: geo.latDeg };
         }
         state.tbTransectWaypoints = [{ xM: clickPt.x, yM: clickPt.y, lng: clickPt.lng, lat: clickPt.lat }];
@@ -1091,12 +1106,12 @@ export function initTerrainToolboxCoordinator(ctx: AppContext) {
       } else {
         let clickPt = point;
         if (state.tbActiveSnap) {
-          const geo = cartesianToGeodetic(state.tbActiveSnap.xM, state.tbActiveSnap.yM);
+          const geo = projectGeo(state.tbActiveSnap.xM, state.tbActiveSnap.yM);
           clickPt = { x: state.tbActiveSnap.xM, y: state.tbActiveSnap.yM, lng: geo.lonDeg, lat: geo.latDeg };
         } else if (state.isShiftKeyDown && state.tbTransectWaypoints.length === 1) {
           const wpA = state.tbTransectWaypoints[0];
           const [sX, sY] = snapPointToAngleIncrement(wpA.xM, wpA.yM, point.x, point.y, 15);
-          const geo = cartesianToGeodetic(sX, sY);
+          const geo = projectGeo(sX, sY);
           clickPt = { x: sX, y: sY, lng: geo.lonDeg, lat: geo.latDeg };
         }
         state.tbTransectWaypoints.push({ xM: clickPt.x, yM: clickPt.y, lng: clickPt.lng, lat: clickPt.lat });

@@ -481,7 +481,9 @@ input[type="range"]::-moz-range-thumb {
   background: var(--lo-surface);
   border-bottom: 1px solid var(--lo-line);
   user-select: none;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   z-index: 40;
 }
 
@@ -696,7 +698,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 12px;
 }
 
-body.is-historical-mode .historical-mode-banner {
+body.is-historical-mode .historical-mode-banner:not([hidden]) {
   display: flex;
 }
 

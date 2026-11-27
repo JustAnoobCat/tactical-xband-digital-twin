@@ -42,7 +42,9 @@ jobs:
       - name: Cache Rust cargo artifacts
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            crates/xband-physics
 
       - name: Install Linux WebKitGTK & Tauri system dependencies
         if: matrix.platform == 'ubuntu-latest'
@@ -65,6 +67,7 @@ jobs:
       - name: Run frontend build & Rust unit tests
         run: |
           npm run build
+          cargo test --manifest-path crates/xband-physics/Cargo.toml
           cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Build and publish Tauri v2 offline installers

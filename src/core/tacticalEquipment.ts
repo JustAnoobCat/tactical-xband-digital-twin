@@ -26,6 +26,7 @@ import {
   type ManualFec,
 } from './config';
 import { LinkBudgetEngine, type LinkStatus } from './linkBudget';
+import { THEATER_BIOMES } from './biomePhysics';
 import type { TerrainEngine, TerrainObstruction } from './terrain';
 import type { QuadSectorAntennaEngine, AcnAttitudeState } from './antennaArray';
 
@@ -408,7 +409,8 @@ function evaluateSingleJammerPath(
   const shieldLossDb = jammerObs.diffractionLossDb ?? 0.0;
   const fsplJ = LinkBudgetEngine.computeFsplDb(dJammerM, rfConfig.carrierFrequencyHz, rfConfig.speedOfLight);
   const gasJ = LinkBudgetEngine.computeGaseousAttenuationDb(dJammerM, jPos[2], acnPos[2], rfConfig.carrierFrequencyHz);
-  const rainJ = LinkBudgetEngine.computeRainAttenuationDb(dJammerM, envConfig, jPos[2], acnPos[2]);
+  const freezingIsothermM = THEATER_BIOMES[terrainEngine.activeBiomeId]?.freezingIsothermM ?? 4800.0;
+  const rainJ = LinkBudgetEngine.computeRainAttenuationDb(dJammerM, envConfig, jPos[2], acnPos[2], freezingIsothermM, rfConfig.carrierFrequencyHz);
   const lossJ = fsplJ + shieldLossDb + gasJ + rainJ + rfConfig.cableLossDb;
   const spotGainDb = isSpot ? computeSpotJammerGainOffsetDb(jPos, acnPos, azimuthDeg, beamwidthDeg) : 0.0;
   const effEirpDbm = eirpDbm + spotGainDb;

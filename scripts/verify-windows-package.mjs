@@ -1,3 +1,8 @@
+/**
+ * DEPRECATED / ARCHIVAL CHECK: Legacy Electron NSIS Windows package verifier.
+ * The active desktop runtime is Tauri v2 (`src-tauri/`, built via `npm run tauri:build`
+ * and verified via `npm run tauri:test` and `npx tsx src/tests/verifyTauri01DesktopShell.ts`).
+ */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -377,10 +377,11 @@ export class LinkBudgetEngine {
 
     const z1 = Math.min(nodeAltM, acnAltM);
     const z2 = Math.max(nodeAltM, acnAltM);
+    const fGhz = Math.max(0.5, Number.isFinite(carrierFreqHz) ? carrierFreqHz / 1e9 : 8.0);
     const ho = 6000.0;
-    const gammaO0 = 0.0072;
+    const gammaO0 = 0.0072 * Math.pow(fGhz / 8.0, 0.25);
     const hw = 2000.0;
-    const gammaW0 = 0.0028;
+    const gammaW0 = 0.0028 * Math.pow(fGhz / 8.0, 2.0);
 
     const eta = (alt1: number, alt2: number, H: number): number => {
       const deltaZ = Math.abs(alt2 - alt1);
@@ -411,14 +412,44 @@ export class LinkBudgetEngine {
     env: EnvironmentConfig,
     nodeAltM?: number,
     acnAltM?: number,
-    freezingIsothermM: number = 4800.0
+    freezingIsothermM: number = 4800.0,
+    carrierFreqHz: number = 8.0e9
   ): number {
     const rainRate = env.rainRateMmH ?? 0.0;
     if (rainRate <= 0.0 || slantRangeM <= 0.0) {
       return 0.0;
     }
-    const kH = 0.00411;
-    const alphaH = 1.39;
+    const fGhz = Math.max(1.0, Math.min(30.0, Number.isFinite(carrierFreqHz) ? carrierFreqHz / 1e9 : 8.0));
+    let kH = 0.00411;
+    let alphaH = 1.39;
+    if (Math.abs(fGhz - 8.0) > 1e-6) {
+      // ITU-R P.838-3 horizontal-pol piecewise log-linear anchor table preserving exact 8.0 GHz values
+      const anchors: ReadonlyArray<readonly [number, number, number]> = [
+        [1.0, 0.0000259, 0.9691],
+        [2.0, 0.0000847, 1.0664],
+        [4.0, 0.0001071, 1.6000],
+        [6.0, 0.0007056, 1.5900],
+        [8.0, 0.0041100, 1.3900],
+        [10.0, 0.0121700, 1.2571],
+        [12.0, 0.0238600, 1.1825],
+        [14.0, 0.0293000, 1.1550],
+        [15.0, 0.0448100, 1.1233],
+        [20.0, 0.0916400, 1.0568],
+        [30.0, 0.2403000, 0.9485],
+      ];
+      let lo = anchors[0];
+      let hi = anchors[anchors.length - 1];
+      for (let i = 0; i < anchors.length - 1; i++) {
+        if (fGhz >= anchors[i][0] && fGhz <= anchors[i + 1][0]) {
+          lo = anchors[i];
+          hi = anchors[i + 1];
+          break;
+        }
+      }
+      const t = hi[0] > lo[0] ? (Math.log(fGhz) - Math.log(lo[0])) / (Math.log(hi[0]) - Math.log(lo[0])) : 0.0;
+      kH = Math.exp(Math.log(lo[1]) + t * (Math.log(hi[1]) - Math.log(lo[1])));
+      alphaH = lo[2] + t * (hi[2] - lo[2]);
+    }
     const gammaR = kH * Math.pow(rainRate, alphaH);
     const rainPathKm = Math.min(slantRangeM / 1000.0, env.rainCellLengthKm ?? 10.0);
 
@@ -684,7 +715,14 @@ export class LinkBudgetEngine {
 
     const fsplDb = LinkBudgetEngine.computeFsplDb(slantRangeM, rf.carrierFrequencyHz, rf.speedOfLight);
     const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(slantRangeM, nodeAltM, acnAltM, rf.carrierFrequencyHz);
-    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(slantRangeM, env, nodeAltM, acnAltM, freezingIsothermM);
+    const rainLossDb = LinkBudgetEngine.computeRainAttenuationDb(
+      slantRangeM,
+      env,
+      nodeAltM,
+      acnAltM,
+      freezingIsothermM,
+      rf.carrierFrequencyHz
+    );
 
     // Biome-adaptive EM physics (Two-ray ground reflection, vegetation, dust, polarization, weather cells)
     let twoRayDeltaDb: number | undefined = undefined;
@@ -721,7 +759,8 @@ export class LinkBudgetEngine {
             cellEnv,
             nodeAltM,
             acnAltM,
-            bDef.freezingIsothermM ?? freezingIsothermM
+            bDef.freezingIsothermM ?? freezingIsothermM,
+            rf.carrierFrequencyHz
           );
         }
       }
@@ -754,18 +793,19 @@ export class LinkBudgetEngine {
       });
       twoRayDeltaDb = twoRayRes.twoRayDeltaDb;
 
-      // 2. ITU-R P.833-10 vegetation attenuation
+      // 2. ITU-R P.833-10 vegetation attenuation with oblique path scaling
       const foliageDepth = effBiomeEmParams.foliageDepthM !== undefined
         ? effBiomeEmParams.foliageDepthM
         : bDef.defaultFoliageDepthM;
       const regime = effBiomeEmParams.foliageRegime ?? (bId === 'tropical_jungle' ? 'tropical-dense' : 'temperate-woodland');
-      vegetationLossDb = computeItuR833VegetationLossDb(rf.carrierFrequencyHz / 1e9, foliageDepth, regime);
+      const sinElevBiome = Math.max(Math.abs(txAlt - rxAlt) / Math.max(1.0, Math.hypot(horizDist, txAlt - rxAlt)), 0.15);
+      vegetationLossDb = computeItuR833VegetationLossDb(rf.carrierFrequencyHz / 1e9, foliageDepth, regime, sinElevBiome);
 
-      // 3. Goldhirsh dust storm attenuation
+      // 3. Goldhirsh dust storm attenuation bounded to 1,500 m AGL tropospheric dust layer
       const dustVis = effBiomeEmParams.dustVisibilityKm !== undefined
         ? effBiomeEmParams.dustVisibilityKm
         : bDef.defaultDustVisibilityKm;
-      dustStormLossDb = computeGoldhirshDustAttenuationDb(rf.carrierFrequencyHz / 1e9, slantRangeM / 1000.0, dustVis);
+      dustStormLossDb = computeGoldhirshDustAttenuationDb(rf.carrierFrequencyHz / 1e9, slantRangeM / 1000.0, dustVis, rxAlt, txAlt);
 
       // 4. Polarization mismatch
       const relBank = effBiomeEmParams.relativeBankDeg ?? (effAirframeOptions?.uavAttitude?.rollDeg ?? 0.0);
@@ -850,19 +890,25 @@ export class LinkBudgetEngine {
       rf.boltzmannConstant
     );
 
-    // ITU-R P.618-14 Sky-Noise Coupling
+    // ITU-R P.618-14 Sky-Noise Coupling: T_sys = T_sky + T0 * (F - 1)
     let skyNoiseIncreaseDb = 0.0;
     let skyTemperatureK = 0.0;
     let pNoiseDbm = pNoiseThermalDbm;
 
     if (nodeAltM !== undefined && acnAltM !== undefined) {
       const aAtm = gasLossDb + effRainLossDb;
+      const tau = Math.pow(10.0, -aAtm / 10.0);
       const Tm = 275.0; // Mean atmospheric physical temperature (K)
-      skyTemperatureK = Tm * (1.0 - Math.pow(10.0, -aAtm / 10.0));
-      const T0 = 290.0; // Reference noise temperature (K)
+      const tCosmic = 2.73; // Cosmic microwave background floor (K)
+      skyTemperatureK = Tm * (1.0 - tau) + tCosmic * tau;
+      const T0 = env.atmosphericTemperatureK > 0 ? env.atmosphericTemperatureK : 290.0;
       const noiseFactor = Math.pow(10.0, rf.acnNoiseFigureDb / 10.0);
-      skyNoiseIncreaseDb = 10.0 * Math.log10(1.0 + skyTemperatureK / (T0 * noiseFactor));
-      pNoiseDbm = pNoiseThermalDbm + skyNoiseIncreaseDb;
+      const tRxK = T0 * (noiseFactor - 1.0);
+      const tSysK = skyTemperatureK + tRxK;
+      const tSysRefK = tCosmic + tRxK;
+      skyNoiseIncreaseDb = tSysRefK > 0.0 ? 10.0 * Math.log10(Math.max(1.0, tSysK / tSysRefK)) : 0.0;
+      const pNoiseW = rf.boltzmannConstant * tSysK * rf.channelBandwidthHz;
+      pNoiseDbm = 10.0 * Math.log10(pNoiseW * 1000.0);
     }
 
     // Contested Jammer Interference & Effective Physical SINR

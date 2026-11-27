@@ -437,6 +437,8 @@ export type GeodeticOriginInput =
       readonly centerLonDeg: number;
       readonly halfWidthM?: number;
       readonly halfHeightM?: number;
+      readonly halfSpanLatDeg?: number;
+      readonly halfSpanLonDeg?: number;
     };
 
 function projectToolboxToGeodetic(
@@ -453,9 +455,11 @@ function projectToolboxToGeodetic(
     }
     const meta = BIOME_DEM_METADATA[origin];
     if (meta) {
+      const halfSpanLat = (meta.maxLatDeg - meta.minLatDeg) * 0.5;
+      const halfSpanLon = (meta.maxLonDeg - meta.minLonDeg) * 0.5;
       return {
-        latDeg: meta.centerLatDeg + yM / meta.halfHeightM,
-        lonDeg: meta.centerLonDeg + xM / meta.halfWidthM,
+        latDeg: meta.centerLatDeg + (yM / meta.halfHeightM) * halfSpanLat,
+        lonDeg: meta.centerLonDeg + (xM / meta.halfWidthM) * halfSpanLon,
       };
     }
     return cartesianToGeodetic(xM, yM);
@@ -468,6 +472,8 @@ function projectToolboxToGeodetic(
     readonly centerLonDeg: number;
     readonly halfWidthM?: number;
     readonly halfHeightM?: number;
+    readonly halfSpanLatDeg?: number;
+    readonly halfSpanLonDeg?: number;
   };
   if (Number.isFinite(obj.centerLatDeg) && Number.isFinite(obj.centerLonDeg)) {
     const mLat = Number.isFinite(obj.halfHeightM) && (obj.halfHeightM as number) > 0
@@ -477,9 +483,15 @@ function projectToolboxToGeodetic(
       ? (obj.halfWidthM as number)
       : (METERS_PER_DEG_LON / Math.cos((GEODESY_ORIGIN_LAT_DEG * Math.PI) / 180.0)) *
           Math.cos((obj.centerLatDeg * Math.PI) / 180.0);
+    const spanLat = Number.isFinite(obj.halfSpanLatDeg) && (obj.halfSpanLatDeg as number) > 0
+      ? (obj.halfSpanLatDeg as number)
+      : 1.0;
+    const spanLon = Number.isFinite(obj.halfSpanLonDeg) && (obj.halfSpanLonDeg as number) > 0
+      ? (obj.halfSpanLonDeg as number)
+      : 1.0;
     return {
-      latDeg: obj.centerLatDeg + yM / mLat,
-      lonDeg: obj.centerLonDeg + xM / mLon,
+      latDeg: obj.centerLatDeg + (yM / mLat) * spanLat,
+      lonDeg: obj.centerLonDeg + (xM / mLon) * spanLon,
     };
   }
   return cartesianToGeodetic(xM, yM);
@@ -1660,14 +1672,20 @@ export function computeSiteProbeViewshed(
     atmosphericTempK,
     boltzmann,
   );
-  const acnGainDbi = Number.isFinite(rfAny?.acnAntennaGainDbi) ? rfAny!.acnAntennaGainDbi : 16.0;
+  const acnGainDbi =
+    input.targetMode === 'acn_alt'
+      ? (Number.isFinite(rfAny?.acnAntennaGainDbi) ? rfAny!.acnAntennaGainDbi : 16.0)
+      : 0.0;
   const rxGainDbi = Number.isFinite(rfAny?.rxAntennaGainDbi)
     ? rfAny!.rxAntennaGainDbi!
     : Number.isFinite(rfAny?.soldierAntennaGainDbi)
       ? rfAny!.soldierAntennaGainDbi
       : 3.0;
   const cableLossDb = Number.isFinite(rfAny?.cableLossDb) ? rfAny!.cableLossDb : 1.5;
-  const linkGainBudgetDbm = txPowerDbm + acnGainDbi + rxGainDbi - cableLossDb;
+  const implMarginDb = Number.isFinite((ctx.rfConfig as { implementationMarginDb?: number })?.implementationMarginDb)
+    ? (ctx.rfConfig as { implementationMarginDb: number }).implementationMarginDb
+    : 2.5;
+  const linkGainBudgetDbm = txPowerDbm + acnGainDbi + rxGainDbi - cableLossDb - implMarginDb;
   const acnAlt = ctx.acnPositionMslM?.[2] ?? 5000;
   const targetAglM = input.targetAglM ?? 2.0;
   const obstacles = input.includeObstacles ? ctx.terrainEngine.obstacleField.all : [];
@@ -1757,7 +1775,7 @@ export function computeSiteProbeViewshed(
           // O(1) ITU-R P.526 diffraction loss from dominant blocking horizon crest
           const d1 = Math.max(1, gamma * horizonDistM);
           const d2 = Math.max(1, gamma * (dh - horizonDistM));
-          const bulge = (d1 * d2) / (2 * rEff);
+          const bulge = TerrainEngine.computeEarthBulge(d1, d2, rEff);
           const hLos = observerMslM + (horizonDistM / dh) * dz;
           const intrusionM = peakMslM + bulge - hLos;
           const r1 = Math.sqrt((wavelength * d1 * d2) / Math.max(d3D, 1));
@@ -1771,7 +1789,7 @@ export function computeSiteProbeViewshed(
             const frac = dc / dh;
             const d1 = gamma * dc;
             const d2 = gamma * (dh - dc);
-            const bulge = (d1 * d2) / (2 * rEff);
+            const bulge = TerrainEngine.computeEarthBulge(d1, d2, rEff);
             const hLos = observerMslM + frac * dz;
             const hClear = hLos - (hc + bulge);
             const r1 = Math.sqrt((wavelength * d1 * d2) / d3D);
@@ -1812,7 +1830,12 @@ export function computeSiteProbeViewshed(
       }
 
       const fsplDb = 20 * Math.log10(Math.max(d3D, 50.0)) + fsplConstDb;
-      const gasLossDb = 0.25 + 0.015 * (d3D * 0.001);
+      const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(
+        d3D,
+        observerMslM,
+        zTgt,
+        ctx.rfConfig.carrierFrequencyHz,
+      );
       const rssiDbm = linkGainBudgetDbm - fsplDb - gasLossDb - diffLossDb - obsLossDb;
       const sinrDb = rssiDbm - noiseFloorDbm;
 
@@ -2195,11 +2218,13 @@ export function computeAltitudeSweep(
       if (minRatio >= 0.6) {
         diffLossDb = 0;
       } else if (minRatio > 0) {
-        diffLossDb = 6.0 * (1.0 - minRatio / 0.6);
+        const curv = TerrainEngine.computeCrestCurvatureLossDb(300.0, critD1, critD2, -minClearanceM, wavelength);
+        diffLossDb = 6.0 * (1.0 - minRatio / 0.6) + curv;
       } else {
         const nu = -minClearanceM * Math.sqrt((2.0 / wavelength) * (1.0 / critD1 + 1.0 / critD2));
         const arg = Math.sqrt(Math.pow(nu - 0.1, 2) + 1.0) + (nu - 0.1);
-        diffLossDb = 6.9 + 20.0 * Math.log10(Math.max(arg, 1e-9)) + 12.0;
+        const curv = TerrainEngine.computeCrestCurvatureLossDb(300.0, critD1, critD2, Math.max(0.0, -minClearanceM), wavelength);
+        diffLossDb = 6.9 + 20.0 * Math.log10(Math.max(arg, 1e-9)) + curv;
       }
 
       let obsBlocked = false;

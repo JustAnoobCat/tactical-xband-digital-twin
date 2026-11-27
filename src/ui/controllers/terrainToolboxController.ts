@@ -433,10 +433,14 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
       setText('tb-transect-diffraction', `${rf.p526DiffractionLossDb.toFixed(1)} dB`);
       setText('tb-transect-snr', `${rf.estSnrDb.toFixed(1)} dB / ${rf.estModcod}`);
 
+      const safeElev = (x: number, y: number): number => {
+        const e = sampleDemSafe(ctx.terrainEngine, x, y).elevationM;
+        return Number.isFinite(e) ? e : 0;
+      };
       const wpA = transectWaypoints[0];
       const wpB = transectWaypoints[1];
-      const demA = sampleDemSafe(ctx.terrainEngine, wpA.xM, wpA.yM).elevationM || 3500;
-      const demB = sampleDemSafe(ctx.terrainEngine, wpB.xM, wpB.yM).elevationM || 3500;
+      const demA = safeElev(wpA.xM, wpA.yM);
+      const demB = safeElev(wpB.xM, wpB.yM);
 
       rulerMetrics = computeGeodeticRulerMetrics(
         { xM: wpA.xM, yM: wpA.yM, groundElevationM: demA, mastHeightM: txMastM },
@@ -490,7 +494,10 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
       aglM,
       acnPos,
       acnHeading,
-      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
+      (x, y) => {
+        const e = sampleDemSafe(ctx.terrainEngine, x, y).elevationM;
+        return Number.isFinite(e) ? e : 0;
+      },
       probePinnedP1
     );
     probePinnedP1 = cursorProbeLive;
@@ -517,7 +524,10 @@ export function createTerrainToolboxController(deps: TerrainToolboxControllerDep
       minX, minY, maxX, maxY,
       acnPos,
       acnHeading,
-      (x, y) => sampleDemSafe(ctx.terrainEngine, x, y).elevationM || 3500,
+      (x, y) => {
+        const e = sampleDemSafe(ctx.terrainEngine, x, y).elevationM;
+        return Number.isFinite(e) ? e : 0;
+      },
       8
     );
     const rep = aoSwathReport;

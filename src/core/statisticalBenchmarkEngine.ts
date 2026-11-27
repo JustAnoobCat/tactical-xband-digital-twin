@@ -583,7 +583,10 @@ export function evaluateAblationFlightSegment(
     rfConfig.boltzmannConstant
   );
   const canonicalLinkPowerDbm =
-    mcpTx.txPowerDbm + mcpTx.antennaGainDbi + rfConfig.acnAntennaGainDbi - 5.0;
+    mcpTx.txPowerDbm +
+    mcpTx.antennaGainDbi +
+    rfConfig.acnAntennaGainDbi -
+    (rfConfig.cableLossDb + rfConfig.implementationMarginDb);
 
   for (let k = 0; k < numFrames; k++) {
     const t = k * 0.02; // 50 Hz -> 20 ms
@@ -624,7 +627,12 @@ export function evaluateAblationFlightSegment(
 
     // Nominal free-space link budget using canonical RFConfig baseline parameters
     const fsplDb = computeFsplDb(dSlant, rfConfig.carrierFrequencyHz);
-    const gasLossDb = 0.012 * (dSlant / 1000.0);
+    const gasLossDb = LinkBudgetEngine.computeGaseousAttenuationDb(
+      dSlant,
+      zGs,
+      zUav,
+      rfConfig.carrierFrequencyHz
+    );
     const freeSpaceSnrDb = canonicalLinkPowerDbm - fsplDb - gasLossDb - pNoiseDbm;
 
     // Determine actual physical SNR

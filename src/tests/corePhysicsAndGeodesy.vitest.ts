@@ -108,8 +108,8 @@ describe('Core Physics, ITU-R Propagation, DCM Kinematics & WGS-84 Geodesy', () 
       slantRangeM: 10000,
       rf,
       env: rainEnv,
-      nodeAltM: 4200,
-      acnAltM: 4800,
+      nodeAltM: 4800,
+      acnAltM: 5400,
       biomeId: 'maritime_littoral',
     });
     const alpine = engine.evaluateLink({
@@ -117,8 +117,8 @@ describe('Core Physics, ITU-R Propagation, DCM Kinematics & WGS-84 Geodesy', () 
       slantRangeM: 10000,
       rf,
       env: rainEnv,
-      nodeAltM: 4200,
-      acnAltM: 4800,
+      nodeAltM: 4800,
+      acnAltM: 5400,
       biomeId: 'alpine_mountain',
     });
     expect(maritime.rainLossDb).toBeGreaterThan(alpine.rainLossDb * 5.0);

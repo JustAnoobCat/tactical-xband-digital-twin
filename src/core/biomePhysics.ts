@@ -58,7 +58,7 @@ export const THEATER_BIOMES: Readonly<Record<BiomeId, TheaterBiomeDefinition>> =
     conductivitySm: 0.002,
     surfaceRoughnessM: 1.8,
     defaultKFactor: 1.333,
-    freezingIsothermM: 4200.0,
+    freezingIsothermM: 4800.0,
     defaultFoliageDepthM: 0.0,
     defaultDustVisibilityKm: 15.0,
     description: 'High-relief glaciated granitic terrain with rocky scree, deep knife-edge valleys, and arid alpine climate.',
@@ -307,22 +307,26 @@ export function computeTwoRayGroundReflectionDb(
 // ----------------------------------------------------------------------------
 
 /**
- * Computes saturated vegetation / canopy attenuation according to ITU-R P.833-10.
+ * Computes saturated vegetation / canopy attenuation according to ITU-R P.833-10
+ * with oblique slant-path scaling (1 / max(|sin(theta)|, 0.15)).
  *
  * Formula:
- *   A_veg = A_m * (1 - exp(-d * gamma_v / A_m)) * (f_GHz / 8.0)^0.39
+ *   d_eff = d / max(|sin(theta)|, 0.15)
+ *   A_veg = A_m * (1 - exp(-d_eff * gamma_v / A_m)) * (f_GHz / 8.0)^0.39
  */
 export function computeItuR833VegetationLossDb(
   freqGhz: number,
   foliageDepthM: number,
-  regime: 'tropical-dense' | 'temperate-woodland' = 'tropical-dense'
+  regime: 'tropical-dense' | 'temperate-woodland' = 'tropical-dense',
+  sinElevation: number = 1.0
 ): number {
   if (foliageDepthM <= 0.0 || !Number.isFinite(foliageDepthM)) {
     return 0.0;
   }
 
   const fGhz = Math.max(0.1, Number.isFinite(freqGhz) ? freqGhz : 8.0);
-  const depth = Math.max(0.0, foliageDepthM);
+  const effSinEl = Number.isFinite(sinElevation) ? Math.max(Math.abs(sinElevation), 0.15) : 1.0;
+  const depth = Math.max(0.0, foliageDepthM) / effSinEl;
 
   const gammaV = regime === 'tropical-dense' ? 1.25 : 0.75; // dB/m
   const am = regime === 'tropical-dense' ? 28.0 : 22.0;     // dB max saturation
@@ -338,19 +342,24 @@ export function computeItuR833VegetationLossDb(
 // 4. Goldhirsh (2001) Sand & Dust Storm Particulate Attenuation Engine
 // ----------------------------------------------------------------------------
 
+const TROPOSPHERIC_DUST_CEILING_AGL_M = 1500.0;
+
 /**
- * Computes X-band sand and dust storm particulate attenuation according to Goldhirsh (2001).
+ * Computes X-band sand and dust storm particulate attenuation according to Goldhirsh (2001),
+ * bounded vertically to the 1,500 m AGL convective dust layer when endpoint AGL heights are supplied.
  *
  * Formula:
  *   alpha_dust = 0.018 * f_GHz * V_km^(-1.07) [dB/km]
- *   A_dust = alpha_dust * pathLengthKm [dB]
+ *   A_dust = alpha_dust * pathLengthKm * f_dust_layer [dB]
  *
  * Clear air threshold: V >= 10 km returns 0.0 dB.
  */
 export function computeGoldhirshDustAttenuationDb(
   freqGhz: number,
   pathLengthKm: number,
-  visibilityKm: number
+  visibilityKm: number,
+  alt1AglM?: number,
+  alt2AglM?: number
 ): number {
   if (
     visibilityKm >= 10.0 ||
@@ -361,9 +370,26 @@ export function computeGoldhirshDustAttenuationDb(
     return 0.0;
   }
 
+  let dustPathFraction = 1.0;
+  if (
+    alt1AglM !== undefined &&
+    alt2AglM !== undefined &&
+    Number.isFinite(alt1AglM) &&
+    Number.isFinite(alt2AglM)
+  ) {
+    const zLow = Math.max(0.0, Math.min(alt1AglM, alt2AglM));
+    const zHigh = Math.max(0.0, Math.max(alt1AglM, alt2AglM));
+    if (zLow >= TROPOSPHERIC_DUST_CEILING_AGL_M) {
+      return 0.0;
+    }
+    if (zHigh > TROPOSPHERIC_DUST_CEILING_AGL_M) {
+      dustPathFraction = (TROPOSPHERIC_DUST_CEILING_AGL_M - zLow) / Math.max(1e-6, zHigh - zLow);
+    }
+  }
+
   const fGhz = Math.max(0.1, Number.isFinite(freqGhz) ? freqGhz : 8.0);
   const vKm = Math.max(0.02, Math.min(10.0, visibilityKm));
-  const dKm = Math.max(0.0, pathLengthKm);
+  const dKm = Math.max(0.0, pathLengthKm) * Math.max(0.0, Math.min(1.0, dustPathFraction));
 
   // Specific attenuation: 0.018 * f * V^(-1.07) dB/km
   const alphaDbPerKm = 0.018 * fGhz * Math.pow(vKm, -1.07);

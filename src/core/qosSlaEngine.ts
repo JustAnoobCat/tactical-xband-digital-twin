@@ -372,7 +372,8 @@ export function evaluate5QiBearerSlaMetrics(
   });
 
   const targetNodes = losNodes.length > 0 ? losNodes : nodeList;
-  const allocationsList = Array.isArray(ganttAllocations) ? ganttAllocations : [];
+  const hasGantt = Array.isArray(ganttAllocations);
+  const allocationsList = hasGantt ? ganttAllocations : [];
 
   const resourceValues: number[] = [];
   for (let i = 0; i < targetNodes.length; i++) {
@@ -389,8 +390,8 @@ export function evaluate5QiBearerSlaMetrics(
       }
     }
 
-    if (allocatedBits <= 0) {
-      // Fallback to node's reported capacity or bitrate
+    if (!hasGantt && allocatedBits <= 0) {
+      // Fallback to node's reported capacity or bitrate only when ganttAllocations is omitted
       allocatedBits = node.allocated_capacity_bits ?? node.capacityBits ?? node.bitrate_bps ?? 0;
     }
 

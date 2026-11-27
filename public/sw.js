@@ -1,8 +1,9 @@
-const CACHE_NAME = 'xband-twin-offline-v2';
+const CACHE_NAME = 'xband-twin-offline-v3';
 const CACHE_PREFIXES = ['xband-twin-offline-', 'stratos-xband-offline-'];
 const CORE_PRECACHE_URLS = [
   './',
   './index.html',
+  './docs.html',
   './manifest.webmanifest',
   './terrain/real_ladakh_dem.bin',
 ];

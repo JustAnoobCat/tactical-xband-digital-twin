@@ -29,6 +29,18 @@ export function computeDynamicSkirtBaseMslM(minElevationM: number): number {
   return Math.min(APPROVED_SKIRT_BASE_MSL_M, Math.floor(safeMin - 200.0));
 }
 
+export function resolveTerrainGridSize(data: TerrainMeshDataPayload): number {
+  const rw = (data as TerrainMeshDataPayload & { rasterWidth?: number }).rasterWidth;
+  if (typeof rw === 'number' && Number.isInteger(rw) && rw >= 2 && rw * rw === data.elevations.length) {
+    return rw;
+  }
+  const n = Math.round(Math.sqrt(data.elevations.length));
+  if (n >= 2 && n * n === data.elevations.length) {
+    return n;
+  }
+  return 512;
+}
+
 /**
  * Continuous bilinear elevation interpolation on a source DEM raster.
  * Used for endpoint-preserving reduced resolution mapping.
@@ -65,11 +77,12 @@ export function sampleDemBilinear(
  * Uses Uint32Array index buffer.
  */
 export function buildNativeDemGeometry(data: TerrainMeshDataPayload): THREE.BufferGeometry {
-  const N = 512;
-  const vertexCount = N * N; // 262,144
-  const cellCount = (N - 1) * (N - 1); // 511 * 511 = 261,121
-  const triangleCount = cellCount * 2; // 522,242
-  const indexCount = triangleCount * 3; // 1,566,726
+  const N = resolveTerrainGridSize(data);
+  const seg = N - 1;
+  const vertexCount = N * N;
+  const cellCount = seg * seg;
+  const triangleCount = cellCount * 2;
+  const indexCount = triangleCount * 3;
 
   const positions = new Float32Array(vertexCount * 3);
   const uvs = new Float32Array(vertexCount * 2);
@@ -80,16 +93,16 @@ export function buildNativeDemGeometry(data: TerrainMeshDataPayload): THREE.Buff
   const minY = data.bounds.minY;
   const maxY = data.bounds.maxY;
 
-  const xStep = (maxX - minX) / 511.0;
-  const yStep = (maxY - minY) / 511.0;
+  const xStep = (maxX - minX) / seg;
+  const yStep = (maxY - minY) / seg;
 
   for (let r = 0; r < N; r++) {
-    const yM = maxY - r * yStep; // Row 0 is North (+Y), Row 511 is South (-Y)
-    const v = 1.0 - r / 511.0;
+    const yM = maxY - r * yStep; // Row 0 is North (+Y), bottom row is South (-Y)
+    const v = 1.0 - r / seg;
 
     for (let c = 0; c < N; c++) {
-      const xM = minX + c * xStep; // Col 0 is West (-X), Col 511 is East (+X)
-      const u = c / 511.0;
+      const xM = minX + c * xStep; // Col 0 is West (-X), rightmost col is East (+X)
+      const u = c / seg;
       const idx = r * N + c;
 
       positions[idx * 3] = xM;
@@ -155,18 +168,20 @@ export function buildFastDemGeometry(data: TerrainMeshDataPayload): THREE.Buffer
   const xStep = (maxX - minX) / 127.0;
   const yStep = (maxY - minY) / 127.0;
 
+  const srcGrid = resolveTerrainGridSize(data);
+  const srcMax = srcGrid - 1;
   for (let r = 0; r < N; r++) {
     const yM = maxY - r * yStep;
-    const srcRow = (r * 511.0) / 127.0; // exact mapping: 0 -> 0.0, 127 -> 511.0
+    const srcRow = (r * srcMax) / 127.0;
     const v = 1.0 - r / 127.0;
 
     for (let c = 0; c < N; c++) {
       const xM = minX + c * xStep;
-      const srcCol = (c * 511.0) / 127.0; // exact mapping: 0 -> 0.0, 127 -> 511.0
+      const srcCol = (c * srcMax) / 127.0;
       const u = c / 127.0;
       const idx = r * N + c;
 
-      const zM = sampleDemBilinear(data.elevations, srcCol, srcRow, 512, 512);
+      const zM = sampleDemBilinear(data.elevations, srcCol, srcRow, srcGrid, srcGrid);
 
       positions[idx * 3] = xM;
       positions[idx * 3 + 1] = yM;
@@ -228,18 +243,20 @@ export function buildBalancedDemGeometry(data: TerrainMeshDataPayload): THREE.Bu
   const xStep = (maxX - minX) / 255.0;
   const yStep = (maxY - minY) / 255.0;
 
+  const srcGrid = resolveTerrainGridSize(data);
+  const srcMax = srcGrid - 1;
   for (let r = 0; r < N; r++) {
     const yM = maxY - r * yStep;
-    const srcRow = (r * 511.0) / 255.0; // exact mapping: 0 -> 0.0, 255 -> 511.0
+    const srcRow = (r * srcMax) / 255.0;
     const v = 1.0 - r / 255.0;
 
     for (let c = 0; c < N; c++) {
       const xM = minX + c * xStep;
-      const srcCol = (c * 511.0) / 255.0; // exact mapping: 0 -> 0.0, 255 -> 511.0
+      const srcCol = (c * srcMax) / 255.0;
       const u = c / 255.0;
       const idx = r * N + c;
 
-      const zM = sampleDemBilinear(data.elevations, srcCol, srcRow, 512, 512);
+      const zM = sampleDemBilinear(data.elevations, srcCol, srcRow, srcGrid, srcGrid);
 
       positions[idx * 3] = xM;
       positions[idx * 3 + 1] = yM;
@@ -291,7 +308,9 @@ export function buildPerimeterSkirtGeometry(
     return null;
   }
 
-  const N = resolution === 'native512' ? 512 : (resolution === 'balanced256' ? 256 : 128);
+  const srcGrid = resolveTerrainGridSize(data);
+  const srcMax = srcGrid - 1;
+  const N = resolution === 'native512' ? srcGrid : (resolution === 'balanced256' ? 256 : 128);
   const S = N - 1; // segments per edge
 
   const minX = data.bounds.minX;
@@ -372,11 +391,11 @@ export function buildPerimeterSkirtGeometry(
 
   const getElevation = (r: number, c: number): number => {
     if (resolution === 'native512') {
-      return data.elevations[r * 512 + c];
+      return data.elevations[r * srcGrid + c];
     }
-    const u = (c * 511.0) / S;
-    const v = (r * 511.0) / S;
-    return sampleDemBilinear(data.elevations, u, v, 512, 512);
+    const u = (c * srcMax) / S;
+    const v = (r * srcMax) / S;
+    return sampleDemBilinear(data.elevations, u, v, srcGrid, srcGrid);
   };
 
   // 1. North Wall (Row 0, Y = maxY, from West c=0 to East c=S). Normal: +Y

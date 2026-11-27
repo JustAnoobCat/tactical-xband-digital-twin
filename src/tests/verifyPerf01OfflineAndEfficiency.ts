@@ -75,7 +75,7 @@ check('public/manifest.webmanifest and public/sw.js exist with zero external URL
 check('SW-FIX-01: public/sw.js enforces Network-First HTML navigation, activate cache purge, and 200-OK only caching', () => {
   const swRaw = readFileSync(resolve(ROOT_DIR, 'public/sw.js'), 'utf8');
   assert.equal(/https?:\/\//i.test(swRaw), false, 'sw.js must contain zero external URLs');
-  assert.ok(swRaw.includes("CACHE_NAME = 'xband-twin-offline-v2'"), 'sw.js must bump CACHE_NAME beyond stale v1');
+  assert.ok(swRaw.includes("CACHE_NAME = 'xband-twin-offline-v3'"), 'sw.js must bump CACHE_NAME beyond stale v1');
   assert.ok(swRaw.includes("request.mode === 'navigate'"), 'sw.js must detect navigation requests via request.mode === navigate');
   assert.ok(swRaw.includes("url.pathname.endsWith('/')"), 'sw.js must match directory root HTML requests');
   assert.ok(swRaw.includes("url.pathname.endsWith('.html')"), 'sw.js must match .html requests');
@@ -206,14 +206,14 @@ await checkAsync('SW-FIX-01: runtime behavior verifies Network-First HTML, stale
   listeners.get('install')!({ waitUntil: (p: Promise<unknown>) => { waitPromise = p; } });
   await waitPromise;
   assert.equal(skipWaitingCalled, true, 'install must call self.skipWaiting()');
-  assert.equal(cacheStore.has('xband-twin-offline-v2'), true, 'install must open xband-twin-offline-v2');
+  assert.equal(cacheStore.has('xband-twin-offline-v3'), true, 'install must open xband-twin-offline-v3');
 
   // 2. Activate purges stale v1 cache and calls clients.claim()
   cacheStore.set('stratos-xband-offline-v1', new Map([[`${origin}/`, new MockResponse('stale-v1')]]));
   listeners.get('activate')!({ waitUntil: (p: Promise<unknown>) => { waitPromise = p; } });
   await waitPromise;
   assert.equal(cacheStore.has('stratos-xband-offline-v1'), false, 'activate must delete stale v1 cache');
-  assert.equal(cacheStore.has('xband-twin-offline-v2'), true, 'activate must keep active v2 cache');
+  assert.equal(cacheStore.has('xband-twin-offline-v3'), true, 'activate must keep active v2 cache');
   assert.equal(clientsClaimCalled, true, 'activate must call self.clients.claim()');
 
   const dispatchFetch = async (req: MockRequest): Promise<MockResponse | undefined> => {
@@ -231,14 +231,14 @@ await checkAsync('SW-FIX-01: runtime behavior verifies Network-First HTML, stale
   };
 
   // 3. Navigation uses Network-First with cache: 'no-cache' even when stale HTML is cached
-  cacheStore.get('xband-twin-offline-v2')!.set(`${origin}/`, new MockResponse('<html>stale</html>'));
-  cacheStore.get('xband-twin-offline-v2')!.set(`${origin}/index.html`, new MockResponse('<html>precached-index</html>'));
+  cacheStore.get('xband-twin-offline-v3')!.set(`${origin}/`, new MockResponse('<html>stale</html>'));
+  cacheStore.get('xband-twin-offline-v3')!.set(`${origin}/index.html`, new MockResponse('<html>precached-index</html>'));
   fetchCalls = [];
   mockFetchImpl = async () => new MockResponse('<html>fresh-deploy</html>', { status: 200 });
   const navRes = await dispatchFetch(new MockRequest(`${origin}/`, { mode: 'navigate' }));
   assert.equal(navRes?.body, '<html>fresh-deploy</html>', 'Navigation must serve fresh network HTML over stale cache');
   assert.equal(fetchCalls[0]?.cache, 'no-cache', 'Navigation fetch must use cache: no-cache');
-  assert.equal(cacheStore.get('xband-twin-offline-v2')!.get(`${origin}/`)?.body, '<html>fresh-deploy</html>', '200 OK navigation response must update cache');
+  assert.equal(cacheStore.get('xband-twin-offline-v3')!.get(`${origin}/`)?.body, '<html>fresh-deploy</html>', '200 OK navigation response must update cache');
 
   // 4. Offline navigation falls back to cache / ./index.html only when network fails
   mockFetchImpl = async () => {
@@ -251,13 +251,13 @@ await checkAsync('SW-FIX-01: runtime behavior verifies Network-First HTML, stale
   mockFetchImpl = async () => new MockResponse('Not Found', { status: 404, statusText: 'Not Found' });
   const missAssetRes = await dispatchFetch(new MockRequest(`${origin}/assets/missing-deadbeef.js`, { mode: 'cors' }));
   assert.equal(missAssetRes?.status, 404);
-  assert.equal(cacheStore.get('xband-twin-offline-v2')!.has(`${origin}/assets/missing-deadbeef.js`), false, '404 response must never be cached');
+  assert.equal(cacheStore.get('xband-twin-offline-v3')!.has(`${origin}/assets/missing-deadbeef.js`), false, '404 response must never be cached');
 
   // 6. Static asset 200 OK backfills cache then serves Cache-First
   mockFetchImpl = async () => new MockResponse('console.log("v2")', { status: 200 });
   const assetRes = await dispatchFetch(new MockRequest(`${origin}/assets/index-abc123.js`, { mode: 'cors' }));
   assert.equal(assetRes?.body, 'console.log("v2")');
-  assert.equal(cacheStore.get('xband-twin-offline-v2')!.has(`${origin}/assets/index-abc123.js`), true, '200 OK asset must backfill cache');
+  assert.equal(cacheStore.get('xband-twin-offline-v3')!.has(`${origin}/assets/index-abc123.js`), true, '200 OK asset must backfill cache');
 
   fetchCalls = [];
   const cachedAssetRes = await dispatchFetch(new MockRequest(`${origin}/assets/index-abc123.js`, { mode: 'cors' }));

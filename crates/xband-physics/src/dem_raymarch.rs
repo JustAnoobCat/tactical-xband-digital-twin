@@ -537,7 +537,9 @@ pub fn evaluate_ray_diffraction(
     let dx = ax - nx;
     let dy = ay - ny;
     let dz = az - nz;
-    let d3d = dx.hypot(dy).hypot(dz);
+    let d_horiz = dx.hypot(dy);
+    let d3d = d_horiz.hypot(dz);
+    let horiz_span = if d_horiz > 1e-3 { d_horiz } else { d3d.max(1e-3) };
 
     if !nx.is_finite()
         || !ny.is_finite()
@@ -787,11 +789,13 @@ pub fn evaluate_ray_diffraction(
         crit_d2 = d2;
         i_peak = 1;
         total_steps = 1;
-        s_tx_max = (h_terrain_eff - nz) / d1;
-        s_tx_dist_m = d1;
+        let h_d1 = horiz_span * 0.5;
+        let h_d2 = (horiz_span - h_d1).max(1e-3);
+        s_tx_max = (h_terrain_eff - nz) / h_d1.max(1e-3);
+        s_tx_dist_m = h_d1;
         i_tx = 1;
-        s_rx_max = (h_terrain_eff - az) / d2;
-        s_rx_dist_m = d1;
+        s_rx_max = (h_terrain_eff - az) / h_d2;
+        s_rx_dist_m = h_d1;
         i_rx = 1;
         max_nu = (-h_clear) * ((2.0 / wavelength_m) * (1.0 / d1 + 1.0 / d2)).sqrt();
     } else {
@@ -842,16 +846,18 @@ pub fn evaluate_ray_diffraction(
             if nu > max_nu {
                 max_nu = nu;
             }
-            let s_tx = (h_terrain_eff - nz) / d1;
+            let h_d1 = horiz_span * frac;
+            let h_d2 = (horiz_span - h_d1).max(1e-3);
+            let s_tx = (h_terrain_eff - nz) / h_d1.max(1e-3);
             if s_tx > s_tx_max {
                 s_tx_max = s_tx;
-                s_tx_dist_m = d1;
+                s_tx_dist_m = h_d1;
                 i_tx = step_idx;
             }
-            let s_rx = (h_terrain_eff - az) / d2;
+            let s_rx = (h_terrain_eff - az) / h_d2;
             if s_rx > s_rx_max {
                 s_rx_max = s_rx;
-                s_rx_dist_m = d1;
+                s_rx_dist_m = h_d1;
                 i_rx = step_idx;
             }
             d1 += step;
@@ -864,11 +870,81 @@ pub fn evaluate_ray_diffraction(
     let mut crest_radius_m = 2000.0;
     let mut curvature_loss_db = 0.0;
 
+    if min_clearance_ratio < 0.6
+        && i_peak > 1
+        && i_peak < total_steps
+        && crit_d1 - step > 0.0
+        && crit_d1 + step < d3d
+    {
+        let s_prev = crit_d1 - step;
+        let s_next = crit_d1 + step;
+        let x_prev = nx + (s_prev / d3d) * dx;
+        let y_prev = ny + (s_prev / d3d) * dy;
+        let x_next = nx + (s_next / d3d) * dx;
+        let y_next = ny + (s_next / d3d) * dy;
+        let x_peak = nx + (crit_d1 / d3d) * dx;
+        let y_peak = ny + (crit_d1 / d3d) * dy;
+
+        let z_t_prev = apply_perturbation(
+            sample_dem_bilinear(
+                dem.data, dem.cols, dem.rows, dem.min_x, dem.max_x, dem.min_y, dem.max_y, x_prev,
+                y_prev,
+            ),
+            x_prev,
+            y_prev,
+            elevation_perturbation_std_m,
+        );
+        let z_t_peak = apply_perturbation(
+            sample_dem_bilinear(
+                dem.data, dem.cols, dem.rows, dem.min_x, dem.max_x, dem.min_y, dem.max_y, x_peak,
+                y_peak,
+            ),
+            x_peak,
+            y_peak,
+            elevation_perturbation_std_m,
+        );
+        let z_t_next = apply_perturbation(
+            sample_dem_bilinear(
+                dem.data, dem.cols, dem.rows, dem.min_x, dem.max_x, dem.min_y, dem.max_y, x_next,
+                y_next,
+            ),
+            x_next,
+            y_next,
+            elevation_perturbation_std_m,
+        );
+
+        if z_t_prev.is_finite() && z_t_peak.is_finite() && z_t_next.is_finite() {
+            let z_prev = z_t_prev + compute_earth_bulge_m(s_prev, d3d - s_prev, r_eff_m);
+            let z_peak = z_t_peak + compute_earth_bulge_m(crit_d1, crit_d2, r_eff_m);
+            let z_next = z_t_next + compute_earth_bulge_m(s_next, d3d - s_next, r_eff_m);
+
+            let z_prime = (z_next - z_prev) / (2.0 * step);
+            let z_double_prime = (z_prev - 2.0 * z_peak + z_next) / (step * step);
+            if z_double_prime < 0.0 {
+                let denom_curv = (-z_double_prime).max(5e-4);
+                let r_val = (1.0 + z_prime * z_prime).powf(1.5) / denom_curv;
+                crest_radius_m = r_val.clamp(0.5, 2000.0);
+                let signed_h_obs = if min_clearance_ratio <= 0.0 {
+                    (-min_clearance_m).max(0.0)
+                } else {
+                    -min_clearance_m
+                };
+                curvature_loss_db = compute_crest_curvature_loss_db(
+                    crest_radius_m,
+                    crit_d1,
+                    crit_d2,
+                    signed_h_obs,
+                    wavelength_m,
+                );
+            }
+        }
+    }
+
     if min_clearance_ratio >= 0.6 {
         diffraction_loss_db = 0.0;
         is_los = true;
     } else if min_clearance_ratio > 0.0 {
-        diffraction_loss_db = 6.0 * (1.0 - min_clearance_ratio / 0.6);
+        diffraction_loss_db = 6.0 * (1.0 - min_clearance_ratio / 0.6) + curvature_loss_db;
         is_los = true;
     } else {
         is_los = false;
@@ -877,11 +953,15 @@ pub fn evaluate_ray_diffraction(
 
         if i_tx != i_rx && i_tx != -1 && i_rx != -1 {
             let (s_bull, _z_bull, h_bull) = compute_bullington_apex(
-                nz, az, d3d, s_tx_max, s_rx_max, s_tx_dist_m, s_rx_dist_m,
+                nz, az, horiz_span, s_tx_max, s_rx_max, s_tx_dist_m, s_rx_dist_m,
             );
             if h_bull > 0.0 {
-                knife_edge_loss =
-                    compute_terrain_knife_edge_loss_db(h_bull, s_bull, d3d - s_bull, wavelength_m);
+                knife_edge_loss = compute_terrain_knife_edge_loss_db(
+                    h_bull,
+                    s_bull,
+                    (horiz_span - s_bull).max(1e-3),
+                    wavelength_m,
+                );
                 used_bullington = true;
             }
         }
@@ -890,70 +970,6 @@ pub fn evaluate_ray_diffraction(
                 compute_terrain_knife_edge_loss_db(-min_clearance_m, crit_d1, crit_d2, wavelength_m);
         }
 
-        if i_peak > 1
-            && i_peak < total_steps
-            && crit_d1 - step > 0.0
-            && crit_d1 + step < d3d
-        {
-            let s_prev = crit_d1 - step;
-            let s_next = crit_d1 + step;
-            let x_prev = nx + (s_prev / d3d) * dx;
-            let y_prev = ny + (s_prev / d3d) * dy;
-            let x_next = nx + (s_next / d3d) * dx;
-            let y_next = ny + (s_next / d3d) * dy;
-            let x_peak = nx + (crit_d1 / d3d) * dx;
-            let y_peak = ny + (crit_d1 / d3d) * dy;
-
-            let z_t_prev = apply_perturbation(
-                sample_dem_bilinear(
-                    dem.data, dem.cols, dem.rows, dem.min_x, dem.max_x, dem.min_y, dem.max_y,
-                    x_prev, y_prev,
-                ),
-                x_prev,
-                y_prev,
-                elevation_perturbation_std_m,
-            );
-            let z_t_peak = apply_perturbation(
-                sample_dem_bilinear(
-                    dem.data, dem.cols, dem.rows, dem.min_x, dem.max_x, dem.min_y, dem.max_y,
-                    x_peak, y_peak,
-                ),
-                x_peak,
-                y_peak,
-                elevation_perturbation_std_m,
-            );
-            let z_t_next = apply_perturbation(
-                sample_dem_bilinear(
-                    dem.data, dem.cols, dem.rows, dem.min_x, dem.max_x, dem.min_y, dem.max_y,
-                    x_next, y_next,
-                ),
-                x_next,
-                y_next,
-                elevation_perturbation_std_m,
-            );
-
-            if z_t_prev.is_finite() && z_t_peak.is_finite() && z_t_next.is_finite() {
-                let z_prev = z_t_prev + compute_earth_bulge_m(s_prev, d3d - s_prev, r_eff_m);
-                let z_peak = z_t_peak + compute_earth_bulge_m(crit_d1, crit_d2, r_eff_m);
-                let z_next = z_t_next + compute_earth_bulge_m(s_next, d3d - s_next, r_eff_m);
-
-                let z_prime = (z_next - z_prev) / (2.0 * step);
-                let z_double_prime = (z_prev - 2.0 * z_peak + z_next) / (step * step);
-                if z_double_prime < 0.0 {
-                    let denom_curv = (-z_double_prime).max(5e-4);
-                    let r_val = (1.0 + z_prime * z_prime).powf(1.5) / denom_curv;
-                    crest_radius_m = r_val.clamp(0.5, 2000.0);
-                    let h_obs = (-min_clearance_m).max(0.0);
-                    curvature_loss_db = compute_crest_curvature_loss_db(
-                        crest_radius_m,
-                        crit_d1,
-                        crit_d2,
-                        h_obs,
-                        wavelength_m,
-                    );
-                }
-            }
-        }
         diffraction_loss_db = knife_edge_loss + curvature_loss_db;
     }
 

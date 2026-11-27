@@ -11,13 +11,13 @@
     <div class="docs-standalone-brand">
       <span class="brand-band">STRATOS</span>
       <span class="brand-freq">8.0 GHz</span>
-      <span class="docs-standalone-title">Research &amp; Mathematical Reference (v4.1.0 · Offline)</span>
+      <span class="docs-standalone-title">Research &amp; Mathematical Reference (v4.5.0 · Offline)</span>
     </div>
     <div class="docs-standalone-toolbar">
       <label class="sr-only" for="docs-filter-input">Filter documentation sections</label>
       <input id="docs-filter-input" class="docs-filter-input" type="search" placeholder="Filter equations, ITU-R, 5QI, Tac-TAD… (/)" autocomplete="off">
       <button type="button" id="btn-docs-clear-filter" hidden>Clear</button>
-      <span id="docs-filter-count" class="docs-filter-count">14 / 14 sections</span>
+      <span id="docs-filter-count" class="docs-filter-count">12 / 12 sections</span>
       <button type="button" id="btn-docs-top">Top</button>
       <button type="button" id="btn-docs-print" class="primary">Print / PDF</button>
     </div>
@@ -36,7 +36,7 @@
         <a class="docs-toc-link" href="#doc-tdma">7. 3-Way TDMA &amp; Predictive Tac-TAD</a>
         <a class="docs-toc-link" href="#doc-qos">8. 3GPP 5QI &amp; FQ-CoDel Queues</a>
         <a class="docs-toc-link" href="#doc-appendix">9. Mathematical Appendix (A-1..A-28)</a>
-        <a class="docs-toc-link" href="#doc-benchmark">10. v4.1.0 Benchmark Methodology</a>
+        <a class="docs-toc-link" href="#doc-benchmark">10. v4.5.0 Benchmark Methodology</a>
         <a class="docs-toc-link" href="#doc-standards">11. Technical Standards Register</a>
         <a class="docs-toc-link" href="#doc-verification">12. Verification &amp; Boundaries</a>
       </nav>
@@ -121,7 +121,7 @@
         <ul>
           <li><strong>5QI 69 (Emergency C2):</strong> Strict priority, 60 ms PDB, 120-packet reserved buffer ceiling, protected against shadow pruning.</li>
           <li><strong>5QI 65 (Mission-Critical PTT Voice):</strong> High priority, 75 ms PDB.</li>
-          <li><strong>5QI 67 (Mission-Critical Real-Time Video):</strong> Medium priority, 100 ms PDB, Poisson packet arrivals.</li>
+          <li><strong>5QI 67 (Mission-Critical Real-Time Video):</strong> Medium priority, 150 ms PDB, Poisson packet arrivals.</li>
           <li><strong>5QI 70 (Reconnaissance Photo):</strong> Background priority, 300 ms PDB; total terminal queue bounded at 400 packets.</li>
         </ul>
       </section>
@@ -133,7 +133,7 @@
         <h4>A.2 Fresnel Clearance &amp; ITU-R P.526-15 Diffraction</h4>
         <div class="formula-card">(A-5) &nbsp; h<sub>clear</sub>(d<sub>1</sub>) = z<sub>LOS</sub>(d<sub>1</sub>) &minus; [h<sub>DEM</sub>(d<sub>1</sub>) + d<sub>1</sub>d<sub>2</sub>/(2R&prime;<sub>e</sub>)]<br>(A-6) &nbsp; r<sub>1</sub>(d<sub>1</sub>,d<sub>2</sub>) = &radic;(&lambda;d<sub>1</sub>d<sub>2</sub>/D), &nbsp;&nbsp; &rho; = h<sub>clear</sub> / r<sub>1</sub><br>(A-8) &nbsp; d<sub>b</sub> = [z<sub>Rx</sub> &minus; z<sub>Tx</sub> + &theta;<sub>Rx</sub>D] / [&theta;<sub>Tx</sub> + &theta;<sub>Rx</sub>], &nbsp;&nbsp; &nu;<sub>b</sub> = h<sub>b</sub>&radic;[(2/&lambda;)(1/d<sub>b</sub> + 1/(D &minus; d<sub>b</sub>))]<br>(A-9) &nbsp; L<sub>Bullington</sub> = 6.9 + 20log<sub>10</sub>(&radic;[(&nu;<sub>b</sub> &minus; 0.1)&sup2; + 1] + &nu;<sub>b</sub> &minus; 0.1), &nbsp;&nbsp; L<sub>diff</sub> = L<sub>Bullington</sub> + T(m,n)</div>
         <h4>A.3 Atmospheric, Rain, Sky-Noise &amp; Thermal Noise</h4>
-        <div class="formula-card">(A-11) &nbsp; FSPL = 20log<sub>10</sub>(d<sub>3D</sub>) + 20log<sub>10</sub>(f<sub>c</sub>) + 20log<sub>10</sub>(4&pi;/c)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;L<sub>gas</sub> = &int;<sub>0</sub><sup>D</sup> &gamma;<sub>gas</sub>(z(s)) ds, &nbsp;&nbsp; L<sub>rain</sub> = &gamma;<sub>R</sub> min(d<sub>3D</sub>/1000, max(0, (h<sub>freeze</sub> &minus; z<sub>node</sub>)/sin(e)))<br>(A-12) &nbsp; T<sub>sky</sub> = T<sub>cosmic</sub>10<sup>&minus;A/10</sup> + T<sub>atm</sub>(1 &minus; 10<sup>&minus;A/10</sup>), &nbsp;&nbsp; SNR<sub>dB</sub> = P<sub>rx,dBm</sub> &minus; (P<sub>noise,dBm</sub> + &Delta;N<sub>sky</sub>)</div>
+        <div class="formula-card">(A-11) &nbsp; FSPL = 20log<sub>10</sub>(d<sub>3D</sub>) + 20log<sub>10</sub>(f<sub>c</sub>) + 20log<sub>10</sub>(4&pi;/c)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;L<sub>gas</sub> = &int;<sub>0</sub><sup>D</sup> &gamma;<sub>gas</sub>(z(s)) ds, &nbsp;&nbsp; L<sub>rain</sub> = &gamma;<sub>R</sub>(f<sub>c</sub>) min(L<sub>cell</sub>, d<sub>rain</sub>)<br>(A-12) &nbsp; T<sub>sky</sub> = T<sub>cosmic</sub>&tau; + T<sub>atm</sub>(1 &minus; &tau;), &nbsp;&nbsp; T<sub>sys</sub> = T<sub>sky</sub> + T<sub>0</sub>(F &minus; 1), &nbsp;&nbsp; SNR<sub>dB</sub> = P<sub>rx,dBm</sub> &minus; 10log<sub>10</sub>(k<sub>B</sub>T<sub>sys</sub>B &middot; 1000)</div>
         <h4>A.4 TDMA Framing &amp; Predictive Tac-TAD</h4>
         <div class="formula-card">(A-16) &nbsp; T<sub>UL,avail</sub> = T<sub>frame</sub> &minus; T<sub>ctrl</sub> &minus; T<sub>DL</sub> &nbsp; (T<sub>frame</sub> = 20 ms)<br>(A-22) &nbsp; &Psi;<sub>i</sub> = &Phi;<sub>evac,i</sub> &middot; U<sub>i</sub> &middot; (R<sub>i</sub> / max(1000, R&#772;<sub>i</sub>)) &middot; max[1, log<sub>2</sub>(1 + Q<sub>i</sub>/8000)] &middot; P<sub>tactical,i</sub><br>(A-23) &nbsp; &tau;<sub>eff-TTL,i</sub> = min(&tau;<sub>TTL,i</sub>, t<sub>occ,i</sub>), &nbsp;&nbsp; &zeta;<sub>i</sub> = (Q<sub>i</sub>/R<sub>i</sub>) / max(t<sub>occ,i</sub>, 0.020 s)<br>(A-24) &nbsp; Critical Peer Gate: if maxHolRatio<sub>j</sub> &ge; 0.82 &and; &tau;<sub>TTL,j</sub> &le; 30 ms &and; &tau;<sub>TTL,j</sub> &lt; t<sub>occ,i</sub> &rArr; &Phi;<sub>evac,i</sub> = 1.0</div>
         <h4>A.5 Discrete-Event Loop &amp; Statistical Evaluation</h4>
@@ -141,7 +141,7 @@
       </section>
 
       <section class="report-section" id="doc-benchmark">
-        <h3>10. v4.1.0 Benchmark Methodology &amp; Statistical Evaluation</h3>
+        <h3>10. v4.5.0 Benchmark Methodology &amp; Statistical Evaluation</h3>
         <p>Paired ablation comparisons evaluate <code>Legacy_Static_TDMA</code>, <code>Reactive_M_LWDF</code>, and <code>Predictive_Tac_TAD</code> across identical seeds, terrain models, trajectories, and traffic profiles. Primary endpoints track delivered goodput, outage waste, delay drops vs. overflow drops by 5QI class, and worker 50 Hz step latency (p50/p95 well under the 20 ms deadline).</p>
         <p>Correlated frames within one run are never treated as independent replicates; paired scenario/seed differences form the unit of statistical inference using paired t-intervals or Wilcoxon signed-rank / bootstrap intervals.</p>
       </section>

@@ -113,10 +113,22 @@ fn compute_sector_attenuation_db(
 }
 
 #[inline]
-fn compute_gas_loss_db(slant_dist_m: f64, node_alt_m: f64, acn_alt_m: f64) -> f64 {
+fn compute_gas_loss_db(
+    slant_dist_m: f64,
+    node_alt_m: f64,
+    acn_alt_m: f64,
+    carrier_freq_hz: f64,
+) -> f64 {
     let range_m = slant_dist_m.max(1.0);
     let z1 = node_alt_m.min(acn_alt_m);
     let z2 = node_alt_m.max(acn_alt_m);
+    let f_ghz = if carrier_freq_hz.is_finite() {
+        (carrier_freq_hz / 1e9).max(0.5)
+    } else {
+        8.0
+    };
+    let gamma_o0 = 0.0072 * (f_ghz / 8.0).powf(0.25);
+    let gamma_w0 = 0.0028 * (f_ghz / 8.0).powf(2.0);
     let eta = |alt1: f64, alt2: f64, h: f64| -> f64 {
         let dz = (alt2 - alt1).abs();
         if dz > 10.0 {
@@ -127,7 +139,7 @@ fn compute_gas_loss_db(slant_dist_m: f64, node_alt_m: f64, acn_alt_m: f64) -> f6
     };
     let eta_o = eta(z1, z2, 6000.0);
     let eta_w = eta(z1, z2, 2000.0);
-    ((0.0072 * eta_o + 0.0028 * eta_w) * (range_m / 1000.0)).max(0.0)
+    ((gamma_o0 * eta_o + gamma_w0 * eta_w) * (range_m / 1000.0)).max(0.0)
 }
 
 #[inline]
@@ -138,11 +150,51 @@ fn compute_rain_loss_db(
     node_alt_m: f64,
     acn_alt_m: f64,
     freezing_isotherm_m: f64,
+    carrier_freq_hz: f64,
 ) -> f64 {
     if rain_rate_mmh <= 0.0 || slant_dist_m <= 0.0 {
         return 0.0;
     }
-    let gamma_r = 0.00411 * rain_rate_mmh.powf(1.39);
+    let f_ghz = if carrier_freq_hz.is_finite() {
+        (carrier_freq_hz / 1e9).clamp(1.0, 30.0)
+    } else {
+        8.0
+    };
+    let (k_h, alpha_h) = if (f_ghz - 8.0).abs() <= 1e-6 {
+        (0.00411_f64, 1.39_f64)
+    } else {
+        const ANCHORS: [(f64, f64, f64); 11] = [
+            (1.0, 0.0000259, 0.9691),
+            (2.0, 0.0000847, 1.0664),
+            (4.0, 0.0001071, 1.6000),
+            (6.0, 0.0007056, 1.5900),
+            (8.0, 0.0041100, 1.3900),
+            (10.0, 0.0121700, 1.2571),
+            (12.0, 0.0238600, 1.1825),
+            (14.0, 0.0293000, 1.1550),
+            (15.0, 0.0448100, 1.1233),
+            (20.0, 0.0916400, 1.0568),
+            (30.0, 0.2403000, 0.9485),
+        ];
+        let mut lo = ANCHORS[0];
+        let mut hi = ANCHORS[ANCHORS.len() - 1];
+        for win in ANCHORS.windows(2) {
+            if f_ghz >= win[0].0 && f_ghz <= win[1].0 {
+                lo = win[0];
+                hi = win[1];
+                break;
+            }
+        }
+        let t = if hi.0 > lo.0 {
+            (f_ghz.ln() - lo.0.ln()) / (hi.0.ln() - lo.0.ln())
+        } else {
+            0.0
+        };
+        let k = (lo.1.ln() + t * (hi.1.ln() - lo.1.ln())).exp();
+        let a = lo.2 + t * (hi.2 - lo.2);
+        (k, a)
+    };
+    let gamma_r = k_h * rain_rate_mmh.powf(alpha_h);
     let rain_path_km = (slant_dist_m / 1000.0).min(rain_cell_length_km);
     let z1 = node_alt_m.min(acn_alt_m);
     let z2 = node_alt_m.max(acn_alt_m);
@@ -209,11 +261,12 @@ pub fn compute_polar_viewshed_slice_into(
         + 20.0 * ((4.0 * PI) / params.speed_of_light.max(1.0)).log10();
 
     let noise_factor = 10.0_f64.powf(params.acn_noise_figure_db / 10.0);
-    let p_noise_w = params.boltzmann_constant
-        * params.atmospheric_temp_k
-        * params.channel_bandwidth_hz
-        * noise_factor;
-    let p_noise_thermal_dbm = 10.0 * (p_noise_w * 1000.0).log10();
+    let t0 = if params.atmospheric_temp_k > 0.0 {
+        params.atmospheric_temp_k
+    } else {
+        290.0
+    };
+    let t_rx_k = t0 * (noise_factor - 1.0);
     let deg_step = 360.0 / nb as f64;
     let start_mod = start_bearing % nb;
 
@@ -235,7 +288,11 @@ pub fn compute_polar_viewshed_slice_into(
                 dem.data, dem.cols, dem.rows, dem.min_x, dem.max_x, dem.min_y, dem.max_y, cell_x,
                 cell_y,
             );
-            let z_ground = if raw_z.is_finite() { raw_z } else { 0.0 };
+            if !raw_z.is_finite() {
+                out_sinr_db[base_off + r_idx] = f32::NAN;
+                continue;
+            }
+            let z_ground = raw_z;
             let cell_z = z_ground + 2.0;
 
             let elev_deg = (z_ground - params.acn_pos[2]).atan2(range_m.max(1.0)).to_degrees();
@@ -259,11 +316,11 @@ pub fn compute_polar_viewshed_slice_into(
                 DiffractionMode::TerrainObstruction,
                 None,
             );
-            let diff_loss_db = if obs.diffraction_loss_db.is_finite() {
-                obs.diffraction_loss_db
-            } else {
-                45.0
-            };
+            if !obs.is_coverage_complete || !obs.diffraction_loss_db.is_finite() {
+                out_sinr_db[base_off + r_idx] = f32::NAN;
+                continue;
+            }
+            let diff_loss_db = obs.diffraction_loss_db;
 
             let (body_az_deg, body_el_deg) = world_los_to_body_frame(
                 dx,
@@ -294,7 +351,8 @@ pub fn compute_polar_viewshed_slice_into(
             let rx_gain_dbi = params.acn_antenna_gain_dbi - min_atten_db;
 
             let fspl_db = 20.0 * slant_dist_m.log10() + fspl_const;
-            let gas_loss_db = compute_gas_loss_db(slant_dist_m, cell_z, params.acn_pos[2]);
+            let gas_loss_db =
+                compute_gas_loss_db(slant_dist_m, cell_z, params.acn_pos[2], params.carrier_freq_hz);
             let rain_loss_db = compute_rain_loss_db(
                 slant_dist_m,
                 params.rain_rate_mmh,
@@ -302,6 +360,7 @@ pub fn compute_polar_viewshed_slice_into(
                 cell_z,
                 params.acn_pos[2],
                 params.freezing_isotherm_m,
+                params.carrier_freq_hz,
             );
             let total_loss_db = fspl_db
                 + diff_loss_db
@@ -315,10 +374,11 @@ pub fn compute_polar_viewshed_slice_into(
                     - total_loss_db;
 
             let a_atm = gas_loss_db + rain_loss_db;
-            let sky_temp_k = 275.0 * (1.0 - 10.0_f64.powf(-a_atm / 10.0));
-            let sky_noise_increase_db =
-                10.0 * (1.0 + sky_temp_k / (290.0 * noise_factor)).log10();
-            let p_noise_dbm = p_noise_thermal_dbm + sky_noise_increase_db;
+            let tau = 10.0_f64.powf(-a_atm / 10.0);
+            let sky_temp_k = 275.0 * (1.0 - tau) + 2.73 * tau;
+            let t_sys_k = sky_temp_k + t_rx_k;
+            let p_noise_w_eff = params.boltzmann_constant * t_sys_k * params.channel_bandwidth_hz;
+            let p_noise_dbm = 10.0 * (p_noise_w_eff * 1000.0).log10();
 
             let mut p_noise_and_interf_dbm = p_noise_dbm;
             if params.jammer_enabled {

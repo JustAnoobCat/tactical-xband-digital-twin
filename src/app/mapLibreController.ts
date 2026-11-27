@@ -32,6 +32,7 @@ export function initMapLibreController(ctx: AppContext): void {
   const { state, engines, dom, actions } = ctx;
   const { $, TRANSPARENT_1X1_PNG } = dom;
   const {
+    mainTerrainEngine,
     trajectoryEditor,
     obstacleEditor,
     mapLayerRegistry,
@@ -247,7 +248,7 @@ export function initMapLibreController(ctx: AppContext): void {
       const geo = state.mapController.projectEnuToGeodetic(xM, yM);
       return [geo.lonDeg, geo.latDeg];
     }
-    const coordinate = cartesianToGeodetic(xM, yM);
+    const coordinate = mainTerrainEngine.worldToLatLon(xM, yM);
     return [coordinate.lonDeg, coordinate.latDeg];
   }
 
@@ -262,7 +263,7 @@ export function initMapLibreController(ctx: AppContext): void {
     const origin = state.mapController?.getOrigin();
     const local = origin
       ? geodeticToUnwrappedEnu(latitude, longitude, origin.latDeg, origin.lonDeg)
-      : geodeticToCartesian(latitude, longitude);
+      : mainTerrainEngine.latLonToWorld(latitude, longitude);
     return { lng: longitude, lat: latitude, x: local.xM, y: local.yM };
   }
 
@@ -535,10 +536,10 @@ export function initMapLibreController(ctx: AppContext): void {
       if (typeof renderedId === 'string' && renderedId) return renderedId;
     }
     const coordinate = map.unproject([point.x, point.y]);
-    const local = geodeticToCartesian(coordinate.lat, coordinate.lng);
+    const local = mainTerrainEngine.latLonToWorld(coordinate.lat, coordinate.lng);
     if (!Number.isFinite(local.xM) || !Number.isFinite(local.yM)) return null;
     const edgeGeo = map.unproject([point.x + padPx, point.y]);
-    const edgeLocal = geodeticToCartesian(edgeGeo.lat, edgeGeo.lng);
+    const edgeLocal = mainTerrainEngine.latLonToWorld(edgeGeo.lat, edgeGeo.lng);
     const toleranceM =
       Number.isFinite(edgeLocal.xM) && Number.isFinite(edgeLocal.yM)
         ? Math.max(100, Math.hypot(edgeLocal.xM - local.xM, edgeLocal.yM - local.yM))
@@ -2345,7 +2346,7 @@ export function initMapLibreController(ctx: AppContext): void {
 
           map.on('mousemove', (event: MapMouseEvent) => {
             const coordinate = map.unproject(event.point);
-            const local = geodeticToCartesian(coordinate.lat, coordinate.lng);
+            const local = mainTerrainEngine.latLonToWorld(coordinate.lat, coordinate.lng);
             actions.updateRadarCursorReadout(local.xM, local.yM, true);
             if (state.mapLibreToolboxVertexDrag) {
               state.mapLibreToolboxVertexDrag.moved = true;
@@ -2409,7 +2410,10 @@ export function initMapLibreController(ctx: AppContext): void {
                 mastM,
                 acnPos,
                 acnHeading,
-                (x, y) => sampleDemSafe(simCtx.terrainEngine, x, y).elevationM || 3500,
+                (x, y) => {
+                  const e = sampleDemSafe(simCtx.terrainEngine, x, y).elevationM;
+                  return Number.isFinite(e) ? e : 0;
+                },
                 state.tbProbePinnedP1
               );
               actions.updateProbeUiReadouts(state.tbCursorProbeLive);
@@ -2577,7 +2581,7 @@ export function initMapLibreController(ctx: AppContext): void {
                 (state.simTimelineController && state.simTimelineController.isHistoricalInspecting)
             );
             const coordinate = map.unproject(event.point);
-            const local = geodeticToCartesian(coordinate.lat, coordinate.lng);
+            const local = mainTerrainEngine.latLonToWorld(coordinate.lat, coordinate.lng);
             if (!Number.isFinite(local.xM) || !Number.isFinite(local.yM)) return;
 
             if (!state.spatialLocked && trajectoryEditor.activeMode === 'waypoints' && state.waypointPlacementArmed) {

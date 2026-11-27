@@ -881,6 +881,11 @@ export class ThreeSceneManager {
           if (obj.material instanceof THREE.Material) {
             obj.material.dispose();
           }
+        } else if (obj instanceof THREE.Sprite) {
+          if (obj.material.map) {
+            obj.material.map.dispose();
+          }
+          obj.material.dispose();
         }
       });
       this.datumGrid = null;
@@ -1012,7 +1017,21 @@ export class ThreeSceneManager {
     }
 
     // Traverse and dispose geometries, materials, and textures
+    const disposeMaterialAndMap = (mat: THREE.Material): void => {
+      const tex = (mat as THREE.Material & { map?: THREE.Texture | null }).map;
+      if (tex) {
+        tex.dispose();
+      }
+      mat.dispose();
+    };
+
     this.scene.traverse((object) => {
+      if (object instanceof THREE.Sprite) {
+        if (object.material) {
+          disposeMaterialAndMap(object.material);
+        }
+        return;
+      }
       if (!(object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.LineSegments || object instanceof THREE.Points)) {
         return;
       }
@@ -1023,9 +1042,9 @@ export class ThreeSceneManager {
 
       if (object.material) {
         if (Array.isArray(object.material)) {
-          object.material.forEach((mat) => mat.dispose());
+          object.material.forEach((mat) => disposeMaterialAndMap(mat));
         } else {
-          object.material.dispose();
+          disposeMaterialAndMap(object.material);
         }
       }
     });

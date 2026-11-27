@@ -307,15 +307,22 @@ export function createTsParityServer(options?: TsParityServerOptions): TsParityS
 
       // Optional biome update
       if (typeof body.biomeId === 'string') {
-        simWorker.handleCommand({
+        const biomeRes = simWorker.handleCommand({
           type: 'SET_BIOME',
           biomeId: body.biomeId as any,
         });
+        if (!biomeRes.accepted) {
+          const status = biomeRes.spatial_locked ? 409 : 400;
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: biomeRes.reason || 'Biome update rejected' }));
+          return;
+        }
       }
 
+      const { biomeId: _ignoredBiomeId, ...configParams } = body;
       const result = simWorker.handleCommand({
         type: 'CONFIG_UPDATE',
-        params: body as any,
+        params: configParams as any,
       });
 
       if (!result.accepted) {

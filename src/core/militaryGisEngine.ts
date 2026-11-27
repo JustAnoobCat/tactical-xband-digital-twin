@@ -582,6 +582,7 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
     let width = 0;
     let height = 0;
     let bitsPerSample = 16;
+    let samplesPerPixel = 1;
     let compression = 1;
     let sampleFormat = 1; // 1 = uint, 2 = int, 3 = float
     let stripOffsets: number[] = [];
@@ -590,6 +591,8 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
     let isTiled = false;
     let pixelScale: [number, number, number] | null = null;
     let tiePoints: number[] | null = null;
+    let geoKeyDirectory: number[] | null = null;
+    let customNoData: number | null = null;
 
     for (let e = 0; e < numEntries; e++) {
       if (entryOffset + 12 > buffer.byteLength) break;
@@ -626,11 +629,24 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
         return arr;
       };
 
+      const readAscii = (): string => {
+        const readOff = count <= 4 ? entryOffset - 4 : valOffset;
+        if (count === 0 || readOff + count > buffer.byteLength) return '';
+        let out = '';
+        for (let i = 0; i < count; i++) {
+          const ch = view.getUint8(readOff + i);
+          if (ch === 0) break;
+          out += String.fromCharCode(ch);
+        }
+        return out.trim();
+      };
+
       if (tag === 256) width = readEntryValue();
       else if (tag === 257) height = readEntryValue();
       else if (tag === 258) bitsPerSample = readEntryValue();
       else if (tag === 259) compression = readEntryValue();
       else if (tag === 273) stripOffsets = readArray();
+      else if (tag === 277) samplesPerPixel = readEntryValue();
       else if (tag === 278) rowsPerStrip = readEntryValue();
       else if (tag === 279) stripByteCounts = readArray();
       else if (tag === 322 || tag === 323 || tag === 324 || tag === 325) isTiled = true;
@@ -640,11 +656,49 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
         if (sc.length >= 2) pixelScale = [sc[0], sc[1], sc[2] || 0];
       } else if (tag === 33922) {
         tiePoints = readArray();
+      } else if (tag === 34735) {
+        geoKeyDirectory = readArray();
+      } else if (tag === 42113) {
+        const ndStr = readAscii();
+        if (ndStr.length > 0 && !/^(nan|-nan)$/i.test(ndStr)) {
+          const parsedNd = Number(ndStr);
+          if (Number.isFinite(parsedNd)) customNoData = parsedNd;
+        }
       }
     }
 
     if (width <= 0 || height <= 0) {
       return { ok: false, error: `Invalid DEM dimensions: ${width}x${height}` };
+    }
+
+    if (samplesPerPixel !== 1) {
+      return {
+        ok: false,
+        error: `Unsupported GeoTIFF SamplesPerPixel = ${samplesPerPixel} (single-band elevation GeoTIFF required).`,
+      };
+    }
+
+    if (geoKeyDirectory && geoKeyDirectory.length >= 4) {
+      const keyCount = geoKeyDirectory[3] ?? 0;
+      let modelType: number | undefined;
+      let projectedEpsg: number | undefined;
+      for (let k = 0; k < keyCount; k++) {
+        const base = 4 + k * 4;
+        if (base + 3 >= geoKeyDirectory.length) break;
+        const keyId = geoKeyDirectory[base];
+        const tiffTagLoc = geoKeyDirectory[base + 1];
+        const valOff = geoKeyDirectory[base + 3];
+        if (tiffTagLoc === 0) {
+          if (keyId === 1024) modelType = valOff;
+          else if (keyId === 3072 && valOff !== 32767) projectedEpsg = valOff;
+        }
+      }
+      if (modelType === 1 || projectedEpsg !== undefined) {
+        return {
+          ok: false,
+          error: `Unsupported projected coordinate system in GeoTIFF (EPSG:${projectedEpsg ?? 'projected'}). Expected unprojected geographic WGS-84 (EPSG:4326) GeoTIFF.`,
+        };
+      }
     }
 
     if (compression !== 1) {
@@ -710,11 +764,12 @@ export function parseGeoTiffDem(buffer: ArrayBuffer): GeoTiffParseResult {
         } else if (bitsPerSample === 32) {
           elev = sampleFormat === 3 ? view.getFloat32(bytePos, littleEndian) : view.getInt32(bytePos, littleEndian);
         } else {
-          elev = view.getUint8(bytePos);
+          elev = sampleFormat === 2 ? view.getInt8(bytePos) : view.getUint8(bytePos);
         }
 
-        // Mask standard NoData values (-32768, -9999, NaN) for neighbor void-fill interpolation
-        if (elev <= -9999 || !Number.isFinite(elev)) {
+        // Mask GDAL_NODATA tag 42113 & standard NoData values (-32768, -9999, NaN) for void-fill interpolation
+        const isCustomNoData = customNoData !== null && Math.abs(elev - customNoData) <= 1e-6;
+        if (isCustomNoData || elev <= -9999 || !Number.isFinite(elev)) {
           elevations[pixelIndex] = Number.NaN;
           voidIndices.push(pixelIndex);
           pixelIndex++;

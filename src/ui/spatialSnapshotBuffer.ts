@@ -402,9 +402,15 @@ export class SpatialSnapshotBuffer {
       this.nodeIds[slot] = n.nodeId & 0xffff;
       this.nodePosX[slot] = n.posX;
       this.nodePosY[slot] = n.posY;
-      this.nodePosZ[slot] = Math.max(-32768, Math.min(32767, Math.round(n.posZ * 2))); // 0.5m scale
-      this.nodeAglM[slot] = Math.max(-32768, Math.min(32767, Math.round(n.altitudeAglM * 10))); // 0.1m scale
-      this.nodeSnrDb[slot] = Math.max(-32768, Math.min(32767, Math.round(n.snrDb * 100))); // 0.01 dB scale
+      this.nodePosZ[slot] = Number.isFinite(n.posZ)
+        ? Math.max(-32767, Math.min(32767, Math.round(n.posZ * 2)))
+        : -32768; // -32768 sentinel = NaN
+      this.nodeAglM[slot] = Number.isFinite(n.altitudeAglM)
+        ? Math.max(-32767, Math.min(32767, Math.round(n.altitudeAglM * 10)))
+        : -32768;
+      this.nodeSnrDb[slot] = Number.isFinite(n.snrDb)
+        ? Math.max(-32767, Math.min(32767, Math.round(n.snrDb * 100)))
+        : -32768;
 
       let flags = 0;
       if (n.isLos) flags |= 1;
@@ -492,9 +498,12 @@ export class SpatialSnapshotBuffer {
 
       const posX = this.nodePosX[slot];
       const posY = this.nodePosY[slot];
-      const posZ = this.nodePosZ[slot] / 2.0;
-      const altitudeAglM = this.nodeAglM[slot] / 10.0;
-      const snrDb = this.nodeSnrDb[slot] / 100.0;
+      const rawPosZ = this.nodePosZ[slot];
+      const rawAglM = this.nodeAglM[slot];
+      const rawSnrDb = this.nodeSnrDb[slot];
+      const posZ = rawPosZ === -32768 ? Number.NaN : rawPosZ / 2.0;
+      const altitudeAglM = rawAglM === -32768 ? Number.NaN : rawAglM / 10.0;
+      const snrDb = rawSnrDb === -32768 ? Number.NaN : rawSnrDb / 100.0;
 
       nodes[j] = {
         nodeId: this.nodeIds[slot],

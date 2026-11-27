@@ -884,6 +884,8 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
       typeof snapJammerEirp === 'number' && Number.isFinite(snapJammerEirp) ? snapJammerEirp : 65.0;
     const enableRicianFading = Boolean((frame as MissionTelemetrySnapshot | null | undefined)?.rician_fading_enabled);
     const enableActiveRelay = Boolean((frame as MissionTelemetrySnapshot | null | undefined)?.active_relay_enabled);
+    const rawEq = (frame as TelemetryFrame | null | undefined)?.tactical_equipment;
+    const tacticalEq = Array.isArray(rawEq) ? rawEq : [];
 
     const orbitPattern =
       trajCfg?.trajectory_mode === 'waypoints'
@@ -917,6 +919,19 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
         jammer_eirp_dbm: jammerEirpDbm,
         enable_rician_fading: enableRicianFading,
         enable_active_relay: enableActiveRelay,
+        tactical_equipment_json: JSON.stringify(tacticalEq.map((eq) => ({
+          id: eq.id,
+          type: eq.type,
+          label: eq.label,
+          xM: eq.xM,
+          yM: eq.yM,
+          heightAglM: eq.heightAglM,
+          eirpDbm: eq.eirpDbm,
+          enabled: eq.enabled,
+          azimuthDeg: eq.azimuthDeg,
+          beamwidthDeg: eq.beamwidthDeg,
+          sensitivityDbm: eq.sensitivityDbm,
+        }))),
       },
     };
 
@@ -1201,6 +1216,7 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
     let cqiFeedbackDelayMs: number | undefined;
     let earthRadiusFactorK: number | undefined;
     let activeRelayEnabled: boolean | undefined;
+    let parsedEquipmentList: Array<Record<string, unknown>> | null = null;
 
     for (const [k, v] of Object.entries(rf)) {
       if (k === 'carrier_freq_hz' && typeof v === 'number' && Number.isFinite(v) && v > 0) {
@@ -1231,6 +1247,19 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
         earthRadiusFactorK = v;
       } else if ((k === 'activeRelayEnabled' || k === 'enable_active_relay') && typeof v === 'boolean') {
         activeRelayEnabled = v;
+      } else if (k === 'tactical_equipment_json' && typeof v === 'string') {
+        try {
+          const decoded = JSON.parse(v);
+          if (Array.isArray(decoded)) {
+            parsedEquipmentList = decoded.filter(
+              (item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')
+            );
+          } else {
+            unsupportedFields.push(`rfConfig.${k}`);
+          }
+        } catch {
+          unsupportedFields.push(`rfConfig.${k}`);
+        }
       } else {
         unsupportedFields.push(`rfConfig.${k}`);
       }
@@ -1278,6 +1307,35 @@ export function initMissionIoController(deps?: MissionIoControllerDeps): Mission
         ...(earthRadiusFactorK !== undefined ? { earthRadiusFactorK } : {}),
         ...(activeRelayEnabled !== undefined ? { activeRelayEnabled } : {}),
       });
+    }
+
+    if (parsedEquipmentList !== null) {
+      commands.push({ type: 'EQUIPMENT_CLEAR' });
+      for (const eq of parsedEquipmentList) {
+        const eqType = eq.type;
+        const xM = Number(eq.xM ?? eq.x_m);
+        const yM = Number(eq.yM ?? eq.y_m);
+        if (
+          (eqType === 'barrage_jammer' || eqType === 'spot_jammer' || eqType === 'relay_mast' || eqType === 'esm_sensor') &&
+          Number.isFinite(xM) &&
+          Number.isFinite(yM)
+        ) {
+          commands.push({
+            type: 'EQUIPMENT_ADD',
+            ...(typeof eq.id === 'string' ? { id: eq.id } : {}),
+            equipment_type: eqType,
+            ...(typeof eq.label === 'string' ? { label: eq.label } : {}),
+            x_m: xM,
+            y_m: yM,
+            ...(typeof eq.heightAglM === 'number' && Number.isFinite(eq.heightAglM) ? { height_agl_m: eq.heightAglM } : {}),
+            ...(typeof eq.eirpDbm === 'number' && Number.isFinite(eq.eirpDbm) ? { eirp_dbm: eq.eirpDbm } : {}),
+            ...(typeof eq.enabled === 'boolean' ? { enabled: eq.enabled } : {}),
+            ...(typeof eq.azimuthDeg === 'number' && Number.isFinite(eq.azimuthDeg) ? { azimuth_deg: eq.azimuthDeg } : {}),
+            ...(typeof eq.beamwidthDeg === 'number' && Number.isFinite(eq.beamwidthDeg) ? { beamwidth_deg: eq.beamwidthDeg } : {}),
+            ...(typeof eq.sensitivityDbm === 'number' && Number.isFinite(eq.sensitivityDbm) ? { sensitivity_dbm: eq.sensitivityDbm } : {}),
+          });
+        }
+      }
     }
 
     // 3. Obstacles replacement

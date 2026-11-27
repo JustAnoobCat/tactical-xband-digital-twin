@@ -288,7 +288,8 @@ async function runBrowserTauriBootCheck(): Promise<void> {
 
   const server = http.createServer((req, res) => {
     const reqPath = (req.url || '/').split('?')[0];
-    const relPath = reqPath === '/' ? 'index.html' : reqPath.replace(/^\/+/, '');
+    const strippedPath = reqPath.replace(/^\/tactical-xband-digital-twin(?=\/|$)/, '') || '/';
+    const relPath = strippedPath === '/' ? 'index.html' : strippedPath.replace(/^\/+/, '');
     const filePath = resolve(distDir, relPath);
     if (!filePath.startsWith(distDir) || !existsSync(filePath)) {
       res.writeHead(404);
@@ -314,8 +315,17 @@ async function runBrowserTauriBootCheck(): Promise<void> {
   assert.ok(addr && typeof addr !== 'string', 'Ephemeral server must bind');
   const baseUrl = `http://127.0.0.1:${addr.port}/`;
 
-  const browser = await chromium.launch();
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   try {
+    try {
+      browser = await chromium.launch();
+    } catch (err) {
+      if (process.env.REQUIRE_PLAYWRIGHT === 'true') {
+        throw err;
+      }
+      console.log('  - Skipping live Chromium Tauri CSP boot check (Chromium unavailable; set REQUIRE_PLAYWRIGHT=true to enforce)');
+      return;
+    }
     const page = await browser.newPage({ viewport: { width: 1280, height: 760 } });
     const errors: string[] = [];
     page.on('pageerror', err => errors.push(`pageerror: ${err.message}`));
@@ -391,7 +401,9 @@ async function runBrowserTauriBootCheck(): Promise<void> {
     passedChecks++;
     console.log('  ✓ Live Chromium Tauri CSP boot verified (>0 terminals, 0 errors, hidden 3D/toolbox overlays, dark theme, zero clipping)');
   } finally {
-    await browser.close();
+    if (browser) {
+      await browser.close();
+    }
     server.close();
   }
 }

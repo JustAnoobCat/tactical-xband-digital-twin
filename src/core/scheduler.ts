@@ -458,6 +458,27 @@ abstract class DropTrackingScheduler implements BaseScheduler {
   ): FrameScheduleReport;
 }
 
+function resolveDynamicDlDurationS(config: TdmaFrameConfig, dlBacklogBytes: number): number {
+  const minUlReserveS = config.minSlotDurationS + config.guardIntervalS;
+  const maxAllowedDlS = config.frameDurationS - config.ctrlDurationS - minUlReserveS;
+  if (!Number.isFinite(dlBacklogBytes) || dlBacklogBytes <= 5000) {
+    return Math.min(config.dlMinDurationS, Math.max(config.dlMinDurationS, maxAllowedDlS));
+  }
+  const frac = Math.min(1.0, (dlBacklogBytes - 5000) / 15000.0);
+  const targetDlS = config.dlMinDurationS + frac * Math.max(0.0, config.dlMaxDurationS - config.dlMinDurationS);
+  return Math.min(targetDlS, Math.max(config.dlMinDurationS, maxAllowedDlS));
+}
+
+function isCqiDecodeFailurePlan(ls: LinkStatus | undefined, effSnr: number | undefined): boolean {
+  return (
+    ls?.cqiDecodeFailure === true ||
+    (ls?.cqiDecodeFailure === undefined &&
+      effSnr !== undefined &&
+      ls !== undefined &&
+      effSnr > ls.snrDb + 0.5)
+  );
+}
+
 /**
  * Legacy Static Equal-Slot TDMA Scheduler.
  *
@@ -496,11 +517,12 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
     nodes: readonly GroundNodeTrafficSubsystem[],
     linkStatuses: ReadonlyMap<number, LinkStatus> | Record<number, LinkStatus>,
     predictiveStates: ReadonlyMap<number, PredictiveState> | Record<number, PredictiveState>,
-    _dlBacklogBytes: number = 0,
+    dlBacklogBytes: number = 0,
     macFeedbackOptions?: SchedulerMacFeedbackOptions
   ): FrameScheduleReport {
     const numNodes = nodes.length;
-    const tUlAvailable = this.config.frameDurationS - this.config.ctrlDurationS - this.config.dlMinDurationS;
+    const tDl = resolveDynamicDlDurationS(this.config, dlBacklogBytes);
+    const tUlAvailable = this.config.frameDurationS - this.config.ctrlDurationS - tDl;
 
     const getLink = (id: number): LinkStatus | undefined =>
       linkStatuses instanceof Map
@@ -581,7 +603,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         const secK = bucket.length;
         const secTauSlot = (tUlAvailable - secK * this.config.guardIntervalS) / secK;
         let secUsedTimeS = 0.0;
-        let secSlotStartS = currentSimTimeS + this.config.ctrlDurationS + this.config.dlMinDurationS;
+        let secSlotStartS = currentSimTimeS + this.config.ctrlDurationS + tDl;
         let secBitsTx = 0;
 
         for (let i = 0; i < bucket.length; i++) {
@@ -683,7 +705,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         totalBacklogBits: backlogBits,
         superframeDurationS: this.config.frameDurationS,
         ctrlDurationS: this.config.ctrlDurationS,
-        dlDurationS: this.config.dlMinDurationS,
+        dlDurationS: tDl,
         ulAvailableDurationS: tUlAvailable,
         sectorScheduledUlS,
         sectorAvailableUlS,
@@ -713,7 +735,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
         totalBacklogBits: 0,
         superframeDurationS: this.config.frameDurationS,
         ctrlDurationS: this.config.ctrlDurationS,
-        dlDurationS: this.config.dlMinDurationS,
+        dlDurationS: tDl,
         ulAvailableDurationS: tUlAvailable,
         sectorScheduledUlS: [0, 0, 0, 0],
         sectorAvailableUlS: [tUlAvailable, 0, 0, 0],
@@ -731,7 +753,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
     let totalBitsWasted = 0;
     let totalPayloadBitsDequeued = 0;
     let usedTimeS = 0.0;
-    let slotStartS = currentSimTimeS + this.config.ctrlDurationS + this.config.dlMinDurationS;
+    let slotStartS = currentSimTimeS + this.config.ctrlDurationS + tDl;
 
     for (let i = 0; i < K; i++) {
       let node: GroundNodeTrafficSubsystem | undefined;
@@ -848,7 +870,7 @@ export class LegacyStaticScheduler extends DropTrackingScheduler {
       totalBacklogBits: backlogBits,
       superframeDurationS: this.config.frameDurationS,
       ctrlDurationS: this.config.ctrlDurationS,
-      dlDurationS: this.config.dlMinDurationS,
+      dlDurationS: tDl,
       ulAvailableDurationS: tUlAvailable,
       sectorScheduledUlS: [usedTimeS, 0, 0, 0],
       sectorAvailableUlS: [tUlAvailable, 0, 0, 0],
@@ -1075,11 +1097,8 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
     dlBacklogBytes: number = 0,
     macFeedbackOptions?: SchedulerMacFeedbackOptions
   ): FrameScheduleReport {
-    // Dynamic DL breathing with strict physical upper-bound ceiling check (Resolving Audit Finding 2)
-    const minUlReserveS = this.config.minSlotDurationS + this.config.guardIntervalS;
-    const maxAllowedDlS = this.config.frameDurationS - this.config.ctrlDurationS - minUlReserveS;
-    const targetDlS = dlBacklogBytes > 5000 ? Math.min(this.config.dlMaxDurationS, this.config.dlMinDurationS + 0.002) : this.config.dlMinDurationS;
-    const tDl = Math.min(targetDlS, Math.max(this.config.dlMinDurationS, maxAllowedDlS));
+    // Dynamic DL breathing symmetric across schedulers with reachable dlMaxDurationS
+    const tDl = resolveDynamicDlDurationS(this.config, dlBacklogBytes);
     const tUlAvailable = this.config.frameDurationS - this.config.ctrlDurationS - tDl;
 
     if (nodes.length === 0) {
@@ -1300,7 +1319,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         // Pass 2: Work-Conserving Deficit Drainage
         // Redistribute leftover sector airtime fairly to backlogged candidates without adding guard intervals
         if (secRemainingUlTimeS > 0.0001) {
-          const maxAllowedSlot = Math.min(0.016, tUlAvailable);
+          const maxAllowedSlot = this.enablePredictiveLookahead ? Math.min(0.016, tUlAvailable) : maxReactiveSlot;
           for (let i = 0; i < candidatePlan.length && secRemainingUlTimeS > 0.0001; i++) {
             const plan = candidatePlan[i];
             if (plan.remainingBacklogBits <= 0) continue;
@@ -1371,18 +1390,19 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
           scheduledIds.add(plan.nid);
 
-          totalPayloadBitsDequeued += bitsServed;
-          if (plan.ls?.cqiDecodeFailure) {
+          const isCqiFail = isCqiDecodeFailurePlan(plan.ls, effSnr);
+          if (isCqiFail) {
             totalBitsWasted += bitsServed;
-            // HARQ retention: keep undecoded packets in queue for retransmission until decoded or deadline-expired
+            // HARQ retention: keep undecoded packets in queue for retransmission and do not count as dequeued payload
             plan.node.queue.requeueForHarq(served);
           } else {
+            totalPayloadBitsDequeued += bitsServed;
             totalBitsTx += bitsServed;
             secBitsTx += bitsServed;
           }
 
           // Update Proportional Fairness moving average using variable superframe duration
-          const rAchieved = bitsServed / this.config.frameDurationS;
+          const rAchieved = isCqiFail ? 0.0 : bitsServed / this.config.frameDurationS;
           const rPrev = this.rAvg.get(plan.nid) ?? 100000.0;
           this.rAvg.set(plan.nid, (1.0 - this.alphaPf) * rPrev + this.alphaPf * rAchieved);
 
@@ -1513,11 +1533,13 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
       const ps = getPred(nid);
       const ls = getLink(nid);
       const closedLoopScale = getClosedLoopScale(nid);
+      const guardScale = getGuardScale(nid);
       const rInst = (ls?.bitrateBps ?? 1e6) * closedLoopScale;
+      const rEff = Math.max(1.0, rInst * guardScale);
       const qTotalBits = node.queue.getTotalBacklogBits();
       if (qTotalBits === 0) continue;
 
-      const tauReq = qTotalBits / rInst;
+      const tauReq = qTotalBits / rEff;
       const maxAvailSlot = remainingUlTimeS - this.config.guardIntervalS;
       let tauSlot: number;
       let isFlush = false;
@@ -1536,7 +1558,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
       if (tauSlot < this.config.minSlotDurationS) continue;
 
-      const capBits = Math.floor(tauSlot * rInst);
+      const capBits = Math.floor(tauSlot * rEff);
       const remainingBacklog = Math.max(0, qTotalBits - capBits);
 
       candidatePlan.push({
@@ -1560,7 +1582,9 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         const plan = candidatePlan[i];
         if (plan.remainingBacklogBits <= 0) continue;
 
-        const extraTauReq = plan.remainingBacklogBits / plan.rInst;
+        const guardScale = getGuardScale(plan.nid);
+        const rEff = Math.max(1.0, plan.rInst * guardScale);
+        const extraTauReq = plan.remainingBacklogBits / rEff;
         const maxAddTau = Math.min(
           Math.max(0, maxAllowedSlot - plan.tauSlot),
           remainingUlTimeS
@@ -1570,7 +1594,7 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
         if (addTau > 0.00001) {
           plan.tauSlot += addTau;
           remainingUlTimeS -= addTau;
-          const additionalBits = Math.floor(addTau * plan.rInst);
+          const additionalBits = Math.floor(addTau * rEff);
           plan.remainingBacklogBits = Math.max(0, plan.remainingBacklogBits - additionalBits);
         }
       }
@@ -1627,15 +1651,18 @@ export class TerrainAwareDynamicScheduler extends DropTrackingScheduler {
 
       scheduledIds.add(plan.nid);
 
-      totalPayloadBitsDequeued += bitsServed;
-      if (plan.ls?.cqiDecodeFailure) {
+      const isCqiFail = isCqiDecodeFailurePlan(plan.ls, effSnr);
+      if (isCqiFail) {
         totalBitsWasted += bitsServed;
+        // HARQ retention: undecoded packets return to head of queue and are not counted as dequeued payload
+        plan.node.queue.requeueForHarq(served);
       } else {
+        totalPayloadBitsDequeued += bitsServed;
         totalBitsTx += bitsServed;
       }
 
       // Update Proportional Fairness moving average using variable superframe duration
-      const rAchieved = bitsServed / this.config.frameDurationS;
+      const rAchieved = isCqiFail ? 0.0 : bitsServed / this.config.frameDurationS;
       const rPrev = this.rAvg.get(plan.nid) ?? 100000.0;
       this.rAvg.set(plan.nid, (1.0 - this.alphaPf) * rPrev + this.alphaPf * rAchieved);
 

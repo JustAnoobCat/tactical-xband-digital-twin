@@ -9,8 +9,8 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
 import { THEATER_BIOMES, type BiomeId } from '../src/core/biomePhysics';
@@ -174,7 +174,7 @@ async function runTrialsInWorkerPool(
   }
 
   const currentDir = dirname(fileURLToPath(import.meta.url));
-  const workerEntryUrl = new URL('./stratos_cli_worker.ts', `file://${currentDir}/`);
+  const workerEntryUrl = pathToFileURL(join(currentDir, 'stratos_cli_worker.ts'));
   const execArgv = sanitizeWorkerExecArgv(process.execArgv);
   const poolSize = Math.min(workerCount, tasks.length);
 

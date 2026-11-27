@@ -19,6 +19,7 @@ import { FrameScheduleReport, LegacyStaticScheduler, TerrainAwareDynamicSchedule
 import { NodeTerrainState, PredictiveState } from '../core/trajectory';
 import { TerrainObstruction, TerrainEngine } from '../core/terrain';
 import { LinkStatus, LinkBudgetEngine } from '../core/linkBudget';
+import { THEATER_BIOMES } from '../core/biomePhysics';
 import type { Position3D } from '../shared/types';
 import type { RFConfig, EnvironmentConfig } from '../core/config';
 import type { RunningMetrics } from './telemetrySerializer';
@@ -561,7 +562,8 @@ export function computeJammerInterference(params: {
 
   const fsplJ = LinkBudgetEngine.computeFsplDb(dJammerM, params.rfConfig.carrierFrequencyHz, params.rfConfig.speedOfLight);
   const gasJ = LinkBudgetEngine.computeGaseousAttenuationDb(dJammerM, jZ, params.acnPos[2], params.rfConfig.carrierFrequencyHz);
-  const rainJ = LinkBudgetEngine.computeRainAttenuationDb(dJammerM, params.envConfig, jZ, params.acnPos[2]);
+  const freezingIsothermM = THEATER_BIOMES[params.terrainEngine.activeBiomeId]?.freezingIsothermM ?? 4800.0;
+  const rainJ = LinkBudgetEngine.computeRainAttenuationDb(dJammerM, params.envConfig, jZ, params.acnPos[2], freezingIsothermM, params.rfConfig.carrierFrequencyHz);
   const lossJ = fsplJ + jammerShieldLossDb + gasJ + rainJ + params.rfConfig.cableLossDb;
 
   const jammerSectorEval = params.antennaEngine.evaluateNodeSector(

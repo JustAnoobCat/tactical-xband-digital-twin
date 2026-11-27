@@ -77,7 +77,7 @@ The simulation executes three parallel, lockstep MAC policies across each sector
 
 ### 2.10 Headless Parity Server & Offline Tile Protocol (`V3-11`)
 - **Canonical Node/TS Headless Parity Server (`server/ts_parity_server.ts`):** High-performance loopback HTTP server with isolated simulation instances and constant-time token verification (`npm run server:ts`).
-- **Electron Air-Gap Offline Tile Protocol (`src/core/offlineTileProtocol.ts`):** Secure `xband-tile://` protocol and PMTiles v3 binary header parser for air-gapped field deployments.
+- **Desktop Air-Gap Offline Tile Protocol (Tauri v2 `src-tauri/src/tile_protocol.rs` & `src/core/offlineTileProtocol.ts`):** Native Rust `xband-tile://` protocol handler and PMTiles v3 binary header parser for air-gapped Tauri v2 deployments (legacy Electron wrapper superseded by Tauri v2).
 
 ---
 
@@ -269,14 +269,14 @@ Evaluated across $N = 30$ paired synthetic link-layer seeds (base seed = `202611
 
 | Configuration | Goodput Factor (95% CI) | Residual BLER (95% CI) | Outage Ratio (95% CI) | Mean SNR [dB] (95% CI) |
 |:---|:---:|:---:|:---:|:---:|
-| **1. Baseline Idealized** | $1.669 \pm 0.020$ | $0.453 \pm 0.012$ | $0.412 \pm 0.014$ | $+7.84 \pm 0.23$ |
-| **2. Multi-Edge & Attitude** | $1.247 \pm 0.016$ | $0.612 \pm 0.007$ | $0.586 \pm 0.007$ | $+0.49 \pm 0.23$ |
-| **3. Delayed-CQI Unprotected** | $0.934 \pm 0.028$ | $0.720 \pm 0.010$ | $0.556 \pm 0.009$ | $+0.49 \pm 0.23$ |
-| **4. Full Realistic Stack (OLLA + HARQ)** | **$0.994 \pm 0.026$** | **$0.680 \pm 0.008$** | **$0.569 \pm 0.009$** | **$+0.49 \pm 0.23$** |
+| **1. Baseline Idealized** | $1.762 \pm 0.020$ | $0.391 \pm 0.015$ | $0.349 \pm 0.017$ | $+9.15 \pm 0.23$ |
+| **2. Multi-Edge & Attitude** | $1.309 \pm 0.017$ | $0.585 \pm 0.008$ | $0.555 \pm 0.010$ | $+1.80 \pm 0.23$ |
+| **3. Delayed-CQI Unprotected** | $0.996 \pm 0.031$ | $0.698 \pm 0.010$ | $0.523 \pm 0.011$ | $+1.80 \pm 0.23$ |
+| **4. Full Realistic Stack (OLLA + HARQ)** | **$1.053 \pm 0.024$** | **$0.661 \pm 0.009$** | **$0.543 \pm 0.007$** | **$+1.80 \pm 0.23$** |
 
 #### Welch Two-Sample $t$-Test Hypothesis Verification
-- **Hypothesis 1 (Optimistic Bias of Idealized Models):** Baseline idealized propagation significantly overestimates effective goodput compared to the realistic physical stack ($\Delta = +0.6745$, $t = 42.048$, $\text{df} = 54.26$, $p = 4.293 \times 10^{-43}$, Cohen's $d = 10.857$, **Confirmed $p < 0.01$**).
-- **Hypothesis 2 (Closed-Loop Error Recovery via OLLA + HARQ):** Closed-loop OLLA adaptation combined with HARQ Chase Combining significantly suppresses residual BLER against uncompensated delayed CQI ($\Delta = +0.0398$ BLER reduction, $t = 6.342$, $\text{df} = 56.91$, $p = 3.963 \times 10^{-8}$, Cohen's $d = 1.637$, **Confirmed $p < 0.01$**).
+- **Hypothesis 1 (Optimistic Bias of Idealized Models):** Baseline idealized propagation significantly overestimates effective goodput compared to the realistic physical stack ($\Delta = +0.7090$, $t = 46.340$, $\text{df} = 55.94$, $p = 2.558 \times 10^{-46}$, Cohen's $d = 11.965$, **Confirmed $p < 0.01$**).
+- **Hypothesis 2 (Closed-Loop Error Recovery via OLLA + HARQ):** Closed-loop OLLA adaptation combined with HARQ Chase Combining significantly suppresses residual BLER against uncompensated delayed CQI ($\Delta = +0.0371$ BLER reduction, $t = 5.710$, $\text{df} = 56.62$, $p = 4.343 \times 10^{-7}$, Cohen's $d = 1.474$, **Confirmed $p < 0.01$**).
 - **Hypothesis 3 (Multi-Edge & Airframe Obstacle Defilade Loss):** Cascaded Deygout multi-edge diffraction and airframe bank shadowing reduce received channel SNR by $7.35\text{ dB}$ ($t = 46.217$, $\text{df} = 58.00$, $p = 1.851 \times 10^{-47}$, Cohen's $d = 11.933$, **Confirmed $p < 0.01$**).
 
 ---

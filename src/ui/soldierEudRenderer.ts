@@ -145,11 +145,12 @@ export function resolveSoldierAiNotificationBanner(
   }
 
   if (isPinned && aiSkyShepherdActive) {
-    const s = typeof sinrDb === 'number' ? sinrDb : 0.0;
+    const s = typeof sinrDb === 'number' && Number.isFinite(sinrDb) ? sinrDb : 0.0;
+    const sFmt = `${s >= 0 ? '+' : ''}${s.toFixed(1)}`;
     return {
       background: '#121a24',
       borderColor: colCmd,
-      title: `[UAV] SKY-SHEPHERD UAV REPOSITIONING (+${s.toFixed(1)} dB)`,
+      title: `[UAV] SKY-SHEPHERD UAV REPOSITIONING (${sFmt} dB)`,
       titleColor: colCmd,
       badge: 'PINNED RESCUE',
       badgeText: 'PINNED RESCUE',
@@ -190,11 +191,11 @@ export function resolveSoldierAiNotificationBanner(
     };
   }
 
-  if (!isOutage && typeof sinrDb === 'number' && sinrDb >= 8.0) {
+  if (!isOutage && typeof sinrDb === 'number' && Number.isFinite(sinrDb) && sinrDb >= 8.0) {
     return {
       background: '#101a16',
       borderColor: colOk,
-      title: `[LOS] AI LINK RESTORED: Clear LoS at +${sinrDb.toFixed(1)} dB`,
+      title: `[LOS] AI LINK RESTORED: Clear LoS at ${sinrDb >= 0 ? '+' : ''}${sinrDb.toFixed(1)} dB`,
       titleColor: colOk,
       badge: 'CLEAR LOS',
       badgeText: 'CLEAR LOS',
